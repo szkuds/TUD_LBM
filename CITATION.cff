@@ -1,0 +1,16 @@
+# YAML 1.2
+---
+cff-version: "1.2.0"
+title: "tud_lbm"
+authors:
+  - family-names: Szkudlarek
+    given-names: Sacha
+    orcid: "https://orcid.org/0000-0000-0000-0000"
+date-released: 2025-12-10
+version: "0.0.1"
+repository-code: "https://github.com/szkuds/tud_lbm"
+keywords:
+  - "LBM"
+  - " TUD"
+  - " Delft University of Technology"
+message: "If you use this software, please cite it using these metadata."
