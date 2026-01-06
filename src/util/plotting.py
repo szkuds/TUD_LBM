@@ -61,14 +61,17 @@ def visualise(sim_instance, title="LBM Simulation Results"):
             # Initialize density profile y-index (mid-plane by default or config override)
             if y_index is None:
                 ny = final_rho.shape[1]
-                y_index = sim_instance.config.get('density_profile_y', ny // 2)
+                y_index = sim_instance.config.get('density_profile_y', ny // 4)
 
             # load the config .json
             config = json.load(open(run_dir + "/config.json"))
 
             # Calculate density ratio and determine scaling
-            density_ratio = config["rho_l"] / config["rho_v"]
-            use_log_scale = density_ratio > 100
+            if config['simulation_type'] == 'multiphase':
+                density_ratio = config["rho_l"] / config["rho_v"]
+                use_log_scale = density_ratio > 100
+            else:
+                use_log_scale = False
 
             fig, axes = plt.subplots(
                 1,

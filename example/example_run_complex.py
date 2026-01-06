@@ -26,7 +26,7 @@ def wetting_hysteresis_simulation_test():
     d_rho_value = 0.0
 
     force_g = 2e-6
-    inclination_angle = 10
+    inclination_angle = 60
     gravity = GravityForceMultiphase(
         force_g, inclination_angle, grid_shape
     )
