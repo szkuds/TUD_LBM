@@ -15,21 +15,26 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-dependencies = []
+dependencies = ["jax",
+  "numpy",
+  "scipy",
+  "matplotlib",
+  "pandas",
+  "optax",
+]
 description = "This is a lattice Boltzmann method package developed at Delft University of Technology."
 keywords = ["LBM"," TUD"," Delft University of Technology"]
 license = {file = "LICENSE"}
 name = "tud_lbm"
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.8"
-version = "0.0.1"
+version = "2026.0.0a1"
 
 [project.optional-dependencies]
 dev = [

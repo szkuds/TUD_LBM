@@ -150,26 +150,27 @@ class ElectricForce(Force):
         return grid_pad
 
     def update_h_i(self, h_i_prev: jnp.ndarray, conductivity: jnp.ndarray):
-        h_i_eq = self.equilibrium_h(h_i_prev, self.lattice.w)
+        potential = self.electric_potential(h_i_prev)
+        h_i_eq = self.equilibrium_h(potential, self.lattice.w)
         tau_e = 3 * conductivity + .5
-        h_i_col = (1 - (1 / tau_e)) * h_i_prev - (1 / tau_e) * h_i_eq
+        h_i_col = (1 - (1 / tau_e)) * h_i_prev + (1 / tau_e) * h_i_eq
         h_i_bc = self.boundary_condition(h_i_col, U_0=1e-2)
         h_i_next = self.stream(h_i_bc)
         return h_i_next[1:-1, 1:-1, :, :]
 
-    def equilibrium_h(self, h_i: jnp.ndarray, w_i: ndarray) -> jnp.ndarray:
+    def equilibrium_h(self, potential: jnp.ndarray, w_i: ndarray) -> jnp.ndarray:
         """
         Equilibrium distribution for electric potential.
         h_i_prev^eq = w_i * U
 
         Args:
-            h_i: Electric potential field, shape (nx, ny, q)
+            potential: Electric potential field, shape (nx, ny, q)
             w_i: Lattice weights, shape (9,)
 
         Returns:
             Equilibrium distribution, shape (nx, ny, 9)
         """
-        return w_i[jnp.newaxis, jnp.newaxis, :, jnp.newaxis] * h_i
+        return w_i[jnp.newaxis, jnp.newaxis, :, jnp.newaxis] * potential
 
     def conductivity(self, rho: jnp.ndarray, conductivity_liquid: float, conductivity_vapour: float) -> jnp.ndarray:
         return self.rho_to_phi(rho, conductivity_liquid, conductivity_vapour)
