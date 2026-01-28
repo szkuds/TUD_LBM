@@ -73,7 +73,7 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["src/tud_lbm"]
+source = ["src"]
 command_line = "-m pytest"
 
 [tool.tox]
@@ -131,7 +131,7 @@ no-lines-before = ["future","standard-library","third-party","first-party","loca
 current_version = "0.0.1"
 
 [[tool.bumpversion.files]]
-filename = "src/tud_lbm/__init__.py"
+filename = "src/__init__.py"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
