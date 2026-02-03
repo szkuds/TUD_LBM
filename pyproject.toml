@@ -21,26 +21,25 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-dependencies = ["jax",
-  "numpy",
-  "scipy",
-  "matplotlib",
-  "pandas",
-  "optax",
+dependencies = [
+  # Install via conda for best results
+  # See environment.yml for conda-based setup
 ]
 description = "This is a lattice Boltzmann method package developed at Delft University of Technology."
 keywords = ["LBM"," TUD"," Delft University of Technology"]
 license = {file = "LICENSE"}
 name = "tud_lbm"
 readme = {file = "README.md", content-type = "text/markdown"}
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 version = "2026.0.0a1"
 
 [project.optional-dependencies]
+hysteresis = ["optax"]
 dev = [
     "build",  # build is not only used in publishing (below), but also in the template's test suite
     "bump-my-version",
     "coverage [toml]",
+    "python-dotenv",  # For loading environment variables from .env
     "pytest",
     "pytest-cov",
     "ruff",

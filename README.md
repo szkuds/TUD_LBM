@@ -22,12 +22,88 @@ The project setup is documented in [project_setup.md](project_setup.md). Feel fr
 
 ## Installation
 
-To install tud_lbm from GitHub repository, do:
+### Recommended: Using Conda (preferred for scientific computing)
+
+We recommend using **conda** for installation, as it handles complex dependencies (JAX, scipy) efficiently:
+
+```console
+# Clone the repository
+git clone git@github.com:szkuds/tud_lbm.git
+cd tud_lbm
+
+# Create conda environment from environment.yml
+conda env create -f environment.yml
+
+# Activate environment
+conda activate tud-lbm
+
+# Install the package in editable mode
+pip install -e .
+```
+
+#### Installing Optional Dependencies
+
+To use hysteresis optimization features (requires `optax`):
+
+```console
+conda install -c conda-forge optax
+```
+
+Or install with the optional dependency group:
+
+```console
+pip install -e ".[hysteresis]"
+```
+
+### Alternative: Using pip
+
+For a basic pip-based installation:
 
 ```console
 git clone git@github.com:szkuds/tud_lbm.git
 cd tud_lbm
 python -m pip install .
+```
+
+Note: This may take longer as complex packages like JAX are compiled from source. For scientific computing, conda is strongly recommended.
+
+### Why Conda?
+
+- **Faster installation**: Pre-built binaries for JAX and scipy (no compilation)
+- **Reproducibility**: Locked dependency versions in `environment.yml`
+- **Reliability**: No dependency resolver hangs with complex packages
+- **Research standard**: Used widely in the scientific computing community
+
+## Testing
+
+Verify your installation by running the test suite. This ensures all dependencies are correctly installed and the package works as expected.
+
+### Running Tests with Conda
+
+```console
+# Activate the environment (if not already activated)
+conda activate tud-lbm
+
+# Run all tests
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/test_optional_dependencies.py -v
+
+# Run with coverage report
+pytest tests/ --cov=src --cov-report=html
+```
+
+### Running Tests with conda run
+
+If you prefer not to activate the environment:
+
+```console
+# Run all tests
+conda run -n tud-lbm pytest tests/ -v
+
+# Run with verbose output and short traceback
+conda run -n tud-lbm pytest tests/ -v --tb=short
 ```
 
 ## Documentation

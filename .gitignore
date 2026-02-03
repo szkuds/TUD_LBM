@@ -25,6 +25,10 @@ share/python-wheels/
 # jupyter notebook
 .ipynb_checkpoints
 
+# Environment variables
+.env
+!.env.example
+
 # Unit test / coverage reports
 htmlcov/
 .coverage
@@ -67,3 +71,6 @@ venv.bak/
 *.swp
 *.swo
 *.orig
+
+#Dev notes
+/dev_notes
