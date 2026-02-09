@@ -10,7 +10,7 @@ dependencies:
   - matplotlib
   - pandas
   - optax
-  - tomli_w
+  - tomli-w
 
   # Development & testing
   - pytest
