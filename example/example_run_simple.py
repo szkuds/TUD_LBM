@@ -1,6 +1,5 @@
-import numpy as np
-from src.core import Run
-from src.util import visualise
+from tud_lbm.core import Run
+from tud_lbm.util import visualise
 import jax
 
 # this line is added for debugging
