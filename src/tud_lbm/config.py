@@ -6,14 +6,8 @@ and the flat **kwargs that Run() expects.
 
 import json
 import os
-import sys
 from typing import Any
-
-# For Python < 3.11, use tomli; otherwise use tomllib from stdlib
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
+import tomllib
 
 
 # Registry mapping force type names to their import paths and class names
