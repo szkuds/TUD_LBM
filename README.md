@@ -1,24 +1,23 @@
-## Badges
+# TUD LBM
 
-(Customize these badges with your own links, and check https://shields.io/ or https://badgen.net/ to see which other badges are available.)
+[![github repo badge](https://img.shields.io/badge/github-repo-000.svg?logo=github&labelColor=gray&color=blue)](https://github.com/szkuds/tud_lbm)
+[![github license badge](https://img.shields.io/github/license/szkuds/tud_lbm)](https://github.com/szkuds/TUD_LBM?tab=Apache-2.0-1-ov-file)
+[![RSD](https://img.shields.io/badge/rsd-tud_lbm-00a3e3.svg)](https://research-software-directory.org/software/tudlbm)
+[![workflow pypi badge](https://img.shields.io/pypi/v/tud_lbm.svg?colorB=blue)](https://pypi.python.org/project/tud_lbm/)
+[![DOI](https://zenodo.org/badge/DOI/<replace-with-created-DOI>.svg)](https://doi.org/<replace-with-created-DOI>)
+[![workflow cii badge](https://bestpractices.coreinfrastructure.org/projects/11832/badge)](https://bestpractices.coreinfrastructure.org/projects/11832)
+[![fair-software badge](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8B-yellow)](https://fair-software.eu)
 
-| fair-software.eu recommendations |                                                                                                                                                                                                                                                  |
-| :-- |:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| (1/5) code repository              | [![github repo badge](https://img.shields.io/badge/github-repo-000.svg?logo=github&labelColor=gray&color=blue)](https://github.com/szkuds/tud_lbm)                                                                                               |
-| (2/5) license                      | [![github license badge](https://img.shields.io/github/license/szkuds/tud_lbm)](https://github.com/szkuds/TUD_LBM?tab=Apache-2.0-1-ov-file)                                                                                                      |
-| (3/5) community registry           | [![RSD](https://img.shields.io/badge/rsd-tud_lbm-00a3e3.svg)](https://research-software-directory.org/software/tudlbm) [![workflow pypi badge](https://img.shields.io/pypi/v/tud_lbm.svg?colorB=blue)](https://pypi.python.org/project/tud_lbm/) |
-| (4/5) citation                     | [![DOI](https://zenodo.org/badge/DOI/<replace-with-created-DOI>.svg)](https://doi.org/<replace-with-created-DOI>)                                                                                                                                |
-| (5/5) checklist                    | [![workflow cii badge](https://bestpractices.coreinfrastructure.org/projects/11832/badge)](https://bestpractices.coreinfrastructure.org/projects/11832)                                                                                          |
-| howfairis                          | [![fair-software badge](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8B-yellow)](https://fair-software.eu)                                                                  |
-| **Other best practices**           | &nbsp;                                                                                                                                                                                                                                           |
-| Static analysis                    | [![workflow scq badge](https://sonarcloud.io/api/project_badges/measure?project=szkuds_TUD_LBM&metric=alert_status)](https://sonarcloud.io/dashboard?id=szkuds_TUD_LBM)                                                                          |
-| Coverage                           | [![workflow scc badge](https://sonarcloud.io/api/project_badges/measure?project=szkuds_TUD_LBM&metric=coverage)](https://sonarcloud.io/dashboard?id=szkuds_TUD_LBM)                                                                              || Documentation                      | [![Documentation Status](https://readthedocs.org/projects/tud_lbm/badge/?version=latest)](https://tud_lbm.readthedocs.io/en/latest/?badge=latest) || **GitHub Actions**                 | &nbsp; |
-| Build                              | [![build](https://github.com/szkuds/tud_lbm/actions/workflows/build.yml/badge.svg)](https://github.com/szkuds/tud_lbm/actions/workflows/build.yml)                                                                                               |
-| Citation data consistency          | [![cffconvert](https://github.com/szkuds/tud_lbm/actions/workflows/cffconvert.yml/badge.svg)](https://github.com/szkuds/tud_lbm/actions/workflows/cffconvert.yml)                                                                                || SonarCloud                         | [![sonarcloud](https://github.com/szkuds/tud_lbm/actions/workflows/sonarcloud.yml/badge.svg)](https://github.com/szkuds/tud_lbm/actions/workflows/sonarcloud.yml) |## How to use tud_lbm
+[![workflow scq badge](https://sonarcloud.io/api/project_badges/measure?project=szkuds_TUD_LBM&metric=alert_status)](https://sonarcloud.io/dashboard?id=szkuds_TUD_LBM)
+[![workflow scc badge](https://sonarcloud.io/api/project_badges/measure?project=szkuds_TUD_LBM&metric=coverage)](https://sonarcloud.io/dashboard?id=szkuds_TUD_LBM)
+[![Documentation Status](https://readthedocs.org/projects/tud_lbm/badge/?version=latest)](https://tud_lbm.readthedocs.io/en/latest/?badge=latest)
+[![build](https://github.com/szkuds/tud_lbm/actions/workflows/build.yml/badge.svg)](https://github.com/szkuds/tud_lbm/actions/workflows/build.yml)
+[![cffconvert](https://github.com/szkuds/tud_lbm/actions/workflows/cffconvert.yml/badge.svg)](https://github.com/szkuds/tud_lbm/actions/workflows/cffconvert.yml)
+[![sonarcloud](https://github.com/szkuds/tud_lbm/actions/workflows/sonarcloud.yml/badge.svg)](https://github.com/szkuds/tud_lbm/actions/workflows/sonarcloud.yml)
 
-This is a lattice Boltzmann method package developed at Delft University of Technology.
+A lattice Boltzmann method package developed at Delft University of Technology. This package provides tools for simulating fluid dynamics using the lattice Boltzmann method, supporting both single-phase and multi-phase simulations.
 
-The project setup is documented in [project_setup.md](project_setup.md). Feel free to remove this document (and/or the link to this document) if you don't need it.
+The project setup is documented in [project_setup.md](project_setup.md).
 
 ## Installation
 
@@ -74,41 +73,9 @@ Note: This may take longer as complex packages like JAX are compiled from source
 - **Reliability**: No dependency resolver hangs with complex packages
 - **Research standard**: Used widely in the scientific computing community
 
-## Testing
-
-Verify your installation by running the test suite. This ensures all dependencies are correctly installed and the package works as expected.
-
-### Running Tests with Conda
-
-```console
-# Activate the environment (if not already activated)
-conda activate tud-lbm
-
-# Run all tests
-pytest tests/ -v
-
-# Run specific test file
-pytest tests/test_optional_dependencies.py -v
-
-# Run with coverage report
-pytest tests/ --cov=src --cov-report=html
-```
-
-### Running Tests with conda run
-
-If you prefer not to activate the environment:
-
-```console
-# Run all tests
-conda run -n tud-lbm pytest tests/ -v
-
-# Run with verbose output and short traceback
-conda run -n tud-lbm pytest tests/ -v --tb=short
-```
-
 ## Documentation
 
-Include a link to your project's full documentation here.
+For full documentation, visit [tud_lbm.readthedocs.io](https://tud_lbm.readthedocs.io/en/latest/).
 
 ## Contributing
 
