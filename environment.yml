@@ -11,7 +11,10 @@ dependencies:
   - pandas
   - optax
   - tomli-w
+
+  #CLI dependencies
   - click
+  - rich
 
   # Development & testing
   - pytest
