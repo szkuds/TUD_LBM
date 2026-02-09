@@ -4,6 +4,7 @@ from typing import Tuple, Any
 import jax
 import jax.numpy as jnp
 from jax import jit
+import optax
 
 from tud_lbm.operators import MacroscopicMultiphaseDW, ContactAngle, ContactLineLocation, WettingParameters
 from tud_lbm.core.grid.grid import Grid
