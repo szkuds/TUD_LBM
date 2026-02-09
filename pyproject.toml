@@ -33,34 +33,6 @@ readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.10"
 version = "2026.0.0a1"
 
-[project.optional-dependencies]
-hysteresis = ["optax"]
-toml-write = ["tomli-w>=1.0"]
-dev = [
-    "build",  # build is not only used in publishing (below), but also in the template's test suite
-    "bump-my-version",
-    "coverage [toml]",
-    "python-dotenv",  # For loading environment variables from .env
-    "pytest",
-    "pytest-cov",
-    "ruff",
-    "sphinx",
-    "sphinx_rtd_theme",
-    "sphinx-autoapi",
-    "tox",
-    "myst_parser",
-]
-docs = [
-    "sphinx",
-    "sphinx_rtd_theme",
-    "sphinx-autoapi",
-    "myst_parser",
-]
-publishing = [
-    "build",
-    "twine",
-    "wheel",
-]
 
 [project.urls]
 Repository = "https://github.com/szkuds/tud_lbm"
