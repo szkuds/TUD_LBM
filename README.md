@@ -40,20 +40,6 @@ conda activate tud-lbm
 pip install -e .
 ```
 
-#### Installing Optional Dependencies
-
-To use hysteresis optimization features (requires `optax`):
-
-```console
-conda install -c conda-forge optax
-```
-
-Or install with the optional dependency group:
-
-```console
-pip install -e ".[hysteresis]"
-```
-
 ### Alternative: Using pip
 
 For a basic pip-based installation:
