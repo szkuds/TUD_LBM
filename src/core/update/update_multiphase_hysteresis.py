@@ -4,7 +4,6 @@ from typing import Tuple, Any
 import jax
 import jax.numpy as jnp
 from jax import jit
-import optax
 
 from src.operators import MacroscopicMultiphaseDW, ContactAngle, ContactLineLocation, WettingParameters
 from src.core.grid.grid import Grid
@@ -60,10 +59,20 @@ class UpdateMultiphaseHysteresis(UpdateMultiphase):
         self.contact_angle = ContactAngle(rho_mean)
         self.contact_line_location = ContactLineLocation(rho_mean)
 
-        # Optimizer setup
+        # Optimizer setup (lazy import for optional optax dependency)
         self.learning_rate = self.hysteresis_params.get('learning_rate', 0.01)
         self.max_iterations = self.hysteresis_params.get('max_iterations', 20)
-        self.optimiser = optax.adam(self.learning_rate)
+        
+        try:
+            import optax
+            self.optimiser = optax.adam(self.learning_rate)
+        except ImportError:
+            raise ImportError(
+                "The 'optax' package is required for hysteresis optimization but is not installed. "
+                "Install it using: pip install optax\n"
+                "Or with conda: conda install -c conda-forge optax\n"
+                "You can also install the optional dependency group: pip install tud-lbm[hysteresis]"
+            )
 
     @partial(jit, static_argnums=(0,))
     def __call__(self, f_t: jnp.ndarray, force: jnp.ndarray = None):

@@ -1,0 +1,37 @@
+name: tud-lbm
+channels:
+  - conda-forge
+dependencies:
+  # Core dependencies (pre-built via conda)
+  - python=3.11
+  - jax
+  - numpy
+  - scipy
+  - matplotlib
+  - pandas
+  
+  # Development & testing
+  - pytest
+  - pytest-cov
+  - coverage
+  - ruff
+  - python-dotenv
+  
+  # Documentation
+  - sphinx
+  - sphinx_rtd_theme
+  - myst-parser
+  
+  # Build tools
+  - build
+  - setuptools>=64.0.0
+  - setuptools-scm
+  - wheel
+  
+  # Optional: hysteresis optimization (install separately if needed)
+  # - optax
+
+# Install the package in editable mode after creating the environment:
+# conda env create -f environment.yml
+# conda activate tud-lbm
+# pip install -e .

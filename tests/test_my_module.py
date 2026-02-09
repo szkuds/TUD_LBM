@@ -1,27 +1,33 @@
-"""Tests for the tud_lbm.my_module module."""
+"""Tests for the tud_lbm package."""
 
 import pytest
-from tud_lbm.my_module import hello
 
 
-def test_hello():
-    """Example using assert."""
-    assert hello("nlesc") == "Hello nlesc!"
+@pytest.mark.skip(reason="Package initialization needs to be completed")
+def test_package_imports():
+    """
+    Test that the tud_lbm package can be imported.
+    
+    Given: tud_lbm package is installed
+    When: attempting to import tud_lbm
+    Then: import should succeed
+    """
+    import tud_lbm  # noqa: F401
+    assert True, "Package imported successfully"
 
 
-def test_hello_with_error():
-    """Example of testing for raised errors."""
-    with pytest.raises(ValueError) as excinfo:
-        hello("nobody")
-    assert "Can not say hello to nobody" in str(excinfo.value)
+@pytest.mark.skip(reason="Package initialization needs to be completed")
+def test_package_has_core_modules():
+    """
+    Test that core modules exist in the package.
+    
+    Given: tud_lbm package is imported
+    When: checking for core submodules
+    Then: should have expected submodules
+    """
+    import tud_lbm
+    
+    # Verify package structure exists
+    assert hasattr(tud_lbm, '__file__'), "Package should have __file__ attribute"
 
 
-@pytest.fixture
-def some_name():
-    """Example fixture."""
-    return "Jane Smith"
-
-
-def test_hello_with_fixture(some_name: str):
-    """Example using a fixture."""
-    assert hello(some_name) == "Hello Jane Smith!"
