@@ -35,6 +35,7 @@ version = "2026.0.0a1"
 
 [project.optional-dependencies]
 hysteresis = ["optax"]
+toml-write = ["tomli-w>=1.0"]
 dev = [
     "build",  # build is not only used in publishing (below), but also in the template's test suite
     "bump-my-version",
@@ -65,6 +66,12 @@ publishing = [
 Repository = "https://github.com/szkuds/tud_lbm"
 Issues = "https://github.com/szkuds/tud_lbm/issues"
 ReadTheDocs = "https://tud_lbm.readthedocs.io"
+
+[project.scripts]
+tud-lbm = "tud_lbm.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -33,6 +33,7 @@ class Run:
         skip_interval=0,
         collision=None,  # Accept collision as a kwarg
         simulation_name=None,  # Added simulation_name parameter
+        save_fields=None,  # List of fields to save (None = save all)
         **kwargs,
     ):
         # Accept either a string or a dict for collision
@@ -52,6 +53,7 @@ class Run:
         self.results_dir = results_dir
         self.init_type = init_type
         self.init_dir = init_dir
+        self.save_fields = save_fields  # Store field selection
         # Auto-detect simulation name from calling function if not provided
         if simulation_name is None:
             frame = inspect.currentframe()
@@ -131,6 +133,12 @@ class Run:
                 }
         else:
             data_to_save = {"f": np.array(f_prev)}
+
+        # Filter data_to_save if save_fields is specified
+        if self.save_fields is not None:
+            data_to_save = {k: v for k, v in data_to_save.items()
+                            if k in self.save_fields and v is not None}
+
         self.io_handler.save_data_step(it, data_to_save)
 
     def run(self, *, verbose=True):

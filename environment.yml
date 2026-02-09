@@ -9,25 +9,26 @@ dependencies:
   - scipy
   - matplotlib
   - pandas
-  
+  - optax
+
   # Development & testing
   - pytest
   - pytest-cov
   - coverage
   - ruff
   - python-dotenv
-  
+
   # Documentation
   - sphinx
   - sphinx_rtd_theme
   - myst-parser
-  
+
   # Build tools
   - build
   - setuptools>=64.0.0
   - setuptools-scm
   - wheel
-  
+
   # Optional: hysteresis optimization (install separately if needed)
   # - optax
 

@@ -1,7 +1,58 @@
 import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import json
+
+# TOML reading support
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        tomllib = None
+
+
+def _load_config(run_dir: str) -> dict:
+    """Load simulation config from run directory.
+
+    Tries TOML first, then falls back to JSON.
+
+    Args:
+        run_dir: Path to the simulation run directory
+
+    Returns:
+        Configuration dictionary
+    """
+    toml_path = os.path.join(run_dir, "config.toml")
+    json_path = os.path.join(run_dir, "config.json")
+
+    # Try TOML first
+    if os.path.exists(toml_path) and tomllib is not None:
+        with open(toml_path, "rb") as f:
+            config = tomllib.load(f)
+        # Extract values from structured TOML format
+        flat_config = {}
+        if "simulation" in config:
+            sim = config["simulation"]
+            if "type" in sim:
+                flat_config["simulation_type"] = sim["type"]
+            flat_config.update({k: v for k, v in sim.items() if k != "type"})
+        if "multiphase" in config:
+            flat_config.update(config["multiphase"])
+        if "output" in config:
+            flat_config.update(config["output"])
+        if "boundary_conditions" in config:
+            flat_config["boundary_conditions"] = config["boundary_conditions"]
+        return flat_config
+
+    # Fall back to JSON
+    if os.path.exists(json_path):
+        with open(json_path, "r") as f:
+            return json.load(f)
+
+    raise FileNotFoundError(f"No config file found in {run_dir}")
 
 
 # TODO: Need to make a plotting config which will determine which plots are actually saved
@@ -63,8 +114,8 @@ def visualise(sim_instance, title="LBM Simulation Results"):
                 ny = final_rho.shape[1]
                 y_index = sim_instance.config.get('density_profile_y', ny // 4)
 
-            # load the config .json
-            config = json.load(open(run_dir + "/config.json"))
+            # load the config (try TOML first, then JSON)
+            config = _load_config(run_dir)
 
             # Calculate density ratio and determine scaling
             if config['simulation_type'] == 'multiphase':

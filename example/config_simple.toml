@@ -1,0 +1,16 @@
+# TUD-LBM Simple Single-Phase Simulation Configuration
+# This configuration mirrors example_run_simple.py
+
+[simulation]
+type = "singlephase"
+grid_shape = [100, 100]
+lattice_type = "D2Q9"
+tau = 0.6
+nt = 10000
+save_interval = 1000
+init_type = "standard"
+
+[output]
+results_dir = "~/TUD_LBM/results"
+# Optionally specify which fields to save (default: rho, u)
+# fields = ["rho", "u"]
