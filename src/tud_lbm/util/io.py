@@ -6,7 +6,6 @@ from datetime import datetime
 import os
 import logging
 import sys
-
 import tomli_w
 
 
