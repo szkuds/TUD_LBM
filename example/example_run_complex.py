@@ -1,11 +1,12 @@
-import jax
+from config import configure_jax
 
 from core import Run
 from operators import GravityForceMultiphase
 from util import visualise
 
-jax.config.update("jax_enable_x64", True)
-# jax.config.update("jax_disable_jit", True)
+# Configure JAX settings from central config
+# To enable debugging (disable JIT), set DISABLE_JIT = True in config/jax_config.py
+configure_jax()
 
 
 def wetting_hysteresis_simulation_test():

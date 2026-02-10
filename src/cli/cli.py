@@ -18,7 +18,7 @@ from rich.table import Table
 from config import (
     BASE_RESULTS_DIR,
     DEFAULT_SAVE_FIELDS,
-    AVAILABLE_FIELDS,
+    AVAILABLE_FIELDS
 )
 
 console = Console()
@@ -134,8 +134,8 @@ def _run_simulation(config: dict) -> object:
         The completed simulation instance
     """
     # Import here to avoid circular imports and allow JAX config
-    import jax
-    jax.config.update("jax_enable_x64", True)
+    from config import configure_jax
+    configure_jax()
 
     from core import Run
 

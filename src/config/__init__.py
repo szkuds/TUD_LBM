@@ -1,6 +1,37 @@
 """Configuration package for TUD-LBM simulations.
 
-This package provides configuration loading and constants for the TUD-LBM package.
+This package groups all user-facing configuration utilities and constants used across
+TUD-LBM. The public surface is re-exported here so callers can do::
+
+    from config import load, BASE_RESULTS_DIR
+
+The main configuration areas are:
+
+- Directory configuration
+  - :data:`BASE_RESULTS_DIR`: Base directory used for saving results.
+
+- JAX runtime configuration
+  - :func:`configure_jax`: Applies common JAX flags from a central place.
+  - :data:`ENABLE_X64`: Default for 64-bit precision in JAX.
+  - :data:`DISABLE_JIT`: Default toggle to disable JIT for debugging.
+
+- Saving / output configuration
+  - :data:`DEFAULT_SAVE_FIELDS`: Default fields written to disk.
+  - :data:`AVAILABLE_FIELDS`: All supported output fields.
+  - :data:`FORCE_REGISTRY`: Mapping from force names to force implementations.
+
+- Key mappings for structured configs (e.g., TOML)
+  - :data:`SIMULATION_DIRECT_KEYS`, :data:`SIMULATION_SPECIAL_KEYS`
+  - :data:`MULTIPHASE_KEYS`, :data:`COLLISION_MRT_KEYS`
+  - :data:`BOUNDARY_SIDES`, :data:`BOUNDARY_NESTED_PARAMS`
+  - :data:`OUTPUT_KEY_MAPPING`
+  - :data:`TOML_SIMULATION_KEYS`, :data:`TOML_MULTIPHASE_KEYS`,
+    :data:`TOML_OUTPUT_KEYS`
+
+- Config loading
+  - :func:`load`: Load and normalise a structured config into ``Run(...)`` kwargs.
+  - :func:`load_raw`: Load a config file without normalisation.
+
 """
 
 # Directory configuration
@@ -33,6 +64,10 @@ from config.config_loader import load, load_raw
 __all__ = [
     # Directory config
     "BASE_RESULTS_DIR",
+    # JAX config
+    "configure_jax",
+    "ENABLE_X64",
+    "DISABLE_JIT",
     # Saving config
     "DEFAULT_SAVE_FIELDS",
     "AVAILABLE_FIELDS",

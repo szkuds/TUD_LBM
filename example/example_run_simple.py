@@ -1,11 +1,11 @@
+from config import configure_jax
+
 from core import Run
 from util import visualise
-import jax
 
-# this line is added for debugging
-# jax.config.update("jax_disable_jit", True)
-# Force double precision
-jax.config.update("jax_enable_x64", True)
+# Configure JAX settings from central config
+# To enable debugging (disable JIT), set DISABLE_JIT = True in config/jax_config.py
+configure_jax()
 
 
 
