@@ -5,13 +5,13 @@ from jax import jit
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.grid.grid import Grid
-    from core.lattice import Lattice
+    from domain.grid import Grid
+    from domain.lattice import Lattice
 
 
-class Equilibrium:
+class EquilibriumWB:
     """
-    Callable class to calculate the equilibrium population distribution for LBM.
+    Callable class to calculate the equilibrium population distribution for WB-LBM.
     """
 
     def __init__(self, grid: "Grid", lattice: "Lattice") -> None:
@@ -33,7 +33,7 @@ class Equilibrium:
             u_ (jnp.ndarray): Velocity field, shape (nx, ny, 1, 2)
 
         Returns:
-            jnp.ndarray: Equilibrium distribution function, shape (nx, ny, q, 1)
+            jnp.ndarray: EquilibriumWB distribution function, shape (nx, ny, q, 1)
         """
         nx, ny, q = self.nx, self.ny, self.q
         w = self.w

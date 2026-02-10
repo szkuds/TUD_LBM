@@ -1,8 +1,8 @@
 import jax.numpy as jnp
 from numpy import ndarray
 
-from core.lattice import Lattice
-from core.stream import Streaming
+from domain.lattice import Lattice
+from operators.stream import Streaming
 from operators.force.force import Force
 from operators.differential import Gradient
 
@@ -160,7 +160,7 @@ class ElectricForce(Force):
 
     def equilibrium_h(self, potential: jnp.ndarray, w_i: ndarray) -> jnp.ndarray:
         """
-        Equilibrium distribution for electric potential.
+        EquilibriumWB distribution for electric potential.
         h_i_prev^eq = w_i * U
 
         Args:
@@ -168,7 +168,7 @@ class ElectricForce(Force):
             w_i: Lattice weights, shape (9,)
 
         Returns:
-            Equilibrium distribution, shape (nx, ny, 9)
+            EquilibriumWB distribution, shape (nx, ny, 9)
         """
         return w_i[jnp.newaxis, jnp.newaxis, :, jnp.newaxis] * potential
 

@@ -202,7 +202,7 @@ def main(config_path: str, no_prompt: bool, dry_run: bool) -> None:
 
     console.print()
     console.print(Panel.fit(
-        "[bold blue]TUD-LBM[/bold blue] - Lattice Boltzmann Method Simulator",
+        "[bold blue]TUD-LBM[/bold blue] - Lattice Boltzmann Method Solver",
         subtitle="Delft University of Technology"
     ))
     console.print()

@@ -1,7 +1,11 @@
-from .lattice import Lattice
-from .grid import Grid
-from .collision import CollisionBGK, CollisionMRT, SourceTerm
-from .update import Update, UpdateMultiphase, UpdateMultiphaseHysteresis
-from .stream import Streaming
-from .simulation import BaseSimulation, MultiphaseSimulation, SinglePhaseSimulation
+"""Simulation runner for LBM simulations.
+
+Provides a high-level interface for configuring and executing
+lattice Boltzmann simulations with automatic setup and I/O.
+
+Classes:
+    Run: Main entry point for running LBM simulations.
+"""
+
 from .run import Run
+__all__ = ["Run"]

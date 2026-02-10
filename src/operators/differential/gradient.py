@@ -3,7 +3,7 @@ from functools import partial
 import jax.numpy as jnp
 from jax import jit
 
-from core.lattice import Lattice
+from domain.lattice import Lattice
 from operators.wetting import (
     determine_padding_modes,
     has_wetting_bc,

@@ -1,9 +1,9 @@
 import jax.numpy as jnp
 import numpy as np
 import os
-from core.lattice import Lattice
-from core.grid.grid import Grid
-from operators.equilibrium import Equilibrium
+from domain.lattice import Lattice
+from domain.grid import Grid
+from operators.equilibrium import EquilibriumWB
 
 
 class Initialise:
@@ -16,7 +16,7 @@ class Initialise:
         self.lattice = lattice
         self.nx, self.ny = grid.nx, grid.ny
         self.q = self.lattice.q
-        self.equilibrium = Equilibrium(self.grid, self.lattice)
+        self.equilibrium = EquilibriumWB(self.grid, self.lattice)
 
     def initialise_standard(
             self, density: float = 1.0, velocity: np.ndarray = np.array([0.0, 0.0])

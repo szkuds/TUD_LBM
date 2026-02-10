@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 
 from .base import BaseSimulation
-from core.update import Update
+from update import Update
 from operators import Initialise
 
 

@@ -1,8 +1,8 @@
 from abc import ABC
 
 import jax.numpy as jnp
-from core.grid.grid import Grid
-from core.lattice.lattice import Lattice
+from domain.grid.grid import Grid
+from domain.lattice.lattice import Lattice
 
 
 class CollisionBase(ABC):

@@ -3,12 +3,12 @@ from functools import partial
 import jax.numpy as jnp
 from jax import jit
 
-from core.grid.grid import Grid
-from core.lattice.lattice import Lattice
-from core.collision import CollisionBGK, CollisionMRT, SourceTerm
-from core.stream import Streaming
+from domain.grid import Grid
+from domain.lattice import Lattice
+from operators.collision import CollisionBGK, CollisionMRT, SourceTerm
+from operators.stream import Streaming
 from operators.boundary_condition.boundary_condition import BoundaryCondition
-from operators.equilibrium.equilibrium import Equilibrium
+from operators.equilibrium.equilibrium_wb import EquilibriumWB
 from operators.macroscopic.macroscopic import Macroscopic
 
 
@@ -31,7 +31,7 @@ class Update(object):
         self.g = kwargs.get('g', False)
         self.tau = tau
         self.macroscopic = Macroscopic(grid, lattice, force_enabled=force_enabled)
-        self.equilibrium = Equilibrium(self.grid, self.lattice)
+        self.equilibrium = EquilibriumWB(self.grid, self.lattice)
         # Select collision scheme
         if collision_scheme == "mrt":
             # Extract MRT parameters from kwargs if provided

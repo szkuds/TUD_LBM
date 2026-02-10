@@ -4,7 +4,7 @@ from jax import jit
 import jax.numpy as jnp
 
 from .base import BaseSimulation
-from core.update import UpdateMultiphase, UpdateMultiphaseHysteresis
+from update import UpdateMultiphase, UpdateMultiphaseHysteresis
 from operators import Initialise, CompositeForce
 
 

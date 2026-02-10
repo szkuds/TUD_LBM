@@ -1,6 +1,6 @@
 #   TODO: Will need to be adapted for 3D
 import jax.numpy as jnp
-from core.lattice.lattice import Lattice
+from domain.lattice import Lattice
 
 
 class Streaming:

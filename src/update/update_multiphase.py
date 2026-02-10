@@ -3,8 +3,8 @@ from functools import partial
 import jax.numpy as jnp
 from jax import jit
 
-from core.lattice.lattice import Lattice
-from core.grid.grid import Grid
+from domain.lattice import Lattice
+from domain.grid import Grid
 from .update import Update
 from operators import MacroscopicMultiphaseDW, MacroscopicMultiphaseCS
 

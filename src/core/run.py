@@ -2,7 +2,7 @@ import numpy as np
 import jax.numpy as jnp
 import inspect
 
-from core.simulation import SinglePhaseSimulation, MultiphaseSimulation
+from simulation import SinglePhaseSimulation, MultiphaseSimulation
 from operators import CompositeForce
 
 

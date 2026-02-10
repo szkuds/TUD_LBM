@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 from .base import CollisionBase
-from core.grid.grid import Grid
-from core.lattice.lattice import Lattice
+from domain.grid import Grid
+from domain.lattice import Lattice
 
 # Moment transformation matrix for D2Q9 lattice
 M = jnp.array(
@@ -60,7 +60,7 @@ class CollisionMRT(CollisionBase):
 
         Args:
             f (jnp.ndarray): Distribution function.
-            feq (jnp.ndarray): Equilibrium distribution function.
+            feq (jnp.ndarray): EquilibriumWB distribution function.
             source (jnp.ndarray, optional): Source term.
 
         Returns:

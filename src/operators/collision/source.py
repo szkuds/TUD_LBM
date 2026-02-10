@@ -1,6 +1,6 @@
 import jax.numpy as jnp
-from core.grid.grid import Grid
-from core.lattice.lattice import Lattice
+from domain.grid import Grid
+from domain.lattice import Lattice
 from operators.differential import Gradient
 
 

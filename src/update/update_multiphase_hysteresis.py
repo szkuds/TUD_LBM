@@ -7,8 +7,8 @@ from jax import jit
 import optax
 
 from operators import MacroscopicMultiphaseDW, ContactAngle, ContactLineLocation, WettingParameters
-from core.grid.grid import Grid
-from core.lattice.lattice import Lattice
+from domain.grid import Grid
+from domain.lattice import Lattice
 from .update_multiphase import UpdateMultiphase
 
 

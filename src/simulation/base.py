@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from core.lattice.lattice import Lattice
-from core.grid.grid import Grid
+from domain.lattice import Lattice
+from domain.grid import Grid
 
 
 class BaseSimulation(ABC):

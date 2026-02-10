@@ -5,8 +5,8 @@ from jax import jit, Array
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.grid.grid import Grid
-    from core.lattice import Lattice
+    from domain.grid import Grid
+    from domain.lattice import Lattice
 
 
 class Macroscopic:
