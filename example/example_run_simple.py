@@ -1,5 +1,5 @@
-from tud_lbm.core import Run
-from tud_lbm.util import visualise
+from core import Run
+from util import visualise
 import jax
 
 # this line is added for debugging

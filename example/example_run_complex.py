@@ -1,8 +1,8 @@
 import jax
 
-from tud_lbm.core import Run
-from tud_lbm.operators import GravityForceMultiphase
-from tud_lbm.util import visualise
+from core import Run
+from operators import GravityForceMultiphase
+from util import visualise
 
 jax.config.update("jax_enable_x64", True)
 # jax.config.update("jax_disable_jit", True)

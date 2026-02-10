@@ -2,6 +2,7 @@
 # This configuration mirrors example_run_simple.py
 
 [simulation]
+simulation_name = 'Test simple simulation'
 type = "singlephase"
 grid_shape = [100, 100]
 lattice_type = "D2Q9"

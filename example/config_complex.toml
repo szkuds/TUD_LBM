@@ -2,6 +2,7 @@
 # This configuration mirrors example_run_complex.py (wetting with hysteresis)
 
 [simulation]
+simulation_name = 'Test complex simulation'
 type = "multiphase"
 grid_shape = [401, 101]
 lattice_type = "D2Q9"
