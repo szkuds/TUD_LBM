@@ -44,6 +44,9 @@ from config.saving_config import (
     FORCE_REGISTRY,
 )
 
+# Jax config loader
+from config.jax_config import configure_jax, ENABLE_X64, DISABLE_JIT
+
 # Key mappings
 from config.keys import (
     SIMULATION_DIRECT_KEYS,
