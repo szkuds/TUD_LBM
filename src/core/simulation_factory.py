@@ -17,7 +17,7 @@ class SimulationFactory:
     @staticmethod
     def create(config: Dict[str, Any]):
         """Create a simulation instance from a config dict."""
-        simulation_type = config.get("simulation_type", "singlephase")
+        simulation_type = config.get("simulation_type", "single_phase")
         sim_kwargs = {k: v for k, v in config.items() if k not in SimulationFactory.EXCLUDED_KEYS}
 
         if simulation_type == "single_phase":
@@ -31,7 +31,7 @@ class SimulationFactory:
     @staticmethod
     def create_simulation(simulation_type: str, **kwargs):
         """Legacy factory method (deprecated, use create() instead)."""
-        if simulation_type == "singlephase":
+        if simulation_type == "single_phase":
             return SinglePhaseSimulation(**kwargs)
         elif simulation_type == "multiphase":
             return MultiphaseSimulation(**kwargs)

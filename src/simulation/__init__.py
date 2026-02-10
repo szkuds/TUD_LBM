@@ -1,7 +1,7 @@
 """Simulation classes for LBM.
 
 Provides simulation containers that orchestrate the complete LBM workflow
-including initialization, time-stepping, and field management.
+including initialisation, time-stepping, and field management.
 
 Classes:
     BaseSimulation: Abstract base class defining the simulation interface.

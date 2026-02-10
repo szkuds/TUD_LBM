@@ -19,7 +19,7 @@ def test_single_phase_simulation():
     save_interval = 1000
 
     sim = Run(
-        simulation_type="singlephase",
+        simulation_type="single_phase",
         grid_shape=grid_shape,
         lattice_type="D2Q9",
         tau=tau,

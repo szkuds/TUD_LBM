@@ -21,7 +21,7 @@ class Run:
         sim.run(verbose=True)
 
     Or with kwargs:
-        sim = Run(simulation_type="singlephase", nx=100, ny=100, ...)
+        sim = Run(simulation_type="single_phase", nx=100, ny=100, ...)
         sim.run()
     """
 
@@ -29,7 +29,7 @@ class Run:
         self,
         config_path_or_kwargs: Union[str, Path, Dict[str, Any], None] = None,
         *,
-        simulation_type: str = "singlephase",
+        simulation_type: str = "single_phase",
         save_interval: int = 100,
         results_dir: str = "~/TUD_LBM/results",
         init_type: str = "standard",
