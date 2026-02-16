@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 
 import jax.numpy as jnp
 from domain.grid.grid import Grid
@@ -9,7 +9,9 @@ class CollisionBase(ABC):
     """
     Base class for LBM collision operators.
     Implements the BGK collision operators with source terms.
-    Subclasses should implement the __call__ method.
+
+    Subclasses should implement the __call__ method following the
+    CollisionOperator protocol (see operators.protocols).
     """
 
     def __init__(self, grid: Grid, lattice: Lattice) -> None:
@@ -24,10 +26,19 @@ class CollisionBase(ABC):
         self.q: int = lattice.q
         self.d: int = lattice.d
 
-    def __call__(self, f: jnp.ndarray, feq: jnp.ndarray) -> jnp.ndarray:
+    @abstractmethod
+    def __call__(
+        self, f: jnp.ndarray, feq: jnp.ndarray, source: jnp.ndarray | None = None
+    ) -> jnp.ndarray:
         """
         Perform the collision step of the LBM.
 
-        Needs to be implemented by the subclass.
+        Args:
+            f: Distribution function, shape (nx, ny, q, 1)
+            feq: Equilibrium distribution function, shape (nx, ny, q, 1)
+            source: Optional source term, shape (nx, ny, q, 1)
+
+        Returns:
+            Post-collision distribution function, shape (nx, ny, q, 1)
         """
-        pass
+        ...

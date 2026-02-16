@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from .force import Force
+from .force_base import Force
 
 
 

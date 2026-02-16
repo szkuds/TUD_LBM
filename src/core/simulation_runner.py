@@ -4,7 +4,7 @@ import numpy as np
 import jax.numpy as jnp
 from typing import Any, Dict
 
-from operators import CompositeForce
+from .step_result import StepResult
 
 
 class SimulationRunner:
@@ -12,7 +12,7 @@ class SimulationRunner:
     Owns:
     - time stepping loop
     - NaN checking
-    - save cadence
+    - saving
     Delegates:
     - field initialisation and per-step update to the simulation
     - persistence to io_handler
@@ -33,70 +33,35 @@ class SimulationRunner:
         self.skip_interval = int(config.get("skip_interval", 0))
         self.save_fields = config.get("save_fields")
 
-    def _save_data(self, it, f_prev, **kwargs):
-        """Save data using the simulation's macroscopic operator."""
-        force_ext = None
-        h_prev = None
-        if hasattr(self.simulation, "macroscopic"):
-            macroscopic = self.simulation.macroscopic
-            if self.config.get("force_enabled") and self.config.get("force_obj"):
-                if self.simulation.force_obj.electric_present:
-                    rho = jnp.sum(f_prev, axis=2, keepdims=True)
-                    h_prev = kwargs.get('h_i')
-                    force_ext = self.simulation.force_obj.compute_force(
-                        rho=rho,
-                        rho_l=self.config.get('rho_l'),
-                        rho_v=self.config.get('rho_l'),
-                        h_i=h_prev
-                    )
-                    result = macroscopic(f_prev, force_ext)
-                else:
-                    rho = jnp.sum(f_prev, axis=2, keepdims=True)
-                    force = CompositeForce(*self.config.get("force_obj"))
-                    if self.config.get("simulation_type") == "multiphase":
-                        force_ext = force.compute_force(
-                            rho=rho,
-                            rho_l=self.config.get("rho_l"),
-                            rho_v=self.config.get("rho_v")
-                        )
-                    else:
-                        force_ext = force.compute_force(rho)
-                    result = macroscopic(f_prev, force_ext)
-            else:
-                result = macroscopic(f_prev)
+    def _save_data(self, it: int, step_result: StepResult):
+        """Save data from the StepResult."""
+        data_to_save = {
+            "f": np.array(step_result.f),
+        }
 
-            if isinstance(result, tuple) and len(result) == 3:
-                rho, u, force = result
-                data_to_save = {
-                    "rho": np.array(rho),
-                    "u": np.array(u),
-                    "force": np.array(force),
-                    "force_ext": np.array(force_ext),
-                    "f": np.array(f_prev),
-                    "h": np.array(h_prev)
-                }
-            else:
-                rho, u = result
-                data_to_save = {
-                    "rho": np.array(rho),
-                    "u": np.array(u),
-                    "f": np.array(f_prev),
-                }
-        else:
-            data_to_save = {"f": np.array(f_prev)}
+        if step_result.rho is not None:
+            data_to_save["rho"] = np.array(step_result.rho)
+        if step_result.u is not None:
+            data_to_save["u"] = np.array(step_result.u)
+        if step_result.force is not None:
+            data_to_save["force"] = np.array(step_result.force)
+        if step_result.force_ext is not None:
+            data_to_save["force_ext"] = np.array(step_result.force_ext)
+        if step_result.h is not None:
+            data_to_save["h"] = np.array(step_result.h)
 
         # Filter data_to_save if save_fields is specified
         if self.save_fields is not None:
             data_to_save = {
                 k: v for k, v in data_to_save.items()
-                if k in self.save_fields and v is not None
+                if k in self.save_fields
             }
 
         self.io_handler.save_data_step(it, data_to_save)
 
     def run(self, *, verbose=True):
         """Run the simulation time loop. Only iterates and delegates."""
-        f_prev = self.simulation.initialize_fields(
+        f_prev = self.simulation.initialise_fields(
             self.init_type, init_dir=self.init_dir
         )
         h_prev = None
@@ -124,10 +89,13 @@ class SimulationRunner:
             )
 
         for it in range(nt):
-            if electric_present:
-                f_prev, h_prev = self.simulation.run_timestep(f_prev, it, h_i=h_prev)
-            else:
-                f_prev = self.simulation.run_timestep(f_prev, it)
+            # Run timestep - returns StepResult
+            step_result = self.simulation.run_timestep(f_prev, it, h_i=h_prev)
+
+            # Extract f and h for next iteration
+            f_prev = step_result.f
+            if step_result.h is not None:
+                h_prev = step_result.h
 
             if jnp.isnan(f_prev).any():
                 print(f"NaN encountered at timestep {it}. Stopping simulation.")
@@ -137,20 +105,16 @@ class SimulationRunner:
             if (it > self.skip_interval) and (
                 it % self.save_interval == 0 or it == nt - 1
             ):
-                if electric_present:
-                    self._save_data(it, f_prev, h_i=h_prev)
-                else:
-                    self._save_data(it, f_prev)
+                self._save_data(it, step_result)
 
-                if verbose and hasattr(self.simulation, "macroscopic"):
-                    result = self.simulation.macroscopic(f_prev)
-                    if isinstance(result, tuple) and len(result) >= 2:
-                        rho, u = result[:2]
-                        avg_rho = np.mean(rho)
-                        max_u = np.max(np.sqrt(u[..., 0] ** 2 + u[..., 1] ** 2))
-                        print(
-                            f"Step {it}/{nt}: avg_rho={avg_rho:.4f}, max_u={max_u:.6f}"
-                        )
+                if verbose and step_result.rho is not None and step_result.u is not None:
+                    rho = step_result.rho
+                    u = step_result.u
+                    avg_rho = np.mean(rho)
+                    max_u = np.max(np.sqrt(u[..., 0] ** 2 + u[..., 1] ** 2))
+                    print(
+                        f"Step {it}/{nt}: avg_rho={avg_rho:.4f}, max_u={max_u:.6f}"
+                    )
 
         if verbose:
             print("Simulation completed!")

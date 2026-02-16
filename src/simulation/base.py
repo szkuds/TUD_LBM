@@ -1,6 +1,11 @@
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
 from domain.lattice import Lattice
 from domain.grid import Grid
+
+if TYPE_CHECKING:
+    from core.step_result import StepResult
 
 
 class BaseSimulation(ABC):
@@ -21,7 +26,7 @@ class BaseSimulation(ABC):
         pass
 
     @abstractmethod
-    def initialize_fields(self, init_type="standard", *, init_dir=None):
+    def initialise_fields(self, init_type="standard", *, init_dir=None):
         """
         Parameters
         ----------
@@ -33,6 +38,6 @@ class BaseSimulation(ABC):
         pass
 
     @abstractmethod
-    def run_timestep(self, fprev, it):
-        """Execute one timestep"""
+    def run_timestep(self, f_prev, it, **kwargs) -> "StepResult":
+        """Execute one timestep and return a StepResult with macroscopic fields."""
         pass

@@ -6,47 +6,46 @@ import jax.numpy as jnp
 from .base import BaseSimulation
 from update import UpdateMultiphase, UpdateMultiphaseHysteresis
 from operators import Initialise, CompositeForce
+from core.step_result import StepResult
+from config.simulation_config import MultiphaseConfig
 
 
 class MultiphaseSimulation(BaseSimulation):
-    def __init__(
-        self,
-        grid_shape,
-        lattice_type="D2Q9",
-        tau=1.0,
-        nt=1000,
-        kappa=0.1,
-        rho_l=1.0,
-        rho_v=0.1,
-        interface_width=4,
-        force_enabled=False,
-        force_obj=None,
-        bc_config=None,
-        collision_scheme="bgk",
-        k_diag=None,
-        eos="double-well",
-        **kwargs
-    ):
-        super().__init__(grid_shape, lattice_type, tau, nt)
+    """
+    Multiphase (two-phase) LBM simulation.
+
+    Args:
+        config: A MultiphaseConfig dataclass with all simulation parameters.
+    """
+
+    def __init__(self, config: MultiphaseConfig):
+        if not isinstance(config, MultiphaseConfig):
+            raise TypeError(f"config must be MultiphaseConfig, got {type(config)}")
+
+        super().__init__(config.grid_shape, config.lattice_type, config.tau, config.nt)
+
+        # Store config and extract frequently-used attributes
+        self.config = config
+        self.eos = config.eos
+        self.kappa = config.kappa
+        self.rho_l = config.rho_l
+        self.rho_v = config.rho_v
+        self.interface_width = config.interface_width
+        self.force_enabled = config.force_enabled
+        self.force_obj = CompositeForce(*config.force_obj) if config.force_obj else None
+        self.bc_config = config.bc_config
+        self.collision_scheme = config.collision_scheme
+        self.k_diag = config.k_diag
+        self.bubble = config.bubble
+        self.rho_ref = config.rho_ref
+        self.g = config.g
+        self.optional = config.extra
+
         self.update = None
         self.initialise = None
         self.macroscopic = None
-        self.eos = eos
-        self.kappa = kappa
-        self.rho_l = rho_l
-        self.rho_v = rho_v
-        self.interface_width = interface_width
-        self.force_enabled = force_enabled
-        self.force_obj = CompositeForce(*force_obj) if force_obj is not None else None
-        self.bc_config = bc_config
-        self.collision_scheme = collision_scheme
-        self.k_diag = k_diag
-        self.kwargs = kwargs
-        self.bubble = kwargs.get('bubble', False)
-        self.rho_ref = self.kwargs.get('rho_ref', False)
-        self.g = self.kwargs.get('g', False)
-        self.setup_operators()
         self.multiphase = True
+        self.setup_operators()
 
     def setup_operators(self):
         self.wetting_enabled = any(bc_type == 'wetting' for bc_type in (self.bc_config or {}).values())
@@ -59,18 +58,18 @@ class MultiphaseSimulation(BaseSimulation):
                 self.grid, self.lattice, self.tau, self.kappa, self.interface_width,
                 self.rho_l, self.rho_v, self.bc_config, self.force_enabled,
                 collision_scheme=self.collision_scheme, eos=self.eos,
-                k_diag=self.k_diag, **self.kwargs
+                k_diag=self.k_diag, **self.optional
             )
         else:
             self.update = UpdateMultiphase(
                 self.grid, self.lattice, self.tau, self.kappa, self.interface_width,
                 self.rho_l, self.rho_v, self.bc_config, self.force_enabled,
                 collision_scheme=self.collision_scheme, eos=self.eos,
-                k_diag=self.k_diag, **self.kwargs
+                k_diag=self.k_diag, **self.optional
             )
         self.macroscopic = self.update.macroscopic
 
-    def initialize_fields(self, init_type="multiphase_droplet", *, init_dir=None):
+    def initialise_fields(self, init_type="multiphase_droplet", *, init_dir=None):
         if init_type == "init_from_file":
             if init_dir is None:
                 raise ValueError(
@@ -115,9 +114,12 @@ class MultiphaseSimulation(BaseSimulation):
 
     @partial(jit, static_argnums=(0,))
     def run_timestep(self, f_prev, it, **kwargs):
+        h_prev = kwargs.get('h_i')
+        h_next = None
+        force_ext = None
+
         if self.force_enabled and self.force_obj and self.force_obj.electric_present:
             rho = jnp.sum(f_prev, axis=2, keepdims=True)
-            h_prev = kwargs.get('h_i')
             force_ext = self.force_obj.compute_force(
                 rho=rho,
                 rho_l=self.rho_l,
@@ -133,7 +135,6 @@ class MultiphaseSimulation(BaseSimulation):
                 electric_force.conductivity_vapour
             )
             h_next = electric_force.update_h_i(h_prev, conductivity)
-            return f_next, h_next
 
         elif self.force_enabled and self.force_obj:
             rho = jnp.sum(f_prev, axis=2, keepdims=True)
@@ -143,7 +144,16 @@ class MultiphaseSimulation(BaseSimulation):
                 rho_v=self.rho_v
             )
             f_next = self.update(f_prev, force=force_ext)
-            return f_next
         else:
-            return self.update(f_prev)
+            f_next = self.update(f_prev)
+
+        # Compute macroscopic fields for StepResult
+        result = self.macroscopic(f_next, force_ext) if force_ext is not None else self.macroscopic(f_next)
+
+        if isinstance(result, tuple) and len(result) == 3:
+            rho, u, force = result
+            return StepResult(f=f_next, rho=rho, u=u, force=force, force_ext=force_ext, h=h_next)
+        else:
+            rho, u = result
+            return StepResult(f=f_next, rho=rho, u=u, force_ext=force_ext, h=h_next)
         # TODO: Here I need to add the logic to update the electric field. Also need to add it to the single phase sim.

@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from .base import CollisionBase
+from .collision_base import CollisionBase
 from domain.grid import Grid
 from domain.lattice import Lattice
 

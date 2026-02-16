@@ -3,7 +3,7 @@ from numpy import ndarray
 
 from domain.lattice import Lattice
 from operators.stream import Streaming
-from operators.force.force import Force
+from operators.force.force_base import Force
 from operators.differential import Gradient
 
 

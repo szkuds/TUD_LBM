@@ -11,3 +11,5 @@ import os
 
 #: Default directory for storing simulation results
 BASE_RESULTS_DIR: str = os.path.expanduser("~/TUD_LBM/results")
+
+

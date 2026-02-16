@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 from domain.grid.grid import Grid
 from domain.lattice.lattice import Lattice
-from .base import CollisionBase
+from .collision_base import CollisionBase
 
 
 class CollisionBGK(CollisionBase):

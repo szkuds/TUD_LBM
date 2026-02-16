@@ -32,6 +32,12 @@ The main configuration areas are:
   - :func:`load`: Load and normalise a structured config into ``Run(...)`` kwargs.
   - :func:`load_raw`: Load a config file without normalisation.
 
+- Simulation configuration dataclasses
+  - :class:`BaseSimulationConfig`: Base config shared by all simulation types.
+  - :class:`SinglePhaseConfig`: Config for single-phase simulations.
+  - :class:`MultiphaseConfig`: Config for multiphase simulations.
+  - :class:`RunnerConfig`: Config for the simulation runner (I/O, saving).
+
 """
 
 # Directory configuration
@@ -64,6 +70,15 @@ from config.keys import (
 # Config loader
 from config.config_loader import load, load_raw
 
+# Simulation configuration dataclasses
+from config.simulation_config import (
+    BaseSimulationConfig,
+    SinglePhaseConfig,
+    MultiphaseConfig,
+    RunnerConfig,
+    RUN_DEFAULTS,
+)
+
 __all__ = [
     # Directory config
     "BASE_RESULTS_DIR",
@@ -89,4 +104,10 @@ __all__ = [
     # Config loader
     "load",
     "load_raw",
+    # Simulation config dataclasses
+    "BaseSimulationConfig",
+    "SinglePhaseConfig",
+    "MultiphaseConfig",
+    "RunnerConfig",
+    "RUN_DEFAULTS",
 ]
