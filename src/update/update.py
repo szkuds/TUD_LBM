@@ -1,54 +1,68 @@
 from functools import partial
+from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
 from jax import jit
 
-from domain.grid import Grid
-from domain.lattice import Lattice
 from operators.collision import CollisionBGK, CollisionMRT, SourceTerm
 from operators.stream import Streaming
 from operators.boundary_condition.boundary_condition import BoundaryCondition
 from operators.equilibrium.equilibrium_wb import EquilibriumWB
 from operators.macroscopic.macroscopic import Macroscopic
 
+if TYPE_CHECKING:
+    from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
+
 
 class Update(object):
-    def __init__(
-        self,
-        grid: Grid,
-        lattice: Lattice,
-        tau: float,
-        bc_config: dict = None,
-        force_enabled: bool = False,
-        collision_scheme: str = "bgk",
-        k_diag=None,
-        **kwargs
-    ):
+    """
+    Performs the full LBM update step (macroscopic, equilibrium, collision, streaming, BC).
+
+    Usage:
+        Update(config=simulation_config)
+    """
+
+    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
+        """
+        Initialize the Update operator.
+
+        Args:
+            config: Configuration object containing all simulation parameters.
+        """
+        from domain.grid import Grid
+        from domain.lattice import Lattice
+
+        grid = Grid(config.grid_shape)
+        lattice = Lattice(config.lattice_type)
+
         self.grid = grid
         self.lattice = lattice
-        self.bubble = kwargs.get('bubble', False)
-        self.rho_ref = kwargs.get('rho_ref', False)
-        self.g = kwargs.get('g', False)
-        self.tau = tau
-        self.macroscopic = Macroscopic(grid, lattice, force_enabled=force_enabled)
-        self.equilibrium = EquilibriumWB(self.grid, self.lattice)
+        self.tau = config.tau
+        self.force_enabled = config.force_enabled
+
+        # Extract optional params from extra
+        extra = config.extra if hasattr(config, 'extra') else {}
+        self.bubble = extra.get('bubble', False)
+        self.rho_ref = extra.get('rho_ref', False)
+        self.g = extra.get('g', False)
+
+        # Create operators
+        self.macroscopic = Macroscopic(config)
+        self.equilibrium = EquilibriumWB(config)
+
         # Select collision scheme
-        if collision_scheme == "mrt":
-            # Extract MRT parameters from kwargs if provided
-            mrt_params = {}
-            for param in ["k0", "kb", "k2", "k4", "kv"]:
-                if param in kwargs:
-                    mrt_params[param] = kwargs[param]
-            self.collision = CollisionMRT(grid, lattice, k_diag=k_diag, **mrt_params)
+        if config.collision_scheme == "mrt":
+            self.collision = CollisionMRT(config)
         else:
-            self.collision = CollisionBGK(grid, lattice, tau)
-        self.source_term = SourceTerm(grid, lattice, bc_config)
-        self.streaming = Streaming(lattice)
-        if bc_config is not None:
-            self.boundary_condition = BoundaryCondition(grid, lattice, bc_config)
+            self.collision = CollisionBGK(config)
+
+        self.source_term = SourceTerm(config)
+        self.streaming = Streaming(config)
+
+        if config.bc_config is not None:
+            self.boundary_condition = BoundaryCondition(config)
         else:
             self.boundary_condition = None
-        self.force_enabled = force_enabled
 
     @partial(jit, static_argnums=(0,))
     def __call__(self, f: jnp.ndarray, force: jnp.ndarray = None):

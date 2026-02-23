@@ -38,26 +38,14 @@ class SinglePhaseSimulation(BaseSimulation):
         self.setup_operators()
 
     def setup_operators(self):
-        self.initialiser = Initialise(self.grid, self.lattice)
-        self.update = Update(
-            self.grid,
-            self.lattice,
-            self.tau,
-            bc_config=self.bc_config,
-            force_enabled=self.force_enabled,
-            collision_scheme=self.collision_scheme,
-            k_diag=self.k_diag,
-            **self.optional
-        )
+        self.initialiser = Initialise(self.config)
+        self.update = Update(self.config)
         self.macroscopic = self.update.macroscopic
         if self.bc_config:
             from operators.boundary_condition.boundary_condition import (
                 BoundaryCondition,
             )
-
-            self.boundary_condition = BoundaryCondition(
-                self.grid, self.lattice, self.bc_config
-            )
+            self.boundary_condition = BoundaryCondition(self.config)
 
     def initialise_fields(self, init_type="standard", *, init_dir=None):
         if init_type == "init_from_file":

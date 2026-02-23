@@ -1,11 +1,11 @@
 from functools import partial
-import jax.numpy as jnp
-from jax import jit
 from typing import Dict, TYPE_CHECKING
 
+import jax.numpy as jnp
+from jax import jit
+
 if TYPE_CHECKING:
-    from domain.grid import Grid
-    from domain.lattice import Lattice
+    from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
 class BoundaryCondition:
@@ -13,14 +13,31 @@ class BoundaryCondition:
     Applies boundary conditions to the post-streaming distribution function.
     Supports bounce-back, symmetry, and periodic BCs on specified grid edges.
     Uses dynamic indices from Lattice class instead of hardcoding.
+
+    Usage:
+        BoundaryCondition(config=simulation_config)
     """
 
-    def __init__(self, grid: "Grid", lattice: "Lattice", bc_config: Dict[str, str]):
+    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
+        """
+        Initialize the BoundaryCondition operator.
+
+        Args:
+            config: Configuration object containing all simulation parameters.
+        """
+        from domain.grid import Grid
+        from domain.lattice import Lattice
+
+        grid = Grid(config.grid_shape)
+        lattice = Lattice(config.lattice_type)
+        bc_config = config.bc_config
+
         self.grid = grid
         self.lattice = lattice
         self.bc_config = bc_config
         self.opp_indices = lattice.opp_indices
         self.edges = grid.get_edges()
+
         valid_edges = ['top', 'bottom', 'left', 'right']
         valid_types = ['bounce-back', 'symmetry', 'periodic', 'wetting']
         for edge, bc_type in bc_config.items():

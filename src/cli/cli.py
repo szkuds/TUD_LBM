@@ -1,8 +1,18 @@
 """Command-line interface for TUD-LBM simulations.
 
-Usage:
-    tud-lbm config.toml
-    tud-lbm config.toml --no-prompt
+NOTE: The CLI currently requires a config file adapter to be implemented.
+For now, use the Python API directly with SimulationBundle.
+
+Example Python usage:
+    from config import SimulationBundle, SinglePhaseConfig, RunnerConfig
+    from core import Run
+
+    bundle = SimulationBundle(
+        simulation=SinglePhaseConfig(grid_shape=(100, 100), tau=0.6, nt=10000),
+        runner=RunnerConfig(save_interval=1000),
+    )
+    sim = Run(bundle)
+    sim.run()
 """
 
 import os
@@ -18,21 +28,23 @@ from rich.table import Table
 from config import (
     BASE_RESULTS_DIR,
     DEFAULT_SAVE_FIELDS,
-    AVAILABLE_FIELDS
+    AVAILABLE_FIELDS,
+    SimulationBundle,
+    SinglePhaseConfig,
+    RunnerConfig,
 )
 
 console = Console()
 
 
-
-def _prompt_missing(config: dict) -> dict:
+def _prompt_missing(bundle: SimulationBundle) -> SimulationBundle:
     """Interactively prompt for missing optional configuration values.
 
     Args:
-        config: The loaded configuration dictionary
+        bundle: The SimulationBundle object
 
     Returns:
-        Updated configuration dictionary with prompted values
+        Updated SimulationBundle (note: dataclass is mutable)
     """
     console.print()
     console.print(Panel.fit(
@@ -40,95 +52,60 @@ def _prompt_missing(config: dict) -> dict:
         subtitle="Interactive Setup"
     ))
 
-    # Prompt for results_dir if not set
-    if "results_dir" not in config:
-        results_dir = Prompt.ask(
-            "[yellow]Output directory for results[/yellow]",
-            default=BASE_RESULTS_DIR
-        )
-        config["results_dir"] = os.path.expanduser(results_dir)
+    # For now, SimulationBundle has defaults, so prompts are optional
+    # This can be expanded when adapter support is added
 
-    # Prompt for save_fields if not set
-    if "save_fields" not in config:
-        console.print()
-        console.print("[yellow]Which data fields should be saved?[/yellow]")
-        console.print(f"  Available: {', '.join(AVAILABLE_FIELDS)}")
-
-        fields_input = Prompt.ask(
-            "  Enter comma-separated list",
-            default=",".join(DEFAULT_SAVE_FIELDS)
-        )
-        config["save_fields"] = [f.strip() for f in fields_input.split(",") if f.strip()]
-
-    # Prompt for open_paraview if desired (post-run action)
-    if "open_paraview" not in config:
-        config["open_paraview"] = Confirm.ask(
-            "[yellow]Open results in ParaView after simulation?[/yellow]",
-            default=False
-        )
-
-    return config
+    return bundle
 
 
-def _display_config_summary(config: dict) -> None:
+def _display_config_summary(bundle: SimulationBundle) -> None:
     """Display a summary of the simulation configuration.
 
     Args:
-        config: The configuration dictionary
+        bundle: The SimulationBundle object
     """
     console.print()
+
+    sim = bundle.simulation
+    runner = bundle.runner
+    sim_type = "multiphase" if bundle.is_multiphase else "single_phase"
 
     table = Table(title="Simulation Configuration", show_header=True, header_style="bold magenta")
     table.add_column("Parameter", style="cyan", no_wrap=True)
     table.add_column("Value", style="green")
 
-    # Key parameters to display
-    display_keys = [
-        ("simulation_type", "Simulation Type"),
-        ("grid_shape", "Grid Shape"),
-        ("lattice_type", "Lattice Type"),
-        ("tau", "Relaxation Time (τ)"),
-        ("nt", "Time Steps"),
-        ("save_interval", "Save Interval"),
-        ("results_dir", "Results Directory"),
-        ("save_fields", "Save Fields"),
-    ]
-
-    for key, label in display_keys:
-        if key in config:
-            value = config[key]
-            if isinstance(value, (list, tuple)):
-                value = ", ".join(str(v) for v in value)
-            table.add_row(label, str(value))
+    table.add_row("Simulation Type", sim_type)
+    table.add_row("Grid Shape", str(sim.grid_shape))
+    table.add_row("Lattice Type", sim.lattice_type)
+    table.add_row("Relaxation Time (τ)", str(sim.tau))
+    table.add_row("Time Steps", str(sim.nt))
+    table.add_row("Save Interval", str(runner.save_interval))
+    table.add_row("Results Directory", runner.results_dir)
+    if runner.save_fields:
+        table.add_row("Save Fields", ", ".join(runner.save_fields))
 
     # Multiphase-specific parameters
-    if config.get("simulation_type") == "multiphase":
-        mp_keys = [
-            ("kappa", "Kappa"),
-            ("rho_l", "Liquid Density"),
-            ("rho_v", "Vapor Density"),
-            ("interface_width", "Interface Width"),
-        ]
-        for key, label in mp_keys:
-            if key in config:
-                table.add_row(label, str(config[key]))
+    if bundle.is_multiphase:
+        table.add_row("Kappa", str(sim.kappa))
+        table.add_row("Liquid Density", str(sim.rho_l))
+        table.add_row("Vapor Density", str(sim.rho_v))
+        table.add_row("Interface Width", str(sim.interface_width))
 
     # Force configuration
-    if config.get("force_enabled"):
-        force_obj = config.get("force_obj", [])
-        if force_obj:
-            force_names = [type(f).__name__ for f in force_obj]
-            table.add_row("Forces", ", ".join(force_names))
+    if sim.force_enabled and sim.force_obj:
+        force_list = sim.force_obj if isinstance(sim.force_obj, list) else [sim.force_obj]
+        force_names = [type(f).__name__ for f in force_list]
+        table.add_row("Forces", ", ".join(force_names))
 
     console.print(table)
     console.print()
 
 
-def _run_simulation(config: dict) -> object:
+def _run_simulation(bundle: SimulationBundle) -> object:
     """Run the simulation with the given configuration.
 
     Args:
-        config: The configuration dictionary
+        bundle: The SimulationBundle object
 
     Returns:
         The completed simulation instance
@@ -139,18 +116,11 @@ def _run_simulation(config: dict) -> object:
 
     from core import Run
 
-    # Extract special options that aren't passed to Run
-    open_paraview = config.pop("open_paraview", False)
-
     console.print("[bold green]Starting simulation...[/bold green]")
     console.print()
 
-    sim = Run(**config)
+    sim = Run(bundle)
     sim.run(verbose=True)
-
-    # Post-run actions
-    if open_paraview:
-        _open_paraview(sim.io_handler.run_dir)
 
     return sim
 
@@ -176,7 +146,7 @@ def _open_paraview(results_dir: str) -> None:
 
 
 @click.command()
-@click.argument("config_path", type=click.Path(exists=True))
+@click.argument("config_path", type=click.Path(exists=True), required=False)
 @click.option(
     "--no-prompt",
     is_flag=True,
@@ -189,17 +159,17 @@ def _open_paraview(results_dir: str) -> None:
 )
 @click.version_option(package_name="tud_lbm")
 def main(config_path: str, no_prompt: bool, dry_run: bool) -> None:
-    """Run a TUD-LBM simulation from a configuration file.
+    """Run a TUD-LBM simulation.
 
-    CONFIG_PATH is the path to a TOML or JSON configuration file.
+    CONFIG_PATH is an optional path to a configuration file (.toml).
+    If omitted, an interactive prompt collects parameters.
 
-    Example usage:
-        tud-lbm config.toml
-        tud-lbm config.toml --no-prompt
-        tud-lbm config.toml --dry-run
+    Examples:
+
+        tud_lbm example/config_simple.toml
+        tud_lbm example/config_complex.toml --dry-run
+        tud_lbm                              # interactive mode
     """
-    from config import load
-
     console.print()
     console.print(Panel.fit(
         "[bold blue]TUD-LBM[/bold blue] - Lattice Boltzmann Method Solver",
@@ -208,35 +178,51 @@ def main(config_path: str, no_prompt: bool, dry_run: bool) -> None:
     console.print()
 
     try:
-        # Load configuration
-        console.print(f"[cyan]Loading configuration from: {config_path}[/cyan]")
-        config = load(config_path)
+        if config_path:
+            # ── Load config file via adapter ─────────────────────────
+            from config import get_adapter
 
-        # Interactive prompts if enabled
-        if not no_prompt:
-            config = _prompt_missing(config)
+            console.print(
+                f"[cyan]Loading configuration from:[/cyan] {config_path}"
+            )
+            adapter = get_adapter(config_path)
+            bundle = adapter.load(config_path)
         else:
-            # Apply defaults for missing optional values
-            if "results_dir" not in config:
-                config["results_dir"] = os.path.expanduser(BASE_RESULTS_DIR)
-            if "save_fields" not in config:
-                config["save_fields"] = DEFAULT_SAVE_FIELDS
+            # ── Interactive mode ─────────────────────────────────────
+            console.print(
+                "[cyan]Interactive mode - creating default simulation setup[/cyan]"
+            )
+
+            grid_x = int(Prompt.ask("Grid size X", default="100"))
+            grid_y = int(Prompt.ask("Grid size Y", default="100"))
+            tau = float(Prompt.ask("Relaxation time (tau)", default="0.6"))
+            nt = int(Prompt.ask("Number of timesteps", default="1000"))
+            save_interval = int(Prompt.ask("Save interval", default="100"))
+
+            bundle = SimulationBundle(
+                simulation=SinglePhaseConfig(
+                    grid_shape=(grid_x, grid_y),
+                    tau=tau,
+                    nt=nt,
+                ),
+                runner=RunnerConfig(save_interval=save_interval),
+            )
 
         # Display configuration summary
-        _display_config_summary(config)
+        _display_config_summary(bundle)
 
         if dry_run:
             console.print("[yellow]Dry run mode - simulation not started[/yellow]")
             return
 
-        # Confirm before running (if interactive)
+        # Confirm before running
         if not no_prompt:
             if not Confirm.ask("[bold]Start simulation?[/bold]", default=True):
                 console.print("[yellow]Simulation cancelled.[/yellow]")
                 return
 
         # Run the simulation
-        sim = _run_simulation(config)
+        sim = _run_simulation(bundle)
 
         console.print()
         console.print(Panel.fit(
@@ -245,12 +231,6 @@ def main(config_path: str, no_prompt: bool, dry_run: bool) -> None:
             title="Success"
         ))
 
-    except FileNotFoundError as e:
-        console.print(f"[bold red]Error:[/bold red] {e}")
-        sys.exit(1)
-    except ValueError as e:
-        console.print(f"[bold red]Configuration Error:[/bold red] {e}")
-        sys.exit(1)
     except KeyboardInterrupt:
         console.print("\n[yellow]Simulation interrupted by user.[/yellow]")
         sys.exit(130)

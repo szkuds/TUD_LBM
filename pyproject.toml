@@ -39,11 +39,11 @@ Repository = "https://github.com/szkuds/tud_lbm"
 Issues = "https://github.com/szkuds/tud_lbm/issues"
 ReadTheDocs = "https://tud_lbm.readthedocs.io"
 
-[project.scripts]
-tud-lbm = "cli:main"
-
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.scripts]
+tud-lbm = "cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

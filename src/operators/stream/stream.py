@@ -1,14 +1,30 @@
 #   TODO: Will need to be adapted for 3D
+from typing import TYPE_CHECKING
+
 import jax.numpy as jnp
-from domain.lattice import Lattice
+
+if TYPE_CHECKING:
+    from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
 class Streaming:
     """
     Callable class to perform the streaming step of the LBM.
+
+    Usage:
+        Streaming(config=simulation_config)
     """
 
-    def __init__(self, lattice: Lattice):
+    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
+        """
+        Initialize the Streaming operator.
+
+        Args:
+            config: Configuration object containing all simulation parameters.
+        """
+        from domain.lattice import Lattice
+
+        lattice = Lattice(config.lattice_type)
         self.c = lattice.c  # Shape: (2, Q)
         self.q = lattice.q
 

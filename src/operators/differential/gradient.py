@@ -1,14 +1,17 @@
 from functools import partial
+from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
 from jax import jit
 
-from domain.lattice import Lattice
 from operators.wetting import (
     determine_padding_modes,
     has_wetting_bc,
     apply_wetting_to_all_edges,
 )
+
+if TYPE_CHECKING:
+    from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
 class Gradient:
@@ -17,13 +20,32 @@ class Gradient:
     supporting asymmetric per-side padding.
 
     The implementation of the gradient operator is based on https://doi.org/10.1063/5.0072221
+
+    Usage:
+        Gradient(config=simulation_config)
     """
 
-    def __init__(self, lattice: Lattice, bc_config: dict = None):
+    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
+        """
+        Initialize the Gradient operator.
+
+        Args:
+            config: Configuration object containing all simulation parameters.
+        """
+        from domain.lattice import Lattice
+
+        lattice = Lattice(config.lattice_type)
+        bc_config = config.bc_config
+        rho_l = getattr(config, 'rho_l', None)
+        rho_v = getattr(config, 'rho_v', None)
+
         self.w = lattice.w
         self.c = lattice.c
         self.bc_config = bc_config
         self.pad_mode = determine_padding_modes(bc_config)
+        self.rho_l = rho_l
+        self.rho_v = rho_v
+
         # Only extract wetting parameters if wetting BC is present
         self.wetting_params = None
         if self.bc_config and 'chemical_step' in self.bc_config and has_wetting_bc(bc_config):
@@ -119,8 +141,8 @@ class Gradient:
         return grad_4d
 
     def wetting(self, grid, pad_mode):
-        rho_l = self.wetting_params['rho_l']
-        rho_v = self.wetting_params['rho_v']
+        rho_l = self.rho_l
+        rho_v = self.rho_v
         width = self.wetting_params['width']
         weights = self.w
         c = self.c

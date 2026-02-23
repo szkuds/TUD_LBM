@@ -2,8 +2,8 @@
 
 import numpy as np
 import jax.numpy as jnp
-from typing import Any, Dict
 
+from config.simulation_config import RunnerConfig
 from .step_result import StepResult
 
 
@@ -22,16 +22,16 @@ class SimulationRunner:
         self,
         simulation,
         io_handler,
-        config: Dict[str, Any],
+        runner_config: RunnerConfig,
     ):
         self.simulation = simulation
         self.io_handler = io_handler
-        self.config = config
-        self.init_type = config.get("init_type", "standard")
-        self.init_dir = config.get("init_dir")
-        self.save_interval = int(config.get("save_interval", 100))
-        self.skip_interval = int(config.get("skip_interval", 0))
-        self.save_fields = config.get("save_fields")
+        self.runner_config = runner_config
+        self.init_type = runner_config.init_type
+        self.init_dir = runner_config.init_dir
+        self.save_interval = runner_config.save_interval
+        self.skip_interval = runner_config.skip_interval
+        self.save_fields = runner_config.save_fields
 
     def _save_data(self, it: int, step_result: StepResult):
         """Save data from the StepResult."""

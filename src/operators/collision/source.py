@@ -1,23 +1,34 @@
+from typing import TYPE_CHECKING
+
 import jax.numpy as jnp
-from domain.grid import Grid
-from domain.lattice import Lattice
+
 from operators.differential import Gradient
+
+if TYPE_CHECKING:
+    from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
 class SourceTerm:
     """
     Callable class to calculate the source term for the LBM equation.
+
+    Usage:
+        SourceTerm(config=simulation_config)
     """
 
-    def __init__(self, grid: Grid, lattice: Lattice, bc_config: dict = None):
+    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
         """
         Initialize the source term calculator.
 
         Args:
-            grid (Grid): Grid object containing simulation domain information
-            lattice (Lattice): Lattice object containing lattice properties
-            bc_config (dict, optional): Boundary condition configuration
+            config: Configuration object containing all simulation parameters.
         """
+        from domain.grid import Grid
+        from domain.lattice import Lattice
+
+        grid = Grid(config.grid_shape)
+        lattice = Lattice(config.lattice_type)
+
         self.nx: int = grid.nx
         self.ny: int = grid.ny
         self.q: int = lattice.q
@@ -25,8 +36,8 @@ class SourceTerm:
         self.w = lattice.w
         self.cx = lattice.c[0]
         self.cy = lattice.c[1]
-        self.bc_config = bc_config
-        self.gradient = Gradient(lattice, bc_config=bc_config)
+        self.bc_config = config.bc_config
+        self.gradient = Gradient(config)
 
     def __call__(
         self, rho: jnp.ndarray, u: jnp.ndarray, force: jnp.ndarray

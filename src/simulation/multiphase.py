@@ -49,24 +49,11 @@ class MultiphaseSimulation(BaseSimulation):
 
     def setup_operators(self):
         self.wetting_enabled = any(bc_type == 'wetting' for bc_type in (self.bc_config or {}).values())
-        if self.bubble:
-            self.initialise = Initialise(self.grid, self.lattice, self.bubble, self.g, self.rho_ref)
-        else:
-            self.initialise = Initialise(self.grid, self.lattice, self.bubble)
+        self.initialise = Initialise(self.config)
         if self.bc_config and "hysteresis_params" in self.bc_config:
-            self.update = UpdateMultiphaseHysteresis(
-                self.grid, self.lattice, self.tau, self.kappa, self.interface_width,
-                self.rho_l, self.rho_v, self.bc_config, self.force_enabled,
-                collision_scheme=self.collision_scheme, eos=self.eos,
-                k_diag=self.k_diag, **self.optional
-            )
+            self.update = UpdateMultiphaseHysteresis(self.config)
         else:
-            self.update = UpdateMultiphase(
-                self.grid, self.lattice, self.tau, self.kappa, self.interface_width,
-                self.rho_l, self.rho_v, self.bc_config, self.force_enabled,
-                collision_scheme=self.collision_scheme, eos=self.eos,
-                k_diag=self.k_diag, **self.optional
-            )
+            self.update = UpdateMultiphase(self.config)
         self.macroscopic = self.update.macroscopic
 
     def initialise_fields(self, init_type="multiphase_droplet", *, init_dir=None):

@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Tuple, Any
+from typing import Tuple, Any, TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
@@ -7,35 +7,33 @@ from jax import jit
 import optax
 
 from operators import MacroscopicMultiphaseDW, ContactAngle, ContactLineLocation, WettingParameters
-from domain.grid import Grid
-from domain.lattice import Lattice
 from .update_multiphase import UpdateMultiphase
+
+if TYPE_CHECKING:
+    from config.simulation_config import MultiphaseConfig
 
 
 class UpdateMultiphaseHysteresis(UpdateMultiphase):
     """
     UpdateMultiphase with hysteresis optimization for wetting parameters.
     Optimizes both left and right sides and persists updated operators.
+
+    Usage:
+        UpdateMultiphaseHysteresis(config=multiphase_config)
     """
 
-    def __init__(
-            self,
-            grid: Grid,
-            lattice: Lattice,
-            tau: float,
-            kappa: float,
-            interface_width: int,
-            rho_l: float,
-            rho_v: float,
-            bc_config: dict = None,
-            force_enabled: bool = False,
-            collision_scheme: str = "bgk",
-            eos: str = "double-well",
-            k_diag=None,
-            **kwargs
-    ):
-        super().__init__(grid, lattice, tau, kappa, interface_width, rho_l, rho_v,
-                         bc_config, force_enabled, collision_scheme, eos, k_diag, **kwargs)
+    def __init__(self, config: "MultiphaseConfig") -> None:
+        """
+        Initialize the UpdateMultiphaseHysteresis operator.
+
+        Args:
+            config: MultiphaseConfig object containing all simulation parameters.
+        """
+        super().__init__(config)
+
+        bc_config = config.bc_config
+        rho_l = config.rho_l
+        rho_v = config.rho_v
 
         # Extract hysteresis parameters from bc_config
         self.hysteresis_params = bc_config['hysteresis_params']
@@ -453,6 +451,9 @@ class UpdateMultiphaseHysteresis(UpdateMultiphase):
 
     def _create_updated_macroscopic(self, params: WettingParameters):
         """Create new macroscopic operator with updated wetting parameters."""
+        from config.simulation_config import MultiphaseConfig
+        from dataclasses import replace
+
         new_wetting_params = {
             **self.macroscopic.bc_config.get('wetting_params', {}),
             'd_rho_left': params.d_rho_left,
@@ -464,10 +465,22 @@ class UpdateMultiphaseHysteresis(UpdateMultiphase):
             **self.macroscopic.bc_config,
             'wetting_params': new_wetting_params
         }
-        new_macroscopic = MacroscopicMultiphaseDW(
-            self.grid, self.lattice, self.macroscopic.kappa, new_wetting_params['width'], new_wetting_params['rho_l'],
-            new_wetting_params['rho_v'], self.force_enabled, new_bc_config
+
+        # Create a modified config with the new bc_config
+        # We need to access the original config stored during __init__
+        modified_config = MultiphaseConfig(
+            grid_shape=self.grid.shape,
+            lattice_type=self.lattice.name,
+            tau=self.tau,
+            nt=1,  # Not used for macroscopic
+            kappa=self.macroscopic.kappa,
+            rho_l=self.macroscopic.rho_l,
+            rho_v=self.macroscopic.rho_v,
+            interface_width=self.macroscopic.interface_width,
+            force_enabled=self.force_enabled,
+            bc_config=new_bc_config,
         )
+        new_macroscopic = MacroscopicMultiphaseDW(modified_config)
         return new_macroscopic
 
     def _run_timestep_with_new_wetting_params(self, f: jnp.ndarray, params: WettingParameters,

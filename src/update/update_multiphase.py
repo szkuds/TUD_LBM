@@ -1,68 +1,61 @@
 from functools import partial
+from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
 from jax import jit
 
-from domain.lattice import Lattice
-from domain.grid import Grid
 from .update import Update
 from operators import MacroscopicMultiphaseDW, MacroscopicMultiphaseCS
 
+if TYPE_CHECKING:
+    from config.simulation_config import MultiphaseConfig
+
 
 class UpdateMultiphase(Update):
-    def __init__(
-            self,
-            grid: Grid,
-            lattice: Lattice,
-            tau: float,
-            kappa: float,
-            interface_width: int,
-            rho_l: float,
-            rho_v: float,
-            bc_config: dict = None,
-            force_enabled: bool = False,
-            collision_scheme: str = "bgk",
-            eos: str = "double-well",
-            k_diag=None,
-            **kwargs
-    ):
-        super().__init__(
-            grid,
-            lattice,
-            tau,
-            bc_config,
-            force_enabled=force_enabled,
-            collision_scheme=collision_scheme,
-            k_diag=k_diag,
-            **kwargs
-        )
+    """
+    Performs the full multiphase LBM update step.
+
+    Usage:
+        UpdateMultiphase(config=multiphase_config)
+    """
+
+    def __init__(self, config: "MultiphaseConfig") -> None:
+        """
+        Initialize the UpdateMultiphase operator.
+
+        Args:
+            config: MultiphaseConfig object containing all simulation parameters.
+        """
+        super().__init__(config)
+
+        # Override macroscopic with multiphase version
+        eos = config.eos
+        extra = config.extra if hasattr(config, 'extra') else {}
+
         if eos == "double-well":
-            self.macroscopic = MacroscopicMultiphaseDW(
-                grid, lattice, kappa, interface_width, rho_l, rho_v, force_enabled=force_enabled, bc_config=bc_config
-            )
-        #TODO: Need to make sure that the maxwell contruction is done to get the correct starting values.
+            self.macroscopic = MacroscopicMultiphaseDW(config)
+        # TODO: Need to make sure that the maxwell construction is done to get the correct starting values.
         elif eos == "carnahan-starling":
-            macroscopic_args = dict(
-                grid=grid,
-                lattice=lattice,
-                kappa=kappa,
-                interface_width=interface_width,
-                rho_l=rho_l,
-                rho_v=rho_v,
-                a_eos=kwargs['a_eos'],
-                b_eos=kwargs['b_eos'],
-                r_eos=kwargs['r_eos'],
-                t_eos=kwargs['t_eos'],
-                force_enabled=force_enabled,
-                bc_config=bc_config,
+            self.macroscopic = MacroscopicMultiphaseCS(
+                grid=self.grid,
+                lattice=self.lattice,
+                kappa=config.kappa,
+                interface_width=config.interface_width,
+                rho_l=config.rho_l,
+                rho_v=config.rho_v,
+                a_eos=extra['a_eos'],
+                b_eos=extra['b_eos'],
+                r_eos=extra['r_eos'],
+                t_eos=extra['t_eos'],
+                force_enabled=config.force_enabled,
+                bc_config=config.bc_config,
             )
-            self.macroscopic = MacroscopicMultiphaseCS(**macroscopic_args)
 
         else:
             raise ValueError(f"Unknown EOS: {eos}")
 
     @partial(jit, static_argnums=(0,))
-    def __call__(self, f: jnp.array, force: jnp.ndarray = None):
+    def __call__(self, f: jnp.ndarray, force: jnp.ndarray = None):
         # If force_enabled and no force provided, use a simple constant force for testing
         if self.force_enabled and force is None:
             raise TypeError(

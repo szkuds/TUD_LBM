@@ -1,26 +1,31 @@
+from typing import TYPE_CHECKING
+
 import jax.numpy as jnp
-from domain.grid.grid import Grid
-from domain.lattice.lattice import Lattice
+
 from .collision_base import CollisionBase
+
+if TYPE_CHECKING:
+    from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
 class CollisionBGK(CollisionBase):
     """
     Implements the BGK (Bhatnagar-Gross-Krook) collision operator for LBM.
     Optionally supports a source term.
+
+    Usage:
+        CollisionBGK(config=simulation_config)
     """
 
-    def __init__(self, grid: Grid, lattice: Lattice, tau: float) -> None:
+    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
         """
         Initialize the CollisionBGK operator.
 
         Args:
-            grid (Grid): Grid object containing simulation domain information
-            lattice (Lattice): Lattice object containing lattice properties
-            tau (float): Relaxation time parameter
+            config: Configuration object containing all simulation parameters.
         """
-        super().__init__(grid, lattice)
-        self.tau: float = tau
+        super().__init__(config)
+        self.tau: float = config.tau
 
     def __call__(
         self, f: jnp.ndarray, feq: jnp.ndarray, source: jnp.ndarray = None
@@ -37,10 +42,8 @@ class CollisionBGK(CollisionBase):
             jnp.ndarray: Post-collision distribution function.
         """
         if source is None:
-            # Standard BGK collision without source term
             return (1 - (1 / self.tau)) * f + (1 / self.tau) * feq
         else:
-            # BGK collision with source term
             return (
                 (1 - (1 / self.tau)) * f
                 + (1 / self.tau) * feq

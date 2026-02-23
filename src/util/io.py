@@ -7,11 +7,34 @@ import sys
 import tomli_w
 
 from config import BASE_RESULTS_DIR
-from config.keys import (
-    TOML_SIMULATION_KEYS,
-    TOML_MULTIPHASE_KEYS,
-    TOML_OUTPUT_KEYS,
-)
+
+
+# Constants for TOML config file structure (used when saving config)
+_TOML_SIMULATION_KEYS = [
+    "simulation_type",
+    "grid_shape",
+    "lattice_type",
+    "tau",
+    "nt",
+    "save_interval",
+    "skip_interval",
+    "init_type",
+    "init_dir",
+    "simulation_name",
+]
+
+_TOML_MULTIPHASE_KEYS = [
+    "kappa",
+    "rho_l",
+    "rho_v",
+    "interface_width",
+    "eos",
+]
+
+_TOML_OUTPUT_KEYS = [
+    "results_dir",
+    "save_fields",
+]
 
 
 class SimulationIO:
@@ -138,7 +161,7 @@ class SimulationIO:
 
         # Simulation section
         simulation = {}
-        for key in TOML_SIMULATION_KEYS:
+        for key in _TOML_SIMULATION_KEYS:
             if key in config and config[key] is not None:
                 val = config[key]
                 # Convert tuples to lists for TOML
@@ -153,7 +176,7 @@ class SimulationIO:
 
         # Multiphase section
         multiphase = {}
-        for key in TOML_MULTIPHASE_KEYS:
+        for key in _TOML_MULTIPHASE_KEYS:
             if key in config and config[key] is not None:
                 multiphase[key] = config[key]
         if multiphase:
@@ -167,7 +190,7 @@ class SimulationIO:
 
         # Output section
         output = {}
-        for key in TOML_OUTPUT_KEYS:
+        for key in _TOML_OUTPUT_KEYS:
             if key in config and config[key] is not None:
                 output[key] = config[key]
         if output:

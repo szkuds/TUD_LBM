@@ -1,11 +1,26 @@
 """Configuration package for TUD-LBM simulations.
 
-This package groups all user-facing configuration utilities and constants used across
-TUD-LBM. The public surface is re-exported here so callers can do::
+This package provides the configuration interface for TUD-LBM simulations.
+The primary interface is SimulationBundle::
 
-    from config import load, BASE_RESULTS_DIR
+    from config import SimulationBundle, SinglePhaseConfig, RunnerConfig
+    from core import Run
 
-The main configuration areas are:
+    bundle = SimulationBundle(
+        simulation=SinglePhaseConfig(grid_shape=(100, 100), tau=0.6, nt=10000),
+        runner=RunnerConfig(save_interval=1000),
+    )
+    sim = Run(bundle)
+    sim.run()
+
+Main exports:
+
+- Simulation configuration (primary interface)
+  - :class:`SimulationBundle`: Top-level composite containing all simulation
+    parameters. Pass directly to Run().
+  - :class:`SinglePhaseConfig`: Physics config for single-phase simulations.
+  - :class:`MultiphaseConfig`: Physics config for multiphase simulations.
+  - :class:`RunnerConfig`: Runner/IO configuration.
 
 - Directory configuration
   - :data:`BASE_RESULTS_DIR`: Base directory used for saving results.
@@ -20,24 +35,10 @@ The main configuration areas are:
   - :data:`AVAILABLE_FIELDS`: All supported output fields.
   - :data:`FORCE_REGISTRY`: Mapping from force names to force implementations.
 
-- Key mappings for structured configs (e.g., TOML)
-  - :data:`SIMULATION_DIRECT_KEYS`, :data:`SIMULATION_SPECIAL_KEYS`
-  - :data:`MULTIPHASE_KEYS`, :data:`COLLISION_MRT_KEYS`
-  - :data:`BOUNDARY_SIDES`, :data:`BOUNDARY_NESTED_PARAMS`
-  - :data:`OUTPUT_KEY_MAPPING`
-  - :data:`TOML_SIMULATION_KEYS`, :data:`TOML_MULTIPHASE_KEYS`,
-    :data:`TOML_OUTPUT_KEYS`
-
-- Config loading
-  - :func:`load`: Load and normalise a structured config into ``Run(...)`` kwargs.
-  - :func:`load_raw`: Load a config file without normalisation.
-
-- Simulation configuration dataclasses
-  - :class:`BaseSimulationConfig`: Base config shared by all simulation types.
-  - :class:`SinglePhaseConfig`: Config for single-phase simulations.
-  - :class:`MultiphaseConfig`: Config for multiphase simulations.
-  - :class:`RunnerConfig`: Config for the simulation runner (I/O, saving).
-
+- File adapters
+  - :class:`ConfigAdapter`: Abstract base for config file readers.
+  - :class:`TomlAdapter`: TOML file adapter.
+  - :func:`get_adapter`: Factory that picks the right adapter by file extension.
 """
 
 # Directory configuration
@@ -50,36 +51,32 @@ from config.saving_config import (
     FORCE_REGISTRY,
 )
 
-# Jax config loader
+# JAX config
 from config.jax_config import configure_jax, ENABLE_X64, DISABLE_JIT
 
-# Key mappings
-from config.keys import (
-    SIMULATION_DIRECT_KEYS,
-    SIMULATION_SPECIAL_KEYS,
-    MULTIPHASE_KEYS,
-    COLLISION_MRT_KEYS,
-    BOUNDARY_SIDES,
-    BOUNDARY_NESTED_PARAMS,
-    OUTPUT_KEY_MAPPING,
-    TOML_SIMULATION_KEYS,
-    TOML_MULTIPHASE_KEYS,
-    TOML_OUTPUT_KEYS,
-)
-
-# Config loader
-from config.config_loader import load, load_raw
-
-# Simulation configuration dataclasses
+# Simulation config dataclasses (primary interface)
 from config.simulation_config import (
     BaseSimulationConfig,
     SinglePhaseConfig,
     MultiphaseConfig,
     RunnerConfig,
-    RUN_DEFAULTS,
+    SimulationConfig,
+    SimulationBundle,
 )
 
+# File adapters
+from config.adapter_base import ConfigAdapter, get_adapter
+from config.adapter_toml import TomlAdapter
+
 __all__ = [
+    # Primary interface
+    "SimulationBundle",
+    # Simulation config dataclasses
+    "BaseSimulationConfig",
+    "SinglePhaseConfig",
+    "MultiphaseConfig",
+    "RunnerConfig",
+    "SimulationConfig",
     # Directory config
     "BASE_RESULTS_DIR",
     # JAX config
@@ -90,24 +87,8 @@ __all__ = [
     "DEFAULT_SAVE_FIELDS",
     "AVAILABLE_FIELDS",
     "FORCE_REGISTRY",
-    # Key mappings
-    "SIMULATION_DIRECT_KEYS",
-    "SIMULATION_SPECIAL_KEYS",
-    "MULTIPHASE_KEYS",
-    "COLLISION_MRT_KEYS",
-    "BOUNDARY_SIDES",
-    "BOUNDARY_NESTED_PARAMS",
-    "OUTPUT_KEY_MAPPING",
-    "TOML_SIMULATION_KEYS",
-    "TOML_MULTIPHASE_KEYS",
-    "TOML_OUTPUT_KEYS",
-    # Config loader
-    "load",
-    "load_raw",
-    # Simulation config dataclasses
-    "BaseSimulationConfig",
-    "SinglePhaseConfig",
-    "MultiphaseConfig",
-    "RunnerConfig",
-    "RUN_DEFAULTS",
+    # File adapters
+    "ConfigAdapter",
+    "TomlAdapter",
+    "get_adapter",
 ]

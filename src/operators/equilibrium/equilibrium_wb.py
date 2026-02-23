@@ -1,20 +1,34 @@
 from functools import partial
+from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
 from jax import jit
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from domain.grid import Grid
-    from domain.lattice import Lattice
+    from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
 class EquilibriumWB:
     """
     Callable class to calculate the equilibrium population distribution for WB-LBM.
+
+    Usage:
+        EquilibriumWB(config=simulation_config)
     """
 
-    def __init__(self, grid: "Grid", lattice: "Lattice") -> None:
+    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
+        """
+        Initialize the EquilibriumWB operator.
+
+        Args:
+            config: Configuration object containing all simulation parameters.
+        """
+        from domain.grid import Grid
+        from domain.lattice import Lattice
+
+        grid = Grid(config.grid_shape)
+        lattice = Lattice(config.lattice_type)
+
         self.nx: int = grid.nx
         self.ny: int = grid.ny
         self.q: int = lattice.q

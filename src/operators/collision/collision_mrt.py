@@ -1,7 +1,11 @@
+from typing import TYPE_CHECKING
+
 import jax.numpy as jnp
+
 from .collision_base import CollisionBase
-from domain.grid import Grid
-from domain.lattice import Lattice
+
+if TYPE_CHECKING:
+    from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 # Moment transformation matrix for D2Q9 lattice
 M = jnp.array(
@@ -23,33 +27,22 @@ M_INV = jnp.linalg.inv(M)
 class CollisionMRT(CollisionBase):
     """
     Implements the MRT (Multiple Relaxation Time) collision operator for LBM.
+
+    Usage:
+        CollisionMRT(config=simulation_config)
     """
 
-    def __init__(self, grid: Grid, lattice: Lattice, k_diag=None, **kwargs):
+    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
         """
         Initialize the MRT collision operator.
 
         Args:
-            grid (Grid): Grid object containing simulation domain information
-            lattice (Lattice): Lattice object containing lattice properties
-            k_diag (jnp.ndarray, optional): Diagonal relaxation rates for moments.
-            kwargs: Optional relaxation rates for specific moments.
+            config: Configuration object containing all simulation parameters.
         """
-        super().__init__(grid, lattice)
+        super().__init__(config)
+        k_diag = config.k_diag
         if k_diag is None:
-            k_diag = jnp.array(
-                [
-                    kwargs.get("k0", 0.0),
-                    kwargs.get("kb", 1.0),
-                    kwargs.get("k2", 1.0),
-                    kwargs.get("k0", 0.0),
-                    kwargs.get("k4", 1.0),
-                    kwargs.get("k0", 0.0),
-                    kwargs.get("k4", 1.0),
-                    kwargs.get("kv", 0.8),
-                    kwargs.get("kv", 0.8),
-                ]
-            )
+            k_diag = jnp.array([0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.8, 0.8])
         self.K = k_diag
 
     def __call__(

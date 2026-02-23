@@ -21,6 +21,6 @@ AVAILABLE_FIELDS: list[str] = ["rho", "u", "force", "force_ext", "f", "h"]
 
 #: Registry mapping force type names to their import paths and class names
 FORCE_REGISTRY: dict[str, tuple[str, str]] = {
-    "gravity_multiphase": ("tud_lbm.operators", "GravityForceMultiphase"),
-    "electric": ("tud_lbm.operators", "ElectricForce"),
+    "gravity_multiphase": ("operators.force", "GravityForceMultiphase"),
+    "electric": ("operators.force", "ElectricForce"),
 }

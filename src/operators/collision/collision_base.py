@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
-from domain.grid.grid import Grid
-from domain.lattice.lattice import Lattice
+
+if TYPE_CHECKING:
+    from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
 class CollisionBase(ABC):
@@ -12,15 +14,23 @@ class CollisionBase(ABC):
 
     Subclasses should implement the __call__ method following the
     CollisionOperator protocol (see operators.protocols).
+
+    Usage:
+        CollisionBGK(config=simulation_config)
     """
 
-    def __init__(self, grid: Grid, lattice: Lattice) -> None:
+    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
         """
         Initializes the grid and lattice parameters required for the collision step.
+
         Args:
-            grid (Grid): Grid object containing simulation domain information
-            lattice (Lattice): Lattice object containing lattice properties
+            config: Configuration object containing all simulation parameters.
         """
+        from domain.grid import Grid
+        from domain.lattice import Lattice
+
+        grid = Grid(config.grid_shape)
+        lattice = Lattice(config.lattice_type)
         self.nx: int = grid.nx
         self.ny: int = grid.ny
         self.q: int = lattice.q

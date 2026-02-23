@@ -1,82 +1,82 @@
 """
 Run class for LBM simulations.
 
-Composes ConfigLoader, SimulationFactory, SimulationRunner, and SimulationIO.
+Composes SimulationFactory, SimulationRunner, and SimulationIO.
 """
 
-from pathlib import Path
-from typing import Any, Dict, Union
+import inspect
+from typing import Optional
 
-from config import RUN_DEFAULTS
-from .config_loader import ConfigLoader
+from config import SimulationBundle
 from .simulation_factory import SimulationFactory
 from .simulation_runner import SimulationRunner
 
 
 class Run:
     """
-    User-friendly wrapper that composes Factory + Runner + IO.
+    Entry point for running LBM simulations.
 
     Usage:
-        sim = Run("config.toml")
+        from config import SimulationBundle, SinglePhaseConfig, RunnerConfig
+        from core import Run
+
+        bundle = SimulationBundle(
+            simulation=SinglePhaseConfig(
+                grid_shape=(100, 100),
+                tau=0.6,
+                nt=10000,
+            ),
+            runner=RunnerConfig(save_interval=1000),
+        )
+        sim = Run(bundle)
         sim.run(verbose=True)
 
-    Or with kwargs:
-        sim = Run(simulation_type="single_phase", nx=100, ny=100, ...)
-        sim.run()
-
-    Keyword Args:
-        simulation_type: Type of simulation ("single_phase" or "multiphase")
-        save_interval: Steps between saves (default: 100)
-        results_dir: Output directory (default: "~/TUD_LBM/results")
-        init_type: Initialization type (default: "standard")
-        init_dir: Directory for restart files (default: None)
-        skip_interval: Steps to skip on restart (default: 0)
-        collision: Collision scheme - str or dict (default: None)
-        simulation_name: Name for output folder (default: auto-detected)
-        save_fields: Fields to save (default: None)
+    Args:
+        bundle: A SimulationBundle containing simulation and runner configs.
     """
 
-    def __init__(
-        self,
-        config: Union[str, Path, Dict[str, Any], None] = None,
-        **kwargs,
-    ):
-        # Merge defaults with provided kwargs
-        opts = {**RUN_DEFAULTS, **kwargs}
-        collision = opts.pop("collision")
-        simulation_name = opts.pop("simulation_name")
+    def __init__(self, bundle: SimulationBundle):
+        if not isinstance(bundle, SimulationBundle):
+            raise TypeError(
+                f"Expected SimulationBundle, got {type(bundle).__name__}. "
+                "Use SimulationBundle to configure your simulation."
+            )
 
-        # Load config from file or use provided kwargs
-        if config is not None and not isinstance(config, dict):
-            # Load from TOML file
-            self.config = ConfigLoader.load(config)
-            self.config.update(opts)
-        else:
-            # Build config from kwargs
-            if isinstance(config, dict):
-                opts.update(config)
-            opts = ConfigLoader.normalise_collision(collision, opts)
-            self.config = ConfigLoader.build_config(**opts)
+        self.bundle = bundle
+        self.config = bundle.to_dict()
 
-        # Infer simulation name
-        simulation_name = ConfigLoader.infer_simulation_name(simulation_name)
+        # Infer simulation name if not provided
+        simulation_name = bundle.runner.simulation_name or self._infer_simulation_name()
 
-        # Create simulation via factory
-        self.simulation = SimulationFactory.create(self.config)
+        # Create simulation via factory — pass the typed config directly
+        self.simulation = SimulationFactory.create(bundle.simulation)
 
         # Setup IO
         from util import SimulationIO
         self.io_handler = SimulationIO(
-            base_dir=self.config.get("results_dir", RUN_DEFAULTS["results_dir"]),
+            base_dir=bundle.runner.results_dir,
             config=self.config,
             simulation_name=simulation_name,
         )
 
         # Create runner
-        self.runner = SimulationRunner(self.simulation, self.io_handler, self.config)
+        self.runner = SimulationRunner(self.simulation, self.io_handler, bundle.runner)
+
+    @staticmethod
+    def _infer_simulation_name() -> Optional[str]:
+        """Auto-detect simulation name from calling function via stack inspection."""
+        frame = inspect.currentframe()
+        try:
+            caller_frame = frame.f_back if frame else None
+            while caller_frame:
+                func_name = caller_frame.f_code.co_name
+                if func_name != "<module>" and not func_name.startswith("_"):
+                    return func_name
+                caller_frame = caller_frame.f_back
+        finally:
+            del frame
+        return None
 
     def run(self, *, verbose: bool = True):
         """Run the simulation."""
         self.runner.run(verbose=verbose)
-

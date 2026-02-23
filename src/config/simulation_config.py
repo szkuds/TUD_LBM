@@ -8,12 +8,22 @@ Each simulation type has its own config class with:
 - Type annotations for IDE support
 - Default values matching previous behavior
 - __post_init__ validation for early error detection
+
+Architecture:
+    BaseSimulationConfig
+    ├── SinglePhaseConfig
+    └── MultiphaseConfig
+
+    RunnerConfig          (I/O, saving, initialisation)
+
+    SimulationBundle      (top-level composite returned by file adapters)
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from config.dir_config import BASE_RESULTS_DIR
+
 
 
 @dataclass
@@ -207,18 +217,87 @@ class RunnerConfig:
 SimulationConfig = Union[SinglePhaseConfig, MultiphaseConfig]
 
 
-#: Default configuration values for Run class, derived from RunnerConfig
-RUN_DEFAULTS: Dict[str, Any] = {
-    "simulation_type": "single_phase",
-    "collision": None,
-    # Defaults from RunnerConfig
-    "save_interval": 100,
-    "skip_interval": 0,
-    "results_dir": BASE_RESULTS_DIR,
-    "init_type": "standard",
-    "init_dir": None,
-    "simulation_name": None,
-    "save_fields": None,
-}
+@dataclass
+class SimulationBundle:
+    """
+    Top-level configuration object returned by file adapters.
 
+    Bundles the simulation physics config and runner/IO config into one
+    object that gets passed around and unpacked by subsystems that need
+    specific parts.
+
+    Example — Python API::
+
+        from config import SimulationBundle, SinglePhaseConfig, RunnerConfig
+        from core import Run
+
+        bundle = SimulationBundle(
+            simulation=SinglePhaseConfig(grid_shape=(100, 100), tau=0.6, nt=10000),
+            runner=RunnerConfig(save_interval=1000),
+        )
+        sim = Run(bundle)
+        sim.run()
+
+    Example — multiphase::
+
+        bundle = SimulationBundle(
+            simulation=MultiphaseConfig(
+                grid_shape=(401, 101), tau=0.99, kappa=0.017,
+                rho_l=1.0, rho_v=0.33, interface_width=4,
+                force_enabled=True, force_obj=[gravity],
+                bc_config=bc_config,
+            ),
+            runner=RunnerConfig(save_interval=2000, init_type="wetting"),
+        )
+
+    Attributes:
+        simulation: Physics configuration (SinglePhaseConfig or MultiphaseConfig).
+        runner: Runner/IO configuration.
+    """
+
+    simulation: SimulationConfig
+    runner: RunnerConfig = field(default_factory=RunnerConfig)
+
+    @property
+    def is_multiphase(self) -> bool:
+        """Whether this is a multiphase simulation."""
+        return isinstance(self.simulation, MultiphaseConfig)
+
+    @property
+    def is_single_phase(self) -> bool:
+        """Whether this is a single-phase simulation."""
+        return isinstance(self.simulation, SinglePhaseConfig)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the entire bundle to a flat dictionary.
+
+        Merges simulation and runner configs into a single dict,
+        adding a ``simulation_type`` key for backward-compatibility.
+        """
+        sim_dict = asdict(self.simulation)
+        runner_dict = asdict(self.runner)
+
+        # Merge extra into main dict
+        extra = sim_dict.pop("extra", {})
+        sim_dict.update(extra)
+
+        # Add simulation_type for backward-compatibility
+        if self.is_multiphase:
+            sim_dict["simulation_type"] = "multiphase"
+        else:
+            sim_dict["simulation_type"] = "single_phase"
+
+        # Runner keys go into the same flat dict
+        sim_dict.update(runner_dict)
+        return sim_dict
+
+    def __repr__(self) -> str:
+        sim_type = "multiphase" if self.is_multiphase else "single_phase"
+        return (
+            f"SimulationBundle(\n"
+            f"  type={sim_type},\n"
+            f"  simulation={self.simulation!r},\n"
+            f"  runner={self.runner!r},\n"
+            f")"
+        )
 
