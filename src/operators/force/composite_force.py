@@ -1,7 +1,7 @@
 # TODO: I want the composite force to pass whatever is required, I think this should be done with kwargs.
 
 import jax.numpy as jnp
-from src.operators.force.force import Force
+from operators.force.force_base import Force
 
 
 class CompositeForce(Force):

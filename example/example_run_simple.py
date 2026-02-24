@@ -1,33 +1,33 @@
-import numpy as np
-from src.core import Run
-from src.util import visualise
-import jax
+from config import configure_jax, SimulationBundle, SinglePhaseConfig, RunnerConfig
 
-# this line is added for debugging
-# jax.config.update("jax_disable_jit", True)
-# Force double precision
-jax.config.update("jax_enable_x64", True)
+from core import Run
+from util import visualise
 
+# Configure JAX settings from central config
+# To enable debugging (disable JIT), set DISABLE_JIT = True in config/jax_config.py
+configure_jax()
 
 
 def test_single_phase_simulation():
-    """Test a single-phase LBM simulation with gravity."""
+    """Test a single-phase LBM simulation."""
     print("\n=== Single-Phase LBM Simulation ===")
 
-    grid_shape = (100, 100)
-    tau = .6
-    nt = 10000
-    save_interval = 1000
-
-    sim = Run(
-        simulation_type="singlephase",
-        grid_shape=grid_shape,
-        lattice_type="D2Q9",
-        tau=tau,
-        nt=nt,
-        save_interval=save_interval,
-        init_type="standard"
+    # Create simulation bundle - modular configuration object
+    bundle = SimulationBundle(
+        simulation=SinglePhaseConfig(
+            grid_shape=(100, 100),
+            lattice_type="D2Q9",
+            tau=0.6,
+            nt=10000,
+        ),
+        runner=RunnerConfig(
+            save_interval=1000,
+            init_type="standard",
+        ),
     )
+
+    # Run simulation
+    sim = Run(bundle)
     sim.run(verbose=True)
     return sim
 

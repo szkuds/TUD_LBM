@@ -1,11 +1,14 @@
 from functools import partial
+from typing import TYPE_CHECKING, Optional
 
 import jax.numpy as jnp
 from jax import jit
 
-from src.core.lattice.lattice import Lattice
-from src.core.grid.grid import Grid
 from .macroscopic_multiphase_dw import MacroscopicMultiphaseDW
+
+if TYPE_CHECKING:
+    from domain.lattice import Lattice
+    from domain.grid import Grid
 
 
 class MacroscopicMultiphaseCS(MacroscopicMultiphaseDW):
@@ -16,22 +19,23 @@ class MacroscopicMultiphaseCS(MacroscopicMultiphaseDW):
 
     def __init__(
         self,
-        grid: Grid,
-        lattice: Lattice,
-        kappa: float,
-        interface_width: int,
-        rho_l: float,
-        rho_v: float,
+        *,
+        grid: Optional["Grid"] = None,
+        lattice: Optional["Lattice"] = None,
+        kappa: Optional[float] = None,
+        interface_width: Optional[int] = None,
+        rho_l: Optional[float] = None,
+        rho_v: Optional[float] = None,
         a_eos: float,
         b_eos: float,
         r_eos: float,
         t_eos: float,
-
         force_enabled: bool = False,
-        bc_config: dict = None,
+        bc_config: Optional[dict] = None,
     ):
         super().__init__(
-            grid, lattice, kappa, interface_width, rho_l, rho_v, force_enabled=force_enabled, bc_config=bc_config
+            grid=grid, lattice=lattice, kappa=kappa, interface_width=interface_width,
+            rho_l=rho_l, rho_v=rho_v, force_enabled=force_enabled, bc_config=bc_config
         )
         self.a_eos = a_eos
         self.b_eos = b_eos

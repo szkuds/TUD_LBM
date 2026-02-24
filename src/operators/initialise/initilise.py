@@ -1,22 +1,41 @@
+from typing import TYPE_CHECKING
+
 import jax.numpy as jnp
 import numpy as np
 import os
-from src.core.lattice.lattice import Lattice
-from src.core.grid.grid import Grid
-from src.operators.equilibrium import Equilibrium
+
+from operators.equilibrium import EquilibriumWB
+
+if TYPE_CHECKING:
+    from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
 class Initialise:
     """
     Handles the initialisation of the simulation for various scenarios.
+
+    Usage:
+        Initialise(config=simulation_config)
     """
 
-    def __init__(self, grid: Grid, lattice: Lattice, bubble: bool = False, g: float = None, rho_ref: float = None):
+    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
+        """
+        Initialize the Initialise operator.
+
+        Args:
+            config: Configuration object containing all simulation parameters.
+        """
+        from domain.grid import Grid
+        from domain.lattice import Lattice
+
+        grid = Grid(config.grid_shape)
+        lattice = Lattice(config.lattice_type)
+
         self.grid = grid
         self.lattice = lattice
         self.nx, self.ny = grid.nx, grid.ny
         self.q = self.lattice.q
-        self.equilibrium = Equilibrium(self.grid, self.lattice)
+        self.equilibrium = EquilibriumWB(config)
 
     def initialise_standard(
             self, density: float = 1.0, velocity: np.ndarray = np.array([0.0, 0.0])

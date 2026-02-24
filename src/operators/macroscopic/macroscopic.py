@@ -1,29 +1,41 @@
 from functools import partial
+from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
 from jax import jit, Array
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.core.grid.grid import Grid
-    from src.core.lattice.lattice import Lattice
+    from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
 class Macroscopic:
     """
     Calculates the macroscopic density and velocity fields from the population distribution.
+
+    Usage:
+        Macroscopic(config=simulation_config)
     """
 
-    def __init__(
-        self, grid: "Grid", lattice: "Lattice", force_enabled: bool = False
-    ) -> None:
+    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
+        """
+        Initialize the Macroscopic operator.
+
+        Args:
+            config: Configuration object containing all simulation parameters.
+        """
+        from domain.grid import Grid
+        from domain.lattice import Lattice
+
+        grid = Grid(config.grid_shape)
+        lattice = Lattice(config.lattice_type)
+
         self.nx: int = grid.nx
         self.ny: int = grid.ny
         self.q: int = lattice.q
         self.d: int = lattice.d
         self.cx: jnp.ndarray = jnp.array(lattice.c[0])
         self.cy: jnp.ndarray = jnp.array(lattice.c[1])
-        self.force_enabled = force_enabled
+        self.force_enabled = config.force_enabled
 
     @partial(jit, static_argnums=(0,))
     def __call__(

@@ -1,0 +1,37 @@
+# TUD-LBM Simple Single-Phase Simulation Configuration
+#
+# NOTE: Config file loading requires an adapter (coming soon).
+# For now, use the Python API:
+#
+#   from config import SimulationBundle, SinglePhaseConfig, RunnerConfig
+#   from core import Run
+#
+#   bundle = SimulationBundle(
+#       simulation=SinglePhaseConfig(
+#           grid_shape=(100, 100),
+#           lattice_type="D2Q9",
+#           tau=0.6,
+#           nt=10000,
+#       ),
+#       runner=RunnerConfig(
+#           save_interval=1000,
+#           init_type="standard",
+#       ),
+#   )
+#   sim = Run(bundle)
+#   sim.run()
+
+[simulation]
+simulation_name = 'Test simple simulation'
+type = "single_phase"
+grid_shape = [100, 100]
+lattice_type = "D2Q9"
+tau = 0.6
+nt = 10000
+save_interval = 1000
+init_type = "standard"
+
+[output]
+results_dir = "~/TUD_LBM_data/results"
+# Optionally specify which fields to save (default: rho, u)
+# fields = ["rho", "u"]

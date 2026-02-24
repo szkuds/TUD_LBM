@@ -1,14 +1,15 @@
 from functools import partial
+from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
 from jax import jit
 
-from src.core.lattice.lattice import Lattice
-from src.core.grid.grid import Grid
-from src.operators.differential import Gradient, Laplacian
-from src.operators.wetting import determine_padding_modes
+from operators.differential import Gradient, Laplacian
+from operators.wetting import determine_padding_modes
 from .macroscopic import Macroscopic
 
+if TYPE_CHECKING:
+    from config.simulation_config import MultiphaseConfig
 
 
 class MacroscopicMultiphaseDW(Macroscopic):
@@ -16,29 +17,31 @@ class MacroscopicMultiphaseDW(Macroscopic):
     Calculates macroscopic variables for multiphase simulations.
     Inherits from Macroscopic and adds multiphase-specific methods.
     This is the double well implementation.
+
+    Usage:
+        MacroscopicMultiphaseDW(config=multiphase_config)
     """
 
-    def __init__(
-        self,
-        grid: Grid,
-        lattice: Lattice,
-        kappa: float,
-        interface_width: int,
-        rho_l: float,
-        rho_v: float,
-        force_enabled: bool = False,
-        bc_config: dict = None,
-    ):
-        super().__init__(
-            grid, lattice, force_enabled=force_enabled
-        )
-        self.kappa = kappa
-        self.rho_l = rho_l
-        self.rho_v = rho_v
-        self.bc_config = bc_config
-        self.gradient = Gradient(lattice, bc_config=bc_config)
-        self.laplacian = Laplacian(lattice, bc_config=bc_config)
-        self.beta = 8 * kappa / (float(interface_width) ** 2 * (rho_l - rho_v) ** 2)
+    def __init__(self, config: "MultiphaseConfig") -> None:
+        """
+        Initialize the MacroscopicMultiphaseDW operator.
+
+        Args:
+            config: MultiphaseConfig object containing all simulation parameters.
+        """
+        from domain.lattice import Lattice
+
+        super().__init__(config)
+        lattice = Lattice(config.lattice_type)
+
+        self.kappa = config.kappa
+        self.rho_l = config.rho_l
+        self.rho_v = config.rho_v
+        self.bc_config = config.bc_config
+        self.interface_width = config.interface_width
+        self.gradient = Gradient(config)
+        self.laplacian = Laplacian(config)
+        self.beta = 8 * config.kappa / (float(config.interface_width) ** 2 * (config.rho_l - config.rho_v) ** 2)
 
     @partial(jit, static_argnums=(0,))
     def __call__(
