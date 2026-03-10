@@ -1,6 +1,7 @@
 import inspect
 from abc import ABC, abstractmethod
-
+from typing import Dict
+import numpy as np
 
 class OutputWriter(ABC):
 
@@ -34,8 +35,8 @@ class OutputWriter(ABC):
 
 
     @abstractmethod
-    def write_output(self, **fields) -> None:
+    def save_data_step(self, iteration: int, data: Dict[str, np.ndarray]) -> None:
         """
-        Write output data.
+        Save output data for a specific iteration.
         """
         pass

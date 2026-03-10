@@ -1,12 +1,14 @@
 import json
 import jax.numpy as jnp
 from typing import Dict
+from types import MethodType
 import numpy as np
 from datetime import datetime
 import os
 import logging
 import sys
 
+from .output_data import output_writers
 
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -50,6 +52,8 @@ class SimulationIO:
 
         if config:
             self.save_config(config)
+
+        self.save_data_step = MethodType(output_writers["vtk"].save_data_step, self)
 
     def _setup_logging(self) -> None:
         """
@@ -117,8 +121,3 @@ class SimulationIO:
         with open(config_path, "w") as f:
             json.dump(config, f, indent=4, cls=CustomJSONEncoder)
         print(f"Configuration saved to {config_path}")
-
-    def save_data_step(self, iteration: int, data: Dict[str, np.ndarray]):
-        """Saves the data for a single timestep to a compressed .npz file."""
-        filename = os.path.join(self.data_dir, f"timestep_{iteration}.npz")
-        np.savez(filename, **data)
