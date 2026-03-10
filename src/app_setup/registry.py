@@ -27,9 +27,26 @@ Usage::
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, TypeVar, Type, Dict
+from typing import Callable, Literal, TypeVar, Type, Dict
 
 T = TypeVar("T")
+
+
+# Every operator category that the framework recognises.
+# Add new entries here when introducing a new operator kind.
+OperatorKind = Literal[
+    "boundary_condition",
+    "collision_models",
+    "differential",
+    "equilibrium",
+    "force",
+    "initialise",
+    "macroscopic",
+    "simulation_type",
+    "stream",
+    "update_timestep",
+    "wetting",
+]
 
 
 @dataclass(frozen=True)
@@ -37,7 +54,7 @@ class OperatorEntry:
     """A single entry in the global operator registry."""
 
     name: str
-    kind: str  # e.g. "collision_models", "force", "macroscopic", "simulation_type", …
+    kind: OperatorKind
     cls: Type
 
 
@@ -45,7 +62,7 @@ class OperatorEntry:
 OPERATOR_REGISTRY: Dict[str, OperatorEntry] = {}
 
 
-def register_operator(kind: str) -> Callable[[Type[T]], Type[T]]:
+def register_operator(kind: OperatorKind) -> Callable[[Type[T]], Type[T]]:
     """Class decorator to register an operator in the global registry.
 
     The decorated class **must** define a ``name`` class attribute.
@@ -82,7 +99,7 @@ def register_operator(kind: str) -> Callable[[Type[T]], Type[T]]:
     return decorator
 
 
-def get_operators(kind: str) -> Dict[str, OperatorEntry]:
+def get_operators(kind: OperatorKind) -> Dict[str, OperatorEntry]:
     """Return all simulation_operators of a given kind, indexed by operator name.
 
     Args:
@@ -103,4 +120,36 @@ def get_operators(kind: str) -> Dict[str, OperatorEntry]:
         for key, entry in OPERATOR_REGISTRY.items()
         if key.startswith(prefix)
     }
+
+
+def get_operator_names(kind: OperatorKind) -> set[str]:
+    """Return the set of registered operator names for a given kind.
+
+    Args:
+        kind: The operator category to query, e.g. ``"boundary_condition"``.
+
+    Returns:
+        A set of operator name strings.
+
+    Example::
+
+        names = get_operator_names("boundary_condition")
+        # {"bounce-back", "symmetry", "periodic", "standard", "wetting"}
+    """
+    return set(get_operators(kind).keys())
+
+
+def get_registered_kinds() -> set[str]:
+    """Return the set of all operator kinds present in the registry.
+
+    Returns:
+        A set of kind strings, e.g. ``{"collision_models", "force", ...}``.
+
+    Example::
+
+        kinds = get_registered_kinds()
+        # {"boundary_condition", "collision_models", "force", ...}
+    """
+    return {entry.kind for entry in OPERATOR_REGISTRY.values()}
+
 

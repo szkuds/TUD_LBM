@@ -20,20 +20,22 @@ class WettingParameters(NamedTuple):
 
 
 def determine_padding_modes(bc_config):
+    # bc_config is guaranteed non-None by SimulationConfig.__post_init__
+    # (defaults to periodic on all edges).  Defensive fallback retained.
+    pad_mode = ['wrap', 'wrap', 'wrap', 'wrap']
     if not bc_config:
-        return ['wrap', 'wrap', 'wrap', 'wrap']
-    padmode = ['wrap', 'wrap', 'wrap', 'wrap']
+        return pad_mode
     for edge, bc_type in bc_config.items():
         if bc_type in ['symmetry', 'bounce-back', 'wetting']:
             if edge == 'bottom':
-                padmode[0] = 'edge'
+                pad_mode[0] = 'edge'
             elif edge == 'right':
-                padmode[1] = 'edge'
+                pad_mode[1] = 'edge'
             elif edge == 'top':
-                padmode[2] = 'edge'
+                pad_mode[2] = 'edge'
             elif edge == 'left':
-                padmode[3] = 'edge'
-    return padmode
+                pad_mode[3] = 'edge'
+    return pad_mode
 
 
 def has_wetting_bc(bc_config):

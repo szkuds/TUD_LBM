@@ -1,178 +1,134 @@
+"""Composite boundary condition operator.
+
+The ``BoundaryCondition`` class (registered as ``"standard"``) is a thin
+dispatcher that applies the correct per-edge BC operator in sequence.
+It inspects ``bc_config`` at construction time, resolves the matching
+single-type operators from the **operator registry**, and chains their
+``__call__`` methods.  No hardcoded type map is needed.
+"""
+
+from __future__ import annotations
+
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Tuple
 
 import jax.numpy as jnp
 from jax import jit
 
-from app_setup.registry import register_operator
+from app_setup.registry import register_operator, get_operators
+from .base import BoundaryConditionBase
 
 if TYPE_CHECKING:
-    from app_setup.simulation_config import SinglePhaseConfig, MultiphaseConfig
+    from app_setup.simulation_setup import SimulationSetup
 
 
 @register_operator("boundary_condition")
-class BoundaryCondition:
+class BoundaryCondition(BoundaryConditionBase):
+    """Composite boundary condition — dispatches per-edge to specialised operators.
+
+    Usage::
+
+        bc = BoundaryCondition.from_config(config)
+        # or (legacy):
+        bc = BoundaryCondition(config=config)
+
+    At construction the ``bc_config`` is inspected and one operator
+    instance is created for each *distinct* BC type present.  At
+    runtime ``__call__`` simply chains them.
+    """
+
     name = "standard"
-    """
-    Applies boundary conditions to the post-streaming distribution function.
-    Supports bounce-back, symmetry, and periodic BCs on specified grid edges.
-    Uses dynamic indices from Lattice class instead of hardcoding.
 
-    Usage:
-        BoundaryCondition(app_setup=simulation_config)
-    """
-
-    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
+    def __init__(self, config: "SimulationSetup | None" = None, **kwargs) -> None:
         """
-        Initialize the BoundaryCondition operator.
+        Initialize the composite BoundaryCondition operator.
 
         Args:
-            config: Configuration object containing all simulation_type parameters.
+            config: Configuration object containing all simulation parameters.
+            **kwargs: Forwarded to :class:`BoundaryConditionBase` when
+                      *config* is ``None`` (i.e. constructed via ``from_config``).
         """
-        from simulation_domain.grid import Grid
-        from simulation_domain.lattice import Lattice
+        if config is not None:
+            from simulation_domain.grid import Grid
+            from simulation_domain.lattice import Lattice
 
-        grid = Grid(config.grid_shape)
-        lattice = Lattice(config.lattice_type)
-        bc_config = config.bc_config
+            grid = Grid(config.grid_shape)
+            lattice = Lattice(config.lattice_type)
+            bc_config = config.bc_config
 
-        self.grid = grid
-        self.lattice = lattice
-        self.bc_config = bc_config
-        self.opp_indices = lattice.opp_indices
-        self.edges = grid.get_edges()
+            super().__init__(
+                bc_config=bc_config,
+                lattice=lattice,
+                grid=grid,
+                opp_indices=lattice.opp_indices,
+                edges=grid.get_edges(),
+            )
+            self._validate_bc_config(bc_config)
+        else:
+            super().__init__(**kwargs)
 
-        valid_edges = ['top', 'bottom', 'left', 'right']
-        valid_types = ['bounce-back', 'symmetry', 'periodic', 'wetting']
-        for edge, bc_type in bc_config.items():
-            # Skip wetting_params as it is not an edge boundary condition
-            if edge == 'wetting_params' or edge == 'hysteresis_params' or edge == 'chemical_step':
+        # Build per-type sub-operators
+        self._sub_operators: Tuple[BoundaryConditionBase, ...] = self._build_sub_operators()
+
+    # ------------------------------------------------------------------
+    # Internal: group edges by BC type and resolve from the registry
+    # ------------------------------------------------------------------
+
+    def _build_sub_operators(self) -> Tuple[BoundaryConditionBase, ...]:
+        """Create one sub-operator per distinct BC type in ``bc_config``.
+
+        BC types are resolved dynamically from the operator registry —
+        no hardcoded mapping is required.
+        """
+        if not self.bc_config:
+            return ()
+
+        valid_edges = self._get_valid_edges()
+
+        # Collect auxiliary (non-edge) keys from the config
+        auxiliary = {
+            k: v for k, v in self.bc_config.items()
+            if k not in valid_edges
+        }
+
+        # Group edge entries by their BC type
+        type_groups: Dict[str, Dict[str, str]] = {}
+        for key, bc_type in self.bc_config.items():
+            if key not in valid_edges:
                 continue
+            type_groups.setdefault(bc_type, {})[key] = bc_type
 
-            if edge not in valid_edges:
-                raise ValueError(f'Invalid edge: {edge}. Must be one of {valid_edges}.')
-            if bc_type not in valid_types:
-                raise ValueError(
-                    f'Invalid BC type: {bc_type}. Must be one of {valid_types}.'
-                )
+        # Resolve each type from the registry and instantiate
+        bc_ops = get_operators("boundary_condition")
+        operators: list[BoundaryConditionBase] = []
+
+        for bc_type, edge_subset in type_groups.items():
+            entry = bc_ops.get(bc_type)
+            if entry is None:
+                continue
+            # Merge auxiliary keys (wetting_params, etc.) into the
+            # per-type sub-config
+            filtered_config = {**auxiliary, **edge_subset}
+
+            op = entry.cls(
+                bc_config=filtered_config,
+                lattice=self.lattice,
+                grid=self.grid,
+                opp_indices=self.opp_indices,
+                edges=self.edges,
+            )
+            operators.append(op)
+
+        return tuple(operators)
+
+    # ------------------------------------------------------------------
+    # __call__ — chain sub-operators
+    # ------------------------------------------------------------------
 
     @partial(jit, static_argnums=(0,))
     def __call__(
         self, f_streamed: jnp.ndarray, f_collision: jnp.ndarray
     ) -> jnp.ndarray:
-        for edge, bc_type in self.bc_config.items():
-            if bc_type == 'bounce-back' or bc_type == 'wetting':
-                f_streamed = self._apply_bounce_back(f_streamed, f_collision, edge)
-            elif bc_type == 'symmetry':
-                f_streamed = self._apply_symmetry(f_streamed, f_collision, edge)
-            elif bc_type == 'periodic':
-                f_streamed = self._apply_periodic(f_streamed)
-        return f_streamed
-
-    @partial(jit, static_argnums=(0, 3))
-    def _apply_bounce_back(
-        self, f_streamed: jnp.ndarray, f_collision: jnp.ndarray, edge: str
-    ) -> jnp.ndarray:
-        lattice = self.lattice
-        if edge == 'bottom':
-            idx = 0
-            incoming_dirs = lattice.construct_top_indices
-            for i in incoming_dirs:
-                opp_i = self.opp_indices[i]
-                f_streamed = f_streamed.at[:, idx, i, 0].set(
-                    f_collision[:, idx, opp_i, 0]
-                )
-        elif edge == 'top':
-            idx = -1
-            incoming_dirs = lattice.construct_bottom_indices
-            for i in incoming_dirs:
-                opp_i = self.opp_indices[i]
-                f_streamed = f_streamed.at[:, idx, i, 0].set(
-                    f_collision[:, idx, opp_i, 0]
-                )
-        elif edge == 'left':
-            idx = 0
-            incoming_dirs = lattice.construct_right_indices
-            for i in incoming_dirs:
-                opp_i = self.opp_indices[i]
-                f_streamed = f_streamed.at[idx, :, i, 0].set(
-                    f_collision[idx, :, opp_i, 0]
-                )
-        elif edge == 'right':
-            idx = -1
-            incoming_dirs = lattice.construct_left_indices
-            for i in incoming_dirs:
-                opp_i = self.opp_indices[i]
-                f_streamed = f_streamed.at[idx, :, i, 0].set(
-                    f_collision[idx, :, opp_i, 0]
-                )
-        return f_streamed
-
-    @partial(jit, static_argnums=(0, 3))
-    def _apply_symmetry(
-        self, f_streamed: jnp.ndarray, f_collision: jnp.ndarray, edge: str
-    ) -> jnp.ndarray:
-        lattice = self.lattice
-        if edge == 'bottom':
-            idx = 0
-            top_dirs = lattice.construct_top_indices
-            bottom_dirs = lattice.construct_bottom_indices
-            diag_top_right = lattice.construct_top_indices[2]
-            diag_bottom_right = lattice.construct_bottom_indices[2]
-            diag_top_left = lattice.construct_top_indices[1]
-            diag_bottom_left = lattice.construct_bottom_indices[1]
-            f_streamed = f_streamed.at[:, idx, top_dirs[0], 0].set(
-                f_collision[:, idx, bottom_dirs[0], 0]
-            )
-            f_streamed = f_streamed.at[:, idx, diag_top_right, 0].set(
-                f_collision[:, idx, diag_bottom_right, 0]
-            )
-            f_streamed = f_streamed.at[:, idx, diag_top_left, 0].set(
-                f_collision[:, idx, diag_bottom_left, 0]
-            )
-        elif edge == 'top':
-            idx = -1
-            bottom_dirs = lattice.construct_bottom_indices
-            top_dirs = lattice.construct_top_indices
-            f_streamed = f_streamed.at[:, idx, bottom_dirs[0], 0].set(
-                f_collision[:, idx, top_dirs[0], 0]
-            )
-            f_streamed = f_streamed.at[:, idx, bottom_dirs[1], 0].set(
-                jnp.roll(f_collision[:, idx, top_dirs[1], 0], 1, axis=0)
-            )
-            f_streamed = f_streamed.at[:, idx, bottom_dirs[2], 0].set(
-                jnp.roll(f_collision[:, idx, top_dirs[2], 0], -1, axis=0)
-            )
-        elif edge == 'left':
-            idx = 0
-            right_dirs = lattice.construct_right_indices
-            left_dirs = lattice.construct_left_indices
-            f_streamed = f_streamed.at[idx, :, right_dirs[0], 0].set(
-                f_collision[idx, :, left_dirs[0], 0]
-            )
-            f_streamed = f_streamed.at[idx, :, right_dirs[1], 0].set(
-                f_collision[idx, :, left_dirs[1], 0]
-            )
-            f_streamed = f_streamed.at[idx, :, right_dirs[2], 0].set(
-                f_collision[idx, :, left_dirs[2], 0]
-            )
-        elif edge == 'right':
-            idx = -1
-            left_dirs = lattice.construct_left_indices
-            right_dirs = lattice.construct_right_indices
-            f_streamed = f_streamed.at[idx, :, left_dirs[0], 0].set(
-                f_collision[idx, :, right_dirs[0], 0]
-            )
-            f_streamed = f_streamed.at[idx, :, left_dirs[1], 0].set(
-                f_collision[idx, :, right_dirs[1], 0]
-            )
-            f_streamed = f_streamed.at[idx, :, left_dirs[2], 0].set(
-                f_collision[idx, :, right_dirs[2], 0]
-            )
-        return f_streamed
-
-    @partial(jit, static_argnums=(0,))
-    def _apply_periodic(self, f_streamed: jnp.ndarray) -> jnp.ndarray:
-        # For periodic boundaries, no additional transformation is needed
-        # The streaming step already handles periodicity correctly
+        for op in self._sub_operators:
+            f_streamed = op(f_streamed, f_collision)
         return f_streamed

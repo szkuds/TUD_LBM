@@ -10,7 +10,7 @@ from .macroscopic import Macroscopic
 from app_setup.registry import register_operator
 
 if TYPE_CHECKING:
-    from app_setup.simulation_config import MultiphaseConfig
+    from app_setup.simulation_setup import SimulationSetup
 
 
 @register_operator("macroscopic")
@@ -25,12 +25,12 @@ class MacroscopicMultiphaseDW(Macroscopic):
         MacroscopicMultiphaseDW(app_setup=multiphase_config)
     """
 
-    def __init__(self, config: "MultiphaseConfig") -> None:
+    def __init__(self, config: "SimulationSetup") -> None:
         """
         Initialize the MacroscopicMultiphaseDW operator.
 
         Args:
-            config: MultiphaseConfig object containing all simulation_type parameters.
+            config: SimulationSetup object containing all simulation_type parameters.
         """
         from simulation_domain.lattice import Lattice
 

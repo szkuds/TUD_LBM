@@ -6,7 +6,7 @@ from .collision_base import CollisionBase
 from app_setup.registry import register_operator
 
 if TYPE_CHECKING:
-    from app_setup.simulation_config import SinglePhaseConfig, MultiphaseConfig
+    from app_setup.simulation_setup import SimulationSetup
 
 
 @register_operator("collision_models")
@@ -20,7 +20,7 @@ class CollisionBGK(CollisionBase):
         CollisionBGK(app_setup=simulation_config)
     """
 
-    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
+    def __init__(self, config: "SimulationSetup") -> None:
         """
         Initialize the CollisionBGK operator.
 

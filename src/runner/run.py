@@ -7,7 +7,7 @@ Composes SimulationFactory, SimulationRunner, and SimulationIO.
 import inspect
 from typing import Optional
 
-from app_setup import SimulationBundle
+from app_setup import SimulationSetup
 from .simulation_factory import SimulationFactory
 from .simulation_runner import SimulationRunner
 
@@ -17,54 +17,52 @@ class Run:
     Entry point for running LBM simulations.
 
     Usage:
-        from app_setup import SimulationBundle, SinglePhaseConfig, RunnerConfig
+        from app_setup import SimulationSetup
         from runner import Run
 
-        bundle = SimulationBundle(
-            simulation_type=SinglePhaseConfig(
-                grid_shape=(100, 100),
-                tau=0.6,
-                nt=10000,
-            ),
-            runner=RunnerConfig(save_interval=1000),
+        setup = SimulationSetup(
+            grid_shape=(100, 100),
+            tau=0.6,
+            nt=10000,
+            save_interval=1000,
         )
-        sim = Run(bundle)
+        sim = Run(setup)
         sim.run(verbose=True)
 
     Args:
-        bundle: A SimulationBundle containing simulation_type and runner configs.
+        setup: A SimulationSetup containing all simulation parameters.
     """
 
-    def __init__(self, bundle: SimulationBundle):
-        if not isinstance(bundle, SimulationBundle):
+    def __init__(self, setup: SimulationSetup):
+        if not isinstance(setup, SimulationSetup):
             raise TypeError(
-                f"Expected SimulationBundle, got {type(bundle).__name__}. "
-                "Use SimulationBundle to configure your simulation_type."
+                f"Expected SimulationSetup, got {type(setup).__name__}. "
+                "Use SimulationSetup to configure your simulation."
             )
 
-        self.bundle = bundle
-        self.config = bundle.to_dict()
+        self.setup = setup
+        self.config = setup.to_dict()
 
-        # Infer simulation_type name if not provided
-        simulation_name = bundle.runner.simulation_name or self._infer_simulation_name()
+        # Infer simulation name if not provided
+        simulation_name = setup.simulation_name or self._infer_simulation_name()
 
-        # Create simulation_type via factory — pass the typed app_setup directly
-        self.simulation = SimulationFactory.create(bundle.simulation)
+        # Create simulation via factory
+        self.simulation = SimulationFactory.create(setup)
 
         # Setup IO
         from util import SimulationIO
         self.io_handler = SimulationIO(
-            base_dir=bundle.runner.results_dir,
+            base_dir=setup.results_dir,
             config=self.config,
             simulation_name=simulation_name,
         )
 
         # Create runner
-        self.runner = SimulationRunner(self.simulation, self.io_handler, bundle.runner)
+        self.runner = SimulationRunner(self.simulation, self.io_handler, setup)
 
     @staticmethod
     def _infer_simulation_name() -> Optional[str]:
-        """Auto-detect simulation_type name from calling function via stack inspection."""
+        """Auto-detect simulation name from calling function via stack inspection."""
         frame = inspect.currentframe()
         try:
             caller_frame = frame.f_back if frame else None
@@ -78,5 +76,5 @@ class Run:
         return None
 
     def run(self, *, verbose: bool = True):
-        """Run the simulation_type."""
+        """Run the simulation."""
         self.runner.run(verbose=verbose)

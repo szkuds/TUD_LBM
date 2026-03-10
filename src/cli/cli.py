@@ -1,17 +1,17 @@
 """Command-line interface for TUD-LBM simulations.
 
-NOTE: The CLI currently requires a app_setup file adapter to be implemented.
-For now, use the Python API directly with SimulationBundle.
+Example Python usage::
 
-Example Python usage:
-    from app_setup import SimulationBundle, SinglePhaseConfig, RunnerConfig
+    from app_setup import SimulationSetup
     from runner import Run
 
-    bundle = SimulationBundle(
-        simulation_type=SinglePhaseConfig(grid_shape=(100, 100), tau=0.6, nt=10000),
-        runner=RunnerConfig(save_interval=1000),
+    setup = SimulationSetup(
+        grid_shape=(100, 100),
+        tau=0.6,
+        nt=10000,
+        save_interval=1000,
     )
-    sim = Run(bundle)
+    sim = Run(setup)
     sim.run()
 """
 
@@ -25,23 +25,19 @@ from rich.prompt import Confirm
 from rich.prompt import Prompt
 from rich.table import Table
 
-from app_setup import (
-    SimulationBundle,
-    SinglePhaseConfig,
-    RunnerConfig,
-)
+from app_setup import SimulationSetup
 
 console = Console()
 
 
-def _prompt_missing(bundle: SimulationBundle) -> SimulationBundle:
+def _prompt_missing(setup: SimulationSetup) -> SimulationSetup:
     """Interactively prompt for missing optional configuration values.
 
     Args:
-        bundle: The SimulationBundle object
+        setup: The SimulationSetup object
 
     Returns:
-        Updated SimulationBundle (note: dataclass is mutable)
+        Updated SimulationSetup (note: dataclass is mutable)
     """
     console.print()
     console.print(Panel.fit(
@@ -49,48 +45,44 @@ def _prompt_missing(bundle: SimulationBundle) -> SimulationBundle:
         subtitle="Interactive Setup"
     ))
 
-    # For now, SimulationBundle has defaults, so prompts are optional
+    # For now, SimulationSetup has defaults, so prompts are optional
     # This can be expanded when adapter support is added
 
-    return bundle
+    return setup
 
 
-def _display_config_summary(bundle: SimulationBundle) -> None:
-    """Display a summary of the simulation_type configuration.
+def _display_config_summary(setup: SimulationSetup) -> None:
+    """Display a summary of the simulation configuration.
 
     Args:
-        bundle: The SimulationBundle object
+        setup: The SimulationSetup object
     """
     console.print()
-
-    sim = bundle.simulation
-    runner = bundle.runner
-    sim_type = "multiphase" if bundle.is_multiphase else "single_phase"
 
     table = Table(title="Simulation Configuration", show_header=True, header_style="bold magenta")
     table.add_column("Parameter", style="cyan", no_wrap=True)
     table.add_column("Value", style="green")
 
-    table.add_row("Simulation Type", sim_type)
-    table.add_row("Grid Shape", str(sim.grid_shape))
-    table.add_row("Lattice Type", sim.lattice_type)
-    table.add_row("Relaxation Time (τ)", str(sim.tau))
-    table.add_row("Time Steps", str(sim.nt))
-    table.add_row("Save Interval", str(runner.save_interval))
-    table.add_row("Results Directory", runner.results_dir)
-    if runner.save_fields:
-        table.add_row("Save Fields", ", ".join(runner.save_fields))
+    table.add_row("Simulation Type", setup.sim_type)
+    table.add_row("Grid Shape", str(setup.grid_shape))
+    table.add_row("Lattice Type", setup.lattice_type)
+    table.add_row("Relaxation Time (τ)", str(setup.tau))
+    table.add_row("Time Steps", str(setup.nt))
+    table.add_row("Save Interval", str(setup.save_interval))
+    table.add_row("Results Directory", setup.results_dir)
+    if setup.save_fields:
+        table.add_row("Save Fields", ", ".join(setup.save_fields))
 
     # Multiphase-specific parameters
-    if bundle.is_multiphase:
-        table.add_row("Kappa", str(sim.kappa))
-        table.add_row("Liquid Density", str(sim.rho_l))
-        table.add_row("Vapor Density", str(sim.rho_v))
-        table.add_row("Interface Width", str(sim.interface_width))
+    if setup.is_multiphase:
+        table.add_row("Kappa", str(setup.kappa))
+        table.add_row("Liquid Density", str(setup.rho_l))
+        table.add_row("Vapor Density", str(setup.rho_v))
+        table.add_row("Interface Width", str(setup.interface_width))
 
     # Force configuration
-    if sim.force_enabled and sim.force_obj:
-        force_list = sim.force_obj if isinstance(sim.force_obj, list) else [sim.force_obj]
+    if setup.force_enabled and setup.force_obj:
+        force_list = setup.force_obj if isinstance(setup.force_obj, list) else [setup.force_obj]
         force_names = [type(f).__name__ for f in force_list]
         table.add_row("Forces", ", ".join(force_names))
 
@@ -98,25 +90,25 @@ def _display_config_summary(bundle: SimulationBundle) -> None:
     console.print()
 
 
-def _run_simulation(bundle: SimulationBundle) -> object:
-    """Run the simulation_type with the given configuration.
+def _run_simulation(setup: SimulationSetup) -> object:
+    """Run the simulation with the given configuration.
 
     Args:
-        bundle: The SimulationBundle object
+        setup: The SimulationSetup object
 
     Returns:
-        The completed simulation_type instance
+        The completed simulation instance
     """
-    # Import here to avoid circular imports and allow JAX app_setup
+    # Import here to avoid circular imports and allow JAX config
     from app_setup import configure_jax
     configure_jax()
 
     from runner import Run
 
-    console.print("[bold green]Starting simulation_type...[/bold green]")
+    console.print("[bold green]Starting simulation...[/bold green]")
     console.print()
 
-    sim = Run(bundle)
+    sim = Run(setup)
     sim.run(verbose=True)
 
     return sim
@@ -126,7 +118,7 @@ def _open_paraview(results_dir: str) -> None:
     """Attempt to open ParaView with the results directory.
 
     Args:
-        results_dir: Path to the simulation_type results directory
+        results_dir: Path to the simulation results directory
     """
     import subprocess
     import shutil
@@ -152,7 +144,7 @@ def _open_paraview(results_dir: str) -> None:
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Parse app_setup and display summary without running simulation_type"
+    help="Parse config and display summary without running simulation"
 )
 @click.option(
     "--list-simulation_operators",
@@ -161,7 +153,7 @@ def _open_paraview(results_dir: str) -> None:
 )
 @click.version_option(package_name="tud_lbm")
 def main(config_path: str, no_prompt: bool, dry_run: bool, list_simulation_operators: bool) -> None:
-    """Run a TUD-LBM simulation_type.
+    """Run a TUD-LBM simulation.
 
     CONFIG_PATH is an optional path to a configuration file (.toml).
     If omitted, an interactive prompt collects parameters.
@@ -199,18 +191,18 @@ def main(config_path: str, no_prompt: bool, dry_run: bool, list_simulation_opera
 
     try:
         if config_path:
-            # ── Load app_setup file via adapter ─────────────────────────
+            # ── Load config file via adapter ─────────────────────────
             from app_setup import get_adapter
 
             console.print(
                 f"[cyan]Loading configuration from:[/cyan] {config_path}"
             )
             adapter = get_adapter(config_path)
-            bundle = adapter.load(config_path)
+            setup = adapter.load(config_path)
         else:
             # ── Interactive mode ─────────────────────────────────────
             console.print(
-                "[cyan]Interactive mode - creating default simulation_type app_setup[/cyan]"
+                "[cyan]Interactive mode - creating default simulation config[/cyan]"
             )
 
             grid_x = int(Prompt.ask("Grid size X", default="100"))
@@ -219,30 +211,28 @@ def main(config_path: str, no_prompt: bool, dry_run: bool, list_simulation_opera
             nt = int(Prompt.ask("Number of timesteps", default="1000"))
             save_interval = int(Prompt.ask("Save interval", default="100"))
 
-            bundle = SimulationBundle(
-                simulation=SinglePhaseConfig(
-                    grid_shape=(grid_x, grid_y),
-                    tau=tau,
-                    nt=nt,
-                ),
-                runner=RunnerConfig(save_interval=save_interval),
+            setup = SimulationSetup(
+                grid_shape=(grid_x, grid_y),
+                tau=tau,
+                nt=nt,
+                save_interval=save_interval,
             )
 
         # Display configuration summary
-        _display_config_summary(bundle)
+        _display_config_summary(setup)
 
         if dry_run:
-            console.print("[yellow]Dry run mode - simulation_type not started[/yellow]")
+            console.print("[yellow]Dry run mode - simulation not started[/yellow]")
             return
 
         # Confirm before running
         if not no_prompt:
-            if not Confirm.ask("[bold]Start simulation_type?[/bold]", default=True):
+            if not Confirm.ask("[bold]Start simulation?[/bold]", default=True):
                 console.print("[yellow]Simulation cancelled.[/yellow]")
                 return
 
-        # Run the simulation_type
-        sim = _run_simulation(bundle)
+        # Run the simulation
+        sim = _run_simulation(setup)
 
         console.print()
         console.print(Panel.fit(

@@ -6,13 +6,12 @@ from jax import jit
 
 from simulation_operators.force.source import SourceTerm
 from simulation_operators.stream import Streaming
-from simulation_operators.boundary_condition.boundary_condition import BoundaryCondition
 from simulation_operators.equilibrium.equilibrium_wb import EquilibriumWB
 from simulation_operators.macroscopic.macroscopic import Macroscopic
 from app_setup.registry import register_operator, get_operators
 
 if TYPE_CHECKING:
-    from app_setup.simulation_config import SinglePhaseConfig, MultiphaseConfig
+    from app_setup.simulation_setup import SimulationSetup
 
 
 @register_operator("update_timestep")
@@ -25,7 +24,7 @@ class Update(object):
         Update(app_setup=simulation_config)
     """
 
-    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
+    def __init__(self, config: "SimulationSetup") -> None:
         """
         Initialize the Update operator.
 
@@ -68,8 +67,11 @@ class Update(object):
         self.source_term = SourceTerm(config)
         self.streaming = Streaming(config)
 
+        # Resolve boundary condition from the registry
         if config.bc_config is not None:
-            self.boundary_condition = BoundaryCondition(config)
+            bc_ops = get_operators("boundary_condition")
+            bc_cls = bc_ops["standard"].cls
+            self.boundary_condition = bc_cls(config)
         else:
             self.boundary_condition = None
 

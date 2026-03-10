@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 
 if TYPE_CHECKING:
-    from app_setup.simulation_config import SinglePhaseConfig, MultiphaseConfig
+    from app_setup.simulation_setup import SimulationSetup
 
 
 class CollisionBase(ABC):
@@ -19,7 +19,7 @@ class CollisionBase(ABC):
         CollisionBGK(app_setup=simulation_config)
     """
 
-    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
+    def __init__(self, config: "SimulationSetup") -> None:
         """
         Initializes the grid and lattice parameters required for the collision_models step.
 

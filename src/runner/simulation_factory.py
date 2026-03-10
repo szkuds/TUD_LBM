@@ -1,45 +1,35 @@
-"""SimulationFactory — creates the right simulation_type from app_setup."""
+"""SimulationFactory — creates the right simulation from a SimulationSetup."""
 
 from typing import TYPE_CHECKING
 
 from app_setup.registry import get_operators
 
 if TYPE_CHECKING:
-    from app_setup.simulation_config import SimulationConfig
+    from app_setup.simulation_setup import SimulationSetup
 
 
 class SimulationFactory:
     """
-    Factory for creating simulation_type instances from typed app_setup dataclasses.
+    Factory for creating simulation instances from a SimulationSetup.
 
-    Uses the global operator registry to resolve simulation_type types.
+    Uses the global operator registry to resolve simulation types.
     """
 
     @staticmethod
-    def create(config: "SimulationConfig"):
+    def create(setup: "SimulationSetup"):
         """
-        Create a simulation_type instance from a typed app_setup dataclass.
+        Create a simulation instance from a SimulationSetup.
 
         Args:
-            config: A SinglePhaseConfig or MultiphaseConfig instance.
+            setup: A SimulationSetup instance.
 
         Returns:
-            A configured simulation_type instance.
+            A configured simulation instance.
         """
-        from app_setup.simulation_config import SinglePhaseConfig, MultiphaseConfig
-
-        # Ensure simulation_type classes are imported (triggers registration)
+        # Ensure simulation classes are imported (triggers registration)
         import simulation_type  # noqa: F401
 
-        if isinstance(config, SinglePhaseConfig):
-            sim_type = "single_phase"
-        elif isinstance(config, MultiphaseConfig):
-            sim_type = "multiphase"
-        else:
-            raise TypeError(
-                f"Expected SinglePhaseConfig or MultiphaseConfig, "
-                f"got {type(config).__name__}"
-            )
+        sim_type = setup.sim_type
 
         sim_ops = get_operators("simulation_type")
         try:
@@ -47,7 +37,6 @@ class SimulationFactory:
         except KeyError as exc:
             available = ", ".join(sorted(sim_ops.keys()))
             raise ValueError(
-                f"Unknown simulation_type type '{sim_type}'. Available: {available}"
+                f"Unknown simulation type '{sim_type}'. Available: {available}"
             ) from exc
-        return entry.cls(config)
-
+        return entry.cls(setup)

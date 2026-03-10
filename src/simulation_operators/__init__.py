@@ -28,7 +28,7 @@ Sub-packages:
     initialise: Field initialisation routines.
 """
 
-from .boundary_condition import BoundaryCondition
+from .boundary_condition import BoundaryConditionBase, BoundaryCondition, PeriodicBoundaryCondition
 from .collision_models import CollisionBGK, CollisionMRT
 from .equilibrium import EquilibriumWB
 from .differential import Laplacian, Gradient
@@ -36,4 +36,18 @@ from .macroscopic import Macroscopic, MacroscopicMultiphaseCS, MacroscopicMultip
 from .stream import Streaming
 from .wetting import ContactAngle, ContactLineLocation, determine_padding_modes, wetting_1d, apply_wetting_to_all_edges, has_wetting_bc, WettingParameters
 from .force import Force, CompositeForce, ElectricForce, GravityForceMultiphase, SourceTerm
-from .initialise import Initialise
+from .initialise import (
+    InitialisationBase,
+    Initialise,
+    StandardInitialisation,
+    InitialiseMultiphaseBubble,
+    InitialiseMultiphaseBubbleBot,
+    InitialiseMultiphaseBubbleBubble,
+    InitialiseMultiphaseDroplet,
+    InitialiseMultiphaseDropletTop,
+    InitialiseMultiphaseDropletVariableRadius,
+    InitialiseMultiphaseLateralBubble,
+    InitialiseWetting,
+    InitialiseWettingChemicalStep,
+    InitialiseFromFile,
+)

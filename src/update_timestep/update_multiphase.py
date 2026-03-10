@@ -9,7 +9,7 @@ from simulation_operators import MacroscopicMultiphaseCS
 from app_setup.registry import register_operator, get_operators
 
 if TYPE_CHECKING:
-    from app_setup.simulation_config import MultiphaseConfig
+    from app_setup.simulation_setup import SimulationSetup
 
 
 @register_operator("update_timestep")
@@ -22,12 +22,12 @@ class UpdateMultiphase(Update):
         UpdateMultiphase(app_setup=multiphase_config)
     """
 
-    def __init__(self, config: "MultiphaseConfig") -> None:
+    def __init__(self, config: "SimulationSetup") -> None:
         """
         Initialize the UpdateMultiphase operator.
 
         Args:
-            config: MultiphaseConfig object containing all simulation_type parameters.
+            config: SimulationSetup object containing all simulation_type parameters.
         """
         super().__init__(config)
 

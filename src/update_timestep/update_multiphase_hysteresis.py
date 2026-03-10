@@ -11,7 +11,7 @@ from .update_multiphase import UpdateMultiphase
 from app_setup.registry import register_operator
 
 if TYPE_CHECKING:
-    from app_setup.simulation_config import MultiphaseConfig
+    from app_setup.simulation_setup import SimulationSetup
 
 
 @register_operator("update_timestep")
@@ -25,12 +25,12 @@ class UpdateMultiphaseHysteresis(UpdateMultiphase):
         UpdateMultiphaseHysteresis(app_setup=multiphase_config)
     """
 
-    def __init__(self, config: "MultiphaseConfig") -> None:
+    def __init__(self, config: "SimulationSetup") -> None:
         """
-        Initialize the UpdateMultiphaseHysteresis operator.
+        Initialise the UpdateMultiphaseHysteresis operator.
 
         Args:
-            config: MultiphaseConfig object containing all simulation_type parameters.
+            config: SimulationSetup object containing all simulation_type parameters.
         """
         super().__init__(config)
 
@@ -454,7 +454,7 @@ class UpdateMultiphaseHysteresis(UpdateMultiphase):
 
     def _create_updated_macroscopic(self, params: WettingParameters):
         """Create new macroscopic operator with updated wetting parameters."""
-        from app_setup.simulation_config import MultiphaseConfig
+        from app_setup.simulation_setup import SimulationSetup
 
         new_wetting_params = {
             **self.macroscopic.bc_config.get('wetting_params', {}),
@@ -470,11 +470,13 @@ class UpdateMultiphaseHysteresis(UpdateMultiphase):
 
         # Create a modified app_setup with the new bc_config
         # We need to access the original app_setup stored during __init__
-        modified_config = MultiphaseConfig(
+        modified_config = SimulationSetup(
+            sim_type="multiphase",
             grid_shape=self.grid.shape,
             lattice_type=self.lattice.name,
             tau=self.tau,
             nt=1,  # Not used for macroscopic
+            eos=getattr(self.macroscopic, 'eos', 'double-well'),
             kappa=self.macroscopic.kappa,
             rho_l=self.macroscopic.rho_l,
             rho_v=self.macroscopic.rho_v,

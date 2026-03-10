@@ -1,14 +1,14 @@
 """Abstract base class for configuration file adapters.
 
 Each adapter reads a specific file format (TOML, YAML, JSON, …) and
-returns a :class:`SimulationBundle`.
+returns a :class:`SimulationSetup`.
 
 Use :func:`get_adapter` to obtain the right adapter for a given file path::
 
     from app_setup.adapter_base import get_adapter
 
     adapter = get_adapter("app_setup.toml")
-    bundle  = adapter.load("app_setup.toml")
+    setup   = adapter.load("app_setup.toml")
 """
 
 from __future__ import annotations
@@ -19,21 +19,21 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Tuple
 
 from app_setup.saving_config import FORCE_REGISTRY
-from app_setup.simulation_config import SimulationBundle
+from app_setup.simulation_setup import SimulationSetup
 
 
 class ConfigAdapter(ABC):
-    """Abstract adapter that converts a app_setup file into a SimulationBundle."""
+    """Abstract adapter that converts a config file into a SimulationSetup."""
 
     @abstractmethod
-    def load(self, path: str) -> SimulationBundle:
-        """Read *path* and return a fully-validated :class:`SimulationBundle`.
+    def load(self, path: str) -> SimulationSetup:
+        """Read *path* and return a fully-validated :class:`SimulationSetup`.
 
         Args:
             path: Filesystem path to the configuration file.
 
         Returns:
-            A :class:`SimulationBundle` ready to be passed to :class:`Run`.
+            A :class:`SimulationSetup` ready to be passed to :class:`Run`.
 
         Raises:
             FileNotFoundError: If *path* does not exist.

@@ -5,9 +5,9 @@ import jax.numpy as jnp
 
 from .base import BaseSimulation
 from update_timestep import UpdateMultiphase, UpdateMultiphaseHysteresis
-from simulation_operators import Initialise, CompositeForce
+from simulation_operators import CompositeForce
 from runner.step_result import StepResult
-from app_setup.simulation_config import MultiphaseConfig
+from app_setup.simulation_setup import SimulationSetup
 from app_setup.registry import register_operator
 
 
@@ -18,12 +18,12 @@ class MultiphaseSimulation(BaseSimulation):
     Multiphase (two-phase) LBM simulation_type.
 
     Args:
-        app_setup: A MultiphaseConfig dataclass with all simulation_type parameters.
+        app_setup: A SimulationSetup dataclass with all simulation_type parameters.
     """
 
-    def __init__(self, config: MultiphaseConfig):
-        if not isinstance(config, MultiphaseConfig):
-            raise TypeError(f"app_setup must be MultiphaseConfig, got {type(config)}")
+    def __init__(self, config: SimulationSetup):
+        if not isinstance(config, SimulationSetup):
+            raise TypeError(f"config must be SimulationSetup, got {type(config)}")
 
         super().__init__(config.grid_shape, config.lattice_type, config.tau, config.nt)
 
@@ -45,62 +45,36 @@ class MultiphaseSimulation(BaseSimulation):
         self.optional = config.extra
 
         self.update = None
-        self.initialise = None
         self.macroscopic = None
+        self.boundary_condition = None
         self.multiphase = True
         self.setup_operators()
 
     def setup_operators(self):
-        self.wetting_enabled = any(bc_type == 'wetting' for bc_type in (self.bc_config or {}).values())
-        self.initialise = Initialise(self.config)
+        self.wetting_enabled = any(
+            bc_type == 'wetting'
+            for bc_type in (self.bc_config or {}).values()
+        )
         if self.bc_config and "hysteresis_params" in self.bc_config:
             self.update = UpdateMultiphaseHysteresis(self.config)
         else:
             self.update = UpdateMultiphase(self.config)
         self.macroscopic = self.update.macroscopic
+        self.boundary_condition = self._make_boundary_condition(self.config)
 
     def initialise_fields(self, init_type="multiphase_droplet", *, init_dir=None):
+        initialiser = self._make_initialiser(init_type, self.config)
         if init_type == "init_from_file":
             if init_dir is None:
                 raise ValueError(
                     "init_from_file requires init_dir pointing to a .npz file"
                 )
-            return self.initialise.init_from_npz(init_dir)
-
-        elif init_type == "multiphase_droplet":
-            return self.initialise.initialise_multiphase_droplet(
-                self.rho_l, self.rho_v, self.interface_width
-            )
-        elif init_type == "multiphase_bubble":
-            return self.initialise.initialise_multiphase_bubble(
-                self.rho_l, self.rho_v, self.interface_width
-            )
-        elif init_type == "multiphase_droplet_top":
-            return self.initialise.initialise_multiphase_droplet_top(
-                self.rho_l, self.rho_v, self.interface_width
-            )
-        elif init_type == "multiphase_bubble_bot":
-            return self.initialise.initialise_multiphase_bubble_bot(
-                self.rho_l, self.rho_v, self.interface_width
-            )
-        elif init_type == "multiphase_bubble_bubble":
-            return self.initialise.initialise_multiphase_bubble_bubble(
-                self.rho_l, self.rho_v, self.interface_width
-            )
-        elif init_type == "multiphase_lateral_bubble_configuration":
-            return self.initialise.initialise_multiphase_lateral_bubble_configuration(
-                self.rho_l, self.rho_v, self.interface_width
-            )
-        elif init_type == "wetting_chem_step":
-            return self.initialise.initialise_wetting_chemical_step(
-                self.rho_l, self.rho_v, self.interface_width
-            )
-        elif init_type == "wetting":
-            return self.initialise.initialise_wetting(
-                self.rho_l, self.rho_v, self.interface_width
-            )
-        else:
-            return self.initialise.initialise_standard()
+            return initialiser(npz_path=init_dir)
+        return initialiser(
+            rho_l=self.rho_l,
+            rho_v=self.rho_v,
+            interface_width=self.interface_width,
+        )
 
     @partial(jit, static_argnums=(0,))
     def run_timestep(self, f_prev, it, **kwargs):

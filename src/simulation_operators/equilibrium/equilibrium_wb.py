@@ -7,7 +7,7 @@ from jax import jit
 from app_setup.registry import register_operator
 
 if TYPE_CHECKING:
-    from app_setup.simulation_config import SinglePhaseConfig, MultiphaseConfig
+    from app_setup.simulation_setup import SimulationSetup
 
 
 @register_operator("equilibrium")
@@ -20,7 +20,7 @@ class EquilibriumWB:
         EquilibriumWB(app_setup=simulation_config)
     """
 
-    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
+    def __init__(self, config: "SimulationSetup") -> None:
         """
         Initialize the EquilibriumWB operator.
 

@@ -1,15 +1,15 @@
 """Simulation classes for LBM.
 
-Provides simulation_type containers that orchestrate the complete LBM workflow
+Provides simulation containers that orchestrate the complete LBM workflow
 including initialisation, time-stepping, and field management.
 
 Classes:
-    BaseSimulation: Abstract base class defining the simulation_type interface.
-    SinglePhaseSimulation: Single-phase flow simulation_type.
-    MultiphaseSimulation: Multiphase (two-phase) flow simulation_type.
+    BaseSimulation: Abstract base class defining the simulation interface.
+    SinglePhaseSimulation: Single-phase flow simulation.
+    MultiphaseSimulation: Multiphase (two-phase) flow simulation.
 
-Configuration dataclasses (import from app_setup module):
-    from app_setup import SinglePhaseConfig, MultiphaseConfig
+Configuration:
+    from app_setup import SimulationSetup
 """
 
 from .base import BaseSimulation

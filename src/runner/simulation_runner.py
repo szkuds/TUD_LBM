@@ -3,7 +3,7 @@
 import numpy as np
 import jax.numpy as jnp
 
-from app_setup.simulation_config import RunnerConfig
+from app_setup.simulation_setup import SimulationSetup
 from .step_result import StepResult
 
 
@@ -22,16 +22,16 @@ class SimulationRunner:
         self,
         simulation,
         io_handler,
-        runner_config: RunnerConfig,
+        setup: SimulationSetup,
     ):
         self.simulation = simulation
         self.io_handler = io_handler
-        self.runner_config = runner_config
-        self.init_type = runner_config.init_type
-        self.init_dir = runner_config.init_dir
-        self.save_interval = runner_config.save_interval
-        self.skip_interval = runner_config.skip_interval
-        self.save_fields = runner_config.save_fields
+        self.setup = setup
+        self.init_type = setup.init_type
+        self.init_dir = setup.init_dir
+        self.save_interval = setup.save_interval
+        self.skip_interval = setup.skip_interval
+        self.save_fields = setup.save_fields
 
     def _save_data(self, it: int, step_result: StepResult):
         """Save data from the StepResult."""

@@ -2,7 +2,15 @@
 
 import pytest
 
-from app_setup.registry import OPERATOR_REGISTRY, get_operators, register_operator, OperatorEntry
+from app_setup.registry import (
+    OPERATOR_REGISTRY,
+    OperatorEntry,
+    OperatorKind,
+    get_operator_names,
+    get_operators,
+    get_registered_kinds,
+    register_operator,
+)
 
 
 # Ensure all simulation_operators are imported (triggers registration)
@@ -56,10 +64,24 @@ class TestGetOperators:
     def test_get_boundary_condition_operators(self):
         bc_ops = get_operators("boundary_condition")
         assert "standard" in bc_ops
+        assert "periodic" in bc_ops
+        assert "bounce-back" in bc_ops
+        assert "symmetry" in bc_ops
+        assert "wetting" in bc_ops
 
     def test_get_initialise_operators(self):
         init_ops = get_operators("initialise")
         assert "standard" in init_ops
+        assert "multiphase_bubble" in init_ops
+        assert "multiphase_bubble_bot" in init_ops
+        assert "multiphase_bubble_bubble" in init_ops
+        assert "multiphase_droplet" in init_ops
+        assert "multiphase_droplet_top" in init_ops
+        assert "multiphase_droplet_variable_radius" in init_ops
+        assert "multiphase_lateral_bubble_configuration" in init_ops
+        assert "wetting" in init_ops
+        assert "wetting_chem_step" in init_ops
+        assert "init_from_file" in init_ops
 
     def test_get_differential_operators(self):
         diff_ops = get_operators("differential")
@@ -158,5 +180,60 @@ class TestRegistryIntegration:
         names = sorted(collision_ops.keys())
         assert isinstance(names, list)
         assert len(names) >= 2  # at least bgk, mrt
+
+    def test_get_boundary_condition_operators_contains_periodic(self):
+        bc_ops = get_operators("boundary_condition")
+        assert "periodic" in bc_ops
+        assert callable(bc_ops["periodic"].cls)
+
+    def test_get_initialise_operators_contains_standard(self):
+        init_ops = get_operators("initialise")
+        assert "standard" in init_ops
+        assert callable(init_ops["standard"].cls)
+
+
+class TestRegistryHelpers:
+    """Tests for get_operator_names, get_registered_kinds, and OperatorKind."""
+
+    def test_get_operator_names_returns_set(self):
+        names = get_operator_names("collision_models")
+        assert isinstance(names, set)
+        assert "bgk" in names
+        assert "mrt" in names
+
+    def test_get_operator_names_empty_for_unknown_kind(self):
+        names = get_operator_names("nonexistent_kind_xyz")
+        assert names == set()
+
+    def test_get_registered_kinds(self):
+        kinds = get_registered_kinds()
+        assert isinstance(kinds, set)
+        expected = {
+            "boundary_condition",
+            "collision_models",
+            "differential",
+            "equilibrium",
+            "force",
+            "initialise",
+            "macroscopic",
+            "simulation_type",
+            "stream",
+            "update_timestep",
+            "wetting",
+        }
+        assert expected.issubset(kinds), (
+            f"Missing kinds: {expected - kinds}"
+        )
+
+    def test_all_registered_kinds_in_operator_kind_literal(self):
+        """Every kind present in the registry should be listed in OperatorKind."""
+        import typing
+        allowed = set(typing.get_args(OperatorKind))
+        actual = get_registered_kinds()
+        # Filter out test-only kinds (prefixed with "_")
+        actual = {k for k in actual if not k.startswith("_")}
+        assert actual.issubset(allowed), (
+            f"Kinds in registry but not in OperatorKind Literal: {actual - allowed}"
+        )
 
 
