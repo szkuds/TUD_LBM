@@ -1,4 +1,4 @@
-from app_setup import configure_jax, SimulationBundle, MultiphaseConfig, RunnerConfig
+from app_setup import configure_jax, SimulationSetup, MultiphaseConfig, RunnerConfig
 
 from runner import Run
 from simulation_operators import GravityForceMultiphase

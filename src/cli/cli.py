@@ -160,7 +160,7 @@ def _open_paraview(results_dir: str) -> None:
     help="List all registered simulation_operators and exit"
 )
 @click.version_option(package_name="tud_lbm")
-def main(config_path: str, no_prompt: bool, dry_run: bool, list_operators: bool) -> None:
+def main(config_path: str, no_prompt: bool, dry_run: bool, list_simulation_operators: bool) -> None:
     """Run a TUD-LBM simulation_type.
 
     CONFIG_PATH is an optional path to a configuration file (.toml).
@@ -183,7 +183,7 @@ def main(config_path: str, no_prompt: bool, dry_run: bool, list_operators: bool)
     # Ensure all simulation_operators are imported so registrations are triggered
     import simulation_operators  # noqa: F401
 
-    if list_operators:
+    if list_simulation_operators:
         from app_setup.registry import OPERATOR_REGISTRY
         table = Table(title="Registered Operators", show_header=True, header_style="bold magenta")
         table.add_column("Kind", style="cyan", no_wrap=True)

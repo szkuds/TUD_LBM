@@ -3,7 +3,7 @@
 # NOTE: Config file loading requires an adapter (coming soon).
 # For now, use the Python API - see example/example_run_complex.py
 
-[simulation]
+[simulation_type]
 simulation_name = 'Test complex simulation'
 type = "multiphase"
 grid_shape = [401, 101]

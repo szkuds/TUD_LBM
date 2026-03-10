@@ -423,3 +423,4 @@ class TestExampleFiles:
         assert bundle.simulation.kappa == 0.017
         assert bundle.runner.save_interval == 2000
 
+

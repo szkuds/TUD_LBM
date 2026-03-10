@@ -21,7 +21,7 @@
 #   sim = Run(bundle)
 #   sim.run()
 
-[simulation]
+[simulation_type]
 simulation_name = 'Test simple simulation'
 type = "single_phase"
 grid_shape = [100, 100]
