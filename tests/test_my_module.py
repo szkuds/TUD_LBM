@@ -7,7 +7,7 @@ import pytest
 def test_package_imports():
     """
     Test that the tud_lbm package can be imported.
-    
+
     Given: tud_lbm package is installed
     When: attempting to import tud_lbm
     Then: import should succeed
@@ -19,14 +19,14 @@ def test_package_imports():
 @pytest.mark.skip(reason="Package initialization needs to be completed")
 def test_package_has_core_modules():
     """
-    Test that core modules exist in the package.
-    
+    Test that runner modules exist in the package.
+
     Given: tud_lbm package is imported
-    When: checking for core submodules
+    When: checking for runner submodules
     Then: should have expected submodules
     """
     import tud_lbm
-    
+
     # Verify package structure exists
     assert hasattr(tud_lbm, '__file__'), "Package should have __file__ attribute"
 

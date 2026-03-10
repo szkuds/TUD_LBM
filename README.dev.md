@@ -103,6 +103,28 @@ cd docs
 make doctest
 ```
 
+## Operator registry & architecture
+
+All operators (collision schemes, macroscopic solvers, forces, simulations, …) are registered in a **single global registry** at import time via `@register_operator`.  Adding a new operator requires only the decorator and a `name` class attribute — no factory, config, or CLI code changes.
+
+```python
+from app_setup.registry import register_operator
+
+
+@register_operator("collision_models")
+class CollisionTRT(CollisionBase):
+  name = "trt"
+  ...
+```
+
+For the full developer guide — including how to add config keys, where to place files, and how validation works — see **[`dev_notes/OperatorRegistry.md`](dev_notes/OperatorRegistry.md)**.
+
+You can list all registered operators from the command line:
+
+```shell
+tud-lbm --list-simulation_operators
+```
+
 ## Versioning
 
 Bumping the version across all files is done with [bump-my-version](https://github.com/callowayproject/bump-my-version), e.g.

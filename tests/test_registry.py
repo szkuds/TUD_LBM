@@ -2,20 +2,20 @@
 
 import pytest
 
-from registry import OPERATOR_REGISTRY, get_operators, register_operator, OperatorEntry
+from app_setup.registry import OPERATOR_REGISTRY, get_operators, register_operator, OperatorEntry
 
 
-# Ensure all operators are imported (triggers registration)
-import operators  # noqa: F401
-import simulation  # noqa: F401
-import update  # noqa: F401
+# Ensure all simulation_operators are imported (triggers registration)
+import simulation_operators  # noqa: F401
+import simulation_type  # noqa: F401
+import update_timestep  # noqa: F401
 
 
 class TestOperatorRegistry:
     """Tests for the global OPERATOR_REGISTRY dict."""
 
     def test_registry_is_populated(self):
-        """After importing operators, the registry should contain entries."""
+        """After importing simulation_operators, the registry should contain entries."""
         assert len(OPERATOR_REGISTRY) > 0
 
     def test_registry_entries_are_operator_entry(self):
@@ -35,10 +35,9 @@ class TestGetOperators:
     """Tests for the get_operators() function."""
 
     def test_get_collision_operators(self):
-        collision_ops = get_operators("collision")
+        collision_ops = get_operators("collision_models")
         assert "bgk" in collision_ops
         assert "mrt" in collision_ops
-        assert "source_term" in collision_ops
 
     def test_get_macroscopic_operators(self):
         macroscopic_ops = get_operators("macroscopic")
@@ -72,6 +71,7 @@ class TestGetOperators:
         assert "gravity_multiphase" in force_ops
         assert "electric" in force_ops
         assert "composite" in force_ops
+        assert "source_term" in force_ops
 
     def test_get_wetting_operators(self):
         wetting_ops = get_operators("wetting")
@@ -79,12 +79,12 @@ class TestGetOperators:
         assert "contact_line_location" in wetting_ops
 
     def test_get_simulation_operators(self):
-        sim_ops = get_operators("simulation")
+        sim_ops = get_operators("simulation_type")
         assert "single_phase" in sim_ops
         assert "multiphase" in sim_ops
 
     def test_get_update_operators(self):
-        update_ops = get_operators("update")
+        update_ops = get_operators("update_timestep")
         assert "single_phase" in update_ops
         assert "multiphase" in update_ops
         assert "multiphase_hysteresis" in update_ops
@@ -94,8 +94,8 @@ class TestGetOperators:
         assert ops == {}
 
     def test_operator_entry_cls_is_correct(self):
-        from operators.collision import CollisionBGK, CollisionMRT
-        collision_ops = get_operators("collision")
+        from simulation_operators.collision_models import CollisionBGK, CollisionMRT
+        collision_ops = get_operators("collision_models")
         assert collision_ops["bgk"].cls is CollisionBGK
         assert collision_ops["mrt"].cls is CollisionMRT
 
@@ -144,17 +144,17 @@ class TestRegistryIntegration:
     """Integration tests: verify registry-based lookups produce usable classes."""
 
     def test_collision_bgk_class_is_callable(self):
-        collision_ops = get_operators("collision")
+        collision_ops = get_operators("collision_models")
         bgk_cls = collision_ops["bgk"].cls
         assert callable(bgk_cls)
 
     def test_all_collision_names_are_strings(self):
-        collision_ops = get_operators("collision")
+        collision_ops = get_operators("collision_models")
         for name in collision_ops:
             assert isinstance(name, str)
 
     def test_sorted_collision_names(self):
-        collision_ops = get_operators("collision")
+        collision_ops = get_operators("collision_models")
         names = sorted(collision_ops.keys())
         assert isinstance(names, list)
         assert len(names) >= 2  # at least bgk, mrt

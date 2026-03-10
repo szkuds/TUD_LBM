@@ -17,9 +17,9 @@ import pytest
 # Ensure src/ is on the path so imports work from the tests/ directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from config.adapter_base import ConfigAdapter, get_adapter
-from config.adapter_toml import TomlAdapter
-from config.simulation_config import (
+from app_setup.adapter_base import ConfigAdapter, get_adapter
+from app_setup.adapter_toml import TomlAdapter
+from app_setup.simulation_config import (
     MultiphaseConfig,
     SimulationBundle,
     SinglePhaseConfig,
@@ -29,8 +29,8 @@ from config.simulation_config import (
 # ── Fixtures ─────────────────────────────────────────────────────────
 
 SIMPLE_TOML = textwrap.dedent("""\
-    [simulation]
-    simulation_name = "Test simple simulation"
+    [simulation_type]
+    simulation_name = "Test simple simulation_type"
     type = "single_phase"
     grid_shape = [100, 100]
     lattice_type = "D2Q9"
@@ -44,8 +44,8 @@ SIMPLE_TOML = textwrap.dedent("""\
 """)
 
 MULTIPHASE_TOML = textwrap.dedent("""\
-    [simulation]
-    simulation_name = "Test complex simulation"
+    [simulation_type]
+    simulation_name = "Test complex simulation_type"
     type = "multiphase"
     grid_shape = [401, 101]
     lattice_type = "D2Q9"
@@ -84,7 +84,7 @@ MULTIPHASE_TOML = textwrap.dedent("""\
 """)
 
 MULTIPHASE_WITH_FORCE_TOML = textwrap.dedent("""\
-    [simulation]
+    [simulation_type]
     type = "multiphase"
     grid_shape = [201, 101]
     tau = 0.99
@@ -107,7 +107,7 @@ MULTIPHASE_WITH_FORCE_TOML = textwrap.dedent("""\
 
 @pytest.fixture
 def simple_toml_file(tmp_path):
-    """Write a simple TOML config to a temp file and return its path."""
+    """Write a simple TOML app_setup to a temp file and return its path."""
     p = tmp_path / "config_simple.toml"
     p.write_text(SIMPLE_TOML)
     return str(p)
@@ -115,7 +115,7 @@ def simple_toml_file(tmp_path):
 
 @pytest.fixture
 def multiphase_toml_file(tmp_path):
-    """Write a multiphase TOML config (no forces) to a temp file."""
+    """Write a multiphase TOML app_setup (no forces) to a temp file."""
     p = tmp_path / "config_multiphase.toml"
     p.write_text(MULTIPHASE_TOML)
     return str(p)
@@ -123,7 +123,7 @@ def multiphase_toml_file(tmp_path):
 
 @pytest.fixture
 def multiphase_force_toml_file(tmp_path):
-    """Write a multiphase TOML config with forces to a temp file."""
+    """Write a multiphase TOML app_setup with forces to a temp file."""
     p = tmp_path / "config_force.toml"
     p.write_text(MULTIPHASE_WITH_FORCE_TOML)
     return str(p)
@@ -135,20 +135,20 @@ class TestGetAdapter:
     """Tests for the get_adapter factory function."""
 
     def test_toml_extension_returns_toml_adapter(self):
-        adapter = get_adapter("some/path/config.toml")
+        adapter = get_adapter("some/path/app_setup.toml")
         assert isinstance(adapter, TomlAdapter)
 
     def test_toml_extension_case_insensitive(self):
-        adapter = get_adapter("config.TOML")
+        adapter = get_adapter("app_setup.TOML")
         assert isinstance(adapter, TomlAdapter)
 
     def test_unsupported_extension_raises(self):
-        with pytest.raises(ValueError, match="Unsupported config file extension"):
-            get_adapter("config.yaml")
+        with pytest.raises(ValueError, match="Unsupported app_setup file extension"):
+            get_adapter("app_setup.yaml")
 
     def test_no_extension_raises(self):
-        with pytest.raises(ValueError, match="Unsupported config file extension"):
-            get_adapter("config")
+        with pytest.raises(ValueError, match="Unsupported app_setup file extension"):
+            get_adapter("app_setup")
 
 
 # ── TomlAdapter: simple single-phase ─────────────────────────────────
@@ -187,7 +187,7 @@ class TestTomlAdapterSimple:
         runner = bundle.runner
         assert runner.save_interval == 1000
         assert runner.init_type == "standard"
-        assert runner.simulation_name == "Test simple simulation"
+        assert runner.simulation_name == "Test simple simulation_type"
 
     def test_results_dir_expanded(self, simple_toml_file):
         bundle = TomlAdapter().load(simple_toml_file)
@@ -240,7 +240,7 @@ class TestTomlAdapterMultiphase:
         runner = bundle.runner
         assert runner.save_interval == 2000
         assert runner.init_type == "wetting"
-        assert runner.simulation_name == "Test complex simulation"
+        assert runner.simulation_name == "Test complex simulation_type"
 
     def test_boundary_conditions_parsed(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
@@ -316,29 +316,29 @@ class TestTomlAdapterErrors:
 
     def test_file_not_found(self):
         with pytest.raises(FileNotFoundError, match="Config file not found"):
-            TomlAdapter().load("/nonexistent/path/config.toml")
+            TomlAdapter().load("/nonexistent/path/app_setup.toml")
 
     def test_missing_simulation_table(self, tmp_path):
         p = tmp_path / "empty.toml"
         p.write_text("[output]\nresults_dir = '/tmp'\n")
-        with pytest.raises(ValueError, match="missing the required \\[simulation\\] table"):
+        with pytest.raises(ValueError, match="missing the required \\[simulation_type\\] table"):
             TomlAdapter().load(str(p))
 
     def test_unknown_simulation_type(self, tmp_path):
         content = textwrap.dedent("""\
-            [simulation]
+            [simulation_type]
             type = "unknown_type"
             grid_shape = [10, 10]
             tau = 0.6
         """)
         p = tmp_path / "bad_type.toml"
         p.write_text(content)
-        with pytest.raises(ValueError, match="Unknown simulation type"):
+        with pytest.raises(ValueError, match="Unknown simulation_type type"):
             TomlAdapter().load(str(p))
 
     def test_unknown_force_type_raises_key_error(self, tmp_path):
         content = textwrap.dedent("""\
-            [simulation]
+            [simulation_type]
             type = "multiphase"
             grid_shape = [10, 10]
             tau = 0.6
@@ -358,7 +358,7 @@ class TestTomlAdapterErrors:
 
     def test_invalid_tau_raises_validation_error(self, tmp_path):
         content = textwrap.dedent("""\
-            [simulation]
+            [simulation_type]
             type = "single_phase"
             grid_shape = [10, 10]
             tau = 0.3
@@ -406,7 +406,7 @@ class TestExampleFiles:
         assert bundle.simulation.grid_shape == (100, 100)
 
     def test_config_complex_loads_without_forces(self, example_dir):
-        """Load the complex config but mock force instantiation (needs JAX)."""
+        """Load the complex app_setup but mock force instantiation (needs JAX)."""
         path = os.path.join(example_dir, "config_complex.toml")
         if not os.path.exists(path):
             pytest.skip("example/config_complex.toml not found")

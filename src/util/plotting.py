@@ -15,18 +15,18 @@ else:
 
 
 def _load_config(run_dir: str) -> dict:
-    """Load simulation config from run directory.
+    """Load simulation_type app_setup from run directory.
 
     Tries TOML first, then falls back to JSON.
 
     Args:
-        run_dir: Path to the simulation run directory
+        run_dir: Path to the simulation_type run directory
 
     Returns:
         Configuration dictionary
     """
-    toml_path = os.path.join(run_dir, "config.toml")
-    json_path = os.path.join(run_dir, "config.json")
+    toml_path = os.path.join(run_dir, "app_setup.toml")
+    json_path = os.path.join(run_dir, "app_setup.json")
 
     # Try TOML first
     if os.path.exists(toml_path) and tomllib is not None:
@@ -34,8 +34,8 @@ def _load_config(run_dir: str) -> dict:
             config = tomllib.load(f)
         # Extract values from structured TOML format
         flat_config = {}
-        if "simulation" in config:
-            sim = config["simulation"]
+        if "simulation_type" in config:
+            sim = config["simulation_type"]
             if "type" in sim:
                 flat_config["simulation_type"] = sim["type"]
             flat_config.update({k: v for k, v in sim.items() if k != "type"})
@@ -52,19 +52,19 @@ def _load_config(run_dir: str) -> dict:
         with open(json_path, "r") as f:
             return json.load(f)
 
-    raise FileNotFoundError(f"No config file found in {run_dir}")
+    raise FileNotFoundError(f"No app_setup file found in {run_dir}")
 
 
-# TODO: Need to make a plotting config which will determine which plots are actually saved
+# TODO: Need to make a plotting app_setup which will determine which plots are actually saved
 
 
 def visualise(sim_instance, title="LBM Simulation Results"):
     """
-    Visualizes simulation results by loading and plotting every saved timestep.
+    Visualizes simulation_type results by loading and plotting every saved timestep.
     This version includes a vector plot overlay on the velocity magnitude heatmap.
 
     Args:
-        sim_instance: The completed simulation instance from the Run class.
+        sim_instance: The completed simulation_type instance from the Run class.
         title (str): The base title for the plots.
     """
     try:
@@ -109,12 +109,12 @@ def visualise(sim_instance, title="LBM Simulation Results"):
             else:
                 final_force_ext = None
 
-            # Initialize density profile y-index (mid-plane by default or config override)
+            # Initialize density profile y-index (mid-plane by default or app_setup override)
             if y_index is None:
                 ny = final_rho.shape[1]
                 y_index = sim_instance.config.get('density_profile_y', ny // 4)
 
-            # load the config (try TOML first, then JSON)
+            # load the app_setup (try TOML first, then JSON)
             config = _load_config(run_dir)
 
             # Calculate density ratio and determine scaling
@@ -262,8 +262,8 @@ def visualise(sim_instance, title="LBM Simulation Results"):
             plt.close(fig_dp)
             # ---- End density profile analysis (per timestep) ----
 
-        # ---- Combined simulation analysis plot ----
-        log_path = os.path.join(run_dir, "simulation.log")
+        # ---- Combined simulation_type analysis plot ----
+        log_path = os.path.join(run_dir, "simulation_type.log")
         iters_log = []
         umax_log = []
         avg_rho_log = []
@@ -289,9 +289,9 @@ def visualise(sim_instance, title="LBM Simulation Results"):
                                 avg_rho_log.append(avg_rho_val)
                                 umax_log.append(umax_val)
             except Exception as e:
-                print(f"Failed to parse simulation.log: {e}")
+                print(f"Failed to parse simulation_type.log: {e}")
         else:
-            print("simulation.log not found, skipping log-based plots.")
+            print("simulation_type.log not found, skipping log-based plots.")
 
         # Create combined figure with 3 subplots
         if iters_log and iter_nums:
@@ -322,8 +322,8 @@ def visualise(sim_instance, title="LBM Simulation Results"):
             analysis_path = os.path.join(plot_dir, "simulation_analysis.png")
             fig_analysis.savefig(analysis_path, dpi=150)
             plt.close(fig_analysis)
-            print(f"Combined simulation analysis plot saved to: {analysis_path}")
-        # ---- End combined simulation analysis ----
+            print(f"Combined simulation_type analysis plot saved to: {analysis_path}")
+        # ---- End combined simulation_type analysis ----
 
         print(f"Finished generating plots for all {len(files)} timesteps.")
     except ImportError:

@@ -1,11 +1,11 @@
-from config import configure_jax, SimulationBundle, MultiphaseConfig, RunnerConfig
+from app_setup import configure_jax, SimulationBundle, MultiphaseConfig, RunnerConfig
 
-from core import Run
-from operators import GravityForceMultiphase
+from runner import Run
+from simulation_operators import GravityForceMultiphase
 from util import visualise
 
-# Configure JAX settings from central config
-# To enable debugging (disable JIT), set DISABLE_JIT = True in config/jax_config.py
+# Configure JAX settings from central app_setup
+# To enable debugging (disable JIT), set DISABLE_JIT = True in app_setup/jax_config.py
 configure_jax()
 
 
@@ -22,7 +22,7 @@ def wetting_hysteresis_simulation_test():
         grid_shape=(201, 101),
     )
 
-    # Create simulation bundle - modular configuration object
+    # Create simulation_type bundle - modular configuration object
     bundle = SimulationBundle(
         simulation=MultiphaseConfig(
             grid_shape=(201, 101),
@@ -72,7 +72,7 @@ def wetting_hysteresis_simulation_test():
         ),
     )
 
-    # Run simulation
+    # Run simulation_type
     sim = Run(bundle)
     sim.run(verbose=True)
     return sim
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     print("Testing Multiphase LBM Codebase with Wetting Hysteresis")
     print("=" * 60)
 
-    # Run simulation
+    # Run simulation_type
     sim_wetting_hysteresis = wetting_hysteresis_simulation_test()
 
     # Visualize results

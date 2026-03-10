@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
   # Install via conda for best results
-  # See environment.yml for conda-based setup
+  # See environment.yml for conda-based app_setup
 ]
 description = "This is a lattice Boltzmann method package developed at Delft University of Technology."
 keywords = ["LBM"," TUD"," Delft University of Technology"]

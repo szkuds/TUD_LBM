@@ -6,10 +6,10 @@ import logging
 import sys
 import tomli_w
 
-from config import BASE_RESULTS_DIR
+from app_setup import BASE_RESULTS_DIR
 
 
-# Constants for TOML config file structure (used when saving config)
+# Constants for TOML app_setup file structure (used when saving app_setup)
 _TOML_SIMULATION_KEYS = [
     "simulation_type",
     "grid_shape",
@@ -39,7 +39,7 @@ _TOML_OUTPUT_KEYS = [
 
 class SimulationIO:
     """
-    Handles all I/O operations for the simulation, including logging and saving results.
+    Handles all I/O operations for the simulation_type, including logging and saving results.
     """
 
     def __init__(self, base_dir: str = BASE_RESULTS_DIR, config: Dict = None, simulation_name: str = None):
@@ -47,9 +47,9 @@ class SimulationIO:
         Initializes the IO handler.
 
         Args:
-            base_dir (str): The base directory to store simulation results.
-            config (Dict, optional): A dictionary containing the simulation configuration to save.
-            simulation_name (str, optional): Name of the simulation to include in the results directory.
+            base_dir (str): The base directory to store simulation_type results.
+            config (Dict, optional): A dictionary containing the simulation_type configuration to save.
+            simulation_name (str, optional): Name of the simulation_type to include in the results directory.
         """
         self.base_dir = os.path.expanduser(base_dir)
         self.simulation_name = simulation_name
@@ -65,11 +65,11 @@ class SimulationIO:
     def _setup_logging(self) -> None:
         """
         Configure root logger so everything printed to the console is
-        also written to <run_dir>/simulation.log. Existing handlers are
+        also written to <run_dir>/simulation_type.log. Existing handlers are
         cleared to avoid duplicate lines when multiple simulations run
         in the same Python interpreter (e.g. test suites).
         """
-        log_file = os.path.join(self.run_dir, "simulation.log")
+        log_file = os.path.join(self.run_dir, "simulation_type.log")
 
         # 1. Build handlers
         fmt = logging.Formatter(
@@ -107,7 +107,7 @@ class SimulationIO:
         sys.stderr = _Tee(sys.__stderr__, logfile_stream)  # capture tracebacks too
 
     def _create_timestamped_directory(self) -> str:
-        """Creates a unique, timestamped directory for a single simulation run."""
+        """Creates a unique, timestamped directory for a single simulation_type run."""
         timestamp = datetime.now().strftime("%Y-%m-%d/%H-%M-%S")
         if self.simulation_name:
             run_dir = os.path.join(self.base_dir, f"{timestamp}_{self.simulation_name}")
@@ -118,21 +118,21 @@ class SimulationIO:
         return run_dir
 
     def save_config(self, config: Dict):
-        """Saves the simulation configuration to a TOML file."""
+        """Saves the simulation_type configuration to a TOML file."""
         # Rename boundary condition details if present (avoids duplication)
         if "bc_config" in config:
             config["boundary_conditions"] = config.pop("bc_config")
 
         # Save TOML
         toml_config = self._restructure_for_toml(config)
-        toml_path = os.path.join(self.run_dir, "config.toml")
+        toml_path = os.path.join(self.run_dir, "app_setup.toml")
 
         with open(toml_path, "wb") as f:
             tomli_w.dump(toml_config, f)
         print(f"Configuration saved to {toml_path}")
 
     def _restructure_for_toml(self, config: Dict) -> Dict:
-        """Restructure flat config dict into TOML sections.
+        """Restructure flat app_setup dict into TOML sections.
 
         Args:
             config: Flat configuration dictionary
@@ -172,7 +172,7 @@ class SimulationIO:
                 else:
                     simulation[key] = val
         if simulation:
-            toml_cfg["simulation"] = simulation
+            toml_cfg["simulation_type"] = simulation
 
         # Multiphase section
         multiphase = {}

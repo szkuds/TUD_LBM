@@ -28,14 +28,14 @@ if not PROJECT_ROOT:
 
 
 class TestOptaxNotRequiredForCore:
-    """Tests that core functionality doesn't require optax."""
+    """Tests that runner functionality doesn't require optax."""
 
     def test_optax_not_in_core_dependencies(self):
         """
         Core dependencies do NOT include optax.
 
         Given: pyproject.toml exists
-        When: reading core dependencies
+        When: reading runner dependencies
         Then: optax should NOT appear in the dependencies list
         """
         import tomllib
@@ -52,7 +52,7 @@ class TestOptaxNotRequiredForCore:
         core_deps = pyproject.get('project', {}).get('dependencies', [])
         core_deps_str = ' '.join(str(d) for d in core_deps)
 
-        assert 'optax' not in core_deps_str.lower(), "optax should NOT be in core dependencies"
+        assert 'optax' not in core_deps_str.lower(), "optax should NOT be in runner dependencies"
 
 
     def test_core_dependencies_are_minimal(self):
@@ -60,8 +60,8 @@ class TestOptaxNotRequiredForCore:
         Core dependencies are minimal and focused.
 
         Given: pyproject.toml exists
-        When: reading core dependencies
-        Then: optax should NOT be in core dependencies
+        When: reading runner dependencies
+        Then: optax should NOT be in runner dependencies
         """
         import tomllib
 
@@ -77,10 +77,10 @@ class TestOptaxNotRequiredForCore:
         core_deps = pyproject.get('project', {}).get('dependencies', [])
         core_deps_str = ' '.join(str(d) for d in core_deps).lower()
 
-        # Primary check: optax should NOT be in core dependencies
-        assert 'optax' not in core_deps_str, "optax should not be in core (it's optional)"
+        # Primary check: optax should NOT be in runner dependencies
+        assert 'optax' not in core_deps_str, "optax should not be in runner (it's optional)"
 
-        # With conda setup, dependencies may be empty (managed by environment.yml)
+        # With conda app_setup, dependencies may be empty (managed by environment.yml)
         # so just verify that optax is not accidentally included
         assert True, "Core dependencies correctly exclude optax"
 
@@ -137,11 +137,11 @@ class TestEnvironmentConfiguration:
         Then: file should exist
         """
         env_file = os.path.join(PROJECT_ROOT, 'environment.yml')
-        assert os.path.exists(env_file), "environment.yml should exist for conda setup"
+        assert os.path.exists(env_file), "environment.yml should exist for conda app_setup"
 
     def test_environment_yml_contains_core_deps(self):
         """
-        Environment.yml contains core dependencies.
+        Environment.yml contains runner dependencies.
 
         Given: environment.yml exists
         When: reading the file
@@ -184,7 +184,7 @@ class TestInstallationMethods:
         Installation methods are documented.
 
         Given: dev_notes folder
-        When: checking for setup/install documentation
+        When: checking for app_setup/install documentation
         Then: should have guidance on installation
         """
         dev_notes = os.path.join(PROJECT_ROOT)
@@ -193,9 +193,9 @@ class TestInstallationMethods:
         doc_files = [f for f in os.listdir(dev_notes) if f.endswith('.md')]
         assert len(doc_files) > 0, "Should have documentation in dev_notes"
 
-        # At least one should mention setup/conda
-        setup_docs = [f for f in doc_files if 'setup' in f.lower() or 'conda' in f.lower() or 'install' in f.lower()]
-        assert len(setup_docs) > 0, "Should have setup/conda documentation"
+        # At least one should mention app_setup/conda
+        setup_docs = [f for f in doc_files if 'app_setup' in f.lower() or 'conda' in f.lower() or 'install' in f.lower()]
+        assert len(setup_docs) > 0, "Should have app_setup/conda documentation"
 
     def test_env_file_exists(self):
         """

@@ -75,9 +75,9 @@ def cleanup_imports():
     # Cleanup: Remove affected modules from sys.modules cache
     modules_to_clean = [
         'tud_lbm',
-        'tud_lbm.operators',
-        'tud_lbm.operators.update',
-        'tud_lbm.operators.update.update_multiphase_hysteresis',
+        'tud_lbm.simulation_operators',
+        'tud_lbm.simulation_operators.update_timestep',
+        'tud_lbm.simulation_operators.update_timestep.update_multiphase_hysteresis',
         'tud_lbm.simulations',
         'tud_lbm.run',
     ]

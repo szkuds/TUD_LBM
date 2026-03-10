@@ -1,14 +1,14 @@
 """Command-line interface for TUD-LBM simulations.
 
-NOTE: The CLI currently requires a config file adapter to be implemented.
+NOTE: The CLI currently requires a app_setup file adapter to be implemented.
 For now, use the Python API directly with SimulationBundle.
 
 Example Python usage:
-    from config import SimulationBundle, SinglePhaseConfig, RunnerConfig
-    from core import Run
+    from app_setup import SimulationBundle, SinglePhaseConfig, RunnerConfig
+    from runner import Run
 
     bundle = SimulationBundle(
-        simulation=SinglePhaseConfig(grid_shape=(100, 100), tau=0.6, nt=10000),
+        simulation_type=SinglePhaseConfig(grid_shape=(100, 100), tau=0.6, nt=10000),
         runner=RunnerConfig(save_interval=1000),
     )
     sim = Run(bundle)
@@ -25,10 +25,7 @@ from rich.prompt import Confirm
 from rich.prompt import Prompt
 from rich.table import Table
 
-from config import (
-    BASE_RESULTS_DIR,
-    DEFAULT_SAVE_FIELDS,
-    AVAILABLE_FIELDS,
+from app_setup import (
     SimulationBundle,
     SinglePhaseConfig,
     RunnerConfig,
@@ -59,7 +56,7 @@ def _prompt_missing(bundle: SimulationBundle) -> SimulationBundle:
 
 
 def _display_config_summary(bundle: SimulationBundle) -> None:
-    """Display a summary of the simulation configuration.
+    """Display a summary of the simulation_type configuration.
 
     Args:
         bundle: The SimulationBundle object
@@ -102,21 +99,21 @@ def _display_config_summary(bundle: SimulationBundle) -> None:
 
 
 def _run_simulation(bundle: SimulationBundle) -> object:
-    """Run the simulation with the given configuration.
+    """Run the simulation_type with the given configuration.
 
     Args:
         bundle: The SimulationBundle object
 
     Returns:
-        The completed simulation instance
+        The completed simulation_type instance
     """
-    # Import here to avoid circular imports and allow JAX config
-    from config import configure_jax
+    # Import here to avoid circular imports and allow JAX app_setup
+    from app_setup import configure_jax
     configure_jax()
 
-    from core import Run
+    from runner import Run
 
-    console.print("[bold green]Starting simulation...[/bold green]")
+    console.print("[bold green]Starting simulation_type...[/bold green]")
     console.print()
 
     sim = Run(bundle)
@@ -129,7 +126,7 @@ def _open_paraview(results_dir: str) -> None:
     """Attempt to open ParaView with the results directory.
 
     Args:
-        results_dir: Path to the simulation results directory
+        results_dir: Path to the simulation_type results directory
     """
     import subprocess
     import shutil
@@ -155,16 +152,16 @@ def _open_paraview(results_dir: str) -> None:
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Parse config and display summary without running simulation"
+    help="Parse app_setup and display summary without running simulation_type"
 )
 @click.option(
-    "--list-operators",
+    "--list-simulation_operators",
     is_flag=True,
-    help="List all registered operators and exit"
+    help="List all registered simulation_operators and exit"
 )
 @click.version_option(package_name="tud_lbm")
 def main(config_path: str, no_prompt: bool, dry_run: bool, list_operators: bool) -> None:
-    """Run a TUD-LBM simulation.
+    """Run a TUD-LBM simulation_type.
 
     CONFIG_PATH is an optional path to a configuration file (.toml).
     If omitted, an interactive prompt collects parameters.
@@ -173,7 +170,7 @@ def main(config_path: str, no_prompt: bool, dry_run: bool, list_operators: bool)
 
         tud_lbm example/config_simple.toml
         tud_lbm example/config_complex.toml --dry-run
-        tud_lbm --list-operators
+        tud_lbm --list-simulation_operators
         tud_lbm                              # interactive mode
     """
     console.print()
@@ -183,11 +180,11 @@ def main(config_path: str, no_prompt: bool, dry_run: bool, list_operators: bool)
     ))
     console.print()
 
-    # Ensure all operators are imported so registrations are triggered
-    import operators  # noqa: F401
+    # Ensure all simulation_operators are imported so registrations are triggered
+    import simulation_operators  # noqa: F401
 
     if list_operators:
-        from registry import OPERATOR_REGISTRY
+        from app_setup.registry import OPERATOR_REGISTRY
         table = Table(title="Registered Operators", show_header=True, header_style="bold magenta")
         table.add_column("Kind", style="cyan", no_wrap=True)
         table.add_column("Name", style="green")
@@ -202,8 +199,8 @@ def main(config_path: str, no_prompt: bool, dry_run: bool, list_operators: bool)
 
     try:
         if config_path:
-            # ── Load config file via adapter ─────────────────────────
-            from config import get_adapter
+            # ── Load app_setup file via adapter ─────────────────────────
+            from app_setup import get_adapter
 
             console.print(
                 f"[cyan]Loading configuration from:[/cyan] {config_path}"
@@ -213,7 +210,7 @@ def main(config_path: str, no_prompt: bool, dry_run: bool, list_operators: bool)
         else:
             # ── Interactive mode ─────────────────────────────────────
             console.print(
-                "[cyan]Interactive mode - creating default simulation setup[/cyan]"
+                "[cyan]Interactive mode - creating default simulation_type app_setup[/cyan]"
             )
 
             grid_x = int(Prompt.ask("Grid size X", default="100"))
@@ -235,16 +232,16 @@ def main(config_path: str, no_prompt: bool, dry_run: bool, list_operators: bool)
         _display_config_summary(bundle)
 
         if dry_run:
-            console.print("[yellow]Dry run mode - simulation not started[/yellow]")
+            console.print("[yellow]Dry run mode - simulation_type not started[/yellow]")
             return
 
         # Confirm before running
         if not no_prompt:
-            if not Confirm.ask("[bold]Start simulation?[/bold]", default=True):
+            if not Confirm.ask("[bold]Start simulation_type?[/bold]", default=True):
                 console.print("[yellow]Simulation cancelled.[/yellow]")
                 return
 
-        # Run the simulation
+        # Run the simulation_type
         sim = _run_simulation(bundle)
 
         console.print()
