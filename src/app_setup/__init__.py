@@ -8,7 +8,7 @@ The primary interface is :class:`SimulationSetup`::
         grid_shape=(100, 100),
         tau=0.6,
         nt=10000,
-        save_interval=1000,
+        save_interval=1000
     )
 
 Registry-aware validation
