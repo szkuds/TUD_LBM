@@ -1,12 +1,15 @@
 import jax.numpy as jnp
 from .force_base import Force
+from registry import register_operator
 
 
 
+@register_operator("force")
 class GravityForceMultiphase(Force):
     """
     Subclass for gravitational force, constant across the grid.
     """
+    name = "gravity_multiphase"
 
     def __init__(
         self, force_g: float, inclination_angle_deg: float, grid_shape: tuple
@@ -14,7 +17,6 @@ class GravityForceMultiphase(Force):
         if grid_shape.__len__() != 2:
             raise ValueError("Currently supports 2D (d=2) only")
 
-        self.name = 'GravitationalForce'
 
         force_x = force_g * -jnp.sin(jnp.deg2rad(inclination_angle_deg))
         force_y = force_g * jnp.cos(jnp.deg2rad(inclination_angle_deg))

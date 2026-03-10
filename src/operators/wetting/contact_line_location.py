@@ -1,7 +1,11 @@
 import jax.numpy as jnp
 
+from registry import register_operator
 
+
+@register_operator("wetting")
 class ContactLineLocation:
+    name = "contact_line_location"
     """
     Class to calculate contact line locations (left and right) from density and angles.
     """

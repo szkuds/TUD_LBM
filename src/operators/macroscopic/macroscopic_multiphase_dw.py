@@ -7,12 +7,15 @@ from jax import jit
 from operators.differential import Gradient, Laplacian
 from operators.wetting import determine_padding_modes
 from .macroscopic import Macroscopic
+from registry import register_operator
 
 if TYPE_CHECKING:
     from config.simulation_config import MultiphaseConfig
 
 
+@register_operator("macroscopic")
 class MacroscopicMultiphaseDW(Macroscopic):
+    name = "double-well"
     """
     Calculates macroscopic variables for multiphase simulations.
     Inherits from Macroscopic and adds multiphase-specific methods.

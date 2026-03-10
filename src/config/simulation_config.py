@@ -23,6 +23,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from config.dir_config import BASE_RESULTS_DIR
+from registry import get_operators
 
 
 
@@ -89,10 +90,22 @@ class SinglePhaseConfig(BaseSimulationConfig):
     def __post_init__(self):
         super().__post_init__()
 
-        # Validate collision_scheme
-        valid_schemes = {"bgk", "mrt"}
-        if self.collision_scheme not in valid_schemes:
-            raise ValueError(f"collision_scheme must be one of {valid_schemes}, got '{self.collision_scheme}'")
+        # Validate collision_scheme using the registry (dynamically populated)
+        collision_ops = get_operators("collision")
+        if collision_ops:
+            # Filter to only actual collision operators (exclude source_term etc.)
+            valid_schemes = {name for name, entry in collision_ops.items()
+                            if name not in ("source_term",)}
+            if self.collision_scheme not in valid_schemes:
+                raise ValueError(
+                    f"collision_scheme must be one of {sorted(valid_schemes)}, "
+                    f"got '{self.collision_scheme}'"
+                )
+        else:
+            # Fallback when registry has not been populated yet
+            valid_schemes = {"bgk", "mrt"}
+            if self.collision_scheme not in valid_schemes:
+                raise ValueError(f"collision_scheme must be one of {valid_schemes}, got '{self.collision_scheme}'")
 
         # Validate k_diag is provided for MRT
         if self.collision_scheme == "mrt" and self.k_diag is None:
@@ -155,15 +168,34 @@ class MultiphaseConfig(BaseSimulationConfig):
         if self.interface_width <= 0:
             raise ValueError(f"interface_width must be positive, got {self.interface_width}")
 
-        # Validate eos
-        valid_eos = {"double-well", "carnahan-starling"}
-        if self.eos not in valid_eos:
-            raise ValueError(f"eos must be one of {valid_eos}, got '{self.eos}'")
+        # Validate eos using the registry (dynamically populated)
+        macroscopic_ops = get_operators("macroscopic")
+        if macroscopic_ops:
+            # Exclude "standard" since it's not a multiphase EOS
+            valid_eos = {name for name in macroscopic_ops if name != "standard"}
+            if self.eos not in valid_eos:
+                raise ValueError(
+                    f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'"
+                )
+        else:
+            valid_eos = {"double-well", "carnahan-starling"}
+            if self.eos not in valid_eos:
+                raise ValueError(f"eos must be one of {valid_eos}, got '{self.eos}'")
 
-        # Validate collision_scheme
-        valid_schemes = {"bgk", "mrt"}
-        if self.collision_scheme not in valid_schemes:
-            raise ValueError(f"collision_scheme must be one of {valid_schemes}, got '{self.collision_scheme}'")
+        # Validate collision_scheme using the registry (dynamically populated)
+        collision_ops = get_operators("collision")
+        if collision_ops:
+            valid_schemes = {name for name, entry in collision_ops.items()
+                            if name not in ("source_term",)}
+            if self.collision_scheme not in valid_schemes:
+                raise ValueError(
+                    f"collision_scheme must be one of {sorted(valid_schemes)}, "
+                    f"got '{self.collision_scheme}'"
+                )
+        else:
+            valid_schemes = {"bgk", "mrt"}
+            if self.collision_scheme not in valid_schemes:
+                raise ValueError(f"collision_scheme must be one of {valid_schemes}, got '{self.collision_scheme}'")
 
         # Validate k_diag is provided for MRT
         if self.collision_scheme == "mrt" and self.k_diag is None:

@@ -157,8 +157,13 @@ def _open_paraview(results_dir: str) -> None:
     is_flag=True,
     help="Parse config and display summary without running simulation"
 )
+@click.option(
+    "--list-operators",
+    is_flag=True,
+    help="List all registered operators and exit"
+)
 @click.version_option(package_name="tud_lbm")
-def main(config_path: str, no_prompt: bool, dry_run: bool) -> None:
+def main(config_path: str, no_prompt: bool, dry_run: bool, list_operators: bool) -> None:
     """Run a TUD-LBM simulation.
 
     CONFIG_PATH is an optional path to a configuration file (.toml).
@@ -168,6 +173,7 @@ def main(config_path: str, no_prompt: bool, dry_run: bool) -> None:
 
         tud_lbm example/config_simple.toml
         tud_lbm example/config_complex.toml --dry-run
+        tud_lbm --list-operators
         tud_lbm                              # interactive mode
     """
     console.print()
@@ -176,6 +182,23 @@ def main(config_path: str, no_prompt: bool, dry_run: bool) -> None:
         subtitle="Delft University of Technology"
     ))
     console.print()
+
+    # Ensure all operators are imported so registrations are triggered
+    import operators  # noqa: F401
+
+    if list_operators:
+        from registry import OPERATOR_REGISTRY
+        table = Table(title="Registered Operators", show_header=True, header_style="bold magenta")
+        table.add_column("Kind", style="cyan", no_wrap=True)
+        table.add_column("Name", style="green")
+        table.add_column("Class", style="yellow")
+
+        for key in sorted(OPERATOR_REGISTRY):
+            entry = OPERATOR_REGISTRY[key]
+            table.add_row(entry.kind, entry.name, entry.cls.__name__)
+
+        console.print(table)
+        return
 
     try:
         if config_path:

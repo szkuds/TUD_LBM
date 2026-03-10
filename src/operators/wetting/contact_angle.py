@@ -1,8 +1,12 @@
 import jax.numpy as jnp
 import math
 
+from registry import register_operator
 
+
+@register_operator("wetting")
 class ContactAngle:
+    name = "contact_angle"
     """
     Class to calculate contact angles (left and right) from a density field.
     """

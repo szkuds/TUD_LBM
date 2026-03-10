@@ -5,13 +5,16 @@ import jax.numpy as jnp
 from jax import jit
 
 from .macroscopic_multiphase_dw import MacroscopicMultiphaseDW
+from registry import register_operator
 
 if TYPE_CHECKING:
     from domain.lattice import Lattice
     from domain.grid import Grid
 
 
+@register_operator("macroscopic")
 class MacroscopicMultiphaseCS(MacroscopicMultiphaseDW):
+    name = "carnahan-starling"
     """
     Calculates macroscopic variables for multiphase simulations.
     Inherits from MacroscopicMultiphaseDW and overrides EOS for Carnahan-Starling.

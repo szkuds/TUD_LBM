@@ -4,11 +4,15 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from jax import jit, Array
 
+from registry import register_operator
+
 if TYPE_CHECKING:
     from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
+@register_operator("macroscopic")
 class Macroscopic:
+    name = "standard"
     """
     Calculates the macroscopic density and velocity fields from the population distribution.
 

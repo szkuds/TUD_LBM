@@ -3,12 +3,15 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 
 from .collision_base import CollisionBase
+from registry import register_operator
 
 if TYPE_CHECKING:
     from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
+@register_operator("collision")
 class CollisionBGK(CollisionBase):
+    name = "bgk"
     """
     Implements the BGK (Bhatnagar-Gross-Krook) collision operator for LBM.
     Optionally supports a source term.

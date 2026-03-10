@@ -5,13 +5,16 @@ import jax.numpy as jnp
 from jax import jit
 
 from .update import Update
-from operators import MacroscopicMultiphaseDW, MacroscopicMultiphaseCS
+from operators import MacroscopicMultiphaseCS
+from registry import register_operator, get_operators
 
 if TYPE_CHECKING:
     from config.simulation_config import MultiphaseConfig
 
 
+@register_operator("update")
 class UpdateMultiphase(Update):
+    name = "multiphase"
     """
     Performs the full multiphase LBM update step.
 
@@ -28,14 +31,19 @@ class UpdateMultiphase(Update):
         """
         super().__init__(config)
 
-        # Override macroscopic with multiphase version
+        # Override macroscopic with multiphase version from registry
         eos = config.eos
         extra = config.extra if hasattr(config, 'extra') else {}
 
-        if eos == "double-well":
-            self.macroscopic = MacroscopicMultiphaseDW(config)
-        # TODO: Need to make sure that the maxwell construction is done to get the correct starting values.
-        elif eos == "carnahan-starling":
+        macroscopic_ops = get_operators("macroscopic")
+        if eos not in macroscopic_ops:
+            available = ", ".join(sorted(macroscopic_ops.keys()))
+            raise ValueError(
+                f"Unknown EOS: '{eos}'. Available macroscopic operators: {available}"
+            )
+
+        if eos == "carnahan-starling":
+            # MacroscopicMultiphaseCS has a different constructor signature
             self.macroscopic = MacroscopicMultiphaseCS(
                 grid=self.grid,
                 lattice=self.lattice,
@@ -50,9 +58,10 @@ class UpdateMultiphase(Update):
                 force_enabled=config.force_enabled,
                 bc_config=config.bc_config,
             )
-
         else:
-            raise ValueError(f"Unknown EOS: {eos}")
+            # Use the registry to get the macroscopic operator class
+            macroscopic_cls = macroscopic_ops[eos].cls
+            self.macroscopic = macroscopic_cls(config)
 
     @partial(jit, static_argnums=(0,))
     def __call__(self, f: jnp.ndarray, force: jnp.ndarray = None):

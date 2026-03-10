@@ -4,11 +4,15 @@ from typing import Dict, TYPE_CHECKING
 import jax.numpy as jnp
 from jax import jit
 
+from registry import register_operator
+
 if TYPE_CHECKING:
     from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
+@register_operator("boundary_condition")
 class BoundaryCondition:
+    name = "standard"
     """
     Applies boundary conditions to the post-streaming distribution function.
     Supports bounce-back, symmetry, and periodic BCs on specified grid edges.

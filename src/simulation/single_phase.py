@@ -5,9 +5,12 @@ from update import Update
 from operators import Initialise
 from core.step_result import StepResult
 from config.simulation_config import SinglePhaseConfig
+from registry import register_operator
 
 
+@register_operator("simulation")
 class SinglePhaseSimulation(BaseSimulation):
+    name = "single_phase"
     """
     Single-phase LBM simulation.
 

@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 
 from .collision_base import CollisionBase
+from registry import register_operator
 
 if TYPE_CHECKING:
     from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
@@ -24,7 +25,9 @@ M = jnp.array(
 M_INV = jnp.linalg.inv(M)
 
 
+@register_operator("collision")
 class CollisionMRT(CollisionBase):
+    name = "mrt"
     """
     Implements the MRT (Multiple Relaxation Time) collision operator for LBM.
 

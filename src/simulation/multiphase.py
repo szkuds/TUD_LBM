@@ -8,9 +8,12 @@ from update import UpdateMultiphase, UpdateMultiphaseHysteresis
 from operators import Initialise, CompositeForce
 from core.step_result import StepResult
 from config.simulation_config import MultiphaseConfig
+from registry import register_operator
 
 
+@register_operator("simulation")
 class MultiphaseSimulation(BaseSimulation):
+    name = "multiphase"
     """
     Multiphase (two-phase) LBM simulation.
 
@@ -115,7 +118,7 @@ class MultiphaseSimulation(BaseSimulation):
             )
             f_next = self.update(f_prev, force=force_ext)
             electric_force = self.force_obj.get_component_by_name(
-                self.force_obj.forces, 'ElectricalForce'
+                self.force_obj.forces, 'electric'
             )
             conductivity = electric_force.conductivity(
                 rho, electric_force.conductivity_liquid,

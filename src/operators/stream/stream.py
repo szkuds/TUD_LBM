@@ -3,11 +3,15 @@ from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
 
+from registry import register_operator
+
 if TYPE_CHECKING:
     from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
+@register_operator("stream")
 class Streaming:
+    name = "standard"
     """
     Callable class to perform the streaming step of the LBM.
 

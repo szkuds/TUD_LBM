@@ -5,12 +5,15 @@ import numpy as np
 import os
 
 from operators.equilibrium import EquilibriumWB
+from registry import register_operator
 
 if TYPE_CHECKING:
     from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
+@register_operator("initialise")
 class Initialise:
+    name = "standard"
     """
     Handles the initialisation of the simulation for various scenarios.
 

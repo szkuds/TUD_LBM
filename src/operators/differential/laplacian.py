@@ -9,12 +9,15 @@ from operators.wetting import (
     has_wetting_bc,
     apply_wetting_to_all_edges,
 )
+from registry import register_operator
 
 if TYPE_CHECKING:
     from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
+@register_operator("differential")
 class Laplacian:
+    name = "laplacian"
     """
     Callable class to calculate the Laplacian of a 2D grid using the LBM stencil.
 

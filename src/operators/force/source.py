@@ -3,12 +3,15 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 
 from operators.differential import Gradient
+from registry import register_operator
 
 if TYPE_CHECKING:
     from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
+@register_operator("force")
 class SourceTerm:
+    name = "source_term"
     """
     Callable class to calculate the source term for the LBM equation.
 

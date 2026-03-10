@@ -2,13 +2,16 @@
 
 import jax.numpy as jnp
 from operators.force.force_base import Force
+from registry import register_operator
 
 
+@register_operator("force")
 class CompositeForce(Force):
     """
     Combines multiple force fields by superposition.
     Allows gravitational, electrical, and other forces to work together.
     """
+    name = "composite"
 
     def __init__(self, *forces: Force):
         """
@@ -24,7 +27,7 @@ class CompositeForce(Force):
 
         # Check if electrical force is present
         self.electric_present = any(
-            getattr(force, 'name', None) == 'ElectricalForce'
+            getattr(force, 'name', None) == 'electric'
             for force in forces
         )
 

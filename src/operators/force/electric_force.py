@@ -5,13 +5,16 @@ from domain.lattice import Lattice
 from operators.stream import Streaming
 from operators.force.force_base import Force
 from operators.differential import Gradient
+from registry import register_operator
 
 
+@register_operator("force")
 class ElectricForce(Force):
     """
     Subclass for electrical force with electric potential distribution.
     Solves for electric potential using a separate distribution function h_i_prev.
     """
+    name = "electric"
 
     def __init__(self, permittivity_liquid: float, permittivity_vapour: float,
                  conductivity_liquid: float, conductivity_vapour: float,
@@ -32,7 +35,6 @@ class ElectricForce(Force):
         if grid_shape.__len__() != 2:
             raise ValueError("Currently supports 2D (d=2) only")
 
-        self.name = 'ElectricalForce'
 
         force_array = jnp.zeros((grid_shape[0], grid_shape[1], 1, grid_shape.__len__()))
         super().__init__(force_array)

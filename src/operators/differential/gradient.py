@@ -9,12 +9,15 @@ from operators.wetting import (
     has_wetting_bc,
     apply_wetting_to_all_edges,
 )
+from registry import register_operator
 
 if TYPE_CHECKING:
     from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
 
 
+@register_operator("differential")
 class Gradient:
+    name = "gradient"
     """
     Callable class to calculate the gradient of a field using the LBM stencil,
     supporting asymmetric per-side padding.

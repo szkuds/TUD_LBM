@@ -8,12 +8,15 @@ import optax
 
 from operators import MacroscopicMultiphaseDW, ContactAngle, ContactLineLocation, WettingParameters
 from .update_multiphase import UpdateMultiphase
+from registry import register_operator
 
 if TYPE_CHECKING:
     from config.simulation_config import MultiphaseConfig
 
 
+@register_operator("update")
 class UpdateMultiphaseHysteresis(UpdateMultiphase):
+    name = "multiphase_hysteresis"
     """
     UpdateMultiphase with hysteresis optimization for wetting parameters.
     Optimizes both left and right sides and persists updated operators.
