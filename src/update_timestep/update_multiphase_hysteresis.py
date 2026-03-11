@@ -1,12 +1,12 @@
 from functools import partial
-from typing import Tuple, Any, TYPE_CHECKING
+from typing import Tuple, TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
 from jax import jit
 import optax
 
-from simulation_operators import MacroscopicMultiphaseDW, ContactAngle, ContactLineLocation, WettingParameters
+from simulation_operators import ContactAngle, ContactLineLocation, WettingParameters
 from .update_multiphase import UpdateMultiphase
 from app_setup.registry import register_operator
 
@@ -133,7 +133,7 @@ class UpdateMultiphaseHysteresis(UpdateMultiphase):
             phi_right=params_right.phi_right
         )
 
-        return self._evaluate_with_new_wetting_params(f_t, merged_params, force)[4]
+        return self._run_timestep_with_wetting_params(f_t, merged_params, force)
 
     def _cost_fucntion_cll(self, cll_t: jnp.ndarray, cll_tplus1: jnp.ndarray):
         return jnp.abs(cll_t - cll_tplus1)
@@ -452,48 +452,15 @@ class UpdateMultiphaseHysteresis(UpdateMultiphase):
             ca_tplus1 <= ca_advancing
         )
 
-    def _create_updated_macroscopic(self, params: WettingParameters):
-        """Create new macroscopic operator with updated wetting parameters."""
-        from app_setup.simulation_setup import SimulationSetup
-
-        new_wetting_params = {
-            **self.macroscopic.bc_config.get('wetting_params', {}),
-            'd_rho_left': params.d_rho_left,
-            'd_rho_right': params.d_rho_right,
-            'phi_left': params.phi_left,
-            'phi_right': params.phi_right,
-        }
-        new_bc_config = {
-            **self.macroscopic.bc_config,
-            'wetting_params': new_wetting_params
-        }
-
-        # Create a modified app_setup with the new bc_config
-        # We need to access the original app_setup stored during __init__
-        modified_config = SimulationSetup(
-            sim_type="multiphase",
-            grid_shape=self.grid.shape,
-            lattice_type=self.lattice.name,
-            tau=self.tau,
-            nt=1,  # Not used for macroscopic
-            eos=getattr(self.macroscopic, 'eos', 'double-well'),
-            kappa=self.macroscopic.kappa,
-            rho_l=self.macroscopic.rho_l,
-            rho_v=self.macroscopic.rho_v,
-            interface_width=self.macroscopic.interface_width,
-            force_enabled=self.force_enabled,
-            bc_config=new_bc_config,
-        )
-        new_macroscopic = MacroscopicMultiphaseDW(modified_config)
-        return new_macroscopic
-
-    def _run_timestep_with_new_wetting_params(self, f: jnp.ndarray, params: WettingParameters,
-                                              force: jnp.ndarray = None) -> tuple[jnp.ndarray, Any]:
+    def _run_timestep_with_wetting_params(self, f: jnp.ndarray, params: WettingParameters,
+                                          force: jnp.ndarray = None) -> jnp.ndarray:
         """
         Run a complete LBM timestep with given wetting parameters.
 
-        This method creates temporary simulation_operators with updated parameters and executes
-        the full collision_models-streaming-BC cycle, mimicking super().__call__() behavior.
+        Uses the *existing* operators stored on ``self`` and threads
+        ``params`` through the macroscopic step as dynamic JAX values.
+        No new Python objects are created, so this is safe inside
+        JAX-traced (jitted / value_and_grad) code.
 
         Args:
             f: Population distribution at current timestep, shape (nx, ny, q, 1)
@@ -503,28 +470,28 @@ class UpdateMultiphaseHysteresis(UpdateMultiphase):
         Returns:
             jnp.ndarray: Updated population distribution f_{t+1}, shape (nx, ny, q, 1)
         """
-        # Create updated simulation_operators
-        temp_macroscopic = self._create_updated_macroscopic(params)
-
-        # Macroscopic step (same logic as parent Update.__call__)
+        # Macroscopic step with explicit wetting parameters
         if self.force_enabled:
-            rho_prev, u, force_tot = temp_macroscopic(f, force=force)
+            rho_prev, u, force_tot = self.macroscopic.call_with_wetting_params(f, params, force=force)
         else:
-            rho_prev, u, force_tot = temp_macroscopic(f)
+            rho_prev, u, force_tot = self.macroscopic.call_with_wetting_params(f, params)
         feq = self.equilibrium(rho_prev, u)
         source = self.source_term(rho_prev, u, force_tot)
         fcol = self.collision(f, feq, source)
         fstream = self.streaming(fcol)
         if self.boundary_condition is not None:
             fbc = self.boundary_condition(fstream, fcol)
-            return fbc, temp_macroscopic
+            return fbc
         else:
-            return fstream, temp_macroscopic
+            return fstream
 
     def _evaluate_with_new_wetting_params(self, f_t: jnp.ndarray, params: WettingParameters, force: jnp.ndarray = None):
         """Evaluate contact angles and line locations with given wetting parameters (both sides)."""
-        f_tplus1, temp_macroscopic = self._run_timestep_with_new_wetting_params(f_t, params, force)
-        rho_tplus1, _, _ = temp_macroscopic(f_tplus1)
+        f_tplus1 = self._run_timestep_with_wetting_params(f_t, params, force)
+        if self.force_enabled:
+            rho_tplus1, _, _ = self.macroscopic.call_with_wetting_params(f_tplus1, params, force)
+        else:
+            rho_tplus1, _, _ = self.macroscopic.call_with_wetting_params(f_tplus1, params)
         ca_left, ca_right = self.contact_angle.compute(rho_tplus1)
         cll_left, cll_right = self.contact_line_location.compute(rho_tplus1, ca_left, ca_right)
         return ca_left, ca_right, cll_left, cll_right, f_tplus1

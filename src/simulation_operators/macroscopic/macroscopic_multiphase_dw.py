@@ -121,6 +121,55 @@ class MacroscopicMultiphaseDW(Macroscopic):
         # Both u and force have shape (nx, ny, 1, 2)
         return u + force / 2
 
+    # ── Functional variants that accept WettingParameters dynamically ─
+
+    @partial(jit, static_argnums=(0,))
+    def call_with_wetting_params(
+        self, f: jnp.ndarray, wetting_params, force: jnp.ndarray = None
+    ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        """Like ``__call__`` but threads *wetting_params* through gradient/laplacian.
+
+        Use this when wetting parameters are dynamic JAX values (e.g. inside
+        an optimisation loop) instead of static closure-captured values.
+
+        Args:
+            f: Population distribution, shape (nx, ny, q, 1).
+            wetting_params: ``WettingParameters`` named-tuple (pytree-registered).
+            force: Optional external force field, shape (nx, ny, 1, 2).
+
+        Returns:
+            (rho, u_eq, force_total)
+        """
+        rho, u = Macroscopic.__call__(self, f, force=None)
+
+        force_int = self.force_int_with_wetting_params(rho, wetting_params)
+
+        if force is not None:
+            force_total = force + force_int
+        else:
+            force_total = force_int
+
+        u_eq = u + force_total / (2 * rho)
+        return rho, u_eq, force_total
+
+    @partial(jit, static_argnums=(0,))
+    def chem_pot_with_wetting_params(self, rho, wetting_params):
+        """Chemical potential with explicit wetting parameters."""
+        mu_0 = self.eos(rho)
+        lap = self.laplacian.laplacian_wetting_with_params(
+            rho, determine_padding_modes(self.bc_config), wetting_params
+        )
+        return mu_0 - self.kappa * lap
+
+    @partial(jit, static_argnums=(0,))
+    def force_int_with_wetting_params(self, rho, wetting_params):
+        """Interaction force with explicit wetting parameters."""
+        chem_pot = self.chem_pot_with_wetting_params(rho, wetting_params)
+        grad_chem_pot = self.gradient.wetting_with_params(
+            chem_pot, determine_padding_modes(self.bc_config), wetting_params
+        )
+        return -rho * grad_chem_pot
+
 
 
 

@@ -145,13 +145,7 @@ class Gradient:
         return grad_4d
 
     def wetting(self, grid, pad_mode):
-        rho_l = self.rho_l
-        rho_v = self.rho_v
-        # Stencil width derived from canonical interface_width attribute.
-        width = int(self.interface_width)
-        weights = self.w
-        c = self.c
-
+        """Wetting gradient using closure-captured wetting_params."""
         if getattr(self, "chemical_step", False):
             phi_left = jnp.ones(grid.shape[0])
             phi_left = (phi_left.at[(grid.shape[0] // int(1 / self.chemical_step['chemical_step_location'])):]
@@ -170,6 +164,39 @@ class Gradient:
             phi_right = self.wetting_params['phi_right']
             d_rho_left = self.wetting_params['d_rho_left']
             d_rho_right = self.wetting_params['d_rho_right']
+
+        return self._wetting_core(grid, pad_mode, phi_left, phi_right, d_rho_left, d_rho_right)
+
+    def wetting_with_params(self, grid, pad_mode, wetting_params):
+        """Wetting gradient with explicit WettingParameters (dynamic JAX arrays).
+
+        Use this variant when wetting parameters must be passed as dynamic
+        values through JAX-traced code (e.g. inside optimisation loops)
+        instead of reading them from the closure-captured ``self.wetting_params``.
+
+        Args:
+            grid: Input field, shape (nx, ny, 1, 1).
+            pad_mode: List of padding modes for each pad step.
+            wetting_params: A ``WettingParameters`` named-tuple with
+                ``d_rho_left``, ``d_rho_right``, ``phi_left``, ``phi_right``.
+
+        Returns:
+            jnp.ndarray: Gradient field, shape (nx, ny, 1, 2).
+        """
+        return self._wetting_core(
+            grid, pad_mode,
+            wetting_params.phi_left, wetting_params.phi_right,
+            wetting_params.d_rho_left, wetting_params.d_rho_right,
+        )
+
+    def _wetting_core(self, grid, pad_mode, phi_left, phi_right, d_rho_left, d_rho_right):
+        """Shared implementation for wetting gradient computation."""
+        rho_l = self.rho_l
+        rho_v = self.rho_v
+        # Stencil width derived from canonical interface_width attribute.
+        width = int(self.interface_width)
+        weights = self.w
+        c = self.c
 
         effective_pad_mode = pad_mode if pad_mode is not None else self.pad_mode
         if grid.ndim == 4:

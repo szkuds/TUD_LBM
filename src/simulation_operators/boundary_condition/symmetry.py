@@ -19,7 +19,7 @@ from .base import BoundaryConditionBase
 
 
 @register_operator("boundary_condition")
-@dataclass
+@dataclass(eq=False)
 class SymmetryBoundaryCondition(BoundaryConditionBase):
     """Mirror-symmetry boundary condition.
 

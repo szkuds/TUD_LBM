@@ -1,4 +1,4 @@
-from app_setup import configure_jax, SimulationBundle, SinglePhaseConfig, RunnerConfig
+from app_setup import configure_jax, SimulationSetup
 
 from runner import Run
 from util import visualise
@@ -9,25 +9,20 @@ configure_jax()
 
 
 def test_single_phase_simulation():
-    """Test a single-phase LBM simulation_type."""
+    """Test a single-phase LBM simulation."""
     print("\n=== Single-Phase LBM Simulation ===")
 
-    # Create simulation_type bundle - modular configuration object
-    bundle = SimulationBundle(
-        simulation=SinglePhaseConfig(
-            grid_shape=(100, 100),
-            lattice_type="D2Q9",
-            tau=0.6,
-            nt=10000,
-        ),
-        runner=RunnerConfig(
-            save_interval=1000,
-            init_type="standard",
-        ),
+    setup = SimulationSetup(
+        grid_shape=(100, 100),
+        lattice_type="D2Q9",
+        tau=0.6,
+        nt=10000,
+        save_interval=1000,
+        init_type="standard",
     )
 
-    # Run simulation_type
-    sim = Run(bundle)
+    # Run simulation
+    sim = Run(setup)
     sim.run(verbose=True)
     return sim
 
@@ -36,11 +31,11 @@ if __name__ == "__main__":
     print("Testing Single-Phase LBM Codebase")
     print("=" * 60)
 
-    # Run simulation_type
-    sim_single_phase_gravity = test_single_phase_simulation()
+    # Run simulation
+    sim_single_phase = test_single_phase_simulation()
 
     # Visualize results
     print("\n=== Visualizing Results ===")
-    visualise(sim_single_phase_gravity, "Single-Phase")
+    visualise(sim_single_phase, "Single-Phase")
 
     print("\nTest completed!")

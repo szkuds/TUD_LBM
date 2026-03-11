@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from app_setup.simulation_setup import SimulationSetup
 
 
-@dataclass
+@dataclass(eq=False)
 class BoundaryConditionBase:
     """Abstract base for all boundary condition operators.
 
@@ -44,6 +44,19 @@ class BoundaryConditionBase:
     grid: Any = field(default=None, repr=False)
     opp_indices: Any = field(default=None, repr=False)
     edges: Any = field(default=None, repr=False)
+
+    # ── JAX compatibility ─────────────────────────────────────────────
+    # ``@dataclass`` auto-generates ``__eq__`` (field-by-field comparison)
+    # which implicitly sets ``__hash__ = None``, making instances
+    # unhashable.  JAX's ``static_argnums`` requires hashing ``self``.
+    # We restore identity-based hashing: same object → same JIT trace,
+    # which is correct because operators are constructed once and reused.
+
+    def __hash__(self) -> int:
+        return id(self)
+
+    def __eq__(self, other) -> bool:
+        return self is other
 
     # ── Factory -----------------------------------------------------------
 

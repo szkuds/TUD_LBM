@@ -122,13 +122,7 @@ class Laplacian:
         return laplacian_4d
 
     def _laplacian_wetting(self, grid, pad_mode):
-        """Custom wetting laplacian implementation."""
-        rho_l = self.rho_l
-        rho_v = self.rho_v
-        # Stencil width derived from canonical interface_width attribute.
-        width = int(self.interface_width)
-        weights = self.w
-
+        """Custom wetting laplacian implementation using closure-captured params."""
         if getattr(self, "chemical_step", False):
             phi_left = jnp.ones(grid.shape[0])
             phi_left = (phi_left.at[(grid.shape[0] // int(1 / self.chemical_step['chemical_step_location'])):]
@@ -147,6 +141,38 @@ class Laplacian:
             phi_right = self.wetting_params['phi_right']
             d_rho_left = self.wetting_params['d_rho_left']
             d_rho_right = self.wetting_params['d_rho_right']
+
+        return self._laplacian_wetting_core(grid, pad_mode, phi_left, phi_right, d_rho_left, d_rho_right)
+
+    def laplacian_wetting_with_params(self, grid, pad_mode, wetting_params):
+        """Wetting laplacian with explicit WettingParameters (dynamic JAX arrays).
+
+        Use this variant when wetting parameters must be passed as dynamic
+        values through JAX-traced code (e.g. inside optimisation loops)
+        instead of reading them from the closure-captured ``self.wetting_params``.
+
+        Args:
+            grid: Input field, shape (nx, ny, 1, 1).
+            pad_mode: List of padding modes for each pad step.
+            wetting_params: A ``WettingParameters`` named-tuple with
+                ``d_rho_left``, ``d_rho_right``, ``phi_left``, ``phi_right``.
+
+        Returns:
+            jnp.ndarray: Laplacian of the input grid, shape (nx, ny, 1, 1).
+        """
+        return self._laplacian_wetting_core(
+            grid, pad_mode,
+            wetting_params.phi_left, wetting_params.phi_right,
+            wetting_params.d_rho_left, wetting_params.d_rho_right,
+        )
+
+    def _laplacian_wetting_core(self, grid, pad_mode, phi_left, phi_right, d_rho_left, d_rho_right):
+        """Shared implementation for wetting laplacian computation."""
+        rho_l = self.rho_l
+        rho_v = self.rho_v
+        # Stencil width derived from canonical interface_width attribute.
+        width = int(self.interface_width)
+        weights = self.w
 
         effective_pad_mode = pad_mode if pad_mode is not None else self.pad_mode
         if grid.ndim == 4:
