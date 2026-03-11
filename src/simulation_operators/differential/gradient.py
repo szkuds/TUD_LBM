@@ -48,6 +48,7 @@ class Gradient:
         self.pad_mode = determine_padding_modes(bc_config)
         self.rho_l = rho_l
         self.rho_v = rho_v
+        self.interface_width = getattr(config, 'interface_width', None)
 
         # Only extract wetting parameters if wetting BC is present
         self.wetting_params = None
@@ -146,7 +147,8 @@ class Gradient:
     def wetting(self, grid, pad_mode):
         rho_l = self.rho_l
         rho_v = self.rho_v
-        width = self.wetting_params['width']
+        # Stencil width derived from canonical interface_width attribute.
+        width = int(self.interface_width)
         weights = self.w
         c = self.c
 

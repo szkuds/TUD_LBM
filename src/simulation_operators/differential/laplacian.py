@@ -38,14 +38,13 @@ class Laplacian:
 
         lattice = Lattice(config.lattice_type)
         bc_config = config.bc_config
-        rho_l = getattr(config, 'rho_l', None)
-        rho_v = getattr(config, 'rho_v', None)
 
         self.w = lattice.w
         self.bc_config = bc_config
         self.pad_mode = determine_padding_modes(bc_config)
-        self.rho_l = rho_l
-        self.rho_v = rho_v
+        self.rho_l = getattr(config, 'rho_l', None)
+        self.rho_v = getattr(config, 'rho_v', None)
+        self.interface_width = getattr(config, 'interface_width', None)
 
         # Only extract wetting parameters if wetting BC is present
         self.wetting_params = None
@@ -126,7 +125,8 @@ class Laplacian:
         """Custom wetting laplacian implementation."""
         rho_l = self.rho_l
         rho_v = self.rho_v
-        width = self.wetting_params['width']
+        # Stencil width derived from canonical interface_width attribute.
+        width = int(self.interface_width)
         weights = self.w
 
         if getattr(self, "chemical_step", False):

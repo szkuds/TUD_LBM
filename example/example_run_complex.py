@@ -45,7 +45,6 @@ def wetting_hysteresis_simulation_test():
                     "phi_right": phi_value,
                     "d_rho_left": d_rho_value,
                     "d_rho_right": d_rho_value,
-                    "width": 4,
                 },
                 "hysteresis_params": {
                     "ca_advancing": 90.0,

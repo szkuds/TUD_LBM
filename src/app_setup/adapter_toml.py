@@ -95,6 +95,14 @@ class TomlAdapter(ConfigAdapter):
         # ── Merge [multiphase] table ─────────────────────────────────
         if sim_type == "multiphase":
             multiphase_table = raw.get("multiphase", {})
+
+            # Explicitly reject legacy `width` key to avoid silent misuse.
+            if "width" in multiphase_table:
+                raise KeyError(
+                    "Legacy key 'width' is no longer supported in the "
+                    "[multiphase] table; please use 'interface_width' instead."
+                )
+
             sim_table.update(multiphase_table)
         elif sim_type not in ("single_phase",):
             raise ValueError(

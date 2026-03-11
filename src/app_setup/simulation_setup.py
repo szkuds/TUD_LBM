@@ -116,6 +116,13 @@ class SimulationSetup:
         if not isinstance(self.grid_shape, tuple):
             self.grid_shape = tuple(self.grid_shape)
 
+        # Fail fast if legacy 'width' key is passed programmatically.
+        if "width" in self.extra:
+            raise TypeError(
+                "SimulationSetup no longer accepts 'width'. "
+                "Use 'interface_width' instead."
+            )
+
         # Default bc_config to periodic on all edges
         if self.bc_config is None:
             self.bc_config = {
