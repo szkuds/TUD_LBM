@@ -1,18 +1,25 @@
-"""Simulation runner for LBM simulations.
+"""Simulation runner for TUD-LBM.
 
-Provides a high-level interface for configuring and executing
-lattice Boltzmann simulations with automatic app_setup and I/O.
+Functional API — all orchestration uses pure functions and
+``jax.lax.scan``.  No mutable classes are involved.
 
-Classes:
-    Run: Main entry point for running LBM simulations.
-    SimulationFactory: Creates simulation_type instances from app_setup.
-    SimulationRunner: Owns time loop, saving, and NaN checking.
-    StepResult: Standardized result dataclass from simulation_type timesteps.
+Public API::
+
+    from runner import run, init_state
+    from runner import step_single_phase, step_multiphase, get_step_fn
 """
 
-from .run import Run
-from .simulation_factory import SimulationFactory
-from .simulation_runner import SimulationRunner
-from .step_result import StepResult
+from .step import (
+    step_single_phase,
+    step_multiphase,
+    get_step_fn,
+)
+from .run import run, init_state
 
-__all__ = ["Run", "SimulationFactory", "SimulationRunner", "StepResult"]
+__all__ = [
+    "step_single_phase",
+    "step_multiphase",
+    "get_step_fn",
+    "run",
+    "init_state",
+]

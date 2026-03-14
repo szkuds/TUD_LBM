@@ -10,6 +10,7 @@ import sys
 
 from .output_data import output_writers
 
+
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         # Handle JAX arrays
@@ -33,7 +34,13 @@ class SimulationIO:
     Handles all I/O operations for the simulation, including logging and saving results.
     """
 
-    def __init__(self, base_dir: str = "results", config: Dict = None, simulation_name: str = None):
+    def __init__(
+        self,
+        base_dir: str = "results",
+        config: Dict = None,
+        simulation_name: str = None,
+        output_format: str = "numpy",
+    ):
         """
         Initializes the IO handler.
 
@@ -41,6 +48,7 @@ class SimulationIO:
             base_dir (str): The base directory to store simulation results.
             config (Dict, optional): A dictionary containing the simulation configuration to save.
             simulation_name (str, optional): Name of the simulation to include in the results directory.
+            output_format (str): Output writer format — ``"numpy"`` (default) or ``"vtk"``.
         """
         self.base_dir = os.path.expanduser(base_dir)
         self.simulation_name = simulation_name
@@ -53,7 +61,9 @@ class SimulationIO:
         if config:
             self.save_config(config)
 
-        self.save_data_step = MethodType(output_writers["vtk"].save_data_step, self)
+        self.save_data_step = MethodType(
+            output_writers[output_format].save_data_step, self
+        )
 
     def _setup_logging(self) -> None:
         """

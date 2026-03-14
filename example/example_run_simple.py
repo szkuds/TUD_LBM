@@ -1,41 +1,56 @@
-from app_setup import configure_jax, SimulationSetup
+"""Single-phase LBM simulation example using the functional API.
 
-from runner import Run
-from util import visualise
+Demonstrates the in-memory trajectory execution mode — short runs where
+the full trajectory fits in device memory.
+"""
 
-# Configure JAX settings from central app_setup
-# To enable debugging (disable JIT), set DISABLE_JIT = True in app_setup/jax_config.py
+from config.jax_config import configure_jax
+from config.simulation_config import SimulationConfig
+from setup.simulation_setup import build_setup
+from runner.run import init_state, run
+
+# Configure JAX (64-bit precision, JIT enabled).
 configure_jax()
 
 
-def test_single_phase_simulation():
-    """Test a single-phase LBM simulation."""
-    print("\n=== Single-Phase LBM Simulation ===")
+def run_in_memory():
+    """Run a short simulation and keep the trajectory in memory."""
+    print("\n=== In-Memory Trajectory Mode ===")
 
-    setup = SimulationSetup(
+    config = SimulationConfig(
         grid_shape=(100, 100),
         lattice_type="D2Q9",
         tau=0.6,
-        nt=10000,
-        save_interval=1000,
+        nt=100,
+        save_interval=10,
         init_type="standard",
     )
 
-    # Run simulation
-    sim = Run(setup)
-    sim.run(verbose=True)
-    return sim
+    setup = build_setup(config)
+    # init_state now uses setup.init_type ("standard") via the
+    # operators.initialise factory
+    state = init_state(setup)
+
+    print(f"  Init type       : {setup.init_type}")
+    print(f"  Initial f shape : {state.f.shape}")
+
+    # No io_handler → full trajectory returned
+    final_state, trajectory = run(
+        setup,
+        state,
+        nt=config.nt,
+        save_interval=config.save_interval,
+    )
+
+    print(f"  Final time step : {int(final_state.t)}")
+    print(f"  Trajectory shape: {trajectory.f.shape[0]} snapshots")
+    return final_state, trajectory
 
 
 if __name__ == "__main__":
-    print("Testing Single-Phase LBM Codebase")
-    print("=" * 60)
+    print("TUD-LBM  —  Single-Phase Example")
+    print("=" * 50)
 
-    # Run simulation
-    sim_single_phase = test_single_phase_simulation()
+    run_in_memory()
 
-    # Visualize results
-    print("\n=== Visualizing Results ===")
-    visualise(sim_single_phase, "Single-Phase")
-
-    print("\nTest completed!")
+    print("\nDone.")

@@ -130,17 +130,29 @@ make doctest
 
 ## Operator registry & architecture
 
-All operators (collision schemes, macroscopic solvers, forces, simulations, …) are registered in a **single global registry** at import time via `@register_operator`.  Adding a new operator requires only the decorator and a `name` class attribute — no factory, config, or CLI code changes.
+All operators (collision schemes, macroscopic solvers, forces, boundary conditions, lattice models, initialisers, …) are registered in a **single global registry** (`OPERATOR_REGISTRY` in `src/registry.py`) at import time via decorators.  The registry supports both **pure functions** and **classes** as targets.  Adding a new operator requires only the decorator — no factory, config, or CLI code changes.
+
+**Pure function example (preferred):**
 
 ```python
-from app_setup.registry import register_operator
+from registry import collision_model
 
-
-@register_operator("collision_models")
-class CollisionMRT(CollisionBase):
-  name = "mrt"
-  ...
+@collision_model(name="mrt")
+def collide_mrt(f, feq, tau, source=None, k_diag=None):
+    ...
 ```
+
+**Lattice model example:**
+
+```python
+from registry import lattice_operator
+
+@lattice_operator(name="D2Q9", dim=2, q=9)
+def _build_d2q9() -> Lattice:
+    ...
+```
+
+Convenience decorators are available for each operator kind: `@collision_model`, `@boundary_condition`, `@macroscopic_operator`, `@equilibrium_operator`, `@stream_operator`, `@force_model`, `@initialise_operator`, `@wetting_operator`, `@lattice_operator`, `@simulation_type_operator`, `@update_timestep_operator`.
 
 For the full developer guide — including how to add config keys, where to place files, and how validation works — see **[`dev_notes/OperatorRegistry.md`](dev_notes/OperatorRegistry.md)**.
 
@@ -339,13 +351,13 @@ All operators register themselves via `@register_operator(kind)` and are resolve
 
 #### Force (`force`)
 
-| Class | Registry Name | Description |
-|-------|---------------|-------------|
-| `Force` | — | Abstract base class for all forces. Holds a force array of shape `(nx, ny, 1, d)`. |
-| `CompositeForce` | `"composite"` | Combines multiple force fields by superposition. Allows gravitational, electrical, and other forces to work together. |
-| `GravityForceMultiphase` | `"gravity_multiphase"` | Constant gravitational force across the grid, supporting inclined domains via `inclination_angle_deg`. |
+| Class | Registry Name | Description                                                                                                                      |
+|-------|---------------|----------------------------------------------------------------------------------------------------------------------------------|
+| `Force` | — | Abstract base class for all forces. Holds a force array of shape `(nx, ny, 1, d)`.                                               |
+| `CompositeForce` | `"composite"` | Combines multiple force fields by superposition. Allows gravitational, electrical, and other forces to work together.            |
+| `GravityForceMultiphase` | `"gravity_multiphase"` | Constant gravitational force across the grid, supporting inclined domains via `inclination_angle_deg`.                           |
 | `ElectricForce` | `"electric"` | Electrical force with electric potential distribution. Solves for the electric potential using a separate distribution function. |
-| `SourceTerm` | `"source_term"` | Guo forcing source term for incorporating body forces into the collision step. |
+| `SourceTerm` | `"source_term"` | Forcing source term for incorporating body forces into the collision step.                                                       |
 
 #### Initialisation (`initialise`)
 

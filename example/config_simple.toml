@@ -1,25 +1,15 @@
 # TUD-LBM Simple Single-Phase Simulation Configuration
 #
-# NOTE: Config file loading requires an adapter (coming soon).
-# For now, use the Python API:
+# Load this config via the TOML adapter:
 #
-#   from app_setup import SimulationBundle, SinglePhaseConfig, RunnerConfig
-#   from runner import Run
+#   from config.adapter_toml import TomlAdapter
+#   from setup.simulation_setup import build_setup
+#   from runner.run import init_state, run
 #
-#   bundle = SimulationBundle(
-#       simulation_type=SinglePhaseConfig(
-#           grid_shape=(100, 100),
-#           lattice_type="D2Q9",
-#           tau=0.6,
-#           nt=10000,
-#       ),
-#       runner=RunnerConfig(
-#           save_interval=1000,
-#           init_type="standard",
-#       ),
-#   )
-#   sim = Run(bundle)
-#   sim.run()
+#   config = TomlAdapter().load("config_simple.toml")
+#   setup  = build_setup(config)
+#   state  = init_state(setup)
+#   final_state, trajectory = run(setup, state)
 
 [simulation_type]
 simulation_name = 'Test simple simulation'

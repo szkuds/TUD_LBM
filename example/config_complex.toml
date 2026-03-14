@@ -1,7 +1,15 @@
 # TUD-LBM Complex Multiphase Simulation Configuration
 #
-# NOTE: Config file loading requires an adapter (coming soon).
-# For now, use the Python API - see example/example_run_complex.py
+# Load this config via the TOML adapter:
+#
+#   from config.adapter_toml import TomlAdapter
+#   from setup.simulation_setup import build_setup
+#   from runner.run import init_state, run
+#
+#   config = TomlAdapter().load("config_complex.toml")
+#   setup  = build_setup(config)
+#   state  = init_state(setup)
+#   final_state, trajectory = run(setup, state)
 
 [simulation_type]
 simulation_name = 'Test complex simulation'
@@ -37,7 +45,6 @@ phi_left = 1.0
 phi_right = 1.0
 d_rho_left = 0.0
 d_rho_right = 0.0
-# Note: rho_l and rho_v are taken from [multiphase] section
 
 [boundary_conditions.hysteresis_params]
 ca_advancing = 90.0
@@ -46,6 +53,6 @@ learning_rate = 0.05
 max_iterations = 10
 
 [output]
-results_dir = "~/TUD_LBM_data/results"
+#results_dir = "~/TUD_LBM_data/results"
 # Optionally specify which fields to save
 # fields = ["rho", "u", "force", "force_ext"]

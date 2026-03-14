@@ -4,7 +4,6 @@ import pathlib
 
 from .base import OutputWriter
 
-
 # --- Automatic module discovery ---
 _package_dir = pathlib.Path(__file__).parent
 

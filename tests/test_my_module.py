@@ -13,6 +13,7 @@ def test_package_imports():
     Then: import should succeed
     """
     import tud_lbm  # noqa: F401
+
     assert True, "Package imported successfully"
 
 
@@ -28,6 +29,4 @@ def test_package_has_core_modules():
     import tud_lbm
 
     # Verify package structure exists
-    assert hasattr(tud_lbm, '__file__'), "Package should have __file__ attribute"
-
-
+    assert hasattr(tud_lbm, "__file__"), "Package should have __file__ attribute"

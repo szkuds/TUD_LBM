@@ -10,17 +10,15 @@ Tests validate that:
 import os
 import sys
 import textwrap
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 # Ensure src/ is on the path so imports work from the tests/ directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from app_setup.adapter_base import ConfigAdapter, get_adapter
-from app_setup.adapter_toml import TomlAdapter
-from app_setup.simulation_setup import SimulationSetup
-
+from config.adapter_base import ConfigAdapter, get_adapter
+from config.adapter_toml import TomlAdapter
+from config.simulation_config import SimulationConfig
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -128,6 +126,7 @@ def multiphase_force_toml_file(tmp_path):
 
 # ── get_adapter tests ────────────────────────────────────────────────
 
+
 class TestGetAdapter:
     """Tests for the get_adapter factory function."""
 
@@ -140,15 +139,16 @@ class TestGetAdapter:
         assert isinstance(adapter, TomlAdapter)
 
     def test_unsupported_extension_raises(self):
-        with pytest.raises(ValueError, match="Unsupported app_setup file extension"):
+        with pytest.raises(ValueError, match="Unsupported config file extension"):
             get_adapter("app_setup.yaml")
 
     def test_no_extension_raises(self):
-        with pytest.raises(ValueError, match="Unsupported app_setup file extension"):
+        with pytest.raises(ValueError, match="Unsupported config file extension"):
             get_adapter("app_setup")
 
 
 # ── TomlAdapter: simple single-phase ─────────────────────────────────
+
 
 class TestTomlAdapterSimple:
     """Tests for loading simple single-phase configs."""
@@ -156,7 +156,7 @@ class TestTomlAdapterSimple:
     def test_load_returns_simulation_bundle(self, simple_toml_file):
         adapter = TomlAdapter()
         bundle = adapter.load(simple_toml_file)
-        assert isinstance(bundle, SimulationSetup)
+        assert isinstance(bundle, SimulationConfig)
 
     def test_load_is_single_phase(self, simple_toml_file):
         bundle = TomlAdapter().load(simple_toml_file)
@@ -192,7 +192,6 @@ class TestTomlAdapterSimple:
     def test_force_disabled_by_default(self, simple_toml_file):
         bundle = TomlAdapter().load(simple_toml_file)
         assert bundle.force_enabled is False
-        assert bundle.force_obj is None
 
     def test_to_dict_roundtrip(self, simple_toml_file):
         bundle = TomlAdapter().load(simple_toml_file)
@@ -204,6 +203,7 @@ class TestTomlAdapterSimple:
 
 
 # ── TomlAdapter: multiphase (no forces) ──────────────────────────────
+
 
 class TestTomlAdapterMultiphase:
     """Tests for loading multiphase configs without forces."""
@@ -262,47 +262,41 @@ class TestTomlAdapterMultiphase:
 
 # ── TomlAdapter: multiphase with forces ──────────────────────────────
 
+
 class TestTomlAdapterForces:
-    """Tests for force instantiation from TOML [[force]] tables."""
+    """Tests for force config loading from TOML [[force]] tables.
+
+    Since the migration to the functional architecture, the adapter
+    no longer instantiates force objects.  Instead, ``[[force]]``
+    tables are validated and stored as plain dicts in
+    ``SimulationConfig.force_config``.  Actual JAX force objects are
+    built later in ``build_setup()``.
+    """
 
     def test_force_enabled_when_forces_present(self, multiphase_force_toml_file):
-        """Force loading requires JAX — mock the import."""
-        mock_force = MagicMock()
-        mock_module = MagicMock()
-        mock_module.GravityForceMultiphase = MagicMock(return_value=mock_force)
-
-        with patch("importlib.import_module", return_value=mock_module):
-            bundle = TomlAdapter().load(multiphase_force_toml_file)
-
+        bundle = TomlAdapter().load(multiphase_force_toml_file)
         assert bundle.force_enabled is True
 
-    def test_force_obj_populated(self, multiphase_force_toml_file):
-        mock_force = MagicMock()
-        mock_module = MagicMock()
-        mock_module.GravityForceMultiphase = MagicMock(return_value=mock_force)
+    def test_force_config_is_list_of_dicts(self, multiphase_force_toml_file):
+        bundle = TomlAdapter().load(multiphase_force_toml_file)
+        assert isinstance(bundle.force_config, list)
+        assert len(bundle.force_config) == 1
+        assert isinstance(bundle.force_config[0], dict)
 
-        with patch("importlib.import_module", return_value=mock_module):
-            bundle = TomlAdapter().load(multiphase_force_toml_file)
+    def test_force_config_contains_correct_type(self, multiphase_force_toml_file):
+        bundle = TomlAdapter().load(multiphase_force_toml_file)
+        entry = bundle.force_config[0]
+        assert entry["type"] == "gravity_multiphase"
 
-        assert bundle.force_obj is not None
-        assert len(bundle.force_obj) == 1
-
-    def test_force_constructor_called_with_correct_args(self, multiphase_force_toml_file):
-        mock_force_cls = MagicMock()
-        mock_module = MagicMock()
-        mock_module.GravityForceMultiphase = mock_force_cls
-
-        with patch("importlib.import_module", return_value=mock_module):
-            TomlAdapter().load(multiphase_force_toml_file)
-
-        mock_force_cls.assert_called_once_with(
-            force_g=2e-6,
-            inclination_angle_deg=60,
-            grid_shape=(201, 101),
-        )
+    def test_force_config_contains_correct_params(self, multiphase_force_toml_file):
+        bundle = TomlAdapter().load(multiphase_force_toml_file)
+        entry = bundle.force_config[0]
+        assert entry["force_g"] == 2e-6
+        assert entry["inclination_angle_deg"] == 60
 
 
 # ── Error handling ───────────────────────────────────────────────────
+
 
 class TestTomlAdapterErrors:
     """Tests for error handling in the adapter."""
@@ -314,7 +308,9 @@ class TestTomlAdapterErrors:
     def test_missing_simulation_table(self, tmp_path):
         p = tmp_path / "empty.toml"
         p.write_text("[output]\nresults_dir = '/tmp'\n")
-        with pytest.raises(ValueError, match="missing the required \\[simulation_type\\] table"):
+        with pytest.raises(
+            ValueError, match="missing the required \\[simulation_type\\] table"
+        ):
             TomlAdapter().load(str(p))
 
     def test_unknown_simulation_type(self, tmp_path):
@@ -366,6 +362,7 @@ class TestTomlAdapterErrors:
 
 # ── ConfigAdapter ABC ────────────────────────────────────────────────
 
+
 class TestConfigAdapterABC:
     """Tests for the abstract base class."""
 
@@ -383,14 +380,13 @@ class TestConfigAdapterABC:
 
 # ── Integration: loading the actual example files ────────────────────
 
+
 class TestExampleFiles:
     """Smoke tests against the actual example TOML files in the repo."""
 
     @pytest.fixture
     def example_dir(self):
-        return os.path.join(
-            os.path.dirname(__file__), "..", "example"
-        )
+        return os.path.join(os.path.dirname(__file__), "..", "example")
 
     def test_config_simple_loads(self, example_dir):
         path = os.path.join(example_dir, "config_simple.toml")
@@ -400,22 +396,19 @@ class TestExampleFiles:
         assert bundle.is_single_phase
         assert bundle.grid_shape == (100, 100)
 
-    def test_config_complex_loads_without_forces(self, example_dir):
-        """Load the complex app_setup but mock force instantiation (needs JAX)."""
+    def test_config_complex_loads(self, example_dir):
+        """Load the complex config — no mocking needed since forces are
+        now stored as plain dicts in force_config, not instantiated."""
         path = os.path.join(example_dir, "config_complex.toml")
         if not os.path.exists(path):
             pytest.skip("example/config_complex.toml not found")
 
-        mock_force = MagicMock()
-        mock_module = MagicMock()
-        mock_module.GravityForceMultiphase = MagicMock(return_value=mock_force)
-
-        with patch("importlib.import_module", return_value=mock_module):
-            bundle = TomlAdapter().load(path)
+        bundle = TomlAdapter().load(path)
 
         assert bundle.is_multiphase
         assert bundle.grid_shape == (401, 101)
         assert bundle.kappa == 0.017
         assert bundle.save_interval == 2000
-
-
+        assert bundle.force_enabled is True
+        assert isinstance(bundle.force_config, list)
+        assert bundle.force_config[0]["type"] == "gravity_multiphase"

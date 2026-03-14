@@ -17,19 +17,19 @@ def mock_optax_missing(monkeypatch):
             ...
     """
     # Remove optax from sys.modules if present
-    monkeypatch.setitem(sys.modules, 'optax', None)
+    monkeypatch.setitem(sys.modules, "optax", None)
 
     # Store original __import__
     original_import = builtins.__import__
 
     def mock_import(name, *args, **kwargs):
         """Mock import that fails for optax"""
-        if name == 'optax' or name.startswith('optax.'):
+        if name == "optax" or name.startswith("optax."):
             raise ModuleNotFoundError(f"No module named '{name}'")
         # Call original import for other modules
         return original_import(name, *args, **kwargs)
 
-    monkeypatch.setattr(builtins, '__import__', mock_import)
+    monkeypatch.setattr(builtins, "__import__", mock_import)
     yield  # Run test
     # Cleanup happens automatically (monkeypatch fixture)
 
@@ -50,6 +50,7 @@ def mock_optax_present(monkeypatch):
     # Try to import optax to ensure it exists
     try:
         import optax  # noqa: F401
+
         yield  # Run test
     except ImportError:
         pytest.skip("optax not installed - skipping test that requires it")
@@ -74,12 +75,17 @@ def cleanup_imports():
 
     # Cleanup: Remove affected modules from sys.modules cache
     modules_to_clean = [
-        'tud_lbm',
-        'tud_lbm.simulation_operators',
-        'tud_lbm.simulation_operators.update_timestep',
-        'tud_lbm.simulation_operators.update_timestep.update_multiphase_hysteresis',
-        'tud_lbm.simulations',
-        'tud_lbm.run',
+        "config",
+        "config.simulation_config",
+        "setup",
+        "setup.simulation_setup",
+        "setup.lattice",
+        "state",
+        "state.state",
+        "runner",
+        "runner.run",
+        "runner.step",
+        "operators",
     ]
 
     for module_name in modules_to_clean:

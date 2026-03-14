@@ -75,7 +75,7 @@ def visualise(sim_instance, title="LBM Simulation Results"):
         # Create a new directory within the run to store the plots
         plot_dir = os.path.join(sim_instance.io_handler.run_dir, "plots")
         os.makedirs(plot_dir, exist_ok=True)
-        plot_dir_overview = os.path.join(plot_dir, 'overview')
+        plot_dir_overview = os.path.join(plot_dir, "overview")
         os.makedirs(plot_dir_overview, exist_ok=True)
         print(f"Saving plots to: {plot_dir}")
 
@@ -104,7 +104,7 @@ def visualise(sim_instance, title="LBM Simulation Results"):
             final_rho = data["rho"]
             final_u = data["u"]
             final_force = data.get("force", None)
-            if sim_instance.config.get('force_enabled', False):
+            if sim_instance.config.get("force_enabled", False):
                 final_force_ext = data.get("force_ext")
             else:
                 final_force_ext = None
@@ -112,13 +112,13 @@ def visualise(sim_instance, title="LBM Simulation Results"):
             # Initialize density profile y-index (mid-plane by default or app_setup override)
             if y_index is None:
                 ny = final_rho.shape[1]
-                y_index = sim_instance.config.get('density_profile_y', ny // 4)
+                y_index = sim_instance.config.get("density_profile_y", ny // 4)
 
             # load the app_setup (try TOML first, then JSON)
             config = _load_config(run_dir)
 
             # Calculate density ratio and determine scaling
-            if config['simulation_type'] == 'multiphase':
+            if config["simulation_type"] == "multiphase":
                 density_ratio = config["rho_l"] / config["rho_v"]
                 use_log_scale = density_ratio > 100
             else:
@@ -144,7 +144,9 @@ def visualise(sim_instance, title="LBM Simulation Results"):
                 )
                 axes[0].set_title("Density (Log Scale)")
             else:
-                im1 = axes[0].imshow(final_rho[:, :, 0, 0].T, origin="lower", cmap="viridis")
+                im1 = axes[0].imshow(
+                    final_rho[:, :, 0, 0].T, origin="lower", cmap="viridis"
+                )
                 axes[0].set_title("Density")
 
             plt.colorbar(im1, ax=axes[0], label="Density")
@@ -169,7 +171,7 @@ def visualise(sim_instance, title="LBM Simulation Results"):
 
             # Downsample the vectors to avoid a cluttered plot
             # Plot one vector every `skip` grid points
-            skip = min(nx, ny)//10
+            skip = min(nx, ny) // 10
 
             # Plotting quiver requires transposing h_i_prev and V to match the meshgrid and imshow orientation
             axes[1].quiver(
@@ -255,9 +257,15 @@ def visualise(sim_instance, title="LBM Simulation Results"):
             ax_dp.set_xlabel("x")
             ax_dp.set_ylabel(f"density at y={y_index}")
             ax_dp.set_yscale("log")
-            ax_dp.set_title(f"Density profile over x at y={y_index} (log), iter {timestep:05d}")
-            ax_dp.legend([f"Min: {min_rho:.3g}, Max: {max_rho:.3g}, Ratio: {ratio_rho:.3g}"])
-            dp_filename = os.path.join(density_profile_dir, f"density_profile_iter-{timestep:05d}.png")
+            ax_dp.set_title(
+                f"Density profile over x at y={y_index} (log), iter {timestep:05d}"
+            )
+            ax_dp.legend(
+                [f"Min: {min_rho:.3g}, Max: {max_rho:.3g}, Ratio: {ratio_rho:.3g}"]
+            )
+            dp_filename = os.path.join(
+                density_profile_dir, f"density_profile_iter-{timestep:05d}.png"
+            )
             fig_dp.savefig(dp_filename)
             plt.close(fig_dp)
             # ---- End density profile analysis (per timestep) ----
@@ -272,7 +280,11 @@ def visualise(sim_instance, title="LBM Simulation Results"):
             try:
                 with open(log_path, "r") as lf:
                     for line in lf:
-                        if line.startswith("Step ") and "max_u=" in line and "avg_rho=" in line:
+                        if (
+                            line.startswith("Step ")
+                            and "max_u=" in line
+                            and "avg_rho=" in line
+                        ):
                             step_part, rest = line.split(":", 1)
                             step_str = step_part.split()[1]
                             iter_cur = int(step_str.split("/")[0])
@@ -298,21 +310,21 @@ def visualise(sim_instance, title="LBM Simulation Results"):
             fig_analysis, axes_analysis = plt.subplots(3, 1, figsize=(10, 12))
 
             # Subplot 1: max_u vs iteration
-            axes_analysis[0].scatter(iters_log, umax_log, s=10, color='tab:blue')
+            axes_analysis[0].scatter(iters_log, umax_log, s=10, color="tab:blue")
             axes_analysis[0].set_xlabel("Iteration")
             axes_analysis[0].set_ylabel("max_u")
             axes_analysis[0].set_title("Max velocity vs iteration")
             axes_analysis[0].grid(True, alpha=0.3)
 
             # Subplot 2: avg_rho vs iteration
-            axes_analysis[1].scatter(iters_log, avg_rho_log, s=10, color='tab:green')
+            axes_analysis[1].scatter(iters_log, avg_rho_log, s=10, color="tab:green")
             axes_analysis[1].set_xlabel("Iteration")
             axes_analysis[1].set_ylabel("avg_rho")
             axes_analysis[1].set_title("Average density vs iteration")
             axes_analysis[1].grid(True, alpha=0.3)
 
             # Subplot 3: density_ratio vs iteration
-            axes_analysis[2].scatter(iter_nums, ratio_rhos, s=10, color='tab:orange')
+            axes_analysis[2].scatter(iter_nums, ratio_rhos, s=10, color="tab:orange")
             axes_analysis[2].set_xlabel("Iteration")
             axes_analysis[2].set_ylabel("Density ratio (max/min)")
             axes_analysis[2].set_title("Density ratio vs iteration")

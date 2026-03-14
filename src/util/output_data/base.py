@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Dict
 import numpy as np
 
+
 class OutputWriter(ABC):
 
     registry = {}
@@ -27,12 +28,9 @@ class OutputWriter(ABC):
 
         # Prevent duplicate names
         if cls.__name__ in OutputWriter.registry:
-            raise ValueError(
-                f"Output writer '{cls.__name__}' already registered."
-            )
+            raise ValueError(f"Output writer '{cls.__name__}' already registered.")
 
         OutputWriter.registry[cls.__name__] = cls
-
 
     @abstractmethod
     def save_data_step(self, iteration: int, data: Dict[str, np.ndarray]) -> None:

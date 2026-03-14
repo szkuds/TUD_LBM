@@ -1,239 +1,244 @@
-"""Tests for the global operator registry."""
+"""Tests for the central operator registry.
+
+Tests for:
+    - ``registry.register_operator`` (class + function registration)
+    - ``registry.get_operators`` / ``get_operator_names`` / ``get_operator_category``
+    - Duplicate detection
+    - Convenience decorators
+    - All expected operator kinds are populated after importing operators
+"""
+
+from __future__ import annotations
 
 import pytest
 
-from app_setup.registry import (
+from registry import (
     OPERATOR_REGISTRY,
-    OperatorEntry,
-    OperatorKind,
+    get_operator_category,
     get_operator_names,
     get_operators,
-    get_registered_kinds,
     register_operator,
 )
 
+# Import all operator packages to trigger registration decorators.
+# In production code, these are imported by the factories/setup modules.
+import operators.collision  # noqa: F401
+import operators.boundary  # noqa: F401
+import operators.differential  # noqa: F401
+import operators.equilibrium  # noqa: F401
+import operators.streaming  # noqa: F401
+import operators.macroscopic  # noqa: F401
+import operators.force  # noqa: F401
+import operators.initialise.factory  # noqa: F401
+import operators.wetting  # noqa: F401
+import setup.lattice  # noqa: F401
 
-# Ensure all simulation_operators are imported (triggers registration)
-import simulation_operators  # noqa: F401
-import simulation_type  # noqa: F401
-import update_timestep  # noqa: F401
-
-
-class TestOperatorRegistry:
-    """Tests for the global OPERATOR_REGISTRY dict."""
-
-    def test_registry_is_populated(self):
-        """After importing simulation_operators, the registry should contain entries."""
-        assert len(OPERATOR_REGISTRY) > 0
-
-    def test_registry_entries_are_operator_entry(self):
-        for key, entry in OPERATOR_REGISTRY.items():
-            assert isinstance(entry, OperatorEntry)
-            assert isinstance(entry.name, str)
-            assert isinstance(entry.kind, str)
-            assert entry.cls is not None
-
-    def test_registry_key_format(self):
-        """Keys should be '{kind}:{name}'."""
-        for key, entry in OPERATOR_REGISTRY.items():
-            assert key == f"{entry.kind}:{entry.name}"
-
-
-class TestGetOperators:
-    """Tests for the get_operators() function."""
-
-    def test_get_collision_operators(self):
-        collision_ops = get_operators("collision_models")
-        assert "bgk" in collision_ops
-        assert "mrt" in collision_ops
-
-    def test_get_macroscopic_operators(self):
-        macroscopic_ops = get_operators("macroscopic")
-        assert "standard" in macroscopic_ops
-        assert "double-well" in macroscopic_ops
-        assert "carnahan-starling" in macroscopic_ops
-
-    def test_get_equilibrium_operators(self):
-        eq_ops = get_operators("equilibrium")
-        assert "wb" in eq_ops
-
-    def test_get_stream_operators(self):
-        stream_ops = get_operators("stream")
-        assert "standard" in stream_ops
-
-    def test_get_boundary_condition_operators(self):
-        bc_ops = get_operators("boundary_condition")
-        assert "standard" in bc_ops
-        assert "periodic" in bc_ops
-        assert "bounce-back" in bc_ops
-        assert "symmetry" in bc_ops
-        assert "wetting" in bc_ops
-
-    def test_get_initialise_operators(self):
-        init_ops = get_operators("initialise")
-        assert "standard" in init_ops
-        assert "multiphase_bubble" in init_ops
-        assert "multiphase_bubble_bot" in init_ops
-        assert "multiphase_bubble_bubble" in init_ops
-        assert "multiphase_droplet" in init_ops
-        assert "multiphase_droplet_top" in init_ops
-        assert "multiphase_droplet_variable_radius" in init_ops
-        assert "multiphase_lateral_bubble_configuration" in init_ops
-        assert "wetting" in init_ops
-        assert "wetting_chem_step" in init_ops
-        assert "init_from_file" in init_ops
-
-    def test_get_differential_operators(self):
-        diff_ops = get_operators("differential")
-        assert "gradient" in diff_ops
-        assert "laplacian" in diff_ops
-
-    def test_get_force_operators(self):
-        force_ops = get_operators("force")
-        assert "gravity_multiphase" in force_ops
-        assert "electric" in force_ops
-        assert "composite" in force_ops
-        assert "source_term" in force_ops
-
-    def test_get_wetting_operators(self):
-        wetting_ops = get_operators("wetting")
-        assert "contact_angle" in wetting_ops
-        assert "contact_line_location" in wetting_ops
-
-    def test_get_simulation_operators(self):
-        sim_ops = get_operators("simulation_type")
-        assert "single_phase" in sim_ops
-        assert "multiphase" in sim_ops
-
-    def test_get_update_operators(self):
-        update_ops = get_operators("update_timestep")
-        assert "single_phase" in update_ops
-        assert "multiphase" in update_ops
-        assert "multiphase_hysteresis" in update_ops
-
-    def test_get_nonexistent_kind_returns_empty(self):
-        ops = get_operators("nonexistent_kind_xyz")
-        assert ops == {}
-
-    def test_operator_entry_cls_is_correct(self):
-        from simulation_operators.collision_models import CollisionBGK, CollisionMRT
-        collision_ops = get_operators("collision_models")
-        assert collision_ops["bgk"].cls is CollisionBGK
-        assert collision_ops["mrt"].cls is CollisionMRT
+# =====================================================================
+# Registration mechanics
+# =====================================================================
 
 
 class TestRegisterOperator:
-    """Tests for the @register_operator decorator."""
+    """Core registration decorator tests."""
 
-    def test_missing_name_raises(self):
-        with pytest.raises(ValueError, match="must define a class attribute 'name'"):
-            @register_operator("test_kind")
-            class BadOperator:
+    def test_register_function_with_explicit_name(self):
+        @register_operator("_test_kind", name="_test_fn")
+        def my_fn():
+            pass
+
+        entry = OPERATOR_REGISTRY["_test_kind:_test_fn"]
+        assert entry.name == "_test_fn"
+        assert entry.kind == "_test_kind"
+        assert entry.target is my_fn
+        # cleanup
+        del OPERATOR_REGISTRY["_test_kind:_test_fn"]
+
+    def test_register_class_with_name_attr(self):
+        @register_operator("_test_kind")
+        class MyCls:
+            name = "_test_cls"
+
+        entry = OPERATOR_REGISTRY["_test_kind:_test_cls"]
+        assert entry.target is MyCls
+        del OPERATOR_REGISTRY["_test_kind:_test_cls"]
+
+    def test_register_function_uses_dunder_name(self):
+        @register_operator("_test_kind")
+        def _test_auto_name():
+            pass
+
+        assert "_test_kind:_test_auto_name" in OPERATOR_REGISTRY
+        del OPERATOR_REGISTRY["_test_kind:_test_auto_name"]
+
+    def test_duplicate_raises(self):
+        @register_operator("_test_dup", name="_dup")
+        def fn1():
+            pass
+
+        with pytest.raises(ValueError, match="Duplicate"):
+
+            @register_operator("_test_dup", name="_dup")
+            def fn2():
                 pass
 
-    def test_duplicate_registration_raises(self):
-        # First registration should succeed
-        @register_operator("_test_duplicate")
-        class Op1:
-            name = "_dup_test"
+        del OPERATOR_REGISTRY["_test_dup:_dup"]
 
-        # Second registration with same kind:name should fail
-        with pytest.raises(ValueError, match="Duplicate operator registration"):
-            @register_operator("_test_duplicate")
-            class Op2:
-                name = "_dup_test"
+    def test_metadata_stored(self):
+        @register_operator("_test_meta", name="_meta", foo="bar")
+        def fn():
+            pass
 
-        # Cleanup
-        key = "_test_duplicate:_dup_test"
-        OPERATOR_REGISTRY.pop(key, None)
-
-    def test_successful_registration(self):
-        @register_operator("_test_reg")
-        class TestOp:
-            name = "_test_op"
-
-        key = "_test_reg:_test_op"
-        assert key in OPERATOR_REGISTRY
-        assert OPERATOR_REGISTRY[key].cls is TestOp
-        assert OPERATOR_REGISTRY[key].name == "_test_op"
-        assert OPERATOR_REGISTRY[key].kind == "_test_reg"
-
-        # Cleanup
-        OPERATOR_REGISTRY.pop(key, None)
+        entry = OPERATOR_REGISTRY["_test_meta:_meta"]
+        assert entry.metadata == {"foo": "bar"}
+        del OPERATOR_REGISTRY["_test_meta:_meta"]
 
 
-class TestRegistryIntegration:
-    """Integration tests: verify registry-based lookups produce usable classes."""
-
-    def test_collision_bgk_class_is_callable(self):
-        collision_ops = get_operators("collision_models")
-        bgk_cls = collision_ops["bgk"].cls
-        assert callable(bgk_cls)
-
-    def test_all_collision_names_are_strings(self):
-        collision_ops = get_operators("collision_models")
-        for name in collision_ops:
-            assert isinstance(name, str)
-
-    def test_sorted_collision_names(self):
-        collision_ops = get_operators("collision_models")
-        names = sorted(collision_ops.keys())
-        assert isinstance(names, list)
-        assert len(names) >= 2  # at least bgk, mrt
-
-    def test_get_boundary_condition_operators_contains_periodic(self):
-        bc_ops = get_operators("boundary_condition")
-        assert "periodic" in bc_ops
-        assert callable(bc_ops["periodic"].cls)
-
-    def test_get_initialise_operators_contains_standard(self):
-        init_ops = get_operators("initialise")
-        assert "standard" in init_ops
-        assert callable(init_ops["standard"].cls)
+# =====================================================================
+# Query helpers
+# =====================================================================
 
 
-class TestRegistryHelpers:
-    """Tests for get_operator_names, get_registered_kinds, and OperatorKind."""
+class TestQueryHelpers:
+    """get_operators / get_operator_names / get_operator_category."""
 
-    def test_get_operator_names_returns_set(self):
+    def test_get_operators_returns_dict(self):
+        ops = get_operators("collision_models")
+        assert isinstance(ops, dict)
+        assert "bgk" in ops
+        assert "mrt" in ops
+
+    def test_get_operator_names(self):
         names = get_operator_names("collision_models")
-        assert isinstance(names, set)
         assert "bgk" in names
         assert "mrt" in names
 
-    def test_get_operator_names_empty_for_unknown_kind(self):
-        names = get_operator_names("nonexistent_kind_xyz")
-        assert names == set()
+    def test_get_operator_category(self):
+        cats = get_operator_category()
+        assert "collision_models" in cats
+        assert "lattice" in cats
 
-    def test_get_registered_kinds(self):
-        kinds = get_registered_kinds()
-        assert isinstance(kinds, set)
+    def test_empty_kind_returns_empty_dict(self):
+        ops = get_operators("nonexistent_kind_xyz")
+        assert ops == {}
+
+
+# =====================================================================
+# All expected kinds are populated
+# =====================================================================
+
+
+class TestRegistryPopulated:
+    """After importing all operator packages, expected entries exist."""
+
+    def test_collision_models_registered(self):
+        names = get_operator_names("collision_models")
+        assert names >= {"bgk", "mrt"}
+
+    def test_boundary_conditions_registered(self):
+        names = get_operator_names("boundary_condition")
+        assert names >= {"bounce-back", "periodic", "symmetry"}
+
+    def test_equilibrium_registered(self):
+        names = get_operator_names("equilibrium")
+        assert "wb" in names
+
+    def test_streaming_registered(self):
+        names = get_operator_names("stream")
+        assert "standard" in names
+
+    def test_macroscopic_registered(self):
+        names = get_operator_names("macroscopic")
+        assert names >= {"standard", "double-well"}
+
+    def test_force_registered(self):
+        names = get_operator_names("force")
+        assert names >= {"source_term", "gravity_multiphase", "electric"}
+
+    def test_initialise_registered(self):
+        names = get_operator_names("initialise")
         expected = {
-            "boundary_condition",
-            "collision_models",
-            "differential",
-            "equilibrium",
-            "force",
-            "initialise",
-            "macroscopic",
-            "simulation_type",
-            "stream",
-            "update_timestep",
+            "standard",
+            "multiphase_bubble",
+            "multiphase_bubble_bot",
+            "multiphase_bubble_bubble",
+            "multiphase_droplet",
+            "multiphase_droplet_top",
+            "multiphase_droplet_variable_radius",
+            "multiphase_lateral_bubble",
             "wetting",
+            "wetting_chem_step",
+            "init_from_file",
         }
-        assert expected.issubset(kinds), (
-            f"Missing kinds: {expected - kinds}"
-        )
+        assert names >= expected
 
-    def test_all_registered_kinds_in_operator_kind_literal(self):
-        """Every kind present in the registry should be listed in OperatorKind."""
-        import typing
-        allowed = set(typing.get_args(OperatorKind))
-        actual = get_registered_kinds()
-        # Filter out test-only kinds (prefixed with "_")
-        actual = {k for k in actual if not k.startswith("_")}
-        assert actual.issubset(allowed), (
-            f"Kinds in registry but not in OperatorKind Literal: {actual - allowed}"
-        )
+    def test_wetting_registered(self):
+        names = get_operator_names("wetting")
+        assert names >= {"contact_angle", "contact_line_location", "hysteresis"}
+
+    def test_differential_registered(self):
+        names = get_operator_names("differential")
+        assert names >= {"gradient", "laplacian"}
+
+    def test_lattice_registered(self):
+        names = get_operator_names("lattice")
+        assert "D2Q9" in names
 
 
+# =====================================================================
+# Lattice via registry
+# =====================================================================
+
+
+class TestLatticeViaRegistry:
+    """build_lattice uses the registry correctly."""
+
+    def test_build_lattice_d2q9(self):
+        from setup.lattice import build_lattice
+
+        lat = build_lattice("D2Q9")
+        assert lat.d == 2
+        assert lat.q == 9
+
+    def test_build_lattice_case_insensitive(self):
+        from setup.lattice import build_lattice
+
+        lat = build_lattice("d2q9")
+        assert lat.d == 2
+
+    def test_build_lattice_unsupported_raises(self):
+        from setup.lattice import build_lattice
+
+        with pytest.raises(ValueError, match="Unsupported lattice type"):
+            build_lattice("D1Q3")
+
+    def test_all_lattices_in_registry(self):
+        names = get_operator_names("lattice")
+        assert len(names) >= 1
+        assert "D2Q9" in names
+
+
+# =====================================================================
+# Collision factory via registry
+# =====================================================================
+
+
+class TestCollisionFactoryViaRegistry:
+    """get_collision_fn uses the registry correctly."""
+
+    def test_get_bgk(self):
+        from operators.collision.factory import get_collision_fn
+
+        fn = get_collision_fn("bgk")
+        assert callable(fn)
+
+    def test_get_mrt(self):
+        from operators.collision.factory import get_collision_fn
+
+        fn = get_collision_fn("mrt")
+        assert callable(fn)
+
+    def test_unknown_raises(self):
+        from operators.collision.factory import get_collision_fn
+
+        with pytest.raises(ValueError, match="Unknown collision scheme"):
+            get_collision_fn("nonexistent")
