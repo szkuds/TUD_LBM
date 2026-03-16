@@ -37,6 +37,7 @@ def _ensure_operators_imported() -> None:
     import operators.initialise.factory  # noqa: F401
     import operators.wetting  # noqa: F401
     import setup.lattice  # noqa: F401
+    import util.plotting # noqa: F401
 
 
 def _display_operators() -> None:

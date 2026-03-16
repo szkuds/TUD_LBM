@@ -42,7 +42,7 @@ class SimulationIO:
         output_format: str = "numpy",
     ):
         """
-        Initializes the IO handler.
+        Initialises the IO handler.
 
         Args:
             base_dir (str): The base directory to store simulation results.

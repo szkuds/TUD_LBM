@@ -99,7 +99,7 @@ def test_visualise_accepts_run_directory(plotting_run_dir):
         rho=np.ones((6, 6, 1, 1)),
         u=np.zeros((6, 6, 1, 2)),
     )
-    (plotting_run_dir / "app_setup.json").write_text(
+    (plotting_run_dir / "config.json").write_text(
         '{"simulation_name": "demo", "plot_fields": ["density", "velocity"]}'
     )
 
