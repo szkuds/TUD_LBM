@@ -111,6 +111,8 @@ def _display_config_summary(config) -> None:
     table.add_row("Results Directory", config.results_dir)
     if config.save_fields:
         table.add_row("Save Fields", ", ".join(config.save_fields))
+    if config.plot_fields:
+        table.add_row("Plot Fields", ", ".join(config.plot_fields))
 
     if config.is_multiphase:
         table.add_row("Kappa", str(config.kappa))

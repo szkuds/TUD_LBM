@@ -19,11 +19,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
 from config.simulation_config import SimulationConfig
-
-# Valid force types — used for validation only.
-# Actual force construction happens in ``build_setup()`` from the
-# force_config dicts stored in ``SimulationConfig``.
-VALID_FORCE_TYPES = {"gravity_multiphase", "electric"}
+import operators.force  # noqa: F401
+from registry import get_operator_names
 
 
 class ConfigAdapter(ABC):
@@ -76,8 +73,8 @@ class ConfigAdapter(ABC):
             if force_type is None:
                 raise KeyError("Each [[force]] table must have a 'type' key.")
 
-            if force_type not in VALID_FORCE_TYPES:
-                registered = ", ".join(sorted(VALID_FORCE_TYPES))
+            if force_type not in get_operator_names('force'):
+                registered = ", ".join(sorted(get_operator_names('force')))
                 raise KeyError(
                     f"Unknown force type '{force_type}'. "
                     f"Registered types: {registered}"

@@ -34,7 +34,7 @@ class FigureBuilder:
 
         self.config["data_dir"] = str(self._data_dir)
         requested = self.config.get("plot_fields")
-        requested = requested or _DEFAULT_FIELD_ORDER
+        requested = requested or get_operators('plotting')
 
         all_ops = get_operators('plotting')
         self._operators = []

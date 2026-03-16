@@ -20,11 +20,7 @@ from __future__ import annotations
 import dataclasses
 import os
 from typing import Any, Dict, List
-
-try:
-    import tomllib  # Python ≥ 3.11
-except ModuleNotFoundError:  # pragma: no cover — Python 3.10 fallback
-    import tomli as tomllib  # type: ignore[no-redef]
+import tomllib
 
 from config.adapter_base import ConfigAdapter
 from config.simulation_config import SimulationConfig
@@ -97,13 +93,6 @@ class TomlAdapter(ConfigAdapter):
         # ── Merge [multiphase] table ─────────────────────────────────
         if sim_type == "multiphase":
             multiphase_table = raw.get("multiphase", {})
-
-            # Explicitly reject legacy `width` key to avoid silent misuse.
-            if "width" in multiphase_table:
-                raise KeyError(
-                    "Legacy key 'width' is no longer supported in the "
-                    "[multiphase] table; please use 'interface_width' instead."
-                )
 
             sim_table.update(multiphase_table)
         elif sim_type not in ("single_phase",):

@@ -231,8 +231,6 @@ class SimulationConfig:
                     f"Invalid save_fields: {invalid}. " f"Valid fields: {valid_fields}"
                 )
 
-        # plot_fields are resolved dynamically against the plotting registry.
-
     # ── Multiphase validation ────────────────────────────────────────
 
     def _validate_multiphase(self) -> None:
