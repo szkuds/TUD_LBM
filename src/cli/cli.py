@@ -161,6 +161,15 @@ def _run_simulation(config):
     )
 
     console.print("[bold green]Simulation completed![/bold green]")
+
+    if config.plot_fields:
+        from util.plotting import FigureBuilder
+        console.print('[dim]Generating plots...[/dim]')
+        builder = FigureBuilder(config.to_dict(), io.run_dir)
+        builder.build_all()
+        console.print(
+           "[bold green]Plotting complete![/bold green]"
+        )
     return final_state
 
 
@@ -258,7 +267,7 @@ def main(
 
         console.print()
         console.print(
-            Panel.fit("[bold green]Simulation complete![/bold green]", title="Success")
+            Panel.fit("[bold green]Simulation, saving and plotting complete![/bold green]", title="Success")
         )
 
     except KeyboardInterrupt:

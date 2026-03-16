@@ -49,13 +49,6 @@ class TomlAdapter(ConfigAdapter):
         Optional.  Output/saving overrides (``results_dir``, ``fields``).
     """
 
-    # Keys in [simulation_type] that are adapter meta-data, not forwarded
-    _META_KEYS = frozenset(
-        {
-            "type",
-        }
-    )
-
     def load(self, path: str) -> SimulationConfig:
         """Parse *path* and return a :class:`SimulationConfig`.
 
@@ -118,10 +111,10 @@ class TomlAdapter(ConfigAdapter):
         output_table = raw.get("output", {})
         if "results_dir" in output_table:
             sim_table["results_dir"] = os.path.expanduser(output_table["results_dir"])
-        if "fields" in output_table:
-            sim_table["save_fields"] = list(output_table["fields"])
-        if "plots" in output_table:
-            sim_table["plot_fields"] = list(output_table["plots"])
+        if "save_fields" in output_table:
+            sim_table["save_fields"] = list(output_table["save_fields"])
+        if "plot_fields" in output_table:
+            sim_table["plot_fields"] = list(output_table["plot_fields"])
 
         # ── Build SimulationConfig ───────────────────────────────────
         sim_table["sim_type"] = sim_type

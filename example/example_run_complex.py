@@ -38,7 +38,7 @@ def wetting_hysteresis_simulation():
         rho_l=1.0,
         rho_v=0.33,
         interface_width=4,
-        #save_fields=["rho", "u", "force"],
+        save_fields=["rho", "u", "force"],
         plot_fields=["density", "velocity", "force", "analysis"],
         force_enabled=True,
         force_config=[
