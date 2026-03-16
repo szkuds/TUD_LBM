@@ -23,5 +23,6 @@ init_type = "standard"
 
 [output]
 results_dir = "~/TUD_LBM_data/results"
+plots = ["density"]
 # Optionally specify which fields to save (default: rho, u)
 # fields = ["rho", "u"]

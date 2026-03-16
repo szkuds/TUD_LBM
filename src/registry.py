@@ -45,6 +45,7 @@ OperatorKind = Literal[
     "initialise",
     "lattice",
     "macroscopic",
+    "plotting",
     "simulation_type",
     "stream",
     "update_timestep",
@@ -238,3 +239,9 @@ def lattice_operator(
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register a lattice model (kind ``"lattice"``)."""
     return register_operator("lattice", name=name, **meta)
+
+def plotting_operator(
+    *, name: str | None = None, **meta: object
+) -> Callable[[OperatorTarget], OperatorTarget]:
+    """Register a plotting operator (kind ``"plotting"``)."""
+    return register_operator("plotting", name=name, **meta)

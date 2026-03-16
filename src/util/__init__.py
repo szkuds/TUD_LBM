@@ -11,6 +11,6 @@ Functions:
 """
 
 from util.io import SimulationIO
-from util.plotting import visualise
+from util.plotting import FigureBuilder, PlotOperator, visualise
 
-__all__ = ["SimulationIO", "visualise"]
+__all__ = ["SimulationIO", "visualise", "FigureBuilder", "PlotOperator"]

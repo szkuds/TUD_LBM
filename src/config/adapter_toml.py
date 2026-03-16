@@ -131,6 +131,8 @@ class TomlAdapter(ConfigAdapter):
             sim_table["results_dir"] = os.path.expanduser(output_table["results_dir"])
         if "fields" in output_table:
             sim_table["save_fields"] = list(output_table["fields"])
+        if "plots" in output_table:
+            sim_table["plot_fields"] = list(output_table["plots"])
 
         # ── Build SimulationConfig ───────────────────────────────────
         sim_table["sim_type"] = sim_type

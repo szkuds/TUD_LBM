@@ -53,6 +53,7 @@ learning_rate = 0.05
 max_iterations = 10
 
 [output]
-#results_dir = "~/TUD_LBM_data/results"
+results_dir = "~/TUD_LBM_data/results"
+plots = ["density", "velocity"]
 # Optionally specify which fields to save
 # fields = ["rho", "u", "force", "force_ext"]

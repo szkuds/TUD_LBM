@@ -112,6 +112,7 @@ class SimulationConfig:
     save_interval: int = 100
     skip_interval: int = 0
     save_fields: Optional[List[str]] = None
+    plot_fields: Optional[List[str]] = None
 
     # ── Multiphase (ignored when sim_type == "single_phase") ─────────
     eos: Optional[str] = None
@@ -229,6 +230,8 @@ class SimulationConfig:
                 raise ValueError(
                     f"Invalid save_fields: {invalid}. " f"Valid fields: {valid_fields}"
                 )
+
+        # plot_fields are resolved dynamically against the plotting registry.
 
     # ── Multiphase validation ────────────────────────────────────────
 

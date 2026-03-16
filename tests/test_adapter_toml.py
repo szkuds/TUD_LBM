@@ -35,6 +35,7 @@ SIMPLE_TOML = textwrap.dedent("""\
 
     [output]
     results_dir = "~/TUD_LBM_data/results"
+    plots = ["density", "velocity"]
 """)
 
 MULTIPHASE_TOML = textwrap.dedent("""\
@@ -188,6 +189,15 @@ class TestTomlAdapterSimple:
         bundle = TomlAdapter().load(simple_toml_file)
         assert "~" not in bundle.results_dir
         assert "TUD_LBM_data" in bundle.results_dir
+
+    def test_plot_fields_loaded_from_output_table(self, simple_toml_file):
+        bundle = TomlAdapter().load(simple_toml_file)
+        assert bundle.plot_fields == ["density", "velocity"]
+
+    def test_to_dict_includes_plot_fields(self, simple_toml_file):
+        bundle = TomlAdapter().load(simple_toml_file)
+        d = bundle.to_dict()
+        assert d["plot_fields"] == ["density", "velocity"]
 
     def test_force_disabled_by_default(self, simple_toml_file):
         bundle = TomlAdapter().load(simple_toml_file)
