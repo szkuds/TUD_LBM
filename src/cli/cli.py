@@ -228,6 +228,7 @@ def main(
 
             console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
             config = from_toml(config_path)
+        # TODO: the interactive mode can be extended further. Plotting is not yet added for example.
         else:
             # ── Interactive mode ─────────────────────────────────────
             from config import SimulationConfig
@@ -240,7 +241,7 @@ def main(
             grid_y = int(Prompt.ask("Grid size Y", default="100"))
             tau = float(Prompt.ask("Relaxation time (tau)", default="0.6"))
             nt = int(Prompt.ask("Number of timesteps", default="1000"))
-            save_interval = int(Prompt.ask("Save interval", default="100"))
+            save_interval = int(Prompt.ask("Save interval", default=str(nt // 10)))
 
             config = SimulationConfig(
                 grid_shape=(grid_x, grid_y),

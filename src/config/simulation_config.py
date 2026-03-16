@@ -109,7 +109,7 @@ class SimulationConfig:
 
     # ── Output / IO ──────────────────────────────────────────────────
     results_dir: str = BASE_RESULTS_DIR
-    save_interval: int = 100
+    save_interval: int = 0  # This is set to 0 to ensure that when nothing is passed the default is nt/10
     skip_interval: int = 0
     save_fields: Optional[List[str]] = None
     plot_fields: Optional[List[str]] = None
@@ -138,6 +138,10 @@ class SimulationConfig:
     def __post_init__(self) -> None:
         # frozen=True forbids normal assignment; use object.__setattr__
         # for one-time normalisation in __post_init__.
+
+        # Compute the save_interval based on nt/10 before validation
+        if self.save_interval == 0:
+            object.__setattr__(self, "save_interval", self.nt // 10)
 
         # Normalise grid_shape to tuple
         if not isinstance(self.grid_shape, tuple):
