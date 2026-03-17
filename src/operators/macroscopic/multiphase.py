@@ -7,19 +7,17 @@ Computes density, force-corrected velocity, and the interparticle
 (chemical-potential) force for the diffuse-interface model with a
 double-well bulk free energy.
 
-.. note::
-
-   The differential operators (gradient, laplacian) are computed inline
-   using simple 2nd-order central finite differences with ``jnp.roll``.
-   This avoids pulling in the legacy ``Gradient`` / ``Laplacian``
-   operator classes and keeps the function fully self-contained and
-   jittable.  A future step may factor these out into
-   ``operators.differential``.
+When a pre-built :class:`~operators.differential.operators.DifferentialOperators`
+tuple is supplied via *diff_ops*, the proper LBM-stencil gradient and
+Laplacian operators (with correct per-edge padding and optional wetting
+ghost-cell correction) are used.  Without *diff_ops* the function falls
+back to simple periodic central-difference / 5-point stencil helpers so
+that existing callers and tests continue to work unchanged.
 """
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import TYPE_CHECKING, Tuple
 
 import jax.numpy as jnp
 
@@ -27,7 +25,10 @@ from setup.lattice import Lattice
 from setup.simulation_setup import MultiphaseParams
 from registry import macroscopic_operator
 
-# ── Internal helpers (pure, jittable) ────────────────────────────────
+if TYPE_CHECKING:
+    from operators.differential.operators import DifferentialOperators
+
+# ── Internal fallback helpers (pure, jittable, periodic-only) ────────
 
 
 def _gradient_2d(field_2d: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -98,7 +99,10 @@ def _chemical_potential(
     rho_l: float,
     rho_v: float,
 ) -> jnp.ndarray:
-    """Full chemical potential: μ = μ_0(ρ) − κ ∇²ρ."""
+    """Full chemical potential: μ = μ_0(ρ) − κ ∇²ρ.
+
+    Fallback path using the simple periodic ``_laplacian_2d`` helper.
+    """
     mu_0 = _eos_double_well(rho_2d, beta, rho_l, rho_v)
     lap_rho = _laplacian_2d(rho_2d)
     return mu_0 - kappa * lap_rho
@@ -113,6 +117,7 @@ def compute_macroscopic_multiphase(
     lattice: Lattice,
     mp: MultiphaseParams,
     force_ext: jnp.ndarray | None = None,
+    diff_ops: "DifferentialOperators | None" = None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Compute density, equilibrium velocity, and total force for multiphase.
 
@@ -121,6 +126,13 @@ def compute_macroscopic_multiphase(
         lattice: :class:`~setup.lattice.Lattice`.
         mp: :class:`~setup.simulation_setup.MultiphaseParams`.
         force_ext: Optional external force, shape ``(nx, ny, 1, 2)``.
+        diff_ops: Optional pre-built
+            :class:`~operators.differential.operators.DifferentialOperators`.
+            When provided, the proper LBM-stencil gradient / Laplacian
+            (with correct per-edge pad modes and optional wetting
+            correction) are used.  When ``None``, the function falls
+            back to the simple periodic helpers ``_gradient_2d`` /
+            ``_laplacian_2d``.
 
     Returns:
         ``(rho, u_eq, force_total)``
@@ -147,21 +159,36 @@ def compute_macroscopic_multiphase(
     beta = (
         8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
     )
-    rho_2d = rho[:, :, 0, 0]
-    mu = _chemical_potential(rho_2d, mp.kappa, beta, mp.rho_l, mp.rho_v)
-    grad_mu_x, grad_mu_y = _gradient_2d(mu)
 
-    # F_int = −ρ ∇μ
-    force_int_x = -rho_2d * grad_mu_x
-    force_int_y = -rho_2d * grad_mu_y
+    if diff_ops is not None:
+        # ── LBM-stencil path (correct pad modes / wetting) ──────────
+        # Laplacian and grad_standard are always pad-modes-only.
+        mu_0 = _eos_double_well(rho[:, :, 0, 0], beta, mp.rho_l, mp.rho_v)
+        lap_rho = diff_ops.laplacian(rho)                    # (nx, ny, 1, 1)
+        mu = mu_0[..., None, None] - mp.kappa * lap_rho      # (nx, ny, 1, 1)
 
-    # Pack to 4D
-    force_int = jnp.stack(
-        [force_int_x[:, :, None, None], force_int_y[:, :, None, None]],
-        axis=-1,
-    )[
-        :, :, :, 0, :
-    ]  # (nx, ny, 1, 2)  – squeeze the extra dim
+        # Chemical-potential gradient — always the standard (non-wetting) gradient
+        grad_mu = diff_ops.grad_standard(mu)                 # (nx, ny, 1, 2)
+
+        # F_int = −ρ ∇μ
+        force_int = -rho * grad_mu                           # (nx, ny, 1, 2)
+    else:
+        # ── Fallback: simple periodic central-difference helpers ─────
+        rho_2d = rho[:, :, 0, 0]
+        mu = _chemical_potential(rho_2d, mp.kappa, beta, mp.rho_l, mp.rho_v)
+        grad_mu_x, grad_mu_y = _gradient_2d(mu)
+
+        # F_int = −ρ ∇μ
+        force_int_x = -rho_2d * grad_mu_x
+        force_int_y = -rho_2d * grad_mu_y
+
+        # Pack to 4D
+        force_int = jnp.stack(
+            [force_int_x[:, :, None, None], force_int_y[:, :, None, None]],
+            axis=-1,
+        )[
+            :, :, :, 0, :
+        ]  # (nx, ny, 1, 2)  – squeeze the extra dim
 
     # 4. Total force
     force_total = force_int

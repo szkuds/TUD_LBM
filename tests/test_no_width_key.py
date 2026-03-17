@@ -16,7 +16,7 @@ from config.simulation_config import SimulationConfig
 # ── TomlAdapter: reject legacy 'width' in [multiphase] ──────────────
 
 
-class TestTomlAdapterRejectsWidth:
+class TestTomlAdapterNeedsInterfaceWidth:
     """TomlAdapter must reject a 'width' key in [multiphase]."""
 
     def test_width_in_multiphase_table_raises(self, tmp_path):
@@ -31,13 +31,12 @@ class TestTomlAdapterRejectsWidth:
             kappa = 0.017
             rho_l = 1.0
             rho_v = 0.33
-            interface_width = 4
             eos = "double-well"
-            width = 4
+            width = 6
         """)
         p = tmp_path / "bad_width.toml"
         p.write_text(content)
-        with pytest.raises(KeyError, match="Legacy key 'width'"):
+        with pytest.raises(ValueError, match="'interface_width' is required for multiphase simulations"):
             TomlAdapter().load(str(p))
 
     def test_interface_width_accepted(self, tmp_path):

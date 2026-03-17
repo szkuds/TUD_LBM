@@ -152,7 +152,7 @@ class TestRegistryPopulated:
 
     def test_force_registered(self):
         names = get_operator_names("force")
-        assert names >= {"source_term", "gravity_multiphase", "electric"}
+        assert names >= {"source_term_wb", "gravity_multiphase", "electric"}
 
     def test_initialise_registered(self):
         names = get_operator_names("initialise")

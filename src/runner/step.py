@@ -93,6 +93,10 @@ def step_single_phase(setup, state: State) -> State:
 def step_multiphase(setup, state: State) -> State:
     """Multiphase LBM step using pure-function operators.
 
+    All differential-operator branching (wetting / no-wetting) is resolved
+    at setup time inside :class:`~operators.differential.operators.DifferentialOperators`.
+    This function contains **no** ``if wetting_enabled`` guards.
+
     Args:
         setup: Closed-over :class:`~setup.simulation_setup.SimulationSetup`.
         state: Current :class:`~state.state.State`.
@@ -102,6 +106,7 @@ def step_multiphase(setup, state: State) -> State:
     """
     lattice = setup.lattice
     mp = setup.multiphase_params
+    diff_ops = setup.diff_ops
     collision_fn = build_collision_fn(setup.collision_scheme)
     bc_fn = build_composite_bc(setup.bc_config, lattice)
 
@@ -141,19 +146,13 @@ def step_multiphase(setup, state: State) -> State:
         else:
             force_ext = elec_force
 
-    if force_ext is not None:
-        rho, u, force_tot = compute_macroscopic_multiphase(
-            state.f,
-            lattice,
-            mp,
-            force_ext=force_ext,
-        )
-    else:
-        rho, u, force_tot = compute_macroscopic_multiphase(
-            state.f,
-            lattice,
-            mp,
-        )
+    rho, u, force_tot = compute_macroscopic_multiphase(
+        state.f,
+        lattice,
+        mp,
+        force_ext=force_ext,
+        diff_ops=diff_ops,
+    )
 
     # 2. Equilibrium
     feq = compute_equilibrium(rho, u, lattice)

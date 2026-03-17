@@ -37,7 +37,7 @@ inclination_angle_deg = 0
 left = "periodic"
 right = "periodic"
 top = "bounce-back"
-bottom = "bounce-back"
+bottom = "wetting"
 
 [boundary_conditions.wetting_params]
 phi_left = 1.0

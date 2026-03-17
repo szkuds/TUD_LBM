@@ -27,11 +27,15 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any, Dict, NamedTuple, Optional, Tuple
+from typing import Any, Dict, NamedTuple, Optional, Tuple, List
 
 import jax.numpy as jnp
 
 from setup.lattice import Lattice, build_lattice
+from operators.differential.factory import build_differential_operators
+from operators.differential.operators import DifferentialOperators
+from operators.differential.pad_modes import determine_pad_modes
+from operators.differential.config import DifferentialConfig
 
 
 class BCMasks(NamedTuple):
@@ -139,6 +143,9 @@ class SimulationSetup(NamedTuple):
 
     # Electric force params (or None)
     electric_params: Optional[Any] = None  # ElectricParams NamedTuple
+
+    # Differential operators (pre-built closures, or None)
+    diff_ops: Optional[DifferentialOperators] = None
 
     # Extra
     extra: Optional[Dict[str, Any]] = None
@@ -279,6 +286,24 @@ def build_setup(config) -> SimulationSetup:
                     voltage_bottom=entry.get("voltage_bottom", 0.0),
                 )
 
+    # ── Build differential operators ──────────────────────────────────
+    # Ensure BC modules are imported so their @boundary_condition decorators
+    # have fired before we query pad_edge_mode metadata.
+    from operators.boundary import bounce_back as _bb  # noqa: F401
+    from operators.boundary import symmetry as _sym     # noqa: F401
+    from operators.boundary import periodic as _per     # noqa: F401
+
+    pad_modes = determine_pad_modes(bc_config)
+    diff_cfg = DifferentialConfig(
+        w=lattice.w,
+        c=lattice.c,
+        pad_modes=pad_modes,
+        wetting_params=getattr(config, "wetting_config", None),
+        chemical_step=getattr(config, "chemical_step", None),
+    )
+    diff_ops = build_differential_operators(diff_cfg)
+    # ──────────────────────────────────────────────────────────────────
+
     return SimulationSetup(
         lattice=lattice,
         grid_shape=tuple(config.grid_shape),
@@ -301,5 +326,6 @@ def build_setup(config) -> SimulationSetup:
         hysteresis_config=getattr(config, "hysteresis_config", None),
         gravity_template=gravity_template,
         electric_params=electric_params,
+        diff_ops=diff_ops,
         extra=getattr(config, "extra", None),
     )

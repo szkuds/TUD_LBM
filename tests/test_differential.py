@@ -167,15 +167,15 @@ class TestMakeWettingGradient:
         }
 
     def test_returns_callable(self, lattice, periodic_pad, wetting_params):
-        from operators.differential.gradient import make_wetting_gradient
+        from operators.differential.gradient import compute_wetting_gradient
 
-        fn = make_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
+        fn = compute_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
         assert callable(fn)
 
     def test_output_shape(self, lattice, periodic_pad, wetting_params, const_field):
-        from operators.differential.gradient import make_wetting_gradient
+        from operators.differential.gradient import compute_wetting_gradient
 
-        fn = make_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
+        fn = compute_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
         out = fn(const_field)
         assert out.shape == (NX, NY, 1, 2)
 
@@ -185,14 +185,14 @@ class TestMakeWettingGradient:
         """Ghost-cell correction should change the result for a non-constant field."""
         from operators.differential.gradient import (
             compute_gradient,
-            make_wetting_gradient,
+            compute_wetting_gradient,
         )
 
         # A non-trivial density field
         rho = jnp.linspace(0.3, 1.0, NX)[:, None, None, None] * jnp.ones((NX, NY, 1, 1))
 
         plain = compute_gradient(rho, lattice.w, lattice.c, periodic_pad)
-        wetting_fn = make_wetting_gradient(
+        wetting_fn = compute_wetting_gradient(
             lattice.w, lattice.c, periodic_pad, wetting_params
         )
         with_wetting = wetting_fn(rho)
@@ -201,9 +201,9 @@ class TestMakeWettingGradient:
         assert not jnp.allclose(plain, with_wetting, atol=1e-9)
 
     def test_jittable_result(self, lattice, periodic_pad, wetting_params, const_field):
-        from operators.differential.gradient import make_wetting_gradient
+        from operators.differential.gradient import compute_wetting_gradient
 
-        fn = make_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
+        fn = compute_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
         # The closure is already jitted; calling it again should use the compiled version
         out = fn(const_field)
         out2 = fn(const_field)
@@ -211,7 +211,7 @@ class TestMakeWettingGradient:
 
     def test_chemical_step_variant(self, lattice, periodic_pad, const_field):
         """make_wetting_gradient with chemical_step uses per-step wetting fields."""
-        from operators.differential.gradient import make_wetting_gradient
+        from operators.differential.gradient import compute_wetting_gradient
 
         params_array = {
             "rho_l": 1.0,
@@ -220,7 +220,7 @@ class TestMakeWettingGradient:
             "phi": [1.2, 1.4],
             "d_rho": [0.03, 0.07],
         }
-        fn = make_wetting_gradient(
+        fn = compute_wetting_gradient(
             lattice.w, lattice.c, periodic_pad, params_array, chemical_step=0
         )
         out = fn(const_field)

@@ -100,7 +100,7 @@ def compute_gradient(
     return out
 
 
-def make_wetting_gradient(
+def compute_wetting_gradient(
     w: jnp.ndarray,
     c: jnp.ndarray,
     pad_mode: list,
