@@ -226,19 +226,19 @@ class TestCollisionFactoryViaRegistry:
     """get_collision_fn uses the registry correctly."""
 
     def test_get_bgk(self):
-        from operators.collision.factory import get_collision_fn
+        from operators.collision.factory import build_collision_fn
 
-        fn = get_collision_fn("bgk")
+        fn = build_collision_fn("bgk")
         assert callable(fn)
 
     def test_get_mrt(self):
-        from operators.collision.factory import get_collision_fn
+        from operators.collision.factory import build_collision_fn
 
-        fn = get_collision_fn("mrt")
+        fn = build_collision_fn("mrt")
         assert callable(fn)
 
     def test_unknown_raises(self):
-        from operators.collision.factory import get_collision_fn
+        from operators.collision.factory import build_collision_fn
 
         with pytest.raises(ValueError, match="Unknown collision scheme"):
-            get_collision_fn("nonexistent")
+            build_collision_fn("nonexistent")

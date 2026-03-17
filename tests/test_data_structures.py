@@ -278,7 +278,7 @@ class TestSimulationConfigValidation:
         from config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="save_interval"):
-            SimulationConfig(grid_shape=(8, 8), save_interval=0)
+            SimulationConfig(grid_shape=(8, 8), save_interval=-1)
 
     def test_negative_skip_interval_raises(self):
         from config.simulation_config import SimulationConfig

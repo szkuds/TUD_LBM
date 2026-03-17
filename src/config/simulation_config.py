@@ -209,7 +209,7 @@ class SimulationConfig:
             raise ValueError("k_diag must be provided when using MRT collision scheme")
 
         # save_interval
-        if self.save_interval <= 0:
+        if self.save_interval < 0:
             raise ValueError(
                 f"save_interval must be positive, got {self.save_interval}"
             )

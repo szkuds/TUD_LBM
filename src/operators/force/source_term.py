@@ -19,8 +19,7 @@ def _gradient_rho_periodic(rho_2d: jnp.ndarray):
     drho_dy = (jnp.roll(rho_2d, -1, axis=1) - jnp.roll(rho_2d, 1, axis=1)) / 2.0
     return drho_dx, drho_dy
 
-
-@force_model(name="source_term")
+@force_model(name="source_term_wb")
 def source(
     rho: jnp.ndarray,
     u: jnp.ndarray,

@@ -36,7 +36,7 @@ from state.state import State
 from operators.macroscopic.single_phase import compute_macroscopic
 from operators.equilibrium.equilibrium import compute_equilibrium
 from operators.streaming.streaming import stream
-from operators.collision.factory import get_collision_fn
+from operators.collision.factory import build_collision_fn
 from operators.boundary.composite import build_composite_bc
 from operators.force.source_term import source as compute_source
 from operators.force.gravity import compute_gravity_force
@@ -58,7 +58,7 @@ def step_single_phase(setup, state: State) -> State:
         Updated :class:`~state.state.State` after one time step.
     """
     lattice = setup.lattice
-    collision_fn = get_collision_fn(setup.collision_scheme)
+    collision_fn = build_collision_fn(setup.collision_scheme)
     bc_fn = build_composite_bc(setup.bc_config, lattice)
 
     # 1. Macroscopic fields
@@ -102,7 +102,7 @@ def step_multiphase(setup, state: State) -> State:
     """
     lattice = setup.lattice
     mp = setup.multiphase_params
-    collision_fn = get_collision_fn(setup.collision_scheme)
+    collision_fn = build_collision_fn(setup.collision_scheme)
     bc_fn = build_composite_bc(setup.bc_config, lattice)
 
     # 1. Multiphase macroscopic (includes chemical potential, gradient, Laplacian)

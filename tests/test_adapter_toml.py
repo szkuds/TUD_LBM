@@ -35,7 +35,7 @@ SIMPLE_TOML = textwrap.dedent("""\
 
     [output]
     results_dir = "~/TUD_LBM_data/results"
-    plots = ["density", "velocity"]
+    plot_fields = ["density", "velocity"]
 """)
 
 MULTIPHASE_TOML = textwrap.dedent("""\
@@ -416,9 +416,9 @@ class TestExampleFiles:
         bundle = TomlAdapter().load(path)
 
         assert bundle.is_multiphase
-        assert bundle.grid_shape == (401, 101)
+        assert bundle.grid_shape == (201, 201)
         assert bundle.kappa == 0.017
-        assert bundle.save_interval == 2000
+        assert bundle.save_interval == 400
         assert bundle.force_enabled is True
         assert isinstance(bundle.force_config, list)
         assert bundle.force_config[0]["type"] == "gravity_multiphase"

@@ -180,22 +180,22 @@ class TestCollisionFactory:
     """``get_collision_fn`` dispatches to the correct function."""
 
     def test_bgk(self):
-        from operators.collision.factory import get_collision_fn
+        from operators.collision.factory import build_collision_fn
         from operators.collision.bgk import collide_bgk
 
-        assert get_collision_fn("bgk") is collide_bgk
+        assert build_collision_fn("bgk") is collide_bgk
 
     def test_mrt(self):
-        from operators.collision.factory import get_collision_fn
+        from operators.collision.factory import build_collision_fn
         from operators.collision.mrt import collide_mrt
 
-        assert get_collision_fn("mrt") is collide_mrt
+        assert build_collision_fn("mrt") is collide_mrt
 
     def test_unknown_raises(self):
-        from operators.collision.factory import get_collision_fn
+        from operators.collision.factory import build_collision_fn
 
         with pytest.raises(ValueError, match="Unknown collision scheme"):
-            get_collision_fn("invalid")
+            build_collision_fn("invalid")
 
 
 # =====================================================================

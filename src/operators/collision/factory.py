@@ -11,7 +11,7 @@ from typing import Callable
 from registry import get_operators
 
 
-def get_collision_fn(scheme: str) -> Callable:
+def build_collision_fn(scheme: str) -> Callable:
     """Return the collision pure function for *scheme*.
 
     Args:

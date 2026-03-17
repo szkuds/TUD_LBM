@@ -397,13 +397,13 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
     from operators.macroscopic.multiphase import compute_macroscopic_multiphase
     from operators.equilibrium.equilibrium import compute_equilibrium
     from operators.force.source_term import source
-    from operators.collision.factory import get_collision_fn
+    from operators.collision.factory import build_collision_fn
     from operators.streaming.streaming import stream
     from operators.boundary.composite import build_composite_bc
 
     lattice = setup.lattice
     mp = setup.multiphase_params
-    collision_fn = get_collision_fn(setup.collision_scheme)
+    collision_fn = build_collision_fn(setup.collision_scheme)
     bc_fn = build_composite_bc(setup.bc_config, lattice)
 
     def evaluate_fn(params: WettingParams):

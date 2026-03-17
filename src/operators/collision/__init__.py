@@ -6,10 +6,10 @@ from operators.collision import mrt as _mrt_mod  # noqa: F401
 
 from operators.collision.bgk import collide_bgk
 from operators.collision.mrt import collide_mrt
-from operators.collision.factory import get_collision_fn
+from operators.collision.factory import build_collision_fn
 
 __all__ = [
     "collide_bgk",
     "collide_mrt",
-    "get_collision_fn",
+    "build_collision_fn",
 ]
