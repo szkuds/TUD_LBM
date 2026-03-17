@@ -202,8 +202,8 @@ def main(
 
     Examples:
 
-        tud_lbm example/config_simple.toml
-        tud_lbm example/config_complex.toml --dry-run
+        tud_lbm example_for_test/config_simple.toml
+        tud_lbm example_for_test/config_complex.toml --dry-run
         tud_lbm --list-simulation-operators
         tud_lbm                              # interactive mode
     """
@@ -228,7 +228,7 @@ def main(
 
             console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
             config = from_toml(config_path)
-        # TODO: the interactive mode can be extended further. Plotting is not yet added for example.
+        # TODO: the interactive mode can be extended further. Plotting is not yet added for example_for_test.
         else:
             # ── Interactive mode ─────────────────────────────────────
             from config import SimulationConfig

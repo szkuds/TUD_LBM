@@ -12,7 +12,7 @@ Example usage::
     from config.adapter_toml import TomlAdapter
 
     adapter = TomlAdapter()
-    config  = adapter.load("example/config_simple.toml")
+    config  = adapter.load("example_for_test/config_simple.toml")
 """
 
 from __future__ import annotations

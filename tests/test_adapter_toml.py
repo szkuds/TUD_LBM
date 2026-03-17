@@ -388,20 +388,20 @@ class TestConfigAdapterABC:
             IncompleteAdapter()
 
 
-# ── Integration: loading the actual example files ────────────────────
+# ── Integration: loading the actual example_for_test files ────────────────────
 
 
 class TestExampleFiles:
-    """Smoke tests against the actual example TOML files in the repo."""
+    """Smoke tests against the actual example_for_test TOML files in the repo."""
 
     @pytest.fixture
     def example_dir(self):
-        return os.path.join(os.path.dirname(__file__), "..", "example")
+        return os.path.join(os.path.dirname(__file__), "example_for_test")
 
     def test_config_simple_loads(self, example_dir):
         path = os.path.join(example_dir, "config_simple.toml")
         if not os.path.exists(path):
-            pytest.skip("example/config_simple.toml not found")
+            pytest.skip("example_for_test/config_simple.toml not found")
         bundle = TomlAdapter().load(path)
         assert bundle.is_single_phase
         assert bundle.grid_shape == (100, 100)
@@ -411,7 +411,7 @@ class TestExampleFiles:
         now stored as plain dicts in force_config, not instantiated."""
         path = os.path.join(example_dir, "config_complex.toml")
         if not os.path.exists(path):
-            pytest.skip("example/config_complex.toml not found")
+            pytest.skip("example_for_test/config_complex.toml not found")
 
         bundle = TomlAdapter().load(path)
 

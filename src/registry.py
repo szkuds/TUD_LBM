@@ -141,6 +141,7 @@ def get_operators(kind: str) -> Dict[str, OperatorEntry]:
     Returns:
         ``{name: OperatorEntry, ...}``
     """
+    # TODO: This checks every key there should be a better way to get the desired information.
     prefix = f"{kind}:"
     return {
         entry.name: entry

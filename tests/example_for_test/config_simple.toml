@@ -1,0 +1,28 @@
+# TUD-LBM Simple Single-Phase Simulation Configuration
+#
+# Load this config via the TOML adapter:
+#
+#   from config.adapter_toml import TomlAdapter
+#   from setup.simulation_setup import build_setup
+#   from runner.run import init_state, run
+#
+#   config = TomlAdapter().load("config_simple.toml")
+#   setup  = build_setup(config)
+#   state  = init_state(setup)
+#   final_state, trajectory = run(setup, state)
+
+[simulation_type]
+simulation_name = 'Test simple simulation'
+type = "single_phase"
+grid_shape = [100, 100]
+lattice_type = "D2Q9"
+tau = 0.6
+nt = 10000
+save_interval = 1000
+init_type = "standard"
+
+[output]
+results_dir = "~/TUD_LBM_data/results"
+save_fields = ["rho", "u"]
+plot_fields = ["density"]
+

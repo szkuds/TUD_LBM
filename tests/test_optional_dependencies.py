@@ -139,12 +139,12 @@ class TestEnvironmentConfiguration:
 class TestInstallationMethods:
     """Tests for different installation methods."""
 
-    def test_env_file_exists(self):
+    def test_env_file_existzs(self):
         """
-        .env.example file exists for configuration.
+        .env.example_for_test file exists for configuration.
 
         Given: project directory
-        When: checking for .env.example
+        When: checking for .env.example_for_test
         Then: file should exist with PROJECT_ROOT definition
         """
         env_example = os.path.join(PROJECT_ROOT, '.env.example')
@@ -152,4 +152,4 @@ class TestInstallationMethods:
 
         with open(env_example) as f:
             content = f.read()
-        assert 'PROJECT_ROOT' in content, ".env.example should define PROJECT_ROOT"
+        assert 'PROJECT_ROOT' in content, ".env.example_for_test should define PROJECT_ROOT"

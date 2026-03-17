@@ -1,16 +1,17 @@
-"""Single-phase LBM simulation example using the functional API.
+"""Multiphase LBM wetting/hysteresis simulation example_for_test.
 
-Demonstrates the streaming I/O mode — snapshots are saved to disk at
-each save_interval via jax.debug.callback, then plotted post-run.
+Uses the streaming I/O path to write snapshots to disk during the
+``jax.lax.scan`` loop via ``jax.debug.callback``, then plots them
+post-run using the registered plot operators.
 
-Configuration is loaded from config_simple.toml.
+Configuration is loaded from config_complex.toml.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../..", "src"))
 
 from config.jax_config import configure_jax
 from config.adapter_toml import TomlAdapter
@@ -23,24 +24,24 @@ from util.plotting import FigureBuilder
 configure_jax()
 
 
-def run_and_save():
-    """Run a simulation, stream snapshots to disk, then plot them."""
-    print("\n=== Single-Phase Simulation — Streaming I/O + Plotting ===")
+def wetting_hysteresis_simulation():
+    """Run a multiphase wetting simulation with streaming I/O + plotting."""
+    print("\n=== Multiphase Wetting — Streaming I/O + Plotting ===")
 
     # Load configuration from TOML file.
-    config_path = Path(__file__).parent / "config_simple.toml"
+    config_path = Path(__file__).parent / "config_complex.toml"
     adapter = TomlAdapter()
     config = adapter.load(str(config_path))
 
-    setup = build_setup(config)
-    state = init_state(setup)
+    simulation_setup = build_setup(config)
+    state = init_state(simulation_setup)
 
-    print(f"  Config loaded from: {config_path.name}")
+    print(f"  Config loaded from : {config_path.name}")
     print(f"  Grid               : {config.grid_shape}")
     print(f"  Steps              : {config.nt}  (save every {config.save_interval})")
-    print(f"  Results dir        : {config.results_dir}")
+    print(f"  Gravity present    : {simulation_setup.gravity_template is not None}")
 
-    # Create the I/O handler — this makes the timestamped run directory.
+    # Create the I/O handler — makes the timestamped run directory.
     io = SimulationIO(
         base_dir=config.results_dir,
         config=config.to_dict(),
@@ -48,9 +49,9 @@ def run_and_save():
     )
     print(f"  Run directory      : {io.run_dir}")
 
-    # Stream snapshots to disk while the lax.scan loop runs.
+    # Stream snapshots to disk during the lax.scan loop.
     final_state, _ = run(
-        setup,
+        simulation_setup,
         state,
         nt=config.nt,
         save_interval=config.save_interval,
@@ -61,7 +62,7 @@ def run_and_save():
     print(f"  Final timestep     : {int(final_state.t)}")
     print(f"  Snapshots saved to : {io.data_dir}")
 
-    # Generate one PNG per saved snapshot.
+    # Render one composite PNG per saved snapshot.
     builder = FigureBuilder(config=config.to_dict(), run_dir=io.run_dir)
     saved_plots = builder.build_all()
     print(f"  Plots saved        : {len(saved_plots)} PNG(s) in {io.run_dir}/plots/")
@@ -70,9 +71,9 @@ def run_and_save():
 
 
 if __name__ == "__main__":
-    print("TUD-LBM  —  Single-Phase Example")
+    print("TUD-LBM  —  Multiphase Wetting Example")
     print("=" * 50)
 
-    run_and_save()
+    wetting_hysteresis_simulation()
 
     print("\nDone.")
