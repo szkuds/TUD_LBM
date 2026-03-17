@@ -94,6 +94,19 @@ def save_snapshot_callback(
     if save_fields is not None:
         data = {k: v for k, v in data.items() if k in save_fields}
 
+    # TODO: when a NaN is triggered it still needs to plot id that is enabled.
+    # TODO: The error which this return is not yet clear since it is too long.
+    # NaN check before writing
+    bad = []
+    for name, arr in data.items():
+        if np.isnan(arr).any():
+            bad.append(name)
+
+    if bad:
+        # Raising here causes the jax.debug.callback to fail
+        # and the lax.scan / run(...) to abort at this timestep.
+        raise FloatingPointError(f"NaNs detected at t={it} in fields: {bad}")
+
     io_handler.save_data_step(it, data)
 
 

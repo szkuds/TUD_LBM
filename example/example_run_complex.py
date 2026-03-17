@@ -33,13 +33,13 @@ def wetting_hysteresis_simulation():
     adapter = TomlAdapter()
     config = adapter.load(str(config_path))
 
-    setup = build_setup(config)
-    state = init_state(setup)
+    simulation_setup = build_setup(config)
+    state = init_state(simulation_setup)
 
     print(f"  Config loaded from : {config_path.name}")
     print(f"  Grid               : {config.grid_shape}")
     print(f"  Steps              : {config.nt}  (save every {config.save_interval})")
-    print(f"  Gravity present    : {setup.gravity_template is not None}")
+    print(f"  Gravity present    : {simulation_setup.gravity_template is not None}")
 
     # Create the I/O handler — makes the timestamped run directory.
     io = SimulationIO(
@@ -51,7 +51,7 @@ def wetting_hysteresis_simulation():
 
     # Stream snapshots to disk during the lax.scan loop.
     final_state, _ = run(
-        setup,
+        simulation_setup,
         state,
         nt=config.nt,
         save_interval=config.save_interval,

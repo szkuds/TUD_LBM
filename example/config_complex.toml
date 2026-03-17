@@ -17,8 +17,8 @@ type = "multiphase"
 grid_shape = [201, 201]
 lattice_type = "D2Q9"
 tau = 0.99
-nt = 20000
-init_type = "multiphase_droplet"
+nt = 4000
+init_type = "wetting"
 
 [multiphase]
 kappa = 0.017
