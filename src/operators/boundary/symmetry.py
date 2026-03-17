@@ -16,7 +16,7 @@ from setup.lattice import Lattice
 from registry import boundary_condition
 
 
-@boundary_condition(name="symmetry")
+@boundary_condition(name="symmetry", pad_edge_mode='edge')
 def apply_symmetry(
     f_streamed: jnp.ndarray,
     f_collision: jnp.ndarray,

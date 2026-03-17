@@ -12,7 +12,7 @@ from setup.lattice import Lattice
 from registry import boundary_condition
 
 
-@boundary_condition(name="periodic")
+@boundary_condition(name="periodic", pad_edge_mode='wrap')
 def apply_periodic(
     f_streamed: jnp.ndarray,
     f_collision: jnp.ndarray,

@@ -20,7 +20,7 @@ from setup.lattice import Lattice
 from registry import boundary_condition
 
 
-@boundary_condition(name="bounce-back")
+@boundary_condition(name="bounce-back", pad_edge_mode='edge')
 def apply_bounce_back(
     f_streamed: jnp.ndarray,
     f_collision: jnp.ndarray,
