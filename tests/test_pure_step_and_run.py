@@ -59,37 +59,51 @@ def _mp_setup():
 class TestSource:
     """``source`` computes a well-balanced forcing source term."""
 
+    def _diff_ops(self, lattice):
+        from operators.differential.config import DifferentialConfig
+        from operators.differential.factory import build_differential_operators
+
+        cfg = DifferentialConfig(
+            w=lattice.w,
+            c=lattice.c,
+            pad_modes=["wrap", "wrap", "wrap", "wrap"],
+        )
+        return build_differential_operators(cfg)
+
     def test_shape(self):
         from operators.force.source_term import source
 
         lattice = build_lattice("D2Q9")
+        diff_ops = self._diff_ops(lattice)
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.ones((NX, NY, 1, 2)) * 0.001
 
-        src = source(rho, u, force, lattice)
+        src = source(rho, u, force, lattice, diff_ops=diff_ops)
         assert src.shape == (NX, NY, 9, 1)
 
     def test_zero_force_zero_source(self):
         from operators.force.source_term import source
 
         lattice = build_lattice("D2Q9")
+        diff_ops = self._diff_ops(lattice)
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.zeros((NX, NY, 1, 2))
 
-        src = source(rho, u, force, lattice)
+        src = source(rho, u, force, lattice, diff_ops=diff_ops)
         np.testing.assert_allclose(np.array(src), 0.0, atol=1e-10)
 
     def test_jittable(self):
         from operators.force.source_term import source
 
         lattice = build_lattice("D2Q9")
+        diff_ops = self._diff_ops(lattice)
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.ones((NX, NY, 1, 2)) * 0.001
 
-        jitted = jax.jit(partial(source, lattice=lattice))
+        jitted = jax.jit(partial(source, lattice=lattice, diff_ops=diff_ops))
         src = jitted(rho, u, force)
         assert src.shape == (NX, NY, 9, 1)
 
@@ -98,11 +112,12 @@ class TestSource:
         from operators.force.source_term import source
 
         lattice = build_lattice("D2Q9")
+        diff_ops = self._diff_ops(lattice)
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.ones((NX, NY, 1, 2)) * 0.01
 
-        src = source(rho, u, force, lattice)
+        src = source(rho, u, force, lattice, diff_ops=diff_ops)
         # The source should satisfy ∑_i S_i = 0 (mass conservation)
         src_sum = jnp.sum(src, axis=2)
         np.testing.assert_allclose(np.array(src_sum), 0.0, atol=1e-6)

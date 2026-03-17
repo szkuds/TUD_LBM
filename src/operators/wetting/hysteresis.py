@@ -403,6 +403,7 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
 
     lattice = setup.lattice
     mp = setup.multiphase_params
+    diff_ops = setup.diff_ops
     collision_fn = build_collision_fn(setup.collision_scheme)
     bc_fn = build_composite_bc(setup.bc_config, lattice)
 
@@ -419,16 +420,18 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
                 lattice,
                 mp,
                 force_ext=force,
+                diff_ops=diff_ops,
             )
         else:
             rho_new, u_new, force_tot = compute_macroscopic_multiphase(
                 f_t,
                 lattice,
                 mp,
+                diff_ops=diff_ops,
             )
 
         feq = compute_equilibrium(rho_new, u_new, lattice)
-        src = source(rho_new, u_new, force_tot, lattice)
+        src = source(rho_new, u_new, force_tot, lattice, diff_ops=diff_ops)
         f_col = collision_fn(f_t, feq, setup.tau, src)
         f_str = stream(f_col, lattice)
         f_bc = bc_fn(f_str, f_col, setup.bc_masks)

@@ -405,13 +405,27 @@ class TestComputeMacroscopicMultiphase:
             interface_width=4,
         )
 
+    def _diff_ops(self, lattice):
+        from operators.differential.config import DifferentialConfig
+        from operators.differential.factory import build_differential_operators
+
+        cfg = DifferentialConfig(
+            w=lattice.w,
+            c=lattice.c,
+            pad_modes=["wrap", "wrap", "wrap", "wrap"],
+        )
+        return build_differential_operators(cfg)
+
     def test_returns_triple(self, lattice):
         from operators.macroscopic.multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
+        diff_ops = self._diff_ops(lattice)
         f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
 
-        rho, u_eq, force_total = compute_macroscopic_multiphase(f, lattice, mp)
+        rho, u_eq, force_total = compute_macroscopic_multiphase(
+            f, lattice, mp, diff_ops=diff_ops,
+        )
 
         assert rho.shape == (16, 16, 1, 1)
         assert u_eq.shape == (16, 16, 1, 2)
@@ -422,11 +436,14 @@ class TestComputeMacroscopicMultiphase:
         from operators.macroscopic.multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
+        diff_ops = self._diff_ops(lattice)
         # Uniform density = rho_l
         rho_0 = mp.rho_l
         f = jnp.ones((16, 16, 9, 1)) * (rho_0 / 9.0)
 
-        rho, u_eq, force_total = compute_macroscopic_multiphase(f, lattice, mp)
+        rho, u_eq, force_total = compute_macroscopic_multiphase(
+            f, lattice, mp, diff_ops=diff_ops,
+        )
 
         # Interaction force should be ~0 for uniform field (gradients vanish)
         np.testing.assert_allclose(np.array(force_total), 0.0, atol=1e-5)
@@ -435,6 +452,7 @@ class TestComputeMacroscopicMultiphase:
         from operators.macroscopic.multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
+        diff_ops = self._diff_ops(lattice)
         f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
 
         jitted_mp = jax.jit(
@@ -442,6 +460,7 @@ class TestComputeMacroscopicMultiphase:
                 compute_macroscopic_multiphase,
                 lattice=lattice,
                 mp=mp,
+                diff_ops=diff_ops,
             )
         )
         rho, u_eq, force = jitted_mp(f)
@@ -451,11 +470,12 @@ class TestComputeMacroscopicMultiphase:
         from operators.macroscopic.multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
+        diff_ops = self._diff_ops(lattice)
         f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
         force_ext = jnp.ones((16, 16, 1, 2)) * 0.001
 
         rho, u_eq, force_total = compute_macroscopic_multiphase(
-            f, lattice, mp, force_ext=force_ext
+            f, lattice, mp, force_ext=force_ext, diff_ops=diff_ops,
         )
 
         # Force total should include the external contribution
