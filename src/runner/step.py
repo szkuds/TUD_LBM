@@ -67,7 +67,7 @@ def step_single_phase(setup, state: State) -> State:
         # 2. Equilibrium
         feq = compute_equilibrium(rho, u, lattice)
         # 3. Source term + collision
-        src = compute_source(rho, u, force_tot, lattice)
+        src = compute_source(rho, u, force_tot, lattice, diff_ops=setup.diff_ops)
         f_col = collision_fn(state.f, feq, setup.tau, src)
     else:
         rho, u = compute_macroscopic(state.f, lattice)
@@ -158,7 +158,7 @@ def step_multiphase(setup, state: State) -> State:
     feq = compute_equilibrium(rho, u, lattice)
 
     # 3. Source term + collision
-    src = compute_source(rho, u, force_tot, lattice)
+    src = compute_source(rho, u, force_tot, lattice, diff_ops=diff_ops)
     f_col = collision_fn(state.f, feq, setup.tau, src)
 
     # 4. Streaming

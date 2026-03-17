@@ -1,16 +1,28 @@
 """Forcing source term — pure function.
 
 Implements the well-balanced forcing scheme for LBM.
-The density gradient is computed with periodic central differences.
+
+When a pre-built :class:`~operators.differential.operators.DifferentialOperators`
+tuple is supplied via *diff_ops*, the density gradient is computed with
+the proper LBM-stencil operator (with correct per-edge padding).
+Without *diff_ops* the function falls back to simple periodic central
+differences so that existing callers and tests continue to work unchanged.
 """
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import jax.numpy as jnp
 import numpy as np
 
 from setup.lattice import Lattice
 from registry import force_model
+
+if TYPE_CHECKING:
+    from operators.differential.operators import DifferentialOperators
+
+# ── Internal fallback helper (pure, jittable, periodic-only) ─────────
 
 
 def _gradient_rho_periodic(rho_2d: jnp.ndarray):
@@ -19,12 +31,14 @@ def _gradient_rho_periodic(rho_2d: jnp.ndarray):
     drho_dy = (jnp.roll(rho_2d, -1, axis=1) - jnp.roll(rho_2d, 1, axis=1)) / 2.0
     return drho_dx, drho_dy
 
+
 @force_model(name="source_term_wb")
 def source(
     rho: jnp.ndarray,
     u: jnp.ndarray,
     force: jnp.ndarray,
     lattice: Lattice,
+    diff_ops: "DifferentialOperators | None" = None,
 ) -> jnp.ndarray:
     """Compute the well-balanced forcing source term.
 
@@ -33,6 +47,11 @@ def source(
         u: Velocity field, shape ``(nx, ny, 1, 2)``.
         force: Force field, shape ``(nx, ny, 1, 2)``.
         lattice: :class:`~setup.lattice.Lattice`.
+        diff_ops: Optional pre-built
+            :class:`~operators.differential.operators.DifferentialOperators`.
+            When provided, ``diff_ops.grad_standard`` is used for the
+            density gradient.  When ``None``, the function falls back
+            to periodic central differences.
 
     Returns:
         Source term, shape ``(nx, ny, q, 1)``.
@@ -53,8 +72,13 @@ def source(
     fy = force[:, :, 0, 1]
     rho_2d = rho[:, :, 0, 0]
 
-    # Density gradient (periodic central differences)
-    grad_rho_x, grad_rho_y = _gradient_rho_periodic(rho_2d)
+    # Density gradient
+    if diff_ops is not None:
+        grad_rho_4d = diff_ops.grad_standard(rho)        # (nx, ny, 1, 2)
+        grad_rho_x = grad_rho_4d[:, :, 0, 0]
+        grad_rho_y = grad_rho_4d[:, :, 0, 1]
+    else:
+        grad_rho_x, grad_rho_y = _gradient_rho_periodic(rho_2d)
 
     # Corrected force
     fx_cor = fx + grad_rho_x / 3.0
