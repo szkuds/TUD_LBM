@@ -32,7 +32,7 @@ jobs:
       - name: Upgrade pip and install dependencies
         run: |
           python -m pip install --upgrade pip setuptools
-          python -m pip install pytest pytest-cov coverage ruff python-dotenv build twine
+          python -m pip install ruff
           python -m pip install .
       - name: Run unit tests
         run: python -m pytest -v
