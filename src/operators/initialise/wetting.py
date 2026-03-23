@@ -4,12 +4,10 @@ Places a sessile droplet (half-circle) at the bottom wall.
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
-
-from setup.lattice import Lattice
 from operators.equilibrium.equilibrium import compute_equilibrium
 from registry import initialise_operator
+from setup.lattice import Lattice
 
 
 @initialise_operator(name="wetting")
@@ -45,7 +43,7 @@ def init_wetting(
     distance = jnp.sqrt((x - xc) ** 2 + y**2)
 
     rho_2d = (rho_l + rho_v) / 2.0 + (rho_l - rho_v) / 2.0 * jnp.tanh(
-        2.0 * (r - distance) / interface_width
+        2.0 * (r - distance) / interface_width,
     )
     rho = jnp.zeros((nx, ny, 1, 1)).at[:, :, 0, 0].set(rho_2d)
     u = jnp.zeros((nx, ny, 1, 2))

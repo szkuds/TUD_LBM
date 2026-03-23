@@ -16,12 +16,10 @@ Example usage::
 """
 
 from __future__ import annotations
-
 import dataclasses
 import os
-from typing import Any, Dict, List
+from typing import Any
 import tomllib
-
 from config.adapter_base import ConfigAdapter
 from config.simulation_config import SimulationConfig
 
@@ -74,7 +72,7 @@ class TomlAdapter(ConfigAdapter):
         sim_table = dict(raw.get("simulation_type", {}))
         if not sim_table:
             raise ValueError(
-                f"Config file '{path}' is missing the required [simulation_type] table."
+                f"Config file '{path}' is missing the required [simulation_type] table.",
             )
 
         sim_type: str = sim_table.pop("type", "single_phase")
@@ -90,8 +88,7 @@ class TomlAdapter(ConfigAdapter):
             sim_table.update(multiphase_table)
         elif sim_type not in ("single_phase",):
             raise ValueError(
-                f"Unknown simulation type '{sim_type}'. "
-                f"Expected 'single_phase' or 'multiphase'."
+                f"Unknown simulation type '{sim_type}'. Expected 'single_phase' or 'multiphase'.",
             )
 
         # ── [boundary_conditions] (optional) ─────────────────────────
@@ -100,7 +97,7 @@ class TomlAdapter(ConfigAdapter):
             sim_table["bc_config"] = dict(bc_config)
 
         # ── [[force]] (optional) ─────────────────────────────────────
-        force_tables: List[Dict[str, Any]] = raw.get("force", [])
+        force_tables: list[dict[str, Any]] = raw.get("force", [])
         if force_tables:
             sim_table["force_enabled"] = True
             # Store as plain dicts — actual JAX force objects are built
@@ -121,8 +118,8 @@ class TomlAdapter(ConfigAdapter):
 
         # Separate known fields from extra
         known_fields = {f.name for f in dataclasses.fields(SimulationConfig)}
-        config_kwargs: Dict[str, Any] = {}
-        extra: Dict[str, Any] = {}
+        config_kwargs: dict[str, Any] = {}
+        extra: dict[str, Any] = {}
         for k, v in sim_table.items():
             if k in known_fields:
                 config_kwargs[k] = v

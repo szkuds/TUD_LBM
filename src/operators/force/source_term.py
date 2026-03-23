@@ -7,14 +7,11 @@ for the density gradient (with correct per-edge padding).
 """
 
 from __future__ import annotations
-
 from typing import TYPE_CHECKING
-
 import jax.numpy as jnp
 import numpy as np
-
-from setup.lattice import Lattice
 from registry import force_model
+from setup.lattice import Lattice
 
 if TYPE_CHECKING:
     from operators.differential.operators import DifferentialOperators
@@ -27,7 +24,7 @@ def source(
     force: jnp.ndarray,
     lattice: Lattice,
     *,
-    diff_ops: "DifferentialOperators",
+    diff_ops: DifferentialOperators,
 ) -> jnp.ndarray:
     """Compute the well-balanced forcing source term.
 
@@ -60,7 +57,7 @@ def source(
     rho_2d = rho[:, :, 0, 0]
 
     # Density gradient via LBM-stencil operator
-    grad_rho_4d = diff_ops.grad_standard(rho)        # (nx, ny, 1, 2)
+    grad_rho_4d = diff_ops.grad_standard(rho)  # (nx, ny, 1, 2)
     grad_rho_x = grad_rho_4d[:, :, 0, 0]
     grad_rho_y = grad_rho_4d[:, :, 0, 1]
 
@@ -83,13 +80,7 @@ def source(
         u_grad_rho = ux * grad_rho_x + uy * grad_rho_y
 
         source_3d = source_3d.at[:, :, i].set(
-            wi
-            * (
-                3.0 * cf
-                + 9.0 * cf_cor * cu
-                - 3.0 * uf_cor
-                + 0.5 * (3.0 * (cxi * cxi + cyi * cyi) - d) * u_grad_rho
-            )
+            wi * (3.0 * cf + 9.0 * cf_cor * cu - 3.0 * uf_cor + 0.5 * (3.0 * (cxi * cxi + cyi * cyi) - d) * u_grad_rho),
         )
 
     return jnp.expand_dims(source_3d, axis=-1)

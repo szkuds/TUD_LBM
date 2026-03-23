@@ -444,7 +444,8 @@ class TestBuildSetup:
         assert setup2.grid_shape == setup.grid_shape
         assert setup2.tau == setup.tau
         np.testing.assert_array_equal(
-            np.array(setup2.lattice.c), np.array(setup.lattice.c)
+            np.array(setup2.lattice.c),
+            np.array(setup.lattice.c),
         )
 
     def test_save_fields_tuple(self):

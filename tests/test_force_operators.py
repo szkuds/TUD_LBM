@@ -10,7 +10,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-
 from setup.lattice import build_lattice
 
 NX, NY = 8, 8
@@ -39,7 +38,9 @@ class TestGravityForce:
         from operators.force.gravity import build_gravity_force
 
         template = build_gravity_force(
-            (NX, NY), force_g=0.001, inclination_angle_deg=0.0
+            (NX, NY),
+            force_g=0.001,
+            inclination_angle_deg=0.0,
         )
         # At 0 degrees: force_x = 0, force_y = force_g
         np.testing.assert_allclose(
@@ -57,7 +58,9 @@ class TestGravityForce:
         from operators.force.gravity import build_gravity_force
 
         template = build_gravity_force(
-            (NX, NY), force_g=0.001, inclination_angle_deg=90.0
+            (NX, NY),
+            force_g=0.001,
+            inclination_angle_deg=90.0,
         )
         # At 90 degrees: force_x = -force_g, force_y ≈ 0
         np.testing.assert_allclose(
@@ -72,10 +75,8 @@ class TestGravityForce:
         )
 
     def test_compute_gravity_force_shape(self):
-        from operators.force.gravity import (
-            build_gravity_force,
-            compute_gravity_force,
-        )
+        from operators.force.gravity import build_gravity_force
+        from operators.force.gravity import compute_gravity_force
 
         template = build_gravity_force((NX, NY), force_g=0.001)
         rho = jnp.ones((NX, NY, 1, 1))
@@ -83,10 +84,8 @@ class TestGravityForce:
         assert force.shape == (NX, NY, 1, 2)
 
     def test_compute_gravity_force_value(self):
-        from operators.force.gravity import (
-            build_gravity_force,
-            compute_gravity_force,
-        )
+        from operators.force.gravity import build_gravity_force
+        from operators.force.gravity import compute_gravity_force
 
         template = build_gravity_force((NX, NY), force_g=0.001)
         rho = jnp.ones((NX, NY, 1, 1)) * 2.0
@@ -100,10 +99,8 @@ class TestGravityForce:
         )
 
     def test_jittable(self):
-        from operators.force.gravity import (
-            build_gravity_force,
-            compute_gravity_force,
-        )
+        from operators.force.gravity import build_gravity_force
+        from operators.force.gravity import compute_gravity_force
 
         template = build_gravity_force((NX, NY), force_g=0.001)
         rho = jnp.ones((NX, NY, 1, 1))
@@ -187,11 +184,9 @@ class TestComputeElectricForce:
     """``compute_electric_force`` returns correct shape and is jittable."""
 
     def test_shape(self, lattice):
-        from operators.force.electric import (
-            build_electric_params,
-            compute_electric_force,
-            init_hi,
-        )
+        from operators.force.electric import build_electric_params
+        from operators.force.electric import compute_electric_force
+        from operators.force.electric import init_hi
 
         ep = build_electric_params(
             permittivity_liquid=80.0,
@@ -206,11 +201,9 @@ class TestComputeElectricForce:
         assert force.shape == (NX, NY, 1, 2)
 
     def test_zero_voltage_zero_force(self, lattice):
-        from operators.force.electric import (
-            build_electric_params,
-            compute_electric_force,
-            init_hi,
-        )
+        from operators.force.electric import build_electric_params
+        from operators.force.electric import compute_electric_force
+        from operators.force.electric import init_hi
 
         ep = build_electric_params(
             permittivity_liquid=1.0,
@@ -226,11 +219,9 @@ class TestComputeElectricForce:
 
     def test_jittable(self, lattice):
         from functools import partial
-        from operators.force.electric import (
-            build_electric_params,
-            compute_electric_force,
-            init_hi,
-        )
+        from operators.force.electric import build_electric_params
+        from operators.force.electric import compute_electric_force
+        from operators.force.electric import init_hi
 
         ep = build_electric_params(
             permittivity_liquid=80.0,
@@ -243,7 +234,7 @@ class TestComputeElectricForce:
 
         # Close over ep and lattice (contain Python scalars/strings)
         jitted = jax.jit(
-            partial(compute_electric_force, electric_params=ep, lattice=lattice)
+            partial(compute_electric_force, electric_params=ep, lattice=lattice),
         )
         force = jitted(rho, hi)
         assert force.shape == (NX, NY, 1, 2)
@@ -258,11 +249,9 @@ class TestUpdateHi:
     """``update_hi`` advances the electric potential distribution."""
 
     def test_shape(self, lattice):
-        from operators.force.electric import (
-            build_electric_params,
-            init_hi,
-            update_hi,
-        )
+        from operators.force.electric import build_electric_params
+        from operators.force.electric import init_hi
+        from operators.force.electric import update_hi
         from operators.streaming.streaming import stream
 
         ep = build_electric_params(

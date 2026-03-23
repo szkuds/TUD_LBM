@@ -7,11 +7,10 @@ Public API::
 """
 
 from __future__ import annotations
-
-from typing import Any, Dict
-
-from config.simulation_config import SimulationConfig
+from typing import Any
+from typing import Dict
 from config.adapter_dict import DictAdapter
+from config.simulation_config import SimulationConfig
 
 
 def from_toml(path: str) -> SimulationConfig:
@@ -34,7 +33,7 @@ def from_toml(path: str) -> SimulationConfig:
     return TomlAdapter().load(path)
 
 
-def from_dict(d: Dict[str, Any]) -> SimulationConfig:
+def from_dict(d: dict[str, Any]) -> SimulationConfig:
     """Build a :class:`SimulationConfig` from a plain dict.
 
     Args:
@@ -47,8 +46,8 @@ def from_dict(d: Dict[str, Any]) -> SimulationConfig:
 
 
 __all__ = [
-    "SimulationConfig",
     "DictAdapter",
-    "from_toml",
+    "SimulationConfig",
     "from_dict",
+    "from_toml",
 ]

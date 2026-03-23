@@ -7,9 +7,7 @@ These tests confirm:
 """
 
 import textwrap
-
 import pytest
-
 from config.adapter_toml import TomlAdapter
 from config.simulation_config import SimulationConfig
 

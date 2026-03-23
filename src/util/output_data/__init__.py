@@ -1,7 +1,6 @@
 import importlib
-import pkgutil
 import pathlib
-
+import pkgutil
 from .base import OutputWriter
 
 # --- Automatic module discovery ---
@@ -13,12 +12,10 @@ for module_info in pkgutil.iter_modules([str(_package_dir)]):
 
 
 class _OutputWriterRegistry:
-
     def __getitem__(self, name):
         if name not in OutputWriter.registry:
             raise KeyError(
-                f"Unknown output writer '{name}'. "
-                f"Available: {list(OutputWriter.registry.keys())}"
+                f"Unknown output writer '{name}'. Available: {list(OutputWriter.registry.keys())}",
             )
 
         return OutputWriter.registry[name]

@@ -9,10 +9,8 @@ Tests for:
     - ``runner.io_callbacks`` (callback plumbing)
 """
 
-import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
 
 # =====================================================================
 # Helpers
@@ -84,8 +82,8 @@ class TestStepSinglePhase:
     """Single-phase step function."""
 
     def test_step_increments_t(self):
-        from runner.step import step_single_phase
         from runner.run import init_state
+        from runner.step import step_single_phase
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -93,8 +91,8 @@ class TestStepSinglePhase:
         assert int(new_state.t) == 1
 
     def test_step_preserves_shape(self):
-        from runner.step import step_single_phase
         from runner.run import init_state
+        from runner.step import step_single_phase
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -104,8 +102,8 @@ class TestStepSinglePhase:
         assert new_state.u.shape == (8, 8, 1, 2)
 
     def test_step_no_nan(self):
-        from runner.step import step_single_phase
         from runner.run import init_state
+        from runner.step import step_single_phase
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -113,8 +111,8 @@ class TestStepSinglePhase:
         assert not jnp.isnan(new_state.f).any()
 
     def test_step_output_is_state(self):
-        from runner.step import step_single_phase
         from runner.run import init_state
+        from runner.step import step_single_phase
         from state.state import State
 
         setup = _single_phase_setup()
@@ -124,9 +122,9 @@ class TestStepSinglePhase:
 
     def test_rest_equilibrium_unchanged(self):
         """At rest equilibrium, one step should not change f."""
-        from runner.step import step_single_phase
-        from runner.run import init_state
         from operators.equilibrium.equilibrium import compute_equilibrium
+        from runner.run import init_state
+        from runner.step import step_single_phase
 
         setup = _single_phase_setup()
         lattice = setup.lattice
@@ -153,8 +151,8 @@ class TestStepMultiphase:
     """Multiphase step function."""
 
     def test_step_increments_t(self):
-        from runner.step import step_multiphase
         from runner.run import init_state
+        from runner.step import step_multiphase
 
         setup = _multiphase_setup()
         state = init_state(setup)
@@ -162,8 +160,8 @@ class TestStepMultiphase:
         assert int(new_state.t) == 1
 
     def test_step_preserves_shape(self):
-        from runner.step import step_multiphase
         from runner.run import init_state
+        from runner.step import step_multiphase
 
         setup = _multiphase_setup()
         state = init_state(setup)
@@ -171,8 +169,8 @@ class TestStepMultiphase:
         assert new_state.f.shape == (16, 16, 9, 1)
 
     def test_step_no_nan(self):
-        from runner.step import step_multiphase
         from runner.run import init_state
+        from runner.step import step_multiphase
 
         setup = _multiphase_setup()
         state = init_state(setup)
@@ -180,8 +178,8 @@ class TestStepMultiphase:
         assert not jnp.isnan(new_state.f).any()
 
     def test_step_produces_force(self):
-        from runner.step import step_multiphase
         from runner.run import init_state
+        from runner.step import step_multiphase
 
         setup = _multiphase_setup()
         state = init_state(setup)
@@ -199,8 +197,8 @@ class TestGetStepFn:
     """Step function dispatch."""
 
     def test_single_phase_dispatch(self):
-        from runner.step import get_step_fn
         from runner.run import init_state
+        from runner.step import get_step_fn
 
         setup = _single_phase_setup()
         step_fn = get_step_fn(setup)
@@ -209,8 +207,8 @@ class TestGetStepFn:
         assert int(new_state.t) == 1
 
     def test_multiphase_dispatch(self):
-        from runner.step import get_step_fn
         from runner.run import init_state
+        from runner.step import get_step_fn
 
         setup = _multiphase_setup()
         step_fn = get_step_fn(setup)
@@ -228,7 +226,8 @@ class TestFunctionalRun:
     """lax.scan runner."""
 
     def test_run_trajectory_mode(self):
-        from runner.run import run, init_state
+        from runner.run import init_state
+        from runner.run import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -237,7 +236,8 @@ class TestFunctionalRun:
         assert traj.f.shape[0] == 5
 
     def test_run_final_state_no_nan(self):
-        from runner.run import run, init_state
+        from runner.run import init_state
+        from runner.run import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -245,7 +245,8 @@ class TestFunctionalRun:
         assert not jnp.isnan(final.f).any()
 
     def test_run_multiphase_trajectory(self):
-        from runner.run import run, init_state
+        from runner.run import init_state
+        from runner.run import run
 
         setup = _multiphase_setup()
         state = init_state(setup)
@@ -254,7 +255,8 @@ class TestFunctionalRun:
         assert traj.f.shape[0] == 3
 
     def test_run_uses_setup_defaults(self):
-        from runner.run import run, init_state
+        from runner.run import init_state
+        from runner.run import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -302,7 +304,8 @@ class TestStreamingIO:
 
     def test_trajectory_is_none_with_io_handler(self, tmp_path):
         """When io_handler is supplied, trajectory must be None."""
-        from runner.run import run, init_state
+        from runner.run import init_state
+        from runner.run import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -321,7 +324,8 @@ class TestStreamingIO:
     def test_files_written_at_correct_steps(self, tmp_path):
         """Snapshots are written at every save_interval step."""
         import os
-        from runner.run import run, init_state
+        from runner.run import init_state
+        from runner.run import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -342,7 +346,8 @@ class TestStreamingIO:
     def test_save_fields_filters_keys(self, tmp_path):
         """Only the requested fields appear in the saved files."""
         import os
-        from runner.run import run, init_state
+        from runner.run import init_state
+        from runner.run import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -369,7 +374,8 @@ class TestStreamingIO:
     def test_skip_interval_suppresses_early_saves(self, tmp_path):
         """Steps ≤ skip_interval must not produce files."""
         import os
-        from runner.run import run, init_state
+        from runner.run import init_state
+        from runner.run import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -394,7 +400,8 @@ class TestStreamingIO:
 
     def test_backward_compat_no_io_handler(self):
         """Existing trajectory-mode call is unaffected."""
-        from runner.run import run, init_state
+        from runner.run import init_state
+        from runner.run import run
 
         setup = _single_phase_setup()
         state = init_state(setup)

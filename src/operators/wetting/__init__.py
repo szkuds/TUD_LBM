@@ -9,17 +9,16 @@ the hysteresis optimisation from
 
 from operators.wetting.contact_angle import compute_contact_angle
 from operators.wetting.contact_line import compute_contact_line_location
-from operators.wetting.hysteresis import update_wetting_state, WettingParams
-from operators.wetting.wetting_util import (
-    resolve_wetting_fields,
-    apply_wetting_to_all_edges,
-)
+from operators.wetting.hysteresis import WettingParams
+from operators.wetting.hysteresis import update_wetting_state
+from operators.wetting.wetting_util import apply_wetting_to_all_edges
+from operators.wetting.wetting_util import resolve_wetting_fields
 
 __all__ = [
+    "WettingParams",
+    "apply_wetting_to_all_edges",
     "compute_contact_angle",
     "compute_contact_line_location",
-    "update_wetting_state",
-    "WettingParams",
     "resolve_wetting_fields",
-    "apply_wetting_to_all_edges",
+    "update_wetting_state",
 ]

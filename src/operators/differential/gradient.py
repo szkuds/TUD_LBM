@@ -23,10 +23,8 @@ closure.
 """
 
 from __future__ import annotations
-
 import jax
 import jax.numpy as jnp
-
 from registry import register_operator
 
 
@@ -129,13 +127,12 @@ def compute_wetting_gradient(
         ``_grad(grid) → jnp.ndarray`` of shape ``(nx, ny, 1, 2)``.
         The returned function is already jitted.
     """
-    from operators.wetting.wetting_util import (
-        apply_wetting_to_all_edges,
-        resolve_wetting_fields,
-    )
+    from operators.wetting.wetting_util import apply_wetting_to_all_edges
+    from operators.wetting.wetting_util import resolve_wetting_fields
 
     phi_l, phi_r, d_rho_l, d_rho_r = resolve_wetting_fields(
-        wetting_params, chemical_step
+        wetting_params,
+        chemical_step,
     )
     rho_l = wetting_params["rho_l"]
     rho_v = wetting_params["rho_v"]
@@ -156,7 +153,14 @@ def compute_wetting_gradient(
 
         # Overwrite bottom ghost row with wetting boundary values
         gp = apply_wetting_to_all_edges(
-            gp, rho_l, rho_v, phi_l, phi_r, d_rho_l, d_rho_r, width
+            gp,
+            rho_l,
+            rho_v,
+            phi_l,
+            phi_r,
+            d_rho_l,
+            d_rho_r,
+            width,
         )
 
         # Delegate to the plain gradient on the corrected interior

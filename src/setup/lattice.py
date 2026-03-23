@@ -15,13 +15,11 @@ Usage::
 """
 
 from __future__ import annotations
-
 from typing import NamedTuple
-
 import jax.numpy as jnp
 import numpy as np
-
-from registry import lattice_operator, get_operators
+from registry import get_operators
+from registry import lattice_operator
 
 
 class Lattice(NamedTuple):

@@ -5,9 +5,7 @@ to their corresponding pure functions.
 """
 
 from __future__ import annotations
-
-from typing import Callable
-
+from collections.abc import Callable
 from registry import get_operators
 
 
@@ -29,6 +27,6 @@ def build_collision_fn(scheme: str) -> Callable:
     except KeyError as exc:
         valid = ", ".join(sorted(collision_ops))
         raise ValueError(
-            f"Unknown collision scheme '{scheme}'. Valid: {valid}"
+            f"Unknown collision scheme '{scheme}'. Valid: {valid}",
         ) from exc
     return entry.target

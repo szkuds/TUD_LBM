@@ -11,9 +11,7 @@ lattice (``c_s^2 = 1/3``).
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
-
 from registry import register_operator
 
 
@@ -50,15 +48,18 @@ def compute_laplacian(
 
     i0 = gp[1:-1, 1:-1]  # centre values
 
-    lap = 6.0 * (
-        w[1] * (gp[2:, 1:-1] - i0)  # (i+1, j)
-        + w[2] * (gp[1:-1, 2:] - i0)  # (i, j+1)
-        + w[3] * (gp[:-2, 1:-1] - i0)  # (i-1, j)
-        + w[4] * (gp[1:-1, :-2] - i0)  # (i, j-1)
-        + w[5] * (gp[2:, 2:] - i0)  # (i+1, j+1)
-        + w[6] * (gp[:-2, 2:] - i0)  # (i-1, j+1)
-        + w[7] * (gp[:-2, :-2] - i0)  # (i-1, j-1)
-        + w[8] * (gp[2:, :-2] - i0)  # (i+1, j-1)
+    lap = (
+        6.0
+        * (
+            w[1] * (gp[2:, 1:-1] - i0)  # (i+1, j)
+            + w[2] * (gp[1:-1, 2:] - i0)  # (i, j+1)
+            + w[3] * (gp[:-2, 1:-1] - i0)  # (i-1, j)
+            + w[4] * (gp[1:-1, :-2] - i0)  # (i, j-1)
+            + w[5] * (gp[2:, 2:] - i0)  # (i+1, j+1)
+            + w[6] * (gp[:-2, 2:] - i0)  # (i-1, j+1)
+            + w[7] * (gp[:-2, :-2] - i0)  # (i-1, j-1)
+            + w[8] * (gp[2:, :-2] - i0)  # (i+1, j-1)
+        )
     )
 
     nx, ny = grid_2d.shape

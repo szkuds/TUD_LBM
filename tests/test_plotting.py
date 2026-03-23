@@ -1,18 +1,16 @@
 """Tests for the plotting operator package and figure builder."""
 
 from __future__ import annotations
-
 import os
 import sys
-
 import numpy as np
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from registry import get_operator_names
 from util.plotting import visualise
 from util.plotting.figure_builder import FigureBuilder
-from registry import get_operator_names
 
 
 @pytest.fixture
@@ -66,11 +64,11 @@ def test_unknown_plotfield_warns(plotting_run_dir):
 
 
 def test_density_operator_registered():
-    assert "density" in get_operator_names('plotting')
+    assert "density" in get_operator_names("plotting")
 
 
 def test_velocity_operator_registered():
-    names = get_operator_names('plotting')
+    names = get_operator_names("plotting")
     assert "velocity" in names
     assert "analysis" in names
 
@@ -100,11 +98,10 @@ def test_visualise_accepts_run_directory(plotting_run_dir):
         u=np.zeros((6, 6, 1, 2)),
     )
     (plotting_run_dir / "config.json").write_text(
-        '{"simulation_name": "demo", "plot_fields": ["density", "velocity"]}'
+        '{"simulation_name": "demo", "plot_fields": ["density", "velocity"]}',
     )
 
     visualise(str(plotting_run_dir))
 
     plots = list((plotting_run_dir / "plots").glob("*.png"))
     assert len(plots) == 1
-

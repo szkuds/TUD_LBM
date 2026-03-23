@@ -1,11 +1,9 @@
-import inspect
-from abc import ABC, abstractmethod
-from typing import Dict
+from abc import ABC
+from abc import abstractmethod
 import numpy as np
 
 
 class OutputWriter(ABC):
-
     registry = {}
 
     def __init_subclass__(cls, **kwargs):
@@ -33,8 +31,5 @@ class OutputWriter(ABC):
         OutputWriter.registry[cls.__name__] = cls
 
     @abstractmethod
-    def save_data_step(self, iteration: int, data: Dict[str, np.ndarray]) -> None:
-        """
-        Save output data for a specific iteration.
-        """
-        pass
+    def save_data_step(self, iteration: int, data: dict[str, np.ndarray]) -> None:
+        """Save output data for a specific iteration."""

@@ -22,9 +22,8 @@ Usage::
 """
 
 from __future__ import annotations
-
-from typing import Any, NamedTuple, Optional
-
+from typing import Any
+from typing import NamedTuple
 import jax.numpy as jnp
 
 
@@ -77,7 +76,7 @@ class State(NamedTuple):
     rho: jnp.ndarray
     u: jnp.ndarray
     t: jnp.ndarray
-    force: Optional[jnp.ndarray] = None
-    force_ext: Optional[jnp.ndarray] = None
-    h: Optional[jnp.ndarray] = None
-    wetting: Optional[WettingState] = None
+    force: jnp.ndarray | None = None
+    force_ext: jnp.ndarray | None = None
+    h: jnp.ndarray | None = None
+    wetting: WettingState | None = None

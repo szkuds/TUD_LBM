@@ -9,17 +9,16 @@ Public API::
     from runner import step_single_phase, step_multiphase, get_step_fn
 """
 
-from .step import (
-    step_single_phase,
-    step_multiphase,
-    get_step_fn,
-)
-from .run import run, init_state
+from .run import init_state
+from .run import run
+from .step import get_step_fn
+from .step import step_multiphase
+from .step import step_single_phase
 
 __all__ = [
-    "step_single_phase",
-    "step_multiphase",
     "get_step_fn",
-    "run",
     "init_state",
+    "run",
+    "step_multiphase",
+    "step_single_phase",
 ]

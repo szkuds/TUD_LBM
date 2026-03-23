@@ -9,7 +9,6 @@ visualise      — backward-compatible entry point for simulation objects
 """
 
 from __future__ import annotations
-
 import json
 from pathlib import Path
 from typing import Any
@@ -21,6 +20,7 @@ from . import force as _force_mod  # noqa: F401
 from . import velocity as _velocity_mod  # noqa: F401
 from .base import PlotOperator
 from .figure_builder import FigureBuilder
+
 
 def visualise(run_dir, title: str = "LBM Simulation Results", skip: int = 0) -> None:
     """Plotting entry point.

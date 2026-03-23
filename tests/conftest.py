@@ -1,12 +1,11 @@
-import sys
 import builtins
+import sys
 import pytest
 
 
 @pytest.fixture
 def mock_optax_missing(monkeypatch):
-    """
-    Fixture: Simulate optax package not being installed.
+    """Fixture: Simulate optax package not being installed.
 
     This fixture removes optax from sys.modules and makes import attempts fail.
     Use when testing behavior WITHOUT optax installed.
@@ -30,14 +29,12 @@ def mock_optax_missing(monkeypatch):
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", mock_import)
-    yield  # Run test
     # Cleanup happens automatically (monkeypatch fixture)
 
 
 @pytest.fixture
 def mock_optax_present(monkeypatch):
-    """
-    Fixture: Ensure optax package can be imported.
+    """Fixture: Ensure optax package can be imported.
 
     This fixture ensures optax is available for testing WITH optax installed.
     Use when testing behavior that REQUIRES optax.
@@ -58,8 +55,7 @@ def mock_optax_present(monkeypatch):
 
 @pytest.fixture
 def cleanup_imports():
-    """
-    Fixture: Clean module imports after each test.
+    """Fixture: Clean module imports after each test.
 
     This fixture removes affected modules from sys.modules after each test,
     ensuring tests don't interfere with each other due to import caching.

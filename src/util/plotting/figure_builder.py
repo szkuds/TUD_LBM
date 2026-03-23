@@ -1,20 +1,16 @@
 """Build composite per-timestep figures from registered plot operators."""
 
 from __future__ import annotations
-
 import math
 import os
 import warnings
 from pathlib import Path
-from typing import Optional
-
 import matplotlib
 
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
-
 from registry import get_operators
 
 _DEFAULT_FIELD_ORDER = ["density", "velocity", "force", "force_ext", "analysis"]
@@ -34,9 +30,9 @@ class FigureBuilder:
 
         self.config["data_dir"] = str(self._data_dir)
         requested = self.config.get("plot_fields")
-        requested = requested or get_operators('plotting')
+        requested = requested or get_operators("plotting")
 
-        all_ops = get_operators('plotting')
+        all_ops = get_operators("plotting")
         self._operators = []
         for name in requested:
             entry = all_ops.get(name)
@@ -52,8 +48,8 @@ class FigureBuilder:
         self,
         data: dict[str, np.ndarray],
         timestep: int,
-        filename: Optional[str] = None,
-    ) -> Optional[Path]:
+        filename: str | None = None,
+    ) -> Path | None:
         """Render one timestep figure and save it to disk."""
         active_ops = [op for op in self._operators if op.is_available(data)]
         if not active_ops:
@@ -124,9 +120,9 @@ class FigureBuilder:
         return saved
 
     @staticmethod
-    def _extract_timestep(stem: str) -> Optional[int]:
+    def _extract_timestep(stem: str) -> int | None:
         try:
-            return int(stem.split("_")[-1])
+            return int(stem.rsplit("_", maxsplit=1)[-1])
         except ValueError:
             return None
 
@@ -142,4 +138,3 @@ class FigureBuilder:
         ncols = math.ceil(math.sqrt(n))
         nrows = math.ceil(n / ncols)
         return ncols, nrows
-

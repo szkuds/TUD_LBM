@@ -9,29 +9,25 @@ Tests for:
 """
 
 from __future__ import annotations
-
 import pytest
-
-from registry import (
-    OPERATOR_REGISTRY,
-    get_operator_category,
-    get_operator_names,
-    get_operators,
-    register_operator,
-)
+import operators.boundary
 
 # Import all operator packages to trigger registration decorators.
 # In production code, these are imported by the factories/setup modules.
-import operators.collision  # noqa: F401
-import operators.boundary  # noqa: F401
-import operators.differential  # noqa: F401
-import operators.equilibrium  # noqa: F401
-import operators.streaming  # noqa: F401
-import operators.macroscopic  # noqa: F401
-import operators.force  # noqa: F401
-import operators.initialise.factory  # noqa: F401
+import operators.collision
+import operators.differential
+import operators.equilibrium
+import operators.force
+import operators.initialise.factory
+import operators.macroscopic
+import operators.streaming
 import operators.wetting  # noqa: F401
 import setup.lattice  # noqa: F401
+from registry import OPERATOR_REGISTRY
+from registry import get_operator_category
+from registry import get_operator_names
+from registry import get_operators
+from registry import register_operator
 
 # =====================================================================
 # Registration mechanics

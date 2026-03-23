@@ -11,16 +11,14 @@ Each test verifies correctness on small grids and jittability
 without any legacy operator class instances.
 """
 
+from functools import partial
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
-from functools import partial
-
-from setup.lattice import build_lattice
 from config.simulation_config import SimulationConfig
-from setup.simulation_setup import build_setup
 from runner.run import init_state
+from setup.lattice import build_lattice
+from setup.simulation_setup import build_setup
 
 # =====================================================================
 # Helpers

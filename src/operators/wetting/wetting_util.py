@@ -16,9 +16,7 @@ All operations are pure Python / NumPy pre-computations that run *before*
 """
 
 from __future__ import annotations
-
-from typing import Any, Dict, Optional, Tuple
-
+from typing import Any
 import jax.numpy as jnp
 
 # ---------------------------------------------------------------------------
@@ -27,9 +25,9 @@ import jax.numpy as jnp
 
 
 def resolve_wetting_fields(
-    wetting_params: Dict[str, Any],
-    chemical_step: Optional[int] = None,
-) -> Tuple[Any, Any, Any, Any]:
+    wetting_params: dict[str, Any],
+    chemical_step: int | None = None,
+) -> tuple[Any, Any, Any, Any]:
     """Extract per-side wetting scalars from a *wetting_params* dict.
 
     Supports two layouts:

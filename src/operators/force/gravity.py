@@ -12,17 +12,13 @@ Usage::
 """
 
 from __future__ import annotations
-
-from typing import Tuple
-
 import jax.numpy as jnp
-
 from registry import force_model
 
 
 @force_model(name="gravity_multiphase")
 def build_gravity_force(
-    grid_shape: Tuple[int, int],
+    grid_shape: tuple[int, int],
     force_g: float,
     inclination_angle_deg: float = 0.0,
 ) -> jnp.ndarray:

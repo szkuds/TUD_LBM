@@ -12,14 +12,13 @@ Use :func:`get_adapter` to obtain the right adapter for a given file path::
 """
 
 from __future__ import annotations
-
 import importlib
 import os
-from abc import ABC, abstractmethod
-from typing import Any, Dict, List
-
-from config.simulation_config import SimulationConfig
+from abc import ABC
+from abc import abstractmethod
+from typing import Any
 import operators.force  # noqa: F401
+from config.simulation_config import SimulationConfig
 from registry import get_operator_names
 
 
@@ -47,8 +46,8 @@ class ConfigAdapter(ABC):
 
     @staticmethod
     def parse_force_tables(
-        force_tables: List[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
+        force_tables: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         """Validate and normalise ``[[force]]`` tables into plain dicts.
 
         Each dict **must** contain a ``type`` key whose value is one of
@@ -65,7 +64,7 @@ class ConfigAdapter(ABC):
         Raises:
             KeyError: If a ``type`` is not recognised.
         """
-        validated: List[Dict[str, Any]] = []
+        validated: list[dict[str, Any]] = []
         for entry in force_tables:
             entry = dict(entry)  # shallow copy
             force_type = entry.get("type")
@@ -73,11 +72,10 @@ class ConfigAdapter(ABC):
             if force_type is None:
                 raise KeyError("Each [[force]] table must have a 'type' key.")
 
-            if force_type not in get_operator_names('force'):
-                registered = ", ".join(sorted(get_operator_names('force')))
+            if force_type not in get_operator_names("force"):
+                registered = ", ".join(sorted(get_operator_names("force")))
                 raise KeyError(
-                    f"Unknown force type '{force_type}'. "
-                    f"Registered types: {registered}"
+                    f"Unknown force type '{force_type}'. Registered types: {registered}",
                 )
 
             validated.append(entry)
@@ -88,7 +86,7 @@ class ConfigAdapter(ABC):
 # Public factory
 # ------------------------------------------------------------------
 
-_ADAPTER_MAP: Dict[str, str] = {
+_ADAPTER_MAP: dict[str, str] = {
     ".toml": "config.adapter_toml.TomlAdapter",
 }
 
@@ -113,7 +111,7 @@ def get_adapter(path: str) -> ConfigAdapter:
     if ext not in _ADAPTER_MAP:
         supported = ", ".join(sorted(_ADAPTER_MAP))
         raise ValueError(
-            f"Unsupported config file extension '{ext}'. " f"Supported: {supported}"
+            f"Unsupported config file extension '{ext}'. Supported: {supported}",
         )
 
     fqn = _ADAPTER_MAP[ext]

@@ -16,10 +16,10 @@ Usage::
 """
 
 from __future__ import annotations
-
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
+from dataclasses import dataclass
+from dataclasses import field
+from typing import Any
+from typing import Literal
 from config.dir_config import BASE_RESULTS_DIR
 
 # Fallback sets used when registry is not yet populated (e.g. config-only tests).
@@ -82,11 +82,11 @@ class SimulationConfig:
 
     # ── Simulation identity ──────────────────────────────────────────
     sim_type: Literal["single_phase", "multiphase"] = "single_phase"
-    simulation_name: Optional[str] = None
+    simulation_name: str | None = None
 
     # ── Lattice & grid ───────────────────────────────────────────────
     lattice_type: str = "D2Q9"
-    grid_shape: Tuple[int, ...] = (64, 64)
+    grid_shape: tuple[int, ...] = (64, 64)
 
     # ── Time stepping ────────────────────────────────────────────────
     nt: int = 1000
@@ -94,42 +94,42 @@ class SimulationConfig:
 
     # ── Collision ────────────────────────────────────────────────────
     collision_scheme: str = "bgk"
-    k_diag: Optional[Tuple[float, ...]] = None
+    k_diag: tuple[float, ...] | None = None
 
     # ── Boundary conditions ──────────────────────────────────────────
-    bc_config: Optional[Dict[str, Any]] = None
+    bc_config: dict[str, Any] | None = None
 
     # ── Force ────────────────────────────────────────────────────────
     force_enabled: bool = False
-    force_config: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None
+    force_config: dict[str, Any] | list[dict[str, Any]] | None = None
 
     # ── Initialisation ───────────────────────────────────────────────
     init_type: str = "standard"
-    init_dir: Optional[str] = None
+    init_dir: str | None = None
 
     # ── Output / IO ──────────────────────────────────────────────────
     results_dir: str = BASE_RESULTS_DIR
     save_interval: int = 0  # This is set to 0 to ensure that when nothing is passed the default is nt/10
     skip_interval: int = 0
-    save_fields: Optional[List[str]] = None
-    plot_fields: Optional[List[str]] = None
+    save_fields: list[str] | None = None
+    plot_fields: list[str] | None = None
 
     # ── Multiphase (ignored when sim_type == "single_phase") ─────────
-    eos: Optional[str] = None
-    kappa: Optional[float] = None
-    rho_l: Optional[float] = None
-    rho_v: Optional[float] = None
-    interface_width: Optional[int] = None
+    eos: str | None = None
+    kappa: float | None = None
+    rho_l: float | None = None
+    rho_v: float | None = None
+    interface_width: int | None = None
     bubble: bool = False
-    rho_ref: Optional[float] = None
-    g: Optional[float] = None
+    rho_ref: float | None = None
+    g: float | None = None
 
     # ── Wetting / hysteresis ─────────────────────────────────────────
-    wetting_config: Optional[Dict[str, Any]] = None
-    hysteresis_config: Optional[Dict[str, Any]] = None
+    wetting_config: dict[str, Any] | None = None
+    hysteresis_config: dict[str, Any] | None = None
 
     # ── Extra / extensible ───────────────────────────────────────────
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
 
     # ══════════════════════════════════════════════════════════════════
     # Validation
@@ -172,20 +172,18 @@ class SimulationConfig:
         # grid_shape
         if len(self.grid_shape) < 2:
             raise ValueError(
-                f"grid_shape must have at least 2 dimensions, "
-                f"got {len(self.grid_shape)}"
+                f"grid_shape must have at least 2 dimensions, got {len(self.grid_shape)}",
             )
         if any(d <= 0 for d in self.grid_shape):
             raise ValueError(
-                f"All grid dimensions must be positive, got {self.grid_shape}"
+                f"All grid dimensions must be positive, got {self.grid_shape}",
             )
 
         # lattice_type
         valid_lattices = _valid_lattices()
         if self.lattice_type not in valid_lattices:
             raise ValueError(
-                f"lattice_type must be one of {valid_lattices}, "
-                f"got '{self.lattice_type}'"
+                f"lattice_type must be one of {valid_lattices}, got '{self.lattice_type}'",
             )
 
         # tau
@@ -200,8 +198,7 @@ class SimulationConfig:
         valid_schemes = _valid_collision_schemes()
         if self.collision_scheme not in valid_schemes:
             raise ValueError(
-                f"collision_scheme must be one of "
-                f"{sorted(valid_schemes)}, got '{self.collision_scheme}'"
+                f"collision_scheme must be one of {sorted(valid_schemes)}, got '{self.collision_scheme}'",
             )
 
         # k_diag required for MRT
@@ -211,19 +208,19 @@ class SimulationConfig:
         # save_interval
         if self.save_interval < 0:
             raise ValueError(
-                f"save_interval must be positive, got {self.save_interval}"
+                f"save_interval must be positive, got {self.save_interval}",
             )
 
         # skip_interval
         if self.skip_interval < 0:
             raise ValueError(
-                f"skip_interval must be non-negative, got {self.skip_interval}"
+                f"skip_interval must be non-negative, got {self.skip_interval}",
             )
 
         # init_dir
         if self.init_type == "init_from_file" and self.init_dir is None:
             raise ValueError(
-                "init_dir must be provided when init_type is 'init_from_file'"
+                "init_dir must be provided when init_type is 'init_from_file'",
             )
 
         # save_fields
@@ -232,7 +229,7 @@ class SimulationConfig:
             invalid = set(self.save_fields) - valid_fields
             if invalid:
                 raise ValueError(
-                    f"Invalid save_fields: {invalid}. " f"Valid fields: {valid_fields}"
+                    f"Invalid save_fields: {invalid}. Valid fields: {valid_fields}",
                 )
 
     # ── Multiphase validation ────────────────────────────────────────
@@ -249,20 +246,20 @@ class SimulationConfig:
             raise ValueError(f"rho_v must be positive, got {self.rho_v}")
         if self.rho_l <= self.rho_v:
             raise ValueError(
-                f"rho_l ({self.rho_l}) must be greater than rho_v ({self.rho_v})"
+                f"rho_l ({self.rho_l}) must be greater than rho_v ({self.rho_v})",
             )
         if self.kappa <= 0:
             raise ValueError(f"kappa must be positive, got {self.kappa}")
         if self.interface_width <= 0:
             raise ValueError(
-                f"interface_width must be positive, got {self.interface_width}"
+                f"interface_width must be positive, got {self.interface_width}",
             )
 
         # EOS
         valid_eos = _valid_eos()
         if self.eos not in valid_eos:
             raise ValueError(
-                f"eos must be one of {sorted(valid_eos)}, " f"got '{self.eos}'"
+                f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'",
             )
 
     # ══════════════════════════════════════════════════════════════════
@@ -283,7 +280,7 @@ class SimulationConfig:
     # Serialisation
     # ══════════════════════════════════════════════════════════════════
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialise to a plain dict for logging / saving.
 
         Merges ``extra`` into the top-level dict and adds a

@@ -29,20 +29,19 @@ Usage::
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
-
-from state.state import State
-from operators.macroscopic.single_phase import compute_macroscopic
-from operators.equilibrium.equilibrium import compute_equilibrium
-from operators.streaming.streaming import stream
-from operators.collision.factory import build_collision_fn
 from operators.boundary.composite import build_composite_bc
-from operators.force.source_term import source as compute_source
+from operators.collision.factory import build_collision_fn
+from operators.equilibrium.equilibrium import compute_equilibrium
+from operators.force.electric import compute_electric_force
+from operators.force.electric import update_hi
 from operators.force.gravity import compute_gravity_force
-from operators.force.electric import compute_electric_force, update_hi
+from operators.force.source_term import source as compute_source
 from operators.macroscopic.multiphase import compute_macroscopic_multiphase
+from operators.macroscopic.single_phase import compute_macroscopic
+from operators.streaming.streaming import stream
 from operators.wetting.hysteresis import update_wetting_state
+from state.state import State
 
 # ── Step functions ───────────────────────────────────────────────────
 

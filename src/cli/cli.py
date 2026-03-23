@@ -14,7 +14,6 @@ Example Python usage::
 
 import os
 import sys
-
 import click
 from rich.console import Console
 from rich.panel import Panel
@@ -27,22 +26,24 @@ console = Console()
 
 def _ensure_operators_imported() -> None:
     """Import all operator packages so the global registry is fully populated."""
-    import operators.collision  # noqa: F401
-    import operators.boundary  # noqa: F401
-    import operators.differential  # noqa: F401
-    import operators.equilibrium  # noqa: F401
-    import operators.streaming  # noqa: F401
-    import operators.macroscopic  # noqa: F401
-    import operators.force  # noqa: F401
-    import operators.initialise.factory  # noqa: F401
+    import operators.boundary
+    import operators.collision
+    import operators.differential
+    import operators.equilibrium
+    import operators.force
+    import operators.initialise.factory
+    import operators.macroscopic
+    import operators.streaming
     import operators.wetting  # noqa: F401
     import setup.lattice  # noqa: F401
-    import util.plotting # noqa: F401
+    import util.plotting  # noqa: F401
 
 
 def _display_operators() -> None:
     """Display all registered operators grouped by kind in Rich tables."""
-    from registry import OPERATOR_REGISTRY, get_operator_category, get_operators
+    from registry import OPERATOR_REGISTRY
+    from registry import get_operator_category
+    from registry import get_operators
 
     _ensure_operators_imported()
 
@@ -57,7 +58,7 @@ def _display_operators() -> None:
         Panel.fit(
             f"[bold blue]Registered Operators[/bold blue]  "
             f"({len(OPERATOR_REGISTRY)} total across {len(categories)} categories)",
-        )
+        ),
     )
     console.print()
 
@@ -97,7 +98,9 @@ def _display_config_summary(config) -> None:
     console.print()
 
     table = Table(
-        title="Simulation Configuration", show_header=True, header_style="bold magenta"
+        title="Simulation Configuration",
+        show_header=True,
+        header_style="bold magenta",
     )
     table.add_column("Parameter", style="cyan", no_wrap=True)
     table.add_column("Value", style="green")
@@ -133,8 +136,9 @@ def _run_simulation(config):
 
     configure_jax()
 
+    from runner import init_state
+    from runner import run
     from setup import build_setup
-    from runner import run, init_state
     from util.io import SimulationIO
 
     setup = build_setup(config)
@@ -164,11 +168,12 @@ def _run_simulation(config):
 
     if config.plot_fields:
         from util.plotting import FigureBuilder
-        console.print('[dim]Generating plots...[/dim]')
+
+        console.print("[dim]Generating plots...[/dim]")
         builder = FigureBuilder(config.to_dict(), io.run_dir)
         builder.build_all()
         console.print(
-           "[bold green]Plotting complete![/bold green]"
+            "[bold green]Plotting complete![/bold green]",
         )
     return final_state
 
@@ -193,7 +198,10 @@ def _run_simulation(config):
 )
 @click.version_option(package_name="tud_lbm")
 def main(
-    config_path: str, no_prompt: bool, dry_run: bool, list_operators: bool
+    config_path: str,
+    no_prompt: bool,
+    dry_run: bool,
+    list_operators: bool,
 ) -> None:
     """Run a TUD-LBM simulation.
 
@@ -201,7 +209,6 @@ def main(
     If omitted, an interactive prompt collects parameters.
 
     Examples:
-
         tud_lbm example_for_test/config_simple.toml
         tud_lbm example_for_test/config_complex.toml --dry-run
         tud_lbm --list-simulation-operators
@@ -212,7 +219,7 @@ def main(
         Panel.fit(
             "[bold blue]TUD-LBM[/bold blue] - Lattice Boltzmann Method Solver",
             subtitle="Delft University of Technology",
-        )
+        ),
     )
     console.print()
 
@@ -234,7 +241,7 @@ def main(
             from config import SimulationConfig
 
             console.print(
-                "[cyan]Interactive mode - creating default simulation config[/cyan]"
+                "[cyan]Interactive mode - creating default simulation config[/cyan]",
             )
 
             grid_x = int(Prompt.ask("Grid size X", default="100"))
@@ -268,7 +275,7 @@ def main(
 
         console.print()
         console.print(
-            Panel.fit("[bold green]Simulation, saving and plotting complete![/bold green]", title="Success")
+            Panel.fit("[bold green]Simulation, saving and plotting complete![/bold green]", title="Success"),
         )
 
     except KeyboardInterrupt:

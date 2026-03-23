@@ -10,28 +10,26 @@ per-edge pure functions.
 """
 
 from __future__ import annotations
-
-from typing import Any, Callable, Dict, Optional
-
+from collections.abc import Callable
+from typing import Any
 import jax.numpy as jnp
-
-from setup.lattice import Lattice
-from registry import get_operators
 
 # Ensure BC modules are imported so decorators fire
 from operators.boundary import bounce_back as _bb  # noqa: F401
-from operators.boundary import symmetry as _sym  # noqa: F401
 from operators.boundary import periodic as _per  # noqa: F401
+from operators.boundary import symmetry as _sym  # noqa: F401
+from registry import get_operators
+from setup.lattice import Lattice
 
 
-def _get_bc_dispatch() -> Dict[str, Callable]:
+def _get_bc_dispatch() -> dict[str, Callable]:
     """Build the BC dispatch dict from the global registry."""
     bc_ops = get_operators("boundary_condition")
     return {name: entry.target for name, entry in bc_ops.items()}
 
 
 def build_composite_bc(
-    bc_config: Optional[Dict[str, Any]],
+    bc_config: dict[str, Any] | None,
     lattice: Lattice,
 ) -> Callable:
     """Build a composite BC closure from a bc_config dict.

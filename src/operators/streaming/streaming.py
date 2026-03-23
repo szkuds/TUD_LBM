@@ -7,14 +7,10 @@ unrolled at JAX trace time (``q`` is a compile-time constant).
 """
 
 from __future__ import annotations
-
-from typing import Tuple
-
 import jax.numpy as jnp
 import numpy as np
-
-from setup.lattice import Lattice
 from registry import stream_operator
+from setup.lattice import Lattice
 
 
 @stream_operator(name="standard")
@@ -28,7 +24,7 @@ def stream(f: jnp.ndarray, lattice: Lattice) -> jnp.ndarray:
     Returns:
         Post-streaming populations, same shape.
     """
-    axes: Tuple[int, ...] = tuple(range(f.ndim - 2))  # grid axes (0, 1)
+    axes: tuple[int, ...] = tuple(range(f.ndim - 2))  # grid axes (0, 1)
 
     # Pre-extract velocity vectors as plain Python ints so they are
     # compile-time constants under JAX tracing.

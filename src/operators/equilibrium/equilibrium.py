@@ -19,11 +19,9 @@ The *rest direction* (``i = 0``) is computed via mass conservation:
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
-
-from setup.lattice import Lattice
 from registry import equilibrium_operator
+from setup.lattice import Lattice
 
 
 @equilibrium_operator(name="wb")
@@ -62,7 +60,7 @@ def compute_equilibrium(
     for i in range(1, q):
         cu = cx[i] * ux + cy[i] * uy
         feq = feq.at[:, :, i, 0].set(
-            w[i] * rho_2d * (3.0 * cu + 4.5 * cu * cu - 1.5 * u2)
+            w[i] * rho_2d * (3.0 * cu + 4.5 * cu * cu - 1.5 * u2),
         )
 
     # Rest direction via mass conservation

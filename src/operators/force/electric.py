@@ -11,13 +11,11 @@ Provides:
 """
 
 from __future__ import annotations
-
-from typing import Callable, NamedTuple, Tuple
-
+from collections.abc import Callable
+from typing import NamedTuple
 import jax.numpy as jnp
-
-from setup.lattice import Lattice
 from registry import force_model
+from setup.lattice import Lattice
 
 
 class ElectricParams(NamedTuple):
@@ -165,7 +163,7 @@ def _equilibrium_h(
     return w[None, None, :, None] * potential
 
 
-def _gradient_2d(field_2d: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def _gradient_2d(field_2d: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Central-difference gradient on a 2D field (periodic BCs)."""
     df_dx = (jnp.roll(field_2d, -1, axis=0) - jnp.roll(field_2d, 1, axis=0)) / 2.0
     df_dy = (jnp.roll(field_2d, -1, axis=1) - jnp.roll(field_2d, 1, axis=1)) / 2.0
@@ -234,7 +232,11 @@ def compute_electric_force(
         [fx[:, :, None, None], fy[:, :, None, None]],
         axis=-1,
     )[
-        :, :, :, 0, :
+        :,
+        :,
+        :,
+        0,
+        :,
     ]  # (nx, ny, 1, 2)
     return force
 

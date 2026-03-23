@@ -17,12 +17,11 @@ Each operator is verified to be jittable on an 8×8 (or 16×16) grid
 without any class instance.
 """
 
+from functools import partial
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from functools import partial
-
 from setup.lattice import build_lattice
 
 # ── Shared helpers ───────────────────────────────────────────────────
@@ -180,8 +179,8 @@ class TestCollisionFactory:
     """``get_collision_fn`` dispatches to the correct function."""
 
     def test_bgk(self):
-        from operators.collision.factory import build_collision_fn
         from operators.collision.bgk import collide_bgk
+        from operators.collision.factory import build_collision_fn
 
         assert build_collision_fn("bgk") is collide_bgk
 
@@ -424,7 +423,10 @@ class TestComputeMacroscopicMultiphase:
         f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
 
         rho, u_eq, force_total = compute_macroscopic_multiphase(
-            f, lattice, mp, diff_ops=diff_ops,
+            f,
+            lattice,
+            mp,
+            diff_ops=diff_ops,
         )
 
         assert rho.shape == (16, 16, 1, 1)
@@ -442,7 +444,10 @@ class TestComputeMacroscopicMultiphase:
         f = jnp.ones((16, 16, 9, 1)) * (rho_0 / 9.0)
 
         rho, u_eq, force_total = compute_macroscopic_multiphase(
-            f, lattice, mp, diff_ops=diff_ops,
+            f,
+            lattice,
+            mp,
+            diff_ops=diff_ops,
         )
 
         # Interaction force should be ~0 for uniform field (gradients vanish)
@@ -461,7 +466,7 @@ class TestComputeMacroscopicMultiphase:
                 lattice=lattice,
                 mp=mp,
                 diff_ops=diff_ops,
-            )
+            ),
         )
         rho, u_eq, force = jitted_mp(f)
         assert rho.shape == (16, 16, 1, 1)
@@ -475,13 +480,19 @@ class TestComputeMacroscopicMultiphase:
         force_ext = jnp.ones((16, 16, 1, 2)) * 0.001
 
         rho, u_eq, force_total = compute_macroscopic_multiphase(
-            f, lattice, mp, force_ext=force_ext, diff_ops=diff_ops,
+            f,
+            lattice,
+            mp,
+            force_ext=force_ext,
+            diff_ops=diff_ops,
         )
 
         # Force total should include the external contribution
         # For uniform field, force_int ≈ 0, so force_total ≈ force_ext
         np.testing.assert_allclose(
-            np.array(force_total), np.array(force_ext), atol=1e-4
+            np.array(force_total),
+            np.array(force_ext),
+            atol=1e-4,
         )
 
 
@@ -543,7 +554,7 @@ class TestApplyBounceBack:
                 apply_bounce_back,
                 lattice=lattice,
                 edge="bottom",
-            )
+            ),
         )
         f_out = jitted_bb(f, f)
         assert f_out.shape == f.shape
@@ -580,7 +591,7 @@ class TestApplySymmetry:
                 apply_symmetry,
                 lattice=lattice,
                 edge="bottom",
-            )
+            ),
         )
         f_out = jitted_sym(f, f)
         assert f_out.shape == f.shape
@@ -620,7 +631,7 @@ class TestApplyPeriodic:
                 apply_periodic,
                 lattice=lattice,
                 edge="top",
-            )
+            ),
         )
         f_out = jitted_per(f, f)
         assert f_out.shape == f.shape
@@ -713,9 +724,9 @@ class TestEndToEndPureFunctions:
 
     def test_single_step_mass_conservation(self, lattice):
         """One full step should conserve mass on a periodic domain."""
+        from operators.collision.bgk import collide_bgk
         from operators.equilibrium.equilibrium import compute_equilibrium
         from operators.macroscopic.single_phase import compute_macroscopic
-        from operators.collision.bgk import collide_bgk
         from operators.streaming.streaming import stream
 
         rho = jnp.ones((NX, NY, 1, 1))
@@ -736,9 +747,9 @@ class TestEndToEndPureFunctions:
 
     def test_jit_full_step(self, lattice):
         """A full step wrapped in jax.jit compiles and runs."""
+        from operators.collision.bgk import collide_bgk
         from operators.equilibrium.equilibrium import compute_equilibrium
         from operators.macroscopic.single_phase import compute_macroscopic
-        from operators.collision.bgk import collide_bgk
         from operators.streaming.streaming import stream
 
         def one_step(f, tau):
@@ -759,11 +770,11 @@ class TestEndToEndPureFunctions:
 
     def test_step_with_bounce_back(self, lattice):
         """Full step with bounce-back BCs compiles and runs."""
+        from operators.boundary.composite import build_composite_bc
+        from operators.collision.bgk import collide_bgk
         from operators.equilibrium.equilibrium import compute_equilibrium
         from operators.macroscopic.single_phase import compute_macroscopic
-        from operators.collision.bgk import collide_bgk
         from operators.streaming.streaming import stream
-        from operators.boundary.composite import build_composite_bc
 
         bc_config = {
             "top": "bounce-back",

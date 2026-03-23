@@ -10,13 +10,13 @@ Tests validate that:
 import os
 import sys
 import textwrap
-
 import pytest
 
 # Ensure src/ is on the path so imports work from the tests/ directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from config.adapter_base import ConfigAdapter, get_adapter
+from config.adapter_base import ConfigAdapter
+from config.adapter_base import get_adapter
 from config.adapter_toml import TomlAdapter
 from config.simulation_config import SimulationConfig
 
@@ -319,7 +319,8 @@ class TestTomlAdapterErrors:
         p = tmp_path / "empty.toml"
         p.write_text("[output]\nresults_dir = '/tmp'\n")
         with pytest.raises(
-            ValueError, match="missing the required \\[simulation_type\\] table"
+            ValueError,
+            match="missing the required \\[simulation_type\\] table",
         ):
             TomlAdapter().load(str(p))
 
@@ -408,7 +409,8 @@ class TestExampleFiles:
 
     def test_config_complex_loads(self, example_dir):
         """Load the complex config — no mocking needed since forces are
-        now stored as plain dicts in force_config, not instantiated."""
+        now stored as plain dicts in force_config, not instantiated.
+        """
         path = os.path.join(example_dir, "config_complex.toml")
         if not os.path.exists(path):
             pytest.skip("example_for_test/config_complex.toml not found")

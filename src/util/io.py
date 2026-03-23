@@ -1,13 +1,10 @@
 import json
-import jax.numpy as jnp
-from typing import Dict
-from types import MethodType
-import numpy as np
-from datetime import datetime
-import os
 import logging
+import os
 import sys
-
+from datetime import datetime
+from types import MethodType
+import jax.numpy as jnp
 from .output_data import output_writers
 
 
@@ -30,19 +27,16 @@ class CustomJSONEncoder(json.JSONEncoder):
 
 
 class SimulationIO:
-    """
-    Handles all I/O operations for the simulation, including logging and saving results.
-    """
+    """Handles all I/O operations for the simulation, including logging and saving results."""
 
     def __init__(
         self,
         base_dir: str = "results",
-        config: Dict = None,
+        config: dict = None,
         simulation_name: str = None,
         output_format: str = "numpy",
     ):
-        """
-        Initialises the IO handler.
+        """Initialises the IO handler.
 
         Args:
             base_dir (str): The base directory to store simulation results.
@@ -62,12 +56,12 @@ class SimulationIO:
             self.save_config(config)
 
         self.save_data_step = MethodType(
-            output_writers[output_format].save_data_step, self
+            output_writers[output_format].save_data_step,
+            self,
         )
 
     def _setup_logging(self) -> None:
-        """
-        Configure root logger so everything printed to the console is
+        """Configure root logger so everything printed to the console is
         also written to <run_dir>/simulation.log. Existing handlers are
         cleared to avoid duplicate lines when multiple simulations run
         in the same Python interpreter (e.g. test suites).
@@ -76,7 +70,8 @@ class SimulationIO:
 
         # 1. Build handlers
         fmt = logging.Formatter(
-            "%(asctime)s | %(levelname)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+            "%(asctime)s | %(levelname)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
         file_handler = logging.FileHandler(log_file, mode="a")
         file_handler.setLevel(logging.INFO)
@@ -95,7 +90,7 @@ class SimulationIO:
         root.addHandler(console_handler)
 
         # 3. Mirror *all* prints to the same log file
-        class _Tee(object):
+        class _Tee:
             def __init__(self, *streams):
                 self._streams = streams
 
@@ -120,7 +115,7 @@ class SimulationIO:
         print(f"Created results directory: {rundir}")
         return rundir
 
-    def save_config(self, config: Dict):
+    def save_config(self, config: dict):
         """Saves the simulation configuration to a JSON file using CustomJSONEncoder."""
         config_path = os.path.join(self.run_dir, "config.json")
 

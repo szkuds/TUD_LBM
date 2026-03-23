@@ -8,9 +8,8 @@ discarded after the factory call — it is **never** stored on
 """
 
 from __future__ import annotations
-
-from typing import Any, Dict, List, NamedTuple, Optional
-
+from typing import Any
+from typing import NamedTuple
 import jax.numpy as jnp
 
 
@@ -30,9 +29,9 @@ class DifferentialConfig(NamedTuple):
 
     w: jnp.ndarray
     c: jnp.ndarray
-    pad_modes: List[str]
-    wetting_params: Optional[Dict[str, Any]] = None
-    chemical_step: Optional[int] = None
+    pad_modes: list[str]
+    wetting_params: dict[str, Any] | None = None
+    chemical_step: int | None = None
 
     @property
     def wetting_enabled(self) -> bool:
@@ -43,4 +42,3 @@ class DifferentialConfig(NamedTuple):
     def chemical_step_enabled(self) -> bool:
         """Return ``True`` when chemical step parameters are present."""
         return self.chemical_step is not None
-
