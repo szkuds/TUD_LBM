@@ -61,7 +61,7 @@ Note: This may take longer as complex packages like JAX are compiled from source
 
 ## Documentation
 
-For full documentation, visit [tud_lbm.readthedocs.io](https://tud_lbm.readthedocs.io/en/latest/).
+For full documentation, visit [tud-lbm.readthedocs.io](https://tud-lbm.readthedocs.io/en/latest/).
 
 ## Quick Start
 
