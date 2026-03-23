@@ -6,8 +6,8 @@ authors:
   - family-names: Szkudlarek
     given-names: Sacha
     orcid: "https://orcid.org/0009-0003-7915-874X"
-date-released: 2026-03-13
-version: "0.0.1"
+date-released: 2026-03-23
+version: "0.0.2"
 repository-code: "https://github.com/szkuds/tud_lbm"
 keywords:
   - "LBM"
