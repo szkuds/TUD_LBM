@@ -123,4 +123,5 @@ docs = [
   "myst-parser",
   "sphinx-rtd-theme",
   "sphinx-autoapi",
+  "sphinx-build",
 ]
