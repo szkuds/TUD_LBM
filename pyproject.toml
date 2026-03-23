@@ -103,7 +103,7 @@ force-single-line = true
 no-lines-before = ["future","standard-library","third-party","first-party","local-folder"]
 
 [tool.bumpversion]
-current_version = "0.0.1"
+current_version = "0.0.2"
 
 [[tool.bumpversion.files]]
 filename = "src/__init__.py"
@@ -117,11 +117,3 @@ filename = "CITATION.cff"
 [[tool.bumpversion.files]]
 filename = "docs/conf.py"
 
-[project.optional-dependencies]
-docs = [
-  "sphinx",
-  "myst-parser",
-  "sphinx-rtd-theme",
-  "sphinx-autoapi",
-  "sphinx-build",
-]
