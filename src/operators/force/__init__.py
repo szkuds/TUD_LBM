@@ -1,16 +1,22 @@
-"""Force models for LBM simulations.
+"""Force operators — pure functions."""
 
-This sub-package provides external force implementations that can be
-composed via :class:`CompositeForce` and injected into any simulation.
+from operators.force.source_term import source
+from operators.force.gravity import build_gravity_force, compute_gravity_force
+from operators.force.electric import (
+    ElectricParams,
+    build_electric_params,
+    compute_electric_force,
+    init_hi,
+    update_hi,
+)
 
-Available forces:
-    - :class:`Force` — abstract base class for custom force implementations
-    - :class:`CompositeForce` — helper class to combine multiple force models
-    - :class:`GravityForceMultiphase` — constant gravitational body force
-    - :class:`ElectricForce` — leaky-dielectric electrostatic force
-"""
-
-from .gravitational_force import GravityForceMultiphase
-from .composite_force import CompositeForce
-from .electric_force import ElectricForce
-from .force_base import Force
+__all__ = [
+    "source",
+    "build_gravity_force",
+    "compute_gravity_force",
+    "ElectricParams",
+    "build_electric_params",
+    "compute_electric_force",
+    "init_hi",
+    "update_hi",
+]

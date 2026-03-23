@@ -1,23 +1,13 @@
-"""Operators for LBM simulations.
+"""Pure-function operators for JAX-compliant LBM.
 
-This package provides all operators needed for lattice Boltzmann simulations,
-including boundary conditions, equilibrium distributions, differential operators,
-macroscopic field computation, wetting models, external forces, and initialisation.
+This package provides **module-level pure functions** that replace the
+legacy mutable operator classes.  No class instances, no ``self``, no
+``static_argnums`` — just arrays in, arrays out.
 
 Sub-packages:
-    boundary_condition: Boundary condition implementations.
-    equilibrium: EquilibriumWB distribution functions.
-    differential: Gradient and Laplacian operators.
-    macroscopic: Density and velocity field computation.
-    wetting: Contact angle and wetting boundary conditions.
-    force: External force models (gravity, electric, composite).
-    initialise: Field initialisation routines.
+    collision: BGK and MRT collision operators + factory.
+    streaming: Lattice streaming (propagation).
+    equilibrium: Equilibrium distribution computation.
+    macroscopic: Density/velocity extraction (single-phase & multiphase).
+    boundary: Boundary condition functions + composite builder.
 """
-
-from .boundary_condition import BoundaryCondition
-from .equilibrium import EquilibriumWB
-from .differential import Laplacian, Gradient
-from .macroscopic import Macroscopic, MacroscopicMultiphaseCS, MacroscopicMultiphaseDW
-from .wetting import ContactAngle, ContactLineLocation, determine_padding_modes, wetting_1d, apply_wetting_to_all_edges, has_wetting_bc, WettingParameters
-from .force import Force, CompositeForce, ElectricForce, GravityForceMultiphase
-from .initialise import Initialise

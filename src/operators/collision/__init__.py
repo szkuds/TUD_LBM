@@ -1,15 +1,15 @@
-"""Collision operators for the lattice Boltzmann method.
+"""Collision operators — pure functions."""
 
-Provides BGK (single relaxation time) and MRT (multiple relaxation time)
-collision schemes, plus the source term for the well-balanced forcing scheme.
+# Import modules to trigger registration with the global registry
+from operators.collision import bgk as _bgk_mod  # noqa: F401
+from operators.collision import mrt as _mrt_mod  # noqa: F401
 
-Classes:
-    CollisionBGK: Standard BGK collision with optional source term.
-    CollisionMRT: MRT collision with configurable relaxation rates.
-    SourceTerm: Forcing source term.
-"""
+from operators.collision.bgk import collide_bgk
+from operators.collision.mrt import collide_mrt
+from operators.collision.factory import build_collision_fn
 
-from .collision_base import CollisionBase
-from .collision_bgk import CollisionBGK
-from .collision_mrt import CollisionMRT
-from .source import SourceTerm
+__all__ = [
+    "collide_bgk",
+    "collide_mrt",
+    "build_collision_fn",
+]

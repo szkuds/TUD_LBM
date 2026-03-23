@@ -1,20 +1,25 @@
-"""Wetting and contact angle models for LBM simulations.
+"""Wetting and hysteresis operators — pure functions.
 
-Provides implementations for contact angle measurement, contact line tracking,
-and wetting boundary conditions for multiphase simulations.
-
-Classes:
-    ContactAngle: Computes contact angles from the density field.
-    ContactLineLocation: Computes contact line locations from the density field..
-    WettingParameters: Configuration container for wetting properties.
-
-Functions:
-    determine_padding_modes: Determines padding modes for wetting boundaries.
-    wetting_1d: Applies 1D wetting boundary condition.
-    apply_wetting_to_all_edges: Applies wetting to all domain edges.
-    has_wetting_bc: Checks if wetting boundary conditions are enabled.
+Provides JAX-compatible pure-function equivalents of the legacy
+:class:`~simulation_operators.wetting.ContactAngle`,
+:class:`~simulation_operators.wetting.ContactLineLocation`, and
+the hysteresis optimisation from
+:class:`~update_timestep.UpdateMultiphaseHysteresis`.
 """
 
-from .contact_angle import ContactAngle
-from .contact_line_location import ContactLineLocation
-from .wetting_util import determine_padding_modes, wetting_1d, apply_wetting_to_all_edges, has_wetting_bc, WettingParameters
+from operators.wetting.contact_angle import compute_contact_angle
+from operators.wetting.contact_line import compute_contact_line_location
+from operators.wetting.hysteresis import update_wetting_state, WettingParams
+from operators.wetting.wetting_util import (
+    resolve_wetting_fields,
+    apply_wetting_to_all_edges,
+)
+
+__all__ = [
+    "compute_contact_angle",
+    "compute_contact_line_location",
+    "update_wetting_state",
+    "WettingParams",
+    "resolve_wetting_fields",
+    "apply_wetting_to_all_edges",
+]

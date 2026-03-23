@@ -1,0 +1,58 @@
+# TUD-LBM Complex Multiphase Simulation Configuration
+#
+# Load this config via the TOML adapter:
+#
+#   from config.adapter_toml import TomlAdapter
+#   from setup.simulation_setup import build_setup
+#   from runner.run import init_state, run
+#
+#   config = TomlAdapter().load("config_complex.toml")
+#   setup  = build_setup(config)
+#   state  = init_state(setup)
+#   final_state, trajectory = run(setup, state)
+
+[simulation_type]
+simulation_name = 'Test complex simulation'
+type = "multiphase"
+grid_shape = [201, 201]
+lattice_type = "D2Q9"
+tau = 0.99
+nt = 35000
+init_type = "multiphase_droplet"
+
+[multiphase]
+kappa = 0.017
+rho_l = 1.0
+rho_v = 0.33
+interface_width = 5
+eos = "double-well"
+
+# Force configuration - can have multiple [[force]] tables
+[[force]]
+type = "gravity_multiphase"
+force_g = 2e-6
+inclination_angle_deg = 0
+
+[boundary_conditions]
+left = "periodic"
+right = "periodic"
+top = "bounce-back"
+bottom = "bounce-back"
+
+[boundary_conditions.wetting_params]
+phi_left = 1.0
+phi_right = 1.0
+d_rho_left = 0.0
+d_rho_right = 0.0
+
+[boundary_conditions.hysteresis_params]
+ca_advancing = 90.0
+ca_receding = 80.0
+learning_rate = 0.05
+max_iterations = 10
+
+[output]
+results_dir = "~/TUD_LBM_data/results"
+save_fields = ["rho", "u"]
+plot_fields = ["density", 'velocity', 'analysis']
+

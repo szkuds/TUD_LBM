@@ -1,10 +1,5 @@
-"""EquilibriumWB distribution functions for LBM simulations.
+"""Equilibrium distribution — pure function."""
 
-Provides computation of the equilibrium distribution function
-based on local density and velocity fields.
+from operators.equilibrium.equilibrium import compute_equilibrium
 
-Classes:
-    EquilibriumWB: Well balanced lattice Boltzmann method equilibrium distribution function.
-"""
-
-from .equilibrium_wb import EquilibriumWB
+__all__ = ["compute_equilibrium"]

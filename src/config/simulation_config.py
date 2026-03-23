@@ -1,303 +1,311 @@
-"""
-Configuration dataclasses for LBM simulations.
+"""Validated, serialisable simulation configuration for TUD-LBM.
 
-Provides validated, type-safe configuration objects that replace
-the sprawling keyword arguments in simulation constructors.
+:class:`SimulationConfig` is a **frozen** Python dataclass used for
+parsing, validation, and serialisation.  It never enters a JIT boundary.
 
-Each simulation type has its own config class with:
-- Type annotations for IDE support
-- Default values matching previous behavior
-- __post_init__ validation for early error detection
+Usage::
 
-Architecture:
-    BaseSimulationConfig
-    ├── SinglePhaseConfig
-    └── MultiphaseConfig
+    from config.simulation_config import SimulationConfig
 
-    RunnerConfig          (I/O, saving, initialisation)
-
-    SimulationBundle      (top-level composite returned by file adapters)
+    cfg = SimulationConfig(
+        grid_shape=(128, 128),
+        tau=0.8,
+        nt=5000,
+        collision_scheme="bgk",
+    )
 """
 
-from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, List, Optional, Tuple, Union
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from config.dir_config import BASE_RESULTS_DIR
 
+# Fallback sets used when registry is not yet populated (e.g. config-only tests).
+_FALLBACK_COLLISION_SCHEMES = {"bgk", "mrt"}
+_FALLBACK_EOS = {"double-well", "carnahan-starling"}
+_FALLBACK_LATTICES = {"D2Q9", "D3Q19", "D3Q27"}
 
 
-@dataclass
-class BaseSimulationConfig:
+def _valid_collision_schemes() -> set:
+    """Return valid collision schemes from the registry, with fallback."""
+    try:
+        from registry import get_operator_names
+
+        names = get_operator_names("collision_models")
+        if names:
+            return names
+    except Exception:
+        pass
+    return _FALLBACK_COLLISION_SCHEMES
+
+
+def _valid_eos() -> set:
+    """Return valid EOS names from the registry, with fallback."""
+    try:
+        from registry import get_operator_names
+
+        names = get_operator_names("macroscopic")
+        # EOS names are the multiphase macroscopic operator names (exclude 'standard')
+        eos_names = names - {"standard"}
+        if eos_names:
+            return eos_names
+    except Exception:
+        pass
+    return _FALLBACK_EOS
+
+
+def _valid_lattices() -> set:
+    """Return valid lattice types from the registry, with fallback."""
+    try:
+        from registry import get_operator_names
+
+        names = get_operator_names("lattice")
+        if names:
+            return names
+    except Exception:
+        pass
+    return _FALLBACK_LATTICES
+
+
+@dataclass(frozen=True)
+class SimulationConfig:
+    """Validated, immutable simulation configuration.
+
+    Not a JAX pytree — used only *outside* JIT for parsing,
+    validation, and serialisation.
+
+    Raises:
+        ValueError: If any field value is invalid.
     """
-    Base configuration shared by all simulation types.
 
-    Attributes:
-        grid_shape: Shape of the simulation grid (nx, ny) or (nx, ny, nz).
-        lattice_type: Lattice velocity set, e.g. "D2Q9", "D3Q19".
-        tau: Relaxation time parameter.
-        nt: Number of timesteps to run.
-    """
-    grid_shape: Tuple[int, ...]
+    # ── Simulation identity ──────────────────────────────────────────
+    sim_type: Literal["single_phase", "multiphase"] = "single_phase"
+    simulation_name: Optional[str] = None
+
+    # ── Lattice & grid ───────────────────────────────────────────────
     lattice_type: str = "D2Q9"
-    tau: float = 1.0
+    grid_shape: Tuple[int, ...] = (64, 64)
+
+    # ── Time stepping ────────────────────────────────────────────────
     nt: int = 1000
+    tau: float = 1.0
 
-    def __post_init__(self):
-        # Validate grid_shape
-        if not isinstance(self.grid_shape, tuple):
-            self.grid_shape = tuple(self.grid_shape)
-        if len(self.grid_shape) < 2:
-            raise ValueError(f"grid_shape must have at least 2 dimensions, got {len(self.grid_shape)}")
-        if any(d <= 0 for d in self.grid_shape):
-            raise ValueError(f"All grid dimensions must be positive, got {self.grid_shape}")
-
-        # Validate lattice_type
-        valid_lattices = {"D2Q9", "D3Q19", "D3Q27"}
-        if self.lattice_type not in valid_lattices:
-            raise ValueError(f"lattice_type must be one of {valid_lattices}, got '{self.lattice_type}'")
-
-        # Validate tau
-        if self.tau <= 0.5:
-            raise ValueError(f"tau must be > 0.5 for stability, got {self.tau}")
-
-        # Validate nt
-        if self.nt <= 0:
-            raise ValueError(f"nt must be positive, got {self.nt}")
-
-
-@dataclass
-class SinglePhaseConfig(BaseSimulationConfig):
-    """
-    Configuration for single-phase LBM simulations.
-
-    Attributes:
-        force_enabled: Whether external forcing is enabled.
-        force_obj: Force object(s) for external forcing.
-        bc_config: Boundary condition configuration dict.
-        collision_scheme: Collision operator type ("bgk" or "mrt").
-        k_diag: MRT relaxation rates diagonal (for collision_scheme="mrt").
-    """
-    force_enabled: bool = False
-    force_obj: Optional[Any] = None
-    bc_config: Optional[Dict[str, Any]] = None
+    # ── Collision ────────────────────────────────────────────────────
     collision_scheme: str = "bgk"
     k_diag: Optional[Tuple[float, ...]] = None
 
-    # Extra kwargs for extensibility
-    extra: Dict[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self):
-        super().__post_init__()
-
-        # Validate collision_scheme
-        valid_schemes = {"bgk", "mrt"}
-        if self.collision_scheme not in valid_schemes:
-            raise ValueError(f"collision_scheme must be one of {valid_schemes}, got '{self.collision_scheme}'")
-
-        # Validate k_diag is provided for MRT
-        if self.collision_scheme == "mrt" and self.k_diag is None:
-            raise ValueError("k_diag must be provided when using MRT collision scheme")
-
-
-@dataclass
-class MultiphaseConfig(BaseSimulationConfig):
-    """
-    Configuration for multiphase (two-phase) LBM simulations.
-
-    Attributes:
-        kappa: Surface tension parameter.
-        rho_l: Liquid phase density.
-        rho_v: Vapor phase density.
-        interface_width: Diffuse interface width in lattice units.
-        eos: Equation of state ("double-well" or "carnahan-starling").
-        force_enabled: Whether external forcing is enabled.
-        force_obj: Force object(s) for external forcing (list of force objects).
-        bc_config: Boundary condition configuration dict.
-        collision_scheme: Collision operator type ("bgk" or "mrt").
-        k_diag: MRT relaxation rates diagonal (for collision_scheme="mrt").
-        bubble: Whether initializing a bubble (vs droplet).
-        rho_ref: Reference density for bubble initialization.
-        g: Gravitational acceleration for bubble initialization.
-    """
-    kappa: float = 0.1
-    rho_l: float = 1.0
-    rho_v: float = 0.1
-    interface_width: int = 4
-    eos: str = "double-well"
-    force_enabled: bool = False
-    force_obj: Optional[List[Any]] = None
+    # ── Boundary conditions ──────────────────────────────────────────
     bc_config: Optional[Dict[str, Any]] = None
-    collision_scheme: str = "bgk"
-    k_diag: Optional[Tuple[float, ...]] = None
+
+    # ── Force ────────────────────────────────────────────────────────
+    force_enabled: bool = False
+    force_config: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None
+
+    # ── Initialisation ───────────────────────────────────────────────
+    init_type: str = "standard"
+    init_dir: Optional[str] = None
+
+    # ── Output / IO ──────────────────────────────────────────────────
+    results_dir: str = BASE_RESULTS_DIR
+    save_interval: int = 0  # This is set to 0 to ensure that when nothing is passed the default is nt/10
+    skip_interval: int = 0
+    save_fields: Optional[List[str]] = None
+    plot_fields: Optional[List[str]] = None
+
+    # ── Multiphase (ignored when sim_type == "single_phase") ─────────
+    eos: Optional[str] = None
+    kappa: Optional[float] = None
+    rho_l: Optional[float] = None
+    rho_v: Optional[float] = None
+    interface_width: Optional[int] = None
     bubble: bool = False
     rho_ref: Optional[float] = None
     g: Optional[float] = None
 
-    # Extra kwargs for extensibility
+    # ── Wetting / hysteresis ─────────────────────────────────────────
+    wetting_config: Optional[Dict[str, Any]] = None
+    hysteresis_config: Optional[Dict[str, Any]] = None
+
+    # ── Extra / extensible ───────────────────────────────────────────
     extra: Dict[str, Any] = field(default_factory=dict)
 
-    def __post_init__(self):
-        super().__post_init__()
+    # ══════════════════════════════════════════════════════════════════
+    # Validation
+    # ══════════════════════════════════════════════════════════════════
 
-        # Validate densities
+    def __post_init__(self) -> None:
+        # frozen=True forbids normal assignment; use object.__setattr__
+        # for one-time normalisation in __post_init__.
+
+        # Compute the save_interval based on nt/10 before validation
+        if self.save_interval == 0:
+            object.__setattr__(self, "save_interval", self.nt // 10)
+
+        # Normalise grid_shape to tuple
+        if not isinstance(self.grid_shape, tuple):
+            object.__setattr__(self, "grid_shape", tuple(self.grid_shape))
+
+        # Default bc_config to periodic on all edges
+        if self.bc_config is None:
+            object.__setattr__(
+                self,
+                "bc_config",
+                {
+                    "top": "periodic",
+                    "bottom": "periodic",
+                    "left": "periodic",
+                    "right": "periodic",
+                },
+            )
+
+        self._validate_common()
+
+        if self.sim_type == "multiphase":
+            self._validate_multiphase()
+
+    # ── Shared validation ────────────────────────────────────────────
+
+    def _validate_common(self) -> None:
+        """Validation rules shared by all simulation types."""
+        # grid_shape
+        if len(self.grid_shape) < 2:
+            raise ValueError(
+                f"grid_shape must have at least 2 dimensions, "
+                f"got {len(self.grid_shape)}"
+            )
+        if any(d <= 0 for d in self.grid_shape):
+            raise ValueError(
+                f"All grid dimensions must be positive, got {self.grid_shape}"
+            )
+
+        # lattice_type
+        valid_lattices = _valid_lattices()
+        if self.lattice_type not in valid_lattices:
+            raise ValueError(
+                f"lattice_type must be one of {valid_lattices}, "
+                f"got '{self.lattice_type}'"
+            )
+
+        # tau
+        if self.tau <= 0.5:
+            raise ValueError(f"tau must be > 0.5 for stability, got {self.tau}")
+
+        # nt
+        if self.nt <= 0:
+            raise ValueError(f"nt must be positive, got {self.nt}")
+
+        # collision_scheme
+        valid_schemes = _valid_collision_schemes()
+        if self.collision_scheme not in valid_schemes:
+            raise ValueError(
+                f"collision_scheme must be one of "
+                f"{sorted(valid_schemes)}, got '{self.collision_scheme}'"
+            )
+
+        # k_diag required for MRT
+        if self.collision_scheme == "mrt" and self.k_diag is None:
+            raise ValueError("k_diag must be provided when using MRT collision scheme")
+
+        # save_interval
+        if self.save_interval < 0:
+            raise ValueError(
+                f"save_interval must be positive, got {self.save_interval}"
+            )
+
+        # skip_interval
+        if self.skip_interval < 0:
+            raise ValueError(
+                f"skip_interval must be non-negative, got {self.skip_interval}"
+            )
+
+        # init_dir
+        if self.init_type == "init_from_file" and self.init_dir is None:
+            raise ValueError(
+                "init_dir must be provided when init_type is 'init_from_file'"
+            )
+
+        # save_fields
+        if self.save_fields is not None:
+            valid_fields = {"f", "rho", "u", "force", "force_ext", "h"}
+            invalid = set(self.save_fields) - valid_fields
+            if invalid:
+                raise ValueError(
+                    f"Invalid save_fields: {invalid}. " f"Valid fields: {valid_fields}"
+                )
+
+    # ── Multiphase validation ────────────────────────────────────────
+
+    def _validate_multiphase(self) -> None:
+        """Additional validation for multiphase simulations."""
+        for name in ("kappa", "rho_l", "rho_v", "interface_width", "eos"):
+            if getattr(self, name) is None:
+                raise ValueError(f"'{name}' is required for multiphase simulations")
+
         if self.rho_l <= 0:
             raise ValueError(f"rho_l must be positive, got {self.rho_l}")
         if self.rho_v <= 0:
             raise ValueError(f"rho_v must be positive, got {self.rho_v}")
         if self.rho_l <= self.rho_v:
-            raise ValueError(f"rho_l ({self.rho_l}) must be greater than rho_v ({self.rho_v})")
-
-        # Validate kappa
+            raise ValueError(
+                f"rho_l ({self.rho_l}) must be greater than rho_v ({self.rho_v})"
+            )
         if self.kappa <= 0:
             raise ValueError(f"kappa must be positive, got {self.kappa}")
-
-        # Validate interface_width
         if self.interface_width <= 0:
-            raise ValueError(f"interface_width must be positive, got {self.interface_width}")
+            raise ValueError(
+                f"interface_width must be positive, got {self.interface_width}"
+            )
 
-        # Validate eos
-        valid_eos = {"double-well", "carnahan-starling"}
+        # EOS
+        valid_eos = _valid_eos()
         if self.eos not in valid_eos:
-            raise ValueError(f"eos must be one of {valid_eos}, got '{self.eos}'")
+            raise ValueError(
+                f"eos must be one of {sorted(valid_eos)}, " f"got '{self.eos}'"
+            )
 
-        # Validate collision_scheme
-        valid_schemes = {"bgk", "mrt"}
-        if self.collision_scheme not in valid_schemes:
-            raise ValueError(f"collision_scheme must be one of {valid_schemes}, got '{self.collision_scheme}'")
-
-        # Validate k_diag is provided for MRT
-        if self.collision_scheme == "mrt" and self.k_diag is None:
-            raise ValueError("k_diag must be provided when using MRT collision scheme")
-
-
-@dataclass
-class RunnerConfig:
-    """
-    Configuration for the simulation runner (I/O, saving, initialization).
-
-    Attributes:
-        save_interval: Save data every N timesteps.
-        skip_interval: Skip saving for the first N timesteps (transient).
-        results_dir: Base directory for saving results.
-        init_type: Initialization type (e.g. "standard", "multiphase_droplet").
-        init_dir: Path to .npz file for "init_from_file" init_type.
-        simulation_name: Optional name for the simulation run.
-        save_fields: List of field names to save (None = save all).
-    """
-    save_interval: int = 100
-    skip_interval: int = 0
-    results_dir: str = BASE_RESULTS_DIR
-    init_type: str = "standard"
-    init_dir: Optional[str] = None
-    simulation_name: Optional[str] = None
-    save_fields: Optional[List[str]] = None
-
-    def __post_init__(self):
-        # Validate save_interval
-        if self.save_interval <= 0:
-            raise ValueError(f"save_interval must be positive, got {self.save_interval}")
-
-        # Validate skip_interval
-        if self.skip_interval < 0:
-            raise ValueError(f"skip_interval must be non-negative, got {self.skip_interval}")
-
-        # Validate init_dir is provided for init_from_file
-        if self.init_type == "init_from_file" and self.init_dir is None:
-            raise ValueError("init_dir must be provided when init_type is 'init_from_file'")
-
-        # Validate save_fields if provided
-        if self.save_fields is not None:
-            valid_fields = {"f", "rho", "u", "force", "force_ext", "h"}
-            invalid = set(self.save_fields) - valid_fields
-            if invalid:
-                raise ValueError(f"Invalid save_fields: {invalid}. Valid fields: {valid_fields}")
-
-
-# Type alias for simulation configs
-SimulationConfig = Union[SinglePhaseConfig, MultiphaseConfig]
-
-
-@dataclass
-class SimulationBundle:
-    """
-    Top-level configuration object returned by file adapters.
-
-    Bundles the simulation physics config and runner/IO config into one
-    object that gets passed around and unpacked by subsystems that need
-    specific parts.
-
-    Example — Python API::
-
-        from config import SimulationBundle, SinglePhaseConfig, RunnerConfig
-        from core import Run
-
-        bundle = SimulationBundle(
-            simulation=SinglePhaseConfig(grid_shape=(100, 100), tau=0.6, nt=10000),
-            runner=RunnerConfig(save_interval=1000),
-        )
-        sim = Run(bundle)
-        sim.run()
-
-    Example — multiphase::
-
-        bundle = SimulationBundle(
-            simulation=MultiphaseConfig(
-                grid_shape=(401, 101), tau=0.99, kappa=0.017,
-                rho_l=1.0, rho_v=0.33, interface_width=4,
-                force_enabled=True, force_obj=[gravity],
-                bc_config=bc_config,
-            ),
-            runner=RunnerConfig(save_interval=2000, init_type="wetting"),
-        )
-
-    Attributes:
-        simulation: Physics configuration (SinglePhaseConfig or MultiphaseConfig).
-        runner: Runner/IO configuration.
-    """
-
-    simulation: SimulationConfig
-    runner: RunnerConfig = field(default_factory=RunnerConfig)
-
-    @property
-    def is_multiphase(self) -> bool:
-        """Whether this is a multiphase simulation."""
-        return isinstance(self.simulation, MultiphaseConfig)
+    # ══════════════════════════════════════════════════════════════════
+    # Properties
+    # ══════════════════════════════════════════════════════════════════
 
     @property
     def is_single_phase(self) -> bool:
         """Whether this is a single-phase simulation."""
-        return isinstance(self.simulation, SinglePhaseConfig)
+        return self.sim_type == "single_phase"
+
+    @property
+    def is_multiphase(self) -> bool:
+        """Whether this is a multiphase simulation."""
+        return self.sim_type == "multiphase"
+
+    # ══════════════════════════════════════════════════════════════════
+    # Serialisation
+    # ══════════════════════════════════════════════════════════════════
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert the entire bundle to a flat dictionary.
+        """Serialise to a plain dict for logging / saving.
 
-        Merges simulation and runner configs into a single dict,
-        adding a ``simulation_type`` key for backward-compatibility.
+        Merges ``extra`` into the top-level dict and adds a
+        ``simulation_type`` key.
         """
-        sim_dict = asdict(self.simulation)
-        runner_dict = asdict(self.runner)
+        from dataclasses import asdict
 
-        # Merge extra into main dict
-        extra = sim_dict.pop("extra", {})
-        sim_dict.update(extra)
-
-        # Add simulation_type for backward-compatibility
-        if self.is_multiphase:
-            sim_dict["simulation_type"] = "multiphase"
-        else:
-            sim_dict["simulation_type"] = "single_phase"
-
-        # Runner keys go into the same flat dict
-        sim_dict.update(runner_dict)
-        return sim_dict
+        d = asdict(self)
+        extra = d.pop("extra", {})
+        d.update(extra)
+        d["simulation_type"] = self.sim_type
+        return d
 
     def __repr__(self) -> str:
-        sim_type = "multiphase" if self.is_multiphase else "single_phase"
         return (
-            f"SimulationBundle(\n"
-            f"  type={sim_type},\n"
-            f"  simulation={self.simulation!r},\n"
-            f"  runner={self.runner!r},\n"
+            f"SimulationConfig(\n"
+            f"  sim_type={self.sim_type!r},\n"
+            f"  grid_shape={self.grid_shape!r},\n"
+            f"  lattice_type={self.lattice_type!r},\n"
+            f"  tau={self.tau!r},\n"
+            f"  nt={self.nt!r},\n"
+            f"  collision_scheme={self.collision_scheme!r},\n"
+            f"  init_type={self.init_type!r},\n"
             f")"
         )
-

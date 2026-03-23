@@ -1,12 +1,14 @@
-"""Differential operators for LBM simulations.
+"""Differential operators — pure functions for LBM stencil gradient and Laplacian."""
 
-Provides finite-difference operators for computing spatial derivatives
-of scalar and vector fields on the LBM grid.
+# Import modules to trigger registration with the global registry
+from operators.differential import gradient as _grad_mod  # noqa: F401
+from operators.differential import laplacian as _lap_mod  # noqa: F401
 
-Classes:
-    Gradient: First-order spatial gradient operator.
-    Laplacian: Second-order Laplacian operator.
-"""
+from operators.differential.gradient import compute_gradient, compute_wetting_gradient
+from operators.differential.laplacian import compute_laplacian
 
-from .gradient import Gradient
-from .laplacian import Laplacian
+__all__ = [
+    "compute_gradient",
+    "compute_wetting_gradient",
+    "compute_laplacian",
+]

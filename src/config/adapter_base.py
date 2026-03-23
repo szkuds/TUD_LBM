@@ -1,14 +1,14 @@
 """Abstract base class for configuration file adapters.
 
 Each adapter reads a specific file format (TOML, YAML, JSON, …) and
-returns a :class:`SimulationBundle`.
+returns a :class:`SimulationConfig`.
 
 Use :func:`get_adapter` to obtain the right adapter for a given file path::
 
     from config.adapter_base import get_adapter
 
     adapter = get_adapter("config.toml")
-    bundle  = adapter.load("config.toml")
+    config  = adapter.load("config.toml")
 """
 
 from __future__ import annotations
@@ -16,24 +16,25 @@ from __future__ import annotations
 import importlib
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
-from config.saving_config import FORCE_REGISTRY
-from config.simulation_config import SimulationBundle
+from config.simulation_config import SimulationConfig
+import operators.force  # noqa: F401
+from registry import get_operator_names
 
 
 class ConfigAdapter(ABC):
-    """Abstract adapter that converts a config file into a SimulationBundle."""
+    """Abstract adapter that converts a config file into a SimulationConfig."""
 
     @abstractmethod
-    def load(self, path: str) -> SimulationBundle:
-        """Read *path* and return a fully-validated :class:`SimulationBundle`.
+    def load(self, path: str) -> SimulationConfig:
+        """Read *path* and return a fully-validated :class:`SimulationConfig`.
 
         Args:
             path: Filesystem path to the configuration file.
 
         Returns:
-            A :class:`SimulationBundle` ready to be passed to :class:`Run`.
+            A :class:`SimulationConfig` ready to be passed to ``build_setup``.
 
         Raises:
             FileNotFoundError: If *path* does not exist.
@@ -45,50 +46,42 @@ class ConfigAdapter(ABC):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def instantiate_forces(
+    def parse_force_tables(
         force_tables: List[Dict[str, Any]],
-        grid_shape: Tuple[int, ...],
-    ) -> List[Any]:
-        """Create force objects from a list of dicts (e.g. ``[[force]]`` tables).
+    ) -> List[Dict[str, Any]]:
+        """Validate and normalise ``[[force]]`` tables into plain dicts.
 
-        Each dict **must** contain a ``type`` key whose value is looked up
-        in :data:`~config.saving_config.FORCE_REGISTRY`.  The remaining
-        keys are forwarded to the force constructor as ``**kwargs``.
-
-        ``grid_shape`` is always injected so TOML files don't need to
-        repeat it.
+        Each dict **must** contain a ``type`` key whose value is one of
+        :data:`VALID_FORCE_TYPES`.  The dicts are stored as-is in
+        ``SimulationConfig.force_config`` and later consumed by
+        ``build_setup()`` to construct JAX-friendly force objects.
 
         Args:
             force_tables: List of dicts, each with at least a ``type`` key.
-            grid_shape:   Grid dimensions, injected into every constructor.
 
         Returns:
-            A list of instantiated force objects.
+            A list of validated force configuration dicts.
 
         Raises:
-            KeyError: If a ``type`` is not found in the registry.
+            KeyError: If a ``type`` is not recognised.
         """
-        forces: List[Any] = []
+        validated: List[Dict[str, Any]] = []
         for entry in force_tables:
-            entry = dict(entry)  # shallow copy so we don't mutate the caller
-            force_type = entry.pop("type")
+            entry = dict(entry)  # shallow copy
+            force_type = entry.get("type")
 
-            if force_type not in FORCE_REGISTRY:
-                registered = ", ".join(sorted(FORCE_REGISTRY))
+            if force_type is None:
+                raise KeyError("Each [[force]] table must have a 'type' key.")
+
+            if force_type not in get_operator_names('force'):
+                registered = ", ".join(sorted(get_operator_names('force')))
                 raise KeyError(
                     f"Unknown force type '{force_type}'. "
                     f"Registered types: {registered}"
                 )
 
-            module_path, class_name = FORCE_REGISTRY[force_type]
-            mod = importlib.import_module(module_path)
-            cls = getattr(mod, class_name)
-
-            # Inject grid_shape (every force needs it)
-            entry.setdefault("grid_shape", grid_shape)
-
-            forces.append(cls(**entry))
-        return forces
+            validated.append(entry)
+        return validated
 
 
 # ------------------------------------------------------------------
@@ -120,8 +113,7 @@ def get_adapter(path: str) -> ConfigAdapter:
     if ext not in _ADAPTER_MAP:
         supported = ", ".join(sorted(_ADAPTER_MAP))
         raise ValueError(
-            f"Unsupported config file extension '{ext}'. "
-            f"Supported: {supported}"
+            f"Unsupported config file extension '{ext}'. " f"Supported: {supported}"
         )
 
     fqn = _ADAPTER_MAP[ext]
@@ -129,4 +121,3 @@ def get_adapter(path: str) -> ConfigAdapter:
     mod = importlib.import_module(module_path)
     cls = getattr(mod, class_name)
     return cls()
-

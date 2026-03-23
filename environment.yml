@@ -10,7 +10,8 @@ dependencies:
   - matplotlib
   - pandas
   - optax
-  - tomli-w
+  - tomli_w
+  - pyevtk
 
   #CLI dependencies
   - click

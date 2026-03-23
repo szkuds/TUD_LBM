@@ -1,10 +1,18 @@
-"""Field initialization routines for LBM simulations.
+"""Initialisation operators — pure functions.
 
-Provides initialisation of distribution functions and macroscopic fields
-for various initial conditions and restart scenarios.
+Provides JAX-compatible pure functions that produce initial population
+distributions ``f`` for various simulation scenarios.
 
-Classes:
-    Initialise: Field initialisation operator.
+Usage::
+
+    from operators.initialise.factory import get_init_fn
+    from setup.lattice import build_lattice
+
+    lattice = build_lattice("D2Q9")
+    init_fn = get_init_fn("standard")
+    f = init_fn(64, 64, lattice, density=1.0)
 """
 
-from .initilise import Initialise
+from operators.initialise.factory import get_init_fn
+
+__all__ = ["get_init_fn"]

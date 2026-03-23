@@ -9,7 +9,5 @@ import os
 # Directory Constants
 # =============================================================================
 
-#: Default directory for storing simulation results
+#: Default directory for storing simulation_type results
 BASE_RESULTS_DIR: str = os.path.expanduser("~/TUD_LBM_data/results")
-
-

@@ -1,94 +1,54 @@
-"""Configuration package for TUD-LBM simulations.
+"""Configuration package for TUD-LBM.
 
-This package provides the configuration interface for TUD-LBM simulations.
-The primary interface is SimulationBundle::
+Public API::
 
-    from config import SimulationBundle, SinglePhaseConfig, RunnerConfig
-    from core import Run
-
-    bundle = SimulationBundle(
-        simulation=SinglePhaseConfig(grid_shape=(100, 100), tau=0.6, nt=10000),
-        runner=RunnerConfig(save_interval=1000),
-    )
-    sim = Run(bundle)
-    sim.run()
-
-Main exports:
-
-- Simulation configuration (primary interface)
-  - :class:`SimulationBundle`: Top-level composite containing all simulation
-    parameters. Pass directly to Run().
-  - :class:`SinglePhaseConfig`: Physics config for single-phase simulations.
-  - :class:`MultiphaseConfig`: Physics config for multiphase simulations.
-  - :class:`RunnerConfig`: Runner/IO configuration.
-
-- Directory configuration
-  - :data:`BASE_RESULTS_DIR`: Base directory used for saving results.
-
-- JAX runtime configuration
-  - :func:`configure_jax`: Applies common JAX flags from a central place.
-  - :data:`ENABLE_X64`: Default for 64-bit precision in JAX.
-  - :data:`DISABLE_JIT`: Default toggle to disable JIT for debugging.
-
-- Saving / output configuration
-  - :data:`DEFAULT_SAVE_FIELDS`: Default fields written to disk.
-  - :data:`AVAILABLE_FIELDS`: All supported output fields.
-  - :data:`FORCE_REGISTRY`: Mapping from force names to force implementations.
-
-- File adapters
-  - :class:`ConfigAdapter`: Abstract base for config file readers.
-  - :class:`TomlAdapter`: TOML file adapter.
-  - :func:`get_adapter`: Factory that picks the right adapter by file extension.
+    from config import SimulationConfig, from_toml, from_dict
+    from config import TomlAdapter, DictAdapter
 """
 
-# Directory configuration
-from config.dir_config import BASE_RESULTS_DIR
+from __future__ import annotations
 
-# Saving configuration
-from config.saving_config import (
-    DEFAULT_SAVE_FIELDS,
-    AVAILABLE_FIELDS,
-    FORCE_REGISTRY,
-)
+from typing import Any, Dict
 
-# JAX config
-from config.jax_config import configure_jax, ENABLE_X64, DISABLE_JIT
+from config.simulation_config import SimulationConfig
+from config.adapter_dict import DictAdapter
 
-# Simulation config dataclasses (primary interface)
-from config.simulation_config import (
-    BaseSimulationConfig,
-    SinglePhaseConfig,
-    MultiphaseConfig,
-    RunnerConfig,
-    SimulationConfig,
-    SimulationBundle,
-)
 
-# File adapters
-from config.adapter_base import ConfigAdapter, get_adapter
-from config.adapter_toml import TomlAdapter
+def from_toml(path: str) -> SimulationConfig:
+    """Load a TOML file and return a validated :class:`SimulationConfig`.
+
+    This is a convenience wrapper that uses :class:`TomlAdapter`
+    internally.  The returned object is a *config* — pass it to
+    :func:`setup.simulation_setup.build_setup` to obtain the
+    JAX-friendly :class:`SimulationSetup`.
+
+    Args:
+        path: Filesystem path to a ``.toml`` file.
+
+    Returns:
+        A :class:`SimulationConfig`.
+    """
+    # Lazy import to avoid pulling in tomllib when unused
+    from config.adapter_toml import TomlAdapter
+
+    return TomlAdapter().load(path)
+
+
+def from_dict(d: Dict[str, Any]) -> SimulationConfig:
+    """Build a :class:`SimulationConfig` from a plain dict.
+
+    Args:
+        d: Configuration mapping.
+
+    Returns:
+        A validated :class:`SimulationConfig`.
+    """
+    return DictAdapter().load(d)
+
 
 __all__ = [
-    # Primary interface
-    "SimulationBundle",
-    # Simulation config dataclasses
-    "BaseSimulationConfig",
-    "SinglePhaseConfig",
-    "MultiphaseConfig",
-    "RunnerConfig",
     "SimulationConfig",
-    # Directory config
-    "BASE_RESULTS_DIR",
-    # JAX config
-    "configure_jax",
-    "ENABLE_X64",
-    "DISABLE_JIT",
-    # Saving config
-    "DEFAULT_SAVE_FIELDS",
-    "AVAILABLE_FIELDS",
-    "FORCE_REGISTRY",
-    # File adapters
-    "ConfigAdapter",
-    "TomlAdapter",
-    "get_adapter",
+    "DictAdapter",
+    "from_toml",
+    "from_dict",
 ]

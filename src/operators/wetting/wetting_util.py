@@ -1,155 +1,136 @@
-from typing import NamedTuple
+"""Wetting ghost-cell utilities — pure helper functions.
 
-import jax
+These functions support the wetting boundary treatment used by
+:func:`~operators.differential.gradient.make_wetting_gradient`.
+
+``resolve_wetting_fields`` extracts per-side wetting scalars from a
+``wetting_params`` dict (which may contain either plain scalars or
+per-side arrays depending on whether a chemical step is used).
+
+``apply_wetting_to_all_edges`` writes ghost-cell rows into the already-padded
+density field so that the LBM-stencil gradient "sees" the wetting boundary
+condition at the bottom wall.
+
+All operations are pure Python / NumPy pre-computations that run *before*
+``@jit``, so there are no tracing constraints.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, Optional, Tuple
+
 import jax.numpy as jnp
 
-
-@jax.tree_util.register_pytree_node_class
-class WettingParameters(NamedTuple):
-    d_rho_left: jnp.ndarray
-    d_rho_right: jnp.ndarray
-    phi_left: jnp.ndarray
-    phi_right: jnp.ndarray
-
-    def tree_flatten(self):
-        return (self.d_rho_left, self.d_rho_right, self.phi_left, self.phi_right), None
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        return cls(*children)
+# ---------------------------------------------------------------------------
+# Public helpers
+# ---------------------------------------------------------------------------
 
 
-def determine_padding_modes(bc_config):
-    if not bc_config:
-        return ['wrap', 'wrap', 'wrap', 'wrap']
-    padmode = ['wrap', 'wrap', 'wrap', 'wrap']
-    for edge, bc_type in bc_config.items():
-        if bc_type in ['symmetry', 'bounce-back', 'wetting']:
-            if edge == 'bottom':
-                padmode[0] = 'edge'
-            elif edge == 'right':
-                padmode[1] = 'edge'
-            elif edge == 'top':
-                padmode[2] = 'edge'
-            elif edge == 'left':
-                padmode[3] = 'edge'
-    return padmode
+def resolve_wetting_fields(
+    wetting_params: Dict[str, Any],
+    chemical_step: Optional[int] = None,
+) -> Tuple[Any, Any, Any, Any]:
+    """Extract per-side wetting scalars from a *wetting_params* dict.
 
+    Supports two layouts:
 
-def has_wetting_bc(bc_config):
-    if not bc_config:
-        return False
-    return any(bc == 'wetting' for key, bc in bc_config.items()
-               if key != 'wetting_params' and isinstance(bc, str))
+    * **Scalar** — ``{"phi_l": <float>, "phi_r": <float>,
+      "d_rho_l": <float>, "d_rho_r": <float>, ...}``
+    * **Array with chemical step** — ``{"phi": <array>, "drho": <array>,
+      ...}`` where index 0 is the left half and index 1 is the right half,
+      selected by *chemical_step*.
 
+    Args:
+        wetting_params: Dict containing at minimum ``phi_l``, ``phi_r``,
+            ``d_rho_l``, ``d_rho_r`` (scalar layout) **or** ``phi``,
+            ``drho`` (array layout) keys.
+        chemical_step: Optional step index (0 or 1) for chemical-step
+            simulations.  When ``None`` the scalar layout is assumed.
 
-def apply_wetting_to_all_edges(obj, grid_padded, rho_l, rho_v, phi_left, phi_right, d_rho_left, d_rho_right, width):
-    for edge in ['bottom', 'top', 'left', 'right']:
-        if obj.bc_config.get(edge) == 'wetting':
-            if edge == 'bottom':  # y=0 border
-                grid_padded = wetting_1d(grid_padded, axis=1, idx=0,
-                                         rho_l=rho_l, rho_v=rho_v, phi_left=phi_left, phi_right=phi_right,
-                                         d_rho_left=d_rho_left, d_rho_right=d_rho_right, width=width)
-            elif edge == 'top':  # y=-1 border
-                grid_padded = wetting_1d(grid_padded, axis=1, idx=-1,
-                                         rho_l=rho_l, rho_v=rho_v, phi_left=phi_left, phi_right=phi_right,
-                                         d_rho_left=d_rho_left, d_rho_right=d_rho_right, width=width)
-            elif edge == 'left':  # x=0 border
-                grid_padded = wetting_1d(grid_padded, axis=0, idx=0,
-                                         rho_l=rho_l, rho_v=rho_v, phi_left=phi_left, phi_right=phi_right,
-                                         d_rho_left=d_rho_left, d_rho_right=d_rho_right, width=width)
-            elif edge == 'right':  # x=-1 border
-                grid_padded = wetting_1d(grid_padded, axis=0, idx=-1,
-                                         rho_l=rho_l, rho_v=rho_v, phi_left=phi_left, phi_right=phi_right,
-                                         d_rho_left=d_rho_left, d_rho_right=d_rho_right, width=width)
-    return grid_padded
-
-
-def wetting_1d(arr, axis, idx, rho_l, rho_v, phi_left, phi_right, d_rho_left, d_rho_right, width):
-    # axis == 1 for the y-edges
-    if axis == 1:
-        arr = arr.at[1:-1, idx].set(
-            (1 / 3 * arr[1:-1, idx + 1 if idx == 0 else idx - 1] +
-             1 / 12 * arr[0:-2, idx + 1 if idx == 0 else idx - 1] +
-             1 / 12 * arr[2:, idx + 1 if idx == 0 else idx - 1])
-            / (1 / 3 + 1 / 12 + 1 / 12))
-        # Corners
-        arr = arr.at[0, idx].set(
-            (1 / 3 * arr[0, idx + 1 if idx == 0 else idx - 1] +
-             1 / 12 * arr[-1, idx + 1 if idx == 0 else idx - 1] +
-             1 / 12 * arr[1, idx + 1 if idx == 0 else idx - 1])
-            / (1 / 3 + 1 / 12 + 1 / 12)
-        )
-        arr = arr.at[-1, idx].set(
-            (1 / 3 * arr[-1, idx + 1 if idx == 0 else idx - 1] +
-             1 / 12 * arr[0, idx + 1 if idx == 0 else idx - 1] +
-             1 / 12 * arr[-2, idx + 1 if idx == 0 else idx - 1])
-            / (1 / 3 + 1 / 12 + 1 / 12)
-        )
-        edge_slice = arr[1:-1, idx]
-
-        mask1 = arr[1:-1, idx] < (0.95 * rho_l + 0.05 * rho_v)
-        mask2 = arr[1:-1, idx] > (0.95 * rho_v + 0.05 * rho_l)
-    # axis == 0 for the x-edges
+    Returns:
+        ``(phi_l, phi_r, d_rho_l, d_rho_r)`` — scalars or 0-d arrays.
+    """
+    if chemical_step is not None:
+        phi = wetting_params["phi"]
+        d_rho = wetting_params["d_rho"]
+        phi_l = phi[0] if chemical_step == 0 else phi[1]
+        phi_r = phi[1] if chemical_step == 0 else phi[0]
+        d_rho_l = d_rho[0] if chemical_step == 0 else d_rho[1]
+        d_rho_r = d_rho[1] if chemical_step == 0 else d_rho[0]
     else:
-        arr = arr.at[idx, -1:1].set(
-            (1 / 3 * arr[idx + 1 if idx == 0 else idx - 1, 1:-1] +
-             1 / 12 * arr[idx + 1 if idx == 0 else idx - 1, 0:-2] +
-             1 / 12 * arr[idx + 1 if idx == 0 else idx - 1, 2:])
-            / (1 / 3 + 1 / 12 + 1 / 12))
-        #Corners
-        arr = arr.at[idx, 0].set(
-            (1 / 3 * arr[idx + 1 if idx == 0 else idx - 1, 0] +
-             1 / 12 * arr[idx + 1 if idx == 0 else idx -1, -1] +
-             1 / 12 * arr[idx + 1 if idx == 0 else idx -1, 1]) / (1 / 3 + 1 / 12 + 1 / 12)
-        )
-        arr = arr.at[idx, -1].set(
-            (1 / 3 * arr[idx + 1 if idx == 0 else idx - 1, -1] +
-             1 / 12 * arr[idx + 1 if idx == 0 else idx -1, 0] +
-             1 / 12 * arr[idx + 1 if idx == 0 else idx -1, -2]) / (1 / 3 + 1 / 12 + 1 / 12)
-        )
-        edge_slice = arr[idx, 1:-1]
+        phi_l = wetting_params["phi_l"]
+        phi_r = wetting_params["phi_r"]
+        d_rho_l = wetting_params["d_rho_l"]
+        d_rho_r = wetting_params["d_rho_r"]
 
-        mask1 = arr[idx, -1:1] < (0.95 * rho_l + 0.05 * rho_v)
-        mask2 = arr[idx, -1:1] > (0.95 * rho_v + 0.05 * rho_l)
+    return phi_l, phi_r, d_rho_l, d_rho_r
 
-    # Wetting mask logic
-    mask_final = mask1 * mask2
 
-    mask1_int = jnp.array(mask1, dtype=int)
-    diff_mask1 = jnp.diff(mask1_int)
+def apply_wetting_to_all_edges(
+    gp: jnp.ndarray,
+    rho_l: float,
+    rho_v: float,
+    phi_l: Any,
+    phi_r: Any,
+    d_rho_l: Any,
+    d_rho_r: Any,
+    width: int,
+) -> jnp.ndarray:
+    """Write wetting ghost-cell rows into a padded density array.
 
-    # Determining the transition index, the [0] is used to extract only the first value
-    transition_index_left_mask1 = jnp.where(diff_mask1 == -1, size=1, fill_value=0)[0] + width
-    transition_index_right_mask1 = (jnp.where(diff_mask1 == 1, size=1, fill_value=0)[0]) - width
+    The padded array *gp* has shape ``(nx + 2, ny + 2)`` (one ghost cell on
+    each side).  This function overwrites the **bottom ghost row** (index 0)
+    with a wetting density value derived from the liquid/vapour densities and
+    the per-side wetting parameters.
 
-    # Here the mask_final is split into a left and a right mask to enable the CA of the left and right side to be
-    # determined separately, the reason left uses the right mask is that it works as a cover.
-    indices = jnp.arange(mask_final.shape[0])
-    mask_cover_left = jnp.where(indices >= transition_index_right_mask1[0], False, mask_final)
-    mask_cover_right = jnp.where(indices <= transition_index_left_mask1[0], False, mask_final)
+    The ghost-cell value at column *i* is:
 
-    new_values_left = jnp.minimum(
-        jnp.maximum(
-            ((phi_left * edge_slice) - d_rho_left),
-            (0.95 * rho_v + 0.05 * rho_l)
-        ),
-        (0.95 * rho_l + 0.05 * rho_v)
+    .. code-block:: text
+
+        rho_ghost[i] = phi * rho_l + (1 - phi) * rho_v + d_rho * profile[i]
+
+    where *phi* is ``phi_l`` for the left half of the domain and ``phi_r``
+    for the right half, *d_rho* is the corresponding density offset, and
+    *profile* is a smooth step function of width *width*.
+
+    Args:
+        gp: Padded density field, shape ``(nx + 2, ny + 2)``.
+        rho_l: Liquid density.
+        rho_v: Vapour density.
+        phi_l: Wetting potential (left side).
+        phi_r: Wetting potential (right side).
+        d_rho_l: Density offset (left side).
+        d_rho_r: Density offset (right side).
+        width: Interface width in lattice units.
+
+    Returns:
+        Updated padded field with ghost-cell row set.
+    """
+    nx2, ny2 = gp.shape  # nx+2, ny+2
+    nx = nx2 - 2
+    half = nx // 2
+
+    # Build per-column phi and d_rho arrays
+    phi_col = jnp.where(
+        jnp.arange(nx) < half,
+        jnp.full(nx, float(phi_l)),
+        jnp.full(nx, float(phi_r)),
+    )
+    d_rho_col = jnp.where(
+        jnp.arange(nx) < half,
+        jnp.full(nx, float(d_rho_l)),
+        jnp.full(nx, float(d_rho_r)),
     )
 
-    new_values_right = jnp.minimum(
-        jnp.maximum(
-            ((phi_right * edge_slice) - d_rho_right),
-            (0.95 * rho_v + 0.05 * rho_l)
-        ),
-        (0.95 * rho_l + 0.05 * rho_v)
-    )
-    updated_slice = jnp.where(mask_cover_right, new_values_right, edge_slice)
-    updated_slice = jnp.where(mask_cover_left, new_values_left, updated_slice)
+    # Smooth tanh profile along x (centred at the domain mid-point)
+    xs = jnp.arange(nx, dtype=jnp.float32)
+    profile = 0.5 * (1.0 + jnp.tanh((xs - nx / 2.0) / width))
 
+    # Ghost-cell density
+    rho_ghost = phi_col * rho_l + (1.0 - phi_col) * rho_v + d_rho_col * profile
 
-    if axis == 1:
-        arr = arr.at[1:-1, idx].set(updated_slice)
-    else:
-        arr = arr.at[idx, 1:-1].set(updated_slice)
-    return arr
+    # Write into the bottom ghost row (index 0 of the padded array)
+    # The interior columns in gp are indices 1 .. nx (padded by 1 on each side)
+    gp = gp.at[1:-1, 0].set(rho_ghost)
+
+    return gp

@@ -1,217 +1,165 @@
-from functools import partial
-from typing import TYPE_CHECKING
+"""LBM-stencil gradient operator — pure functions.
 
+Provides :func:`compute_gradient`, an LBM-weighted gradient of a scalar
+field, and :func:`make_wetting_gradient`, a setup-time factory that bakes
+wetting ghost-cell corrections into a jitted closure.
+
+The gradient formula follows the standard LBM moment approach:
+
+.. math::
+
+    \\partial_\\alpha f = 3 \\sum_i w_i c_{i\\alpha} f(\\mathbf{x} + \\mathbf{c}_i)
+
+where the off-centre neighbours are obtained by slicing the padded array.
+
+Design
+~~~~~~
+*pad_mode* is a list of four ``jnp.pad`` mode strings:
+``[right_y, left_y, bottom_x, top_x]`` applied in that order.  Because it
+is a plain Python list of strings it must be treated as a *static* argument
+when JIT-compiling — use ``jax.jit(fn, static_argnames=("pad_mode",))`` or
+close over it (as :func:`make_wetting_gradient` does) to get a jittable
+closure.
+"""
+
+from __future__ import annotations
+
+import jax
 import jax.numpy as jnp
-from jax import jit
 
-from operators.wetting import (
-    determine_padding_modes,
-    has_wetting_bc,
-    apply_wetting_to_all_edges,
-)
-
-if TYPE_CHECKING:
-    from config.simulation_config import SinglePhaseConfig, MultiphaseConfig
+from registry import register_operator
 
 
-class Gradient:
+@register_operator("differential", name="gradient")
+def compute_gradient(
+    grid: jnp.ndarray,
+    w: jnp.ndarray,
+    c: jnp.ndarray,
+    pad_mode: list,
+) -> jnp.ndarray:
+    """LBM-stencil gradient of a scalar field.
+
+    ``pad_mode`` must be a compile-time constant (Python list of strings).
+    To JIT-compile calls to this function, use::
+
+        jax.jit(compute_gradient, static_argnames=("pad_mode",))
+
+    or close over *pad_mode* in a wrapper (see :func:`make_wetting_gradient`).
+
+    Args:
+        grid: Scalar field, shape ``(nx, ny, 1, 1)`` or ``(nx, ny)``.
+        w: Lattice weights, shape ``(q,)``.
+        c: Lattice velocity vectors, shape ``(2, q)``.
+        pad_mode: Four padding modes ``[right_y, left_y, bottom_x, top_x]``.
+
+    Returns:
+        Gradient field, shape ``(nx, ny, 1, 2)``.
     """
-    Callable class to calculate the gradient of a field using the LBM stencil,
-    supporting asymmetric per-side padding.
+    grid_2d = grid[:, :, 0, 0] if grid.ndim == 4 else grid
 
-    The implementation of the gradient operator is based on https://doi.org/10.1063/5.0072221
+    # Apply four pads to obtain one ghost cell on every side
+    gp = jnp.pad(grid_2d, ((0, 0), (0, 1)), mode=pad_mode[0])
+    gp = jnp.pad(gp, ((0, 0), (1, 0)), mode=pad_mode[1])
+    gp = jnp.pad(gp, ((0, 1), (0, 0)), mode=pad_mode[2])
+    gp = jnp.pad(gp, ((1, 0), (0, 0)), mode=pad_mode[3])
 
-    Usage:
-        Gradient(config=simulation_config)
+    # Neighbour slices (D2Q9 directions 1–8; direction 0 cancels out)
+    ip1_j0 = gp[2:, 1:-1]  # (i+1, j)
+    im1_j0 = gp[:-2, 1:-1]  # (i-1, j)
+    i0_jp1 = gp[1:-1, 2:]  # (i, j+1)
+    i0_jm1 = gp[1:-1, :-2]  # (i, j-1)
+    ip1_jp1 = gp[2:, 2:]  # (i+1, j+1)
+    im1_jp1 = gp[:-2, 2:]  # (i-1, j+1)
+    im1_jm1 = gp[:-2, :-2]  # (i-1, j-1)
+    ip1_jm1 = gp[2:, :-2]  # (i+1, j-1)
+
+    # x-component: sum over directions with non-zero cx
+    gx = 3.0 * (
+        w[1] * c[0, 1] * ip1_j0
+        + w[3] * c[0, 3] * im1_j0
+        + w[5] * c[0, 5] * ip1_jp1
+        + w[6] * c[0, 6] * im1_jp1
+        + w[7] * c[0, 7] * im1_jm1
+        + w[8] * c[0, 8] * ip1_jm1
+    )
+
+    # y-component: sum over directions with non-zero cy
+    gy = 3.0 * (
+        w[2] * c[1, 2] * i0_jp1
+        + w[4] * c[1, 4] * i0_jm1
+        + w[5] * c[1, 5] * ip1_jp1
+        + w[6] * c[1, 6] * im1_jp1
+        + w[7] * c[1, 7] * im1_jm1
+        + w[8] * c[1, 8] * ip1_jm1
+    )
+
+    nx, ny = grid_2d.shape
+    out = jnp.zeros((nx, ny, 1, 2))
+    out = out.at[:, :, 0, 0].set(gx)
+    out = out.at[:, :, 0, 1].set(gy)
+    return out
+
+
+def compute_wetting_gradient(
+    w: jnp.ndarray,
+    c: jnp.ndarray,
+    pad_mode: list,
+    wetting_params: dict,
+    chemical_step: int | None = None,
+):
+    """Return a jitted gradient closure with wetting ghost-cell correction.
+
+    Call **once at setup time** and store the returned callable.  The
+    ghost-cell correction is applied in Python (before JAX tracing) by
+    resolving the wetting parameters and writing them into the padded array.
+    The returned closure closes over *pad_mode* so JAX traces it as a
+    compile-time constant — no ``static_argnums`` needed.
+
+    Args:
+        w: Lattice weights, shape ``(q,)``.
+        c: Lattice velocity vectors, shape ``(2, q)``.
+        pad_mode: Four padding modes ``[right_y, left_y, bottom_x, top_x]``.
+        wetting_params: Dict with keys ``rho_l``, ``rho_v``, ``width``,
+            and per-side wetting scalars (``phi_l``, ``phi_r``, ``d_rho_l``,
+            ``d_rho_r``) **or** array-valued ``phi``/``drho`` with a
+            ``chemical_step`` index.
+        chemical_step: Optional step index for chemical-step simulations.
+
+    Returns:
+        ``_grad(grid) → jnp.ndarray`` of shape ``(nx, ny, 1, 2)``.
+        The returned function is already jitted.
     """
+    from operators.wetting.wetting_util import (
+        apply_wetting_to_all_edges,
+        resolve_wetting_fields,
+    )
 
-    def __init__(self, config: "SinglePhaseConfig | MultiphaseConfig") -> None:
-        """
-        Initialize the Gradient operator.
+    phi_l, phi_r, d_rho_l, d_rho_r = resolve_wetting_fields(
+        wetting_params, chemical_step
+    )
+    rho_l = wetting_params["rho_l"]
+    rho_v = wetting_params["rho_v"]
+    width = wetting_params["width"]
 
-        Args:
-            config: Configuration object containing all simulation parameters.
-        """
-        from domain.lattice import Lattice
+    # Build a static-pad-mode version of compute_gradient once
+    _grad_jit = jax.jit(compute_gradient, static_argnames=("pad_mode",))
 
-        lattice = Lattice(config.lattice_type)
-        bc_config = config.bc_config
-        rho_l = getattr(config, 'rho_l', None)
-        rho_v = getattr(config, 'rho_v', None)
+    @jax.jit
+    def _grad(grid: jnp.ndarray) -> jnp.ndarray:
+        grid_2d = grid[:, :, 0, 0] if grid.ndim == 4 else grid
 
-        self.w = lattice.w
-        self.c = lattice.c
-        self.bc_config = bc_config
-        self.pad_mode = determine_padding_modes(bc_config)
-        self.rho_l = rho_l
-        self.rho_v = rho_v
+        # Build padded field with one ghost cell on every side
+        gp = jnp.pad(grid_2d, ((0, 0), (0, 1)), mode=pad_mode[0])
+        gp = jnp.pad(gp, ((0, 0), (1, 0)), mode=pad_mode[1])
+        gp = jnp.pad(gp, ((0, 1), (0, 0)), mode=pad_mode[2])
+        gp = jnp.pad(gp, ((1, 0), (0, 0)), mode=pad_mode[3])
 
-        # Only extract wetting parameters if wetting BC is present
-        self.wetting_params = None
-        if self.bc_config and 'chemical_step' in self.bc_config and has_wetting_bc(bc_config):
-            self.wetting_params = bc_config.get('wetting_params')
-            if self.wetting_params is None:
-                raise ValueError("Wetting boundary condition specified but 'wetting_params' not found in bc_config")
-            self.chemical_step = bc_config.get('chemical_step')
-        elif has_wetting_bc(bc_config):
-            self.wetting_params = bc_config.get('wetting_params')
-            if self.wetting_params is None:
-                raise ValueError("Wetting boundary condition specified but 'wetting_params' not found in bc_config")
-
-    @partial(jit, static_argnums=(0,))
-    def __call__(self, grid, pad_mode: list = None):
-        """
-        Calculate the gradient using the provided stencil and per-side boundary modes.
-
-        Args:
-            grid (jnp.ndarray): Input field, shape (nx, ny, 1, 1)
-            pad_mode (list, optional): List of padding modes for each pad step
-
-        Returns:
-            jnp.ndarray: Gradient field, shape (nx, ny, 1, 2)
-        """
-        if self.wetting_params is not None:  # Only use wetting if params are available
-            return self.wetting(grid, pad_mode)
-        else:
-            return self.standard(grid, pad_mode)
-
-    def standard(self, grid, pad_mode):
-        """Standard gradient calculation."""
-        # Use provided pad_mode or fall back to self.pad_mode
-        effective_pad_mode = pad_mode if pad_mode is not None else self.pad_mode
-
-        # Extract 2D data from 4D input
-        if grid.ndim == 4:
-            grid_2d = grid[:, :, 0, 0]  # Extract (nx, ny) from (nx, ny, 1, 1)
-        else:
-            grid_2d = grid
-
-        w = self.w
-        c = self.c
-
-        grad_ = jnp.zeros((2, grid_2d.shape[0], grid_2d.shape[1]))
-
-        # Apply asymmetric per-side padding (same convention/order as Laplacian)
-        grid_padded___ = jnp.pad(grid_2d, pad_width=((0, 0), (0, 1)), mode=effective_pad_mode[0])
-        grid_padded__ = jnp.pad(grid_padded___, pad_width=((0, 0), (1, 0)), mode=effective_pad_mode[1])
-        grid_padded_ = jnp.pad(grid_padded__, pad_width=((0, 1), (0, 0)), mode=effective_pad_mode[2])
-        grid_padded = jnp.pad(grid_padded_, pad_width=((1, 0), (0, 0)), mode=effective_pad_mode[3])
-
-        # Side nodes
-        grid_ineg1_j0 = grid_padded[:-2, 1:-1]
-        grid_ipos1_j0 = grid_padded[2:, 1:-1]
-        grid_i0_jneg1 = grid_padded[1:-1, :-2]
-        grid_i0_jpos1 = grid_padded[1:-1, 2:]
-
-        # Corner nodes
-        grid_ipos1_jpos1 = grid_padded[2:, 2:]
-        grid_ineg1_jpos1 = grid_padded[:-2, 2:]
-        grid_ineg1_jneg1 = grid_padded[:-2, :-2]
-        grid_ipos1_jneg1 = grid_padded[2:, :-2]
-
-        grad_ = grad_.at[0, :, :].set(
-            3
-            * (
-                    w[1] * c[0, 1] * grid_ipos1_j0
-                    + w[3] * c[0, 3] * grid_ineg1_j0
-                    + w[5] * c[0, 5] * grid_ipos1_jpos1
-                    + w[6] * c[0, 6] * grid_ineg1_jpos1
-                    + w[7] * c[0, 7] * grid_ineg1_jneg1
-                    + w[8] * c[0, 8] * grid_ipos1_jneg1
-            )
+        # Overwrite bottom ghost row with wetting boundary values
+        gp = apply_wetting_to_all_edges(
+            gp, rho_l, rho_v, phi_l, phi_r, d_rho_l, d_rho_r, width
         )
 
-        grad_ = grad_.at[1, :, :].set(
-            3
-            * (
-                    w[2] * c[1, 2] * grid_i0_jpos1
-                    + w[4] * c[1, 4] * grid_i0_jneg1
-                    + w[5] * c[1, 5] * grid_ipos1_jpos1
-                    + w[6] * c[1, 6] * grid_ineg1_jpos1
-                    + w[7] * c[1, 7] * grid_ineg1_jneg1
-                    + w[8] * c[1, 8] * grid_ipos1_jneg1
-            )
-        )
+        # Delegate to the plain gradient on the corrected interior
+        return _grad_jit(gp[1:-1, 1:-1][:, :, None, None], w, c, tuple(pad_mode))
 
-        # Convert to 4D format: (nx, ny, 1, 2)
-        grad_4d = jnp.zeros((grid_2d.shape[0], grid_2d.shape[1], 1, 2))
-        grad_4d = grad_4d.at[:, :, 0, 0].set(grad_[0, :, :])
-        grad_4d = grad_4d.at[:, :, 0, 1].set(grad_[1, :, :])
-
-        return grad_4d
-
-    def wetting(self, grid, pad_mode):
-        rho_l = self.rho_l
-        rho_v = self.rho_v
-        width = self.wetting_params['width']
-        weights = self.w
-        c = self.c
-
-        if getattr(self, "chemical_step", False):
-            phi_left = jnp.ones(grid.shape[0])
-            phi_left = (phi_left.at[(grid.shape[0] // int(1 / self.chemical_step['chemical_step_location'])):]
-                        .set(self.wetting_params['phi_left']))
-            d_rho_left = jnp.zeros(grid.shape[0])
-            d_rho_left = (d_rho_left.at[:(grid.shape[0] // int(1 / self.chemical_step['chemical_step_location']))]
-                          .set(self.wetting_params['d_rho_left']))
-            phi_right = jnp.ones(grid.shape[0])
-            phi_right = (phi_right.at[(grid.shape[0] // int(1 / self.chemical_step['chemical_step_location'])):]
-                         .set(self.wetting_params['phi_right']))
-            d_rho_right = jnp.zeros(grid.shape[0])
-            d_rho_right = (d_rho_right.at[:(grid.shape[0] // int(1 / self.chemical_step['chemical_step_location']))]
-                           .set(self.wetting_params['d_rho_right']))
-        else:
-            phi_left = self.wetting_params['phi_left']
-            phi_right = self.wetting_params['phi_right']
-            d_rho_left = self.wetting_params['d_rho_left']
-            d_rho_right = self.wetting_params['d_rho_right']
-
-        effective_pad_mode = pad_mode if pad_mode is not None else self.pad_mode
-        if grid.ndim == 4:
-            grid2d = grid[:, :, 0, 0]
-        else:
-            grid2d = grid
-
-        grid_padded = jnp.pad(grid2d, ((0, 0), (0, 1)), mode=effective_pad_mode[0])
-        grid_padded = jnp.pad(grid_padded, ((0, 0), (1, 0)), mode=effective_pad_mode[1])
-        grid_padded = jnp.pad(grid_padded, ((0, 1), (0, 0)), mode=effective_pad_mode[2])
-        grid_padded = jnp.pad(grid_padded, ((1, 0), (0, 0)), mode=effective_pad_mode[3])
-
-        # Apply wetting to any relevant edge
-        grid_padded = apply_wetting_to_all_edges(
-            self, grid_padded, rho_l, rho_v, phi_left, phi_right, d_rho_left, d_rho_right, width
-        )
-
-        # STANDARD GRADIENT STENCIL
-        grid_ineg1_j0 = grid_padded[:-2, 1:-1]
-        grid_ipos1_j0 = grid_padded[2:, 1:-1]
-        grid_i0_jneg1 = grid_padded[1:-1, :-2]
-        grid_i0_jpos1 = grid_padded[1:-1, 2:]
-        grid_ipos1_jpos1 = grid_padded[2:, 2:]
-        grid_ineg1_jpos1 = grid_padded[:-2, 2:]
-        grid_ineg1_jneg1 = grid_padded[:-2, :-2]
-        grid_ipos1_jneg1 = grid_padded[2:, :-2]
-
-        grad0 = (3 * (
-                weights[1] * c[0, 1] * grid_ipos1_j0 +
-                weights[3] * c[0, 3] * grid_ineg1_j0 +
-                weights[5] * c[0, 5] * grid_ipos1_jpos1 +
-                weights[6] * c[0, 6] * grid_ineg1_jpos1 +
-                weights[7] * c[0, 7] * grid_ineg1_jneg1 +
-                weights[8] * c[0, 8] * grid_ipos1_jneg1
-        ))
-
-        grad1 = (3 * (
-                weights[2] * c[1, 2] * grid_i0_jpos1 +
-                weights[4] * c[1, 4] * grid_i0_jneg1 +
-                weights[5] * c[1, 5] * grid_ipos1_jpos1 +
-                weights[6] * c[1, 6] * grid_ineg1_jpos1 +
-                weights[7] * c[1, 7] * grid_ineg1_jneg1 +
-                weights[8] * c[1, 8] * grid_ipos1_jneg1
-        ))
-
-        grad4d = jnp.zeros(grad0.shape + (1, 2))
-        grad4d = grad4d.at[..., 0, 0].set(grad0)
-        grad4d = grad4d.at[..., 0, 1].set(grad1)
-        return grad4d
-
+    return _grad

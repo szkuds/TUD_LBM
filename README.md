@@ -27,7 +27,7 @@ We recommend using **conda** for installation, as it handles complex dependencie
 
 ```console
 # Clone the repository
-git clone git@github.com:szkuds/tud_lbm.git
+git clone https://git@github.com:szkuds/tud_lbm.git
 cd tud_lbm
 
 # Create conda environment from environment.yml
@@ -62,6 +62,40 @@ Note: This may take longer as complex packages like JAX are compiled from source
 ## Documentation
 
 For full documentation, visit [tud_lbm.readthedocs.io](https://tud_lbm.readthedocs.io/en/latest/).
+
+## Quick Start
+
+### Python API
+
+```python
+from app_setup import SimulationSetup
+from runner import Run
+
+setup = SimulationSetup(
+    grid_shape=(100, 100),
+    tau=0.6,
+    nt=10000,
+    save_interval=1000,
+)
+sim = Run(setup)
+sim.run(verbose=True)
+```
+
+### TOML Configuration File
+
+```console
+tud_lbm example/config_simple.toml
+```
+
+### Interactive CLI
+
+```console
+tud_lbm  # launches interactive parameter prompts
+```
+
+---
+
+For the full package reference (module-by-module API, operator tables, and architecture details), see the [developer documentation](README.dev.md#package-reference).
 
 ## Contributing
 

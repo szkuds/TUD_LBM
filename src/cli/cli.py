@@ -1,18 +1,15 @@
 """Command-line interface for TUD-LBM simulations.
 
-NOTE: The CLI currently requires a config file adapter to be implemented.
-For now, use the Python API directly with SimulationBundle.
+Example Python usage::
 
-Example Python usage:
-    from config import SimulationBundle, SinglePhaseConfig, RunnerConfig
-    from core import Run
+    from config import SimulationConfig
+    from setup import build_setup
+    from runner import run, init_state
 
-    bundle = SimulationBundle(
-        simulation=SinglePhaseConfig(grid_shape=(100, 100), tau=0.6, nt=10000),
-        runner=RunnerConfig(save_interval=1000),
-    )
-    sim = Run(bundle)
-    sim.run()
+    config = SimulationConfig(grid_shape=(100, 100), tau=0.6, nt=10000)
+    setup = build_setup(config)
+    state = init_state(setup)
+    final_state, trajectory = run(setup, state)
 """
 
 import os
@@ -25,124 +22,155 @@ from rich.prompt import Confirm
 from rich.prompt import Prompt
 from rich.table import Table
 
-from config import (
-    BASE_RESULTS_DIR,
-    DEFAULT_SAVE_FIELDS,
-    AVAILABLE_FIELDS,
-    SimulationBundle,
-    SinglePhaseConfig,
-    RunnerConfig,
-)
-
 console = Console()
 
 
-def _prompt_missing(bundle: SimulationBundle) -> SimulationBundle:
-    """Interactively prompt for missing optional configuration values.
+def _ensure_operators_imported() -> None:
+    """Import all operator packages so the global registry is fully populated."""
+    import operators.collision  # noqa: F401
+    import operators.boundary  # noqa: F401
+    import operators.differential  # noqa: F401
+    import operators.equilibrium  # noqa: F401
+    import operators.streaming  # noqa: F401
+    import operators.macroscopic  # noqa: F401
+    import operators.force  # noqa: F401
+    import operators.initialise.factory  # noqa: F401
+    import operators.wetting  # noqa: F401
+    import setup.lattice  # noqa: F401
+    import util.plotting # noqa: F401
 
-    Args:
-        bundle: The SimulationBundle object
 
-    Returns:
-        Updated SimulationBundle (note: dataclass is mutable)
-    """
+def _display_operators() -> None:
+    """Display all registered operators grouped by kind in Rich tables."""
+    from registry import OPERATOR_REGISTRY, get_operator_category, get_operators
+
+    _ensure_operators_imported()
+
+    categories = sorted(get_operator_category())
+
+    if not categories:
+        console.print("[yellow]No operators registered.[/yellow]")
+        return
+
     console.print()
-    console.print(Panel.fit(
-        "[bold cyan]TUD-LBM Configuration[/bold cyan]",
-        subtitle="Interactive Setup"
-    ))
-
-    # For now, SimulationBundle has defaults, so prompts are optional
-    # This can be expanded when adapter support is added
-
-    return bundle
-
-
-def _display_config_summary(bundle: SimulationBundle) -> None:
-    """Display a summary of the simulation configuration.
-
-    Args:
-        bundle: The SimulationBundle object
-    """
+    console.print(
+        Panel.fit(
+            f"[bold blue]Registered Operators[/bold blue]  "
+            f"({len(OPERATOR_REGISTRY)} total across {len(categories)} categories)",
+        )
+    )
     console.print()
 
-    sim = bundle.simulation
-    runner = bundle.runner
-    sim_type = "multiphase" if bundle.is_multiphase else "single_phase"
+    for kind in categories:
+        ops = get_operators(kind)
+        table = Table(
+            title=f"[bold magenta]{kind}[/bold magenta]",
+            show_header=True,
+            header_style="bold cyan",
+            title_justify="left",
+        )
+        table.add_column("Name", style="green", no_wrap=True)
+        table.add_column("Target", style="white")
+        table.add_column("Metadata", style="dim")
 
-    table = Table(title="Simulation Configuration", show_header=True, header_style="bold magenta")
+        for name in sorted(ops):
+            entry = ops[name]
+            target = entry.target
+            # Build a human-readable target description
+            if isinstance(target, type):
+                target_str = f"{target.__module__}.{target.__qualname__}"
+            else:
+                target_str = f"{target.__module__}.{target.__qualname__}"
+
+            meta_str = ""
+            if entry.metadata:
+                meta_str = ", ".join(f"{k}={v!r}" for k, v in entry.metadata.items())
+
+            table.add_row(name, target_str, meta_str or "—")
+
+        console.print(table)
+        console.print()
+
+
+def _display_config_summary(config) -> None:
+    """Display a summary of the simulation configuration."""
+    console.print()
+
+    table = Table(
+        title="Simulation Configuration", show_header=True, header_style="bold magenta"
+    )
     table.add_column("Parameter", style="cyan", no_wrap=True)
     table.add_column("Value", style="green")
 
-    table.add_row("Simulation Type", sim_type)
-    table.add_row("Grid Shape", str(sim.grid_shape))
-    table.add_row("Lattice Type", sim.lattice_type)
-    table.add_row("Relaxation Time (τ)", str(sim.tau))
-    table.add_row("Time Steps", str(sim.nt))
-    table.add_row("Save Interval", str(runner.save_interval))
-    table.add_row("Results Directory", runner.results_dir)
-    if runner.save_fields:
-        table.add_row("Save Fields", ", ".join(runner.save_fields))
+    table.add_row("Simulation Type", config.sim_type)
+    table.add_row("Grid Shape", str(config.grid_shape))
+    table.add_row("Lattice Type", config.lattice_type)
+    table.add_row("Relaxation Time (τ)", str(config.tau))
+    table.add_row("Time Steps", str(config.nt))
+    table.add_row("Save Interval", str(config.save_interval))
+    table.add_row("Results Directory", config.results_dir)
+    if config.save_fields:
+        table.add_row("Save Fields", ", ".join(config.save_fields))
+    if config.plot_fields:
+        table.add_row("Plot Fields", ", ".join(config.plot_fields))
 
-    # Multiphase-specific parameters
-    if bundle.is_multiphase:
-        table.add_row("Kappa", str(sim.kappa))
-        table.add_row("Liquid Density", str(sim.rho_l))
-        table.add_row("Vapor Density", str(sim.rho_v))
-        table.add_row("Interface Width", str(sim.interface_width))
+    if config.is_multiphase:
+        table.add_row("Kappa", str(config.kappa))
+        table.add_row("Liquid Density", str(config.rho_l))
+        table.add_row("Vapor Density", str(config.rho_v))
+        table.add_row("Interface Width", str(config.interface_width))
 
-    # Force configuration
-    if sim.force_enabled and sim.force_obj:
-        force_list = sim.force_obj if isinstance(sim.force_obj, list) else [sim.force_obj]
-        force_names = [type(f).__name__ for f in force_list]
-        table.add_row("Forces", ", ".join(force_names))
+    if config.force_enabled:
+        table.add_row("Force", "enabled")
 
     console.print(table)
     console.print()
 
 
-def _run_simulation(bundle: SimulationBundle) -> object:
-    """Run the simulation with the given configuration.
+def _run_simulation(config):
+    """Run the simulation with the given configuration."""
+    from config.jax_config import configure_jax
 
-    Args:
-        bundle: The SimulationBundle object
-
-    Returns:
-        The completed simulation instance
-    """
-    # Import here to avoid circular imports and allow JAX config
-    from config import configure_jax
     configure_jax()
 
-    from core import Run
+    from setup import build_setup
+    from runner import run, init_state
+    from util.io import SimulationIO
+
+    setup = build_setup(config)
+    state = init_state(setup)
+
+    # Build the IO handler for streaming snapshots to disk.
+    io = SimulationIO(
+        base_dir=config.results_dir,
+        config=config.to_dict(),
+        simulation_name=config.simulation_name,
+    )
 
     console.print("[bold green]Starting simulation...[/bold green]")
+    console.print(f"[dim]Results directory: {io.run_dir}[/dim]")
     console.print()
 
-    sim = Run(bundle)
-    sim.run(verbose=True)
+    final_state, _ = run(
+        setup,
+        state,
+        save_interval=config.save_interval,
+        io_handler=io,
+        skip_interval=config.skip_interval,
+        save_fields=tuple(config.save_fields) if config.save_fields else None,
+    )
 
-    return sim
+    console.print("[bold green]Simulation completed![/bold green]")
 
-
-def _open_paraview(results_dir: str) -> None:
-    """Attempt to open ParaView with the results directory.
-
-    Args:
-        results_dir: Path to the simulation results directory
-    """
-    import subprocess
-    import shutil
-
-    paraview_path = shutil.which("paraview")
-    if paraview_path:
-        try:
-            console.print(f"[cyan]Opening ParaView with results from: {results_dir}[/cyan]")
-            subprocess.Popen([paraview_path, results_dir])
-        except Exception as e:
-            console.print(f"[yellow]Could not open ParaView: {e}[/yellow]")
-    else:
-        console.print("[yellow]ParaView not found in PATH. Skipping.[/yellow]")
+    if config.plot_fields:
+        from util.plotting import FigureBuilder
+        console.print('[dim]Generating plots...[/dim]')
+        builder = FigureBuilder(config.to_dict(), io.run_dir)
+        builder.build_all()
+        console.print(
+           "[bold green]Plotting complete![/bold green]"
+        )
+    return final_state
 
 
 @click.command()
@@ -150,15 +178,23 @@ def _open_paraview(results_dir: str) -> None:
 @click.option(
     "--no-prompt",
     is_flag=True,
-    help="Skip interactive prompts and use defaults for missing values"
+    help="Skip interactive prompts and use defaults for missing values",
 )
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Parse config and display summary without running simulation"
+    help="Parse config and display summary without running simulation",
+)
+@click.option(
+    "--list-simulation-operators",
+    "list_operators",
+    is_flag=True,
+    help="List all registered operators with metadata and exit",
 )
 @click.version_option(package_name="tud_lbm")
-def main(config_path: str, no_prompt: bool, dry_run: bool) -> None:
+def main(
+    config_path: str, no_prompt: bool, dry_run: bool, list_operators: bool
+) -> None:
     """Run a TUD-LBM simulation.
 
     CONFIG_PATH is an optional path to a configuration file (.toml).
@@ -166,50 +202,56 @@ def main(config_path: str, no_prompt: bool, dry_run: bool) -> None:
 
     Examples:
 
-        tud_lbm example/config_simple.toml
-        tud_lbm example/config_complex.toml --dry-run
+        tud_lbm example_for_test/config_simple.toml
+        tud_lbm example_for_test/config_complex.toml --dry-run
+        tud_lbm --list-simulation-operators
         tud_lbm                              # interactive mode
     """
     console.print()
-    console.print(Panel.fit(
-        "[bold blue]TUD-LBM[/bold blue] - Lattice Boltzmann Method Solver",
-        subtitle="Delft University of Technology"
-    ))
+    console.print(
+        Panel.fit(
+            "[bold blue]TUD-LBM[/bold blue] - Lattice Boltzmann Method Solver",
+            subtitle="Delft University of Technology",
+        )
+    )
     console.print()
 
     try:
-        if config_path:
-            # ── Load config file via adapter ─────────────────────────
-            from config import get_adapter
+        # Handle --list-simulation-operators early
+        if list_operators:
+            _display_operators()
+            return
 
-            console.print(
-                f"[cyan]Loading configuration from:[/cyan] {config_path}"
-            )
-            adapter = get_adapter(config_path)
-            bundle = adapter.load(config_path)
+        if config_path:
+            # ── Load config file ─────────────────────────────────────
+            from config import from_toml
+
+            console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
+            config = from_toml(config_path)
+        # TODO: the interactive mode can be extended further. Plotting is not yet added for example_for_test.
         else:
             # ── Interactive mode ─────────────────────────────────────
+            from config import SimulationConfig
+
             console.print(
-                "[cyan]Interactive mode - creating default simulation setup[/cyan]"
+                "[cyan]Interactive mode - creating default simulation config[/cyan]"
             )
 
             grid_x = int(Prompt.ask("Grid size X", default="100"))
             grid_y = int(Prompt.ask("Grid size Y", default="100"))
             tau = float(Prompt.ask("Relaxation time (tau)", default="0.6"))
             nt = int(Prompt.ask("Number of timesteps", default="1000"))
-            save_interval = int(Prompt.ask("Save interval", default="100"))
+            save_interval = int(Prompt.ask("Save interval", default=str(nt // 10)))
 
-            bundle = SimulationBundle(
-                simulation=SinglePhaseConfig(
-                    grid_shape=(grid_x, grid_y),
-                    tau=tau,
-                    nt=nt,
-                ),
-                runner=RunnerConfig(save_interval=save_interval),
+            config = SimulationConfig(
+                grid_shape=(grid_x, grid_y),
+                tau=tau,
+                nt=nt,
+                save_interval=save_interval,
             )
 
         # Display configuration summary
-        _display_config_summary(bundle)
+        _display_config_summary(config)
 
         if dry_run:
             console.print("[yellow]Dry run mode - simulation not started[/yellow]")
@@ -222,14 +264,12 @@ def main(config_path: str, no_prompt: bool, dry_run: bool) -> None:
                 return
 
         # Run the simulation
-        sim = _run_simulation(bundle)
+        _run_simulation(config)
 
         console.print()
-        console.print(Panel.fit(
-            f"[bold green]Simulation complete![/bold green]\n"
-            f"Results saved to: {sim.io_handler.run_dir}",
-            title="Success"
-        ))
+        console.print(
+            Panel.fit("[bold green]Simulation, saving and plotting complete![/bold green]", title="Success")
+        )
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Simulation interrupted by user.[/yellow]")
