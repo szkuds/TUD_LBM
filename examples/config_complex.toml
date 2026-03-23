@@ -17,7 +17,7 @@ type = "multiphase"
 grid_shape = [201, 201]
 lattice_type = "D2Q9"
 tau = 0.99
-nt = 30000
+nt = 35000
 init_type = "multiphase_droplet"
 
 [multiphase]
@@ -54,5 +54,5 @@ max_iterations = 10
 [output]
 results_dir = "~/TUD_LBM_data/results"
 save_fields = ["rho", "u"]
-plot_fields = ["density", 'velocity']
+plot_fields = ["density", 'velocity', 'analysis']
 
