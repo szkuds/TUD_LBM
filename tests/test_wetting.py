@@ -34,11 +34,11 @@ def _droplet_rho(
     if radius is None:
         radius = nx / 4.0
 
-    x = jnp.arange(nx, dtype=jnp.float32)
-    y = jnp.arange(ny, dtype=jnp.float32)
-    X, Y = jnp.meshgrid(x, y, indexing="ij")  # (nx, ny)
+    _x = jnp.arange(nx, dtype=jnp.float32)
+    _y = jnp.arange(ny, dtype=jnp.float32)
+    x, y = jnp.meshgrid(_x, _y, indexing="ij")  # (nx, ny)
 
-    dist = jnp.sqrt((X - centre_x) ** 2 + Y**2)
+    dist = jnp.sqrt((x - centre_x) ** 2 + y**2)
     rho_2d = jnp.where(dist < radius, rho_l, rho_v)
     return rho_2d[:, :, None, None]
 
@@ -214,7 +214,7 @@ class TestOptimiseSingleParam:
             phi_right=jnp.array(1.2),
         )
         opt = optax.adam(0.01)
-        p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50)
+        _p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50)
         initial_loss = float(objective(p0))
         assert float(loss_final) < initial_loss
 
@@ -246,7 +246,7 @@ class TestOptimiseSingleParam:
         def run_opt(initial_params):
             return _optimise_single_param(objective, initial_params, mask_fn, opt, 10)
 
-        p_final, loss = run_opt(p0)
+        _p_final, loss = run_opt(p0)
         assert not jnp.isnan(loss)
 
 

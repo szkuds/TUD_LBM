@@ -9,6 +9,7 @@ Tests for:
     - ``runner.io_callbacks`` (callback plumbing)
 """
 
+from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 
@@ -23,8 +24,7 @@ def _single_phase_setup():
     from setup.simulation_setup import build_setup
 
     cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-    setup = build_setup(cfg)
-    return setup
+    return build_setup(cfg)
 
 
 def _multiphase_setup():
@@ -43,8 +43,7 @@ def _multiphase_setup():
         rho_v=0.33,
         interface_width=4,
     )
-    setup = build_setup(cfg)
-    return setup
+    return build_setup(cfg)
 
 
 # =====================================================================
@@ -218,7 +217,7 @@ class TestGetStepFn:
 
 
 # =====================================================================
-# run (lax.scan)
+# --- run (lax.scan) ---
 # =====================================================================
 
 
@@ -296,11 +295,10 @@ class TestStreamingIO:
         """Build a SimulationIO that writes numpy files to *tmp_path*."""
         from util.io import SimulationIO
 
-        io = SimulationIO(
+        return SimulationIO(
             base_dir=str(tmp_path),
             output_format="numpy",
         )
-        return io
 
     def test_trajectory_is_none_with_io_handler(self, tmp_path):
         """When io_handler is supplied, trajectory must be None."""
@@ -323,7 +321,6 @@ class TestStreamingIO:
 
     def test_files_written_at_correct_steps(self, tmp_path):
         """Snapshots are written at every save_interval step."""
-        import os
         from runner.run import init_state
         from runner.run import run
 
@@ -333,7 +330,7 @@ class TestStreamingIO:
 
         run(setup, state, nt=6, save_interval=2, io_handler=io)
 
-        files = sorted(os.listdir(io.data_dir))
+        files = sorted(p.name for p in Path(io.data_dir).iterdir())
         # Steps 0..5.  save_interval=2 → saves at t=2,4 (t=0 skipped
         # because save_snapshot_callback checks t % interval == 0 and
         # t > skip_interval; t=0 has it==0 which passes the modulo
@@ -345,7 +342,6 @@ class TestStreamingIO:
 
     def test_save_fields_filters_keys(self, tmp_path):
         """Only the requested fields appear in the saved files."""
-        import os
         from runner.run import init_state
         from runner.run import run
 
@@ -362,18 +358,17 @@ class TestStreamingIO:
             save_fields=("rho",),
         )
 
-        files = sorted(os.listdir(io.data_dir))
+        files = sorted(p.name for p in Path(io.data_dir).iterdir())
         assert len(files) >= 1
 
         # Check that the npz only contains 'rho'
-        data = np.load(os.path.join(io.data_dir, files[0]))
+        data = np.load(str(Path(io.data_dir) / files[0]))
         assert "rho" in data.files
         assert "f" not in data.files
         assert "u" not in data.files
 
     def test_skip_interval_suppresses_early_saves(self, tmp_path):
         """Steps ≤ skip_interval must not produce files."""
-        import os
         from runner.run import init_state
         from runner.run import run
 
@@ -391,7 +386,7 @@ class TestStreamingIO:
             skip_interval=3,
         )
 
-        files = sorted(os.listdir(io.data_dir))
+        files = sorted(p.name for p in Path(io.data_dir).iterdir())
         # Steps 0..7 with skip=3 → nothing saved for t=0,1,2,3
         # Steps 4..7 → 4 files
         assert len(files) == 4

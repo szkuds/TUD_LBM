@@ -113,9 +113,7 @@ def init_hi(
     potential_2d = jnp.broadcast_to(y_vals[None, :], (nx, ny))  # (nx, ny)
     potential = potential_2d[:, :, None, None]  # (nx, ny, 1, 1)
 
-    # hi_eq = w_i * U
-    hi = w[None, None, :, None] * potential  # (nx, ny, q, 1)
-    return hi
+    return w[None, None, :, None] * potential  # (nx, ny, q, 1)
 
 
 # ── Step-time helpers (jittable) ─────────────────────────────────────
@@ -223,12 +221,12 @@ def compute_electric_force(
     d_eps_ey_dy = (jnp.roll(eps_ey, -1, axis=1) - jnp.roll(eps_ey, 1, axis=1)) / 2.0
     rho_e = -(d_eps_ex_dx + d_eps_ey_dy)
 
-    # Force: Coulombic + dielectric
+    # NOTE: Coulombic + dielectric force contributions
     e2 = ex * ex + ey * ey
     fx = rho_e * ex - 0.5 * e2 * deps_dx
     fy = rho_e * ey - 0.5 * e2 * deps_dy
 
-    force = jnp.stack(
+    return jnp.stack(
         [fx[:, :, None, None], fy[:, :, None, None]],
         axis=-1,
     )[
@@ -238,7 +236,6 @@ def compute_electric_force(
         0,
         :,
     ]  # (nx, ny, 1, 2)
-    return force
 
 
 def update_hi(
@@ -300,5 +297,4 @@ def update_hi(
     hi_col = hi_col.at[:, :1, :, :].set(_equilibrium_h(pot_bot, w))
 
     # Streaming
-    hi_next = stream_fn(hi_col, lattice)
-    return hi_next
+    return stream_fn(hi_col, lattice)

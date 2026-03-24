@@ -90,7 +90,6 @@ class TestGravityForce:
         template = build_gravity_force((NX, NY), force_g=0.001)
         rho = jnp.ones((NX, NY, 1, 1)) * 2.0
         force = compute_gravity_force(template, rho)
-        # force = -template * rho
         expected = -template * 2.0
         np.testing.assert_allclose(
             np.array(force),

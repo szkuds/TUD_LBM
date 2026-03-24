@@ -251,7 +251,9 @@ def build_setup(config) -> SimulationSetup:
         force_ops = get_operators("force")
 
         # force_config can be a single dict or a list of dicts
-        force_entries = force_config if isinstance(force_config, list) else [force_config]
+        force_entries = (
+            force_config if isinstance(force_config, list) else [force_config]
+        )
         for entry in force_entries:
             if not isinstance(entry, dict):
                 continue

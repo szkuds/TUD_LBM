@@ -8,7 +8,6 @@ Public API::
 
 from __future__ import annotations
 from typing import Any
-from typing import Dict
 from config.adapter_dict import DictAdapter
 from config.simulation_config import SimulationConfig
 

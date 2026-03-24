@@ -17,7 +17,7 @@ Example usage::
 
 from __future__ import annotations
 import dataclasses
-import os
+from pathlib import Path
 from typing import Any
 import tomllib
 from config.adapter_base import ConfigAdapter
@@ -47,6 +47,19 @@ class TomlAdapter(ConfigAdapter):
         Optional.  Output/saving overrides (``results_dir``, ``fields``).
     """
 
+    @staticmethod
+    def _apply_output_overrides(
+        sim_table: dict[str, Any],
+        output_table: dict[str, Any],
+    ) -> None:
+        """Merge ``[output]`` overrides into *sim_table* in-place."""
+        if "results_dir" in output_table:
+            sim_table["results_dir"] = str(Path(output_table["results_dir"]).expanduser())
+        if "save_fields" in output_table:
+            sim_table["save_fields"] = list(output_table["save_fields"])
+        if "plot_fields" in output_table:
+            sim_table["plot_fields"] = list(output_table["plot_fields"])
+
     def load(self, path: str) -> SimulationConfig:
         """Parse *path* and return a :class:`SimulationConfig`.
 
@@ -61,11 +74,11 @@ class TomlAdapter(ConfigAdapter):
             ValueError: If required sections/keys are missing or invalid.
             KeyError: If a ``[[force]]`` type is not in the force registry.
         """
-        path = os.path.expanduser(path)
-        if not os.path.isfile(path):
+        path = Path(path).expanduser()
+        if not path.is_file():
             raise FileNotFoundError(f"Config file not found: {path}")
 
-        with open(path, "rb") as fh:
+        with path.open("rb") as fh:
             raw = tomllib.load(fh)
 
         # ── [simulation_type] (required) ──────────────────────────────────
@@ -86,7 +99,7 @@ class TomlAdapter(ConfigAdapter):
             multiphase_table = raw.get("multiphase", {})
 
             sim_table.update(multiphase_table)
-        elif sim_type not in ("single_phase",):
+        elif sim_type != "single_phase":
             raise ValueError(
                 f"Unknown simulation type '{sim_type}'. Expected 'single_phase' or 'multiphase'.",
             )
@@ -105,13 +118,7 @@ class TomlAdapter(ConfigAdapter):
             sim_table["force_config"] = self.parse_force_tables(force_tables)
 
         # ── [output] overrides ───────────────────────────────────────
-        output_table = raw.get("output", {})
-        if "results_dir" in output_table:
-            sim_table["results_dir"] = os.path.expanduser(output_table["results_dir"])
-        if "save_fields" in output_table:
-            sim_table["save_fields"] = list(output_table["save_fields"])
-        if "plot_fields" in output_table:
-            sim_table["plot_fields"] = list(output_table["plot_fields"])
+        self._apply_output_overrides(sim_table, raw.get("output", {}))
 
         # ── Build SimulationConfig ───────────────────────────────────
         sim_table["sim_type"] = sim_type

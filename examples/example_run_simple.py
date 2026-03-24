@@ -6,11 +6,10 @@ each save_interval via jax.debug.callback, then plotted post-run.
 Configuration is loaded from config_simple.toml.
 """
 
-import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from config.adapter_toml import TomlAdapter
 from config.jax_config import configure_jax

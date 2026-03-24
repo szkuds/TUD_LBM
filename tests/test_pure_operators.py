@@ -37,7 +37,6 @@ def lattice():
 @pytest.fixture
 def rest_state(lattice):
     """Uniform density=1, velocity=0 populations at equilibrium."""
-    q = lattice.q
     rho = jnp.ones((NX, NY, 1, 1))
     u = jnp.zeros((NX, NY, 1, 2))
     # At rest: feq_0 = rho - sum_rest, feq_i = w_i * rho for i>0
@@ -59,7 +58,7 @@ class TestCollideBGK:
     def test_no_source(self, lattice, rest_state):
         from operators.collision.bgk import collide_bgk
 
-        feq, rho, u = rest_state
+        feq, _, _ = rest_state
         f = feq  # at equilibrium
         tau = 0.8
 
@@ -71,14 +70,13 @@ class TestCollideBGK:
     def test_with_source(self, lattice, rest_state):
         from operators.collision.bgk import collide_bgk
 
-        feq, rho, u = rest_state
+        feq, _, _ = rest_state
         f = feq
         tau = 0.8
         source = jnp.ones_like(f) * 0.01
 
         f_col = collide_bgk(f, feq, tau, source=source)
 
-        # f_col = f + (1 - 1/(2*tau)) * source
         omega = 1.0 / tau
         expected = f + (1.0 - 0.5 * omega) * source
         np.testing.assert_allclose(np.array(f_col), np.array(expected), atol=1e-6)
@@ -351,7 +349,7 @@ class TestComputeMacroscopic:
         key = jax.random.PRNGKey(1)
         f = jax.random.uniform(key, (NX, NY, 9, 1), minval=0.05)
 
-        rho, u = compute_macroscopic(f, lattice)
+        rho, _ = compute_macroscopic(f, lattice)
 
         expected_rho = jnp.sum(f, axis=2, keepdims=True)
         np.testing.assert_allclose(np.array(rho), np.array(expected_rho), atol=1e-6)
@@ -364,7 +362,7 @@ class TestComputeMacroscopic:
 
         result = compute_macroscopic(feq, lattice, force=force)
         assert len(result) == 3
-        rho, u_eq, force_out = result
+        rho, u_eq, _ = result
         assert rho.shape == (NX, NY, 1, 1)
         assert u_eq.shape == (NX, NY, 1, 2)
 
@@ -381,7 +379,7 @@ class TestComputeMacroscopic:
 
         feq, _, _ = rest_state
         jitted_mac = jax.jit(partial(compute_macroscopic, lattice=lattice))
-        rho, u = jitted_mac(feq)
+        rho, _ = jitted_mac(feq)
         assert rho.shape == (NX, NY, 1, 1)
 
 
@@ -443,7 +441,7 @@ class TestComputeMacroscopicMultiphase:
         rho_0 = mp.rho_l
         f = jnp.ones((16, 16, 9, 1)) * (rho_0 / 9.0)
 
-        rho, u_eq, force_total = compute_macroscopic_multiphase(
+        _, _, force_total = compute_macroscopic_multiphase(
             f,
             lattice,
             mp,
@@ -468,7 +466,7 @@ class TestComputeMacroscopicMultiphase:
                 diff_ops=diff_ops,
             ),
         )
-        rho, u_eq, force = jitted_mp(f)
+        rho, _u_eq, _force = jitted_mp(f)
         assert rho.shape == (16, 16, 1, 1)
 
     def test_with_external_force(self, lattice):
@@ -479,7 +477,7 @@ class TestComputeMacroscopicMultiphase:
         f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
         force_ext = jnp.ones((16, 16, 1, 2)) * 0.001
 
-        rho, u_eq, force_total = compute_macroscopic_multiphase(
+        _rho, _u_eq, force_total = compute_macroscopic_multiphase(
             f,
             lattice,
             mp,

@@ -94,8 +94,7 @@ def compute_gradient(
     nx, ny = grid_2d.shape
     out = jnp.zeros((nx, ny, 1, 2))
     out = out.at[:, :, 0, 0].set(gx)
-    out = out.at[:, :, 0, 1].set(gy)
-    return out
+    return out.at[:, :, 0, 1].set(gy)
 
 
 def compute_wetting_gradient(

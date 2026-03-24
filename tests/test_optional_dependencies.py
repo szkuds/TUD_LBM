@@ -7,22 +7,10 @@ These tests validate that:
 4. pyproject.toml is configured correctly
 """
 
-import os
 from pathlib import Path
 
-# Load environment variables from .env file
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass  # python-dotenv not installed, use system env vars
-
 # Get project root from environment or infer it
-PROJECT_ROOT = os.getenv("PROJECT_ROOT")
-if not PROJECT_ROOT:
-    # Fallback: infer from tests directory
-    PROJECT_ROOT = str(Path(__file__).parent.parent)
+PROJECT_ROOT = str(Path(__file__).parent.parent)
 
 
 class TestOptaxNotRequiredForCore:
@@ -37,20 +25,22 @@ class TestOptaxNotRequiredForCore:
         """
         import tomllib
 
-        pyproject_path = os.path.join(PROJECT_ROOT, "pyproject.toml")
+        pyproject_path = Path(PROJECT_ROOT) / "pyproject.toml"
         try:
-            with open(pyproject_path, "rb") as f:
+            with pyproject_path.open("rb") as f:
                 pyproject = tomllib.load(f)
         except ImportError:
             import toml
 
-            with open(pyproject_path) as f:
+            with pyproject_path.open() as f:
                 pyproject = toml.load(f)
 
         core_deps = pyproject.get("project", {}).get("dependencies", [])
         core_deps_str = " ".join(str(d) for d in core_deps)
 
-        assert "optax" not in core_deps_str.lower(), "optax should NOT be in runner dependencies"
+        assert (
+            "optax" not in core_deps_str.lower()
+        ), "optax should NOT be in runner dependencies"
 
     def test_core_dependencies_are_minimal(self):
         """Core dependencies are minimal and focused.
@@ -61,21 +51,23 @@ class TestOptaxNotRequiredForCore:
         """
         import tomllib
 
-        pyproject_path = os.path.join(PROJECT_ROOT, "pyproject.toml")
+        pyproject_path = Path(PROJECT_ROOT) / "pyproject.toml"
         try:
-            with open(pyproject_path, "rb") as f:
+            with pyproject_path.open("rb") as f:
                 pyproject = tomllib.load(f)
         except ImportError:
             import toml
 
-            with open(pyproject_path) as f:
+            with pyproject_path.open() as f:
                 pyproject = toml.load(f)
 
         core_deps = pyproject.get("project", {}).get("dependencies", [])
         core_deps_str = " ".join(str(d) for d in core_deps).lower()
 
         # Primary check: optax should NOT be in runner dependencies
-        assert "optax" not in core_deps_str, "optax should not be in runner (it's optional)"
+        assert (
+            "optax" not in core_deps_str
+        ), "optax should not be in runner (it's optional)"
 
         # With conda app_setup, dependencies may be empty (managed by environment.yml)
         # so just verify that optax is not accidentally included
@@ -92,8 +84,8 @@ class TestEnvironmentConfiguration:
         When: checking for environment.yml
         Then: file should exist
         """
-        env_file = os.path.join(PROJECT_ROOT, "environment.yml")
-        assert os.path.exists(env_file), "environment.yml should exist for conda app_setup"
+        env_file = Path(PROJECT_ROOT) / "environment.yml"
+        assert env_file.exists(), "environment.yml should exist for conda app_setup"
 
     def test_environment_yml_contains_core_deps(self):
         """Environment.yml contains runner dependencies.
@@ -102,12 +94,14 @@ class TestEnvironmentConfiguration:
         When: reading the file
         Then: should list jax, numpy, scipy
         """
-        env_file = os.path.join(PROJECT_ROOT, "environment.yml")
-        with open(env_file) as f:
+        env_file = Path(PROJECT_ROOT) / "environment.yml"
+        with env_file.open() as f:
             env_content = f.read()
 
         for package in ["jax", "numpy", "scipy", "pytest"]:
-            assert package in env_content.lower(), f"{package} should be in environment.yml"
+            assert (
+                package in env_content.lower()
+            ), f"{package} should be in environment.yml"
 
     def test_environment_yml_comments_optax(self):
         """Environment.yml comments out optax (optional).
@@ -116,8 +110,8 @@ class TestEnvironmentConfiguration:
         When: reading the file
         Then: optax should be commented out, not in main dependencies
         """
-        env_file = os.path.join(PROJECT_ROOT, "environment.yml")
-        with open(env_file) as f:
+        env_file = Path(PROJECT_ROOT) / "environment.yml"
+        with env_file.open() as f:
             lines = f.readlines()
 
         # Find optax - should be commented
@@ -139,9 +133,11 @@ class TestInstallationMethods:
         When: checking for .env.example_for_test
         Then: file should exist with PROJECT_ROOT definition
         """
-        env_example = os.path.join(PROJECT_ROOT, ".env.example")
-        assert os.path.exists(env_example), ".env.example should exist"
+        env_example = Path(PROJECT_ROOT) / ".env.example"
+        assert env_example.exists(), ".env.example should exist"
 
-        with open(env_example) as f:
+        with env_example.open() as f:
             content = f.read()
-        assert "PROJECT_ROOT" in content, ".env.example_for_test should define PROJECT_ROOT"
+        assert (
+            "PROJECT_ROOT" in content
+        ), ".env.example_for_test should define PROJECT_ROOT"

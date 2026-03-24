@@ -94,6 +94,7 @@ ignore = [
     "ANN101", # Missing type annotation for `self` in method
     "ANN102", # Missing type annotation for `cls` in classmethod
     "ANN204", # Missing return type annotation for special (dunder) method
+    "ANN205", # Missing return type annotation for staticmethod
     "FBT",    # Using boolean function arguments
     "TD",     # TODOs
     "FIX001", # Resolve FIXMEs
@@ -148,7 +149,9 @@ ignore = [
 
     # --- import location (lazy imports needed for optional JAX deps) ---
     "PLC0415", # `import` should be at the top-level of a file
-    "COM812"
+    "COM812",
+    "ARG",
+    "C901"
 ]
 pydocstyle.convention = "google"
 

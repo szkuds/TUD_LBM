@@ -265,17 +265,19 @@ def main(
             return
 
         # Confirm before running
-        if not no_prompt:
-            if not Confirm.ask("[bold]Start simulation?[/bold]", default=True):
-                console.print("[yellow]Simulation cancelled.[/yellow]")
-                return
+        if not no_prompt and not Confirm.ask("[bold]Start simulation?[/bold]", default=True):
+            console.print("[yellow]Simulation cancelled.[/yellow]")
+            return
 
         # Run the simulation
         _run_simulation(config)
 
         console.print()
         console.print(
-            Panel.fit("[bold green]Simulation, saving and plotting complete![/bold green]", title="Success"),
+            Panel.fit(
+                "[bold green]Simulation, saving and plotting complete![/bold green]",
+                title="Success",
+            ),
         )
 
     except KeyboardInterrupt:

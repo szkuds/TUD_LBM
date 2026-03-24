@@ -34,7 +34,9 @@ class TestTomlAdapterNeedsInterfaceWidth:
         """)
         p = tmp_path / "bad_width.toml"
         p.write_text(content)
-        with pytest.raises(ValueError, match="'interface_width' is required for multiphase simulations"):
+        with pytest.raises(
+            ValueError, match="'interface_width' is required for multiphase simulations"
+        ):
             TomlAdapter().load(str(p))
 
     def test_interface_width_accepted(self, tmp_path):

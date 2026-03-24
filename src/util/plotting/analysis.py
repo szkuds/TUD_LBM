@@ -49,10 +49,19 @@ class AnalysisPlotOperator(PlotOperator):
             iters.append(step)
             umax_vals.append(float(np.max(vel_mag)))
             avg_rho_vals.append(float(np.mean(rho)))
-            ratio_vals.append(float(np.max(rho)) / safe_min if safe_min != 0 else np.inf)
+            ratio_vals.append(
+                float(np.max(rho)) / safe_min if safe_min != 0 else np.inf
+            )
 
         if not iters:
-            ax.text(0.5, 0.5, "No data yet", ha="center", va="center", transform=ax.transAxes)
+            ax.text(
+                0.5,
+                0.5,
+                "No data yet",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
             ax.set_title("Analysis")
             ax.set_xlabel("Timestep")
             return

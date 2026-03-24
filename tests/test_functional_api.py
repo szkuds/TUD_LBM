@@ -213,7 +213,7 @@ class TestEndToEnd:
         )
         setup = build_setup(cfg)
         state = init_state(setup)
-        final_state, trajectory = run(setup, state)
+        final_state, _trajectory = run(setup, state)
 
         assert int(final_state.t) == 3
         assert not jnp.isnan(final_state.f).any()

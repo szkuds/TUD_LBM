@@ -42,8 +42,7 @@ def build_gravity_force(
 
     force_array = jnp.zeros((nx, ny, 1, 2))
     force_array = force_array.at[:, :, 0, 0].set(force_x)
-    force_array = force_array.at[:, :, 0, 1].set(force_y)
-    return force_array
+    return force_array.at[:, :, 0, 1].set(force_y)
 
 
 def compute_gravity_force(

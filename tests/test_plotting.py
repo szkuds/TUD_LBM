@@ -1,12 +1,12 @@
 """Tests for the plotting operator package and figure builder."""
 
 from __future__ import annotations
-import os
 import sys
+from pathlib import Path
 import numpy as np
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from registry import get_operator_names
 from util.plotting import visualise

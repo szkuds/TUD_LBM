@@ -118,10 +118,7 @@ def step_multiphase(setup, state: State) -> State:
         # We need rho first for gravity — use a quick density computation
         rho_pre = jnp.sum(state.f, axis=2, keepdims=True)
         grav_force = compute_gravity_force(setup.gravity_template, rho_pre)
-        if force_ext is not None:
-            force_ext = force_ext + grav_force
-        else:
-            force_ext = grav_force
+        force_ext = force_ext + grav_force if force_ext is not None else grav_force
 
     # Electric force contribution
     new_h = state.h
@@ -140,10 +137,7 @@ def step_multiphase(setup, state: State) -> State:
             lattice,
             stream,
         )
-        if force_ext is not None:
-            force_ext = force_ext + elec_force
-        else:
-            force_ext = elec_force
+        force_ext = force_ext + elec_force if force_ext is not None else elec_force
 
     rho, u, force_tot = compute_macroscopic_multiphase(
         state.f,

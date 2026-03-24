@@ -65,6 +65,5 @@ def compute_equilibrium(
 
     # Rest direction via mass conservation
     f_sum = jnp.sum(feq[:, :, 1:, 0], axis=2)
-    feq = feq.at[:, :, 0, 0].set(rho_2d - f_sum)
 
-    return feq
+    return feq.at[:, :, 0, 0].set(rho_2d - f_sum)

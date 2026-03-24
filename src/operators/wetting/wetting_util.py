@@ -104,7 +104,7 @@ def apply_wetting_to_all_edges(
     Returns:
         Updated padded field with ghost-cell row set.
     """
-    nx2, ny2 = gp.shape  # nx+2, ny+2
+    nx2, _ny2 = gp.shape  # nx+2, ny+2
     nx = nx2 - 2
     half = nx // 2
 
@@ -129,6 +129,5 @@ def apply_wetting_to_all_edges(
 
     # Write into the bottom ghost row (index 0 of the padded array)
     # The interior columns in gp are indices 1 .. nx (padded by 1 on each side)
-    gp = gp.at[1:-1, 0].set(rho_ghost)
+    return gp.at[1:-1, 0].set(rho_ghost)
 
-    return gp

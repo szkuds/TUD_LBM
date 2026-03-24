@@ -130,7 +130,7 @@ def _optimise_side_cll(
     if side == "left":
 
         def obj_d_rho(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            _, _, cll_l, _ = evaluate_fn(p)
             return _cost_cll(cll_target, cll_l)
 
         def mask_d_rho(g):
@@ -142,7 +142,7 @@ def _optimise_side_cll(
             )
 
         def obj_phi(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            _, _, cll_l, _ = evaluate_fn(p)
             return _cost_cll(cll_target, cll_l)
 
         def mask_phi(g):
@@ -156,7 +156,7 @@ def _optimise_side_cll(
     else:
 
         def obj_d_rho(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            _, _, _, cll_r = evaluate_fn(p)
             return _cost_cll(cll_target, cll_r)
 
         def mask_d_rho(g):
@@ -168,7 +168,7 @@ def _optimise_side_cll(
             )
 
         def obj_phi(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            _, _, _, cll_r = evaluate_fn(p)
             return _cost_cll(cll_target, cll_r)
 
         def mask_phi(g):
@@ -209,7 +209,7 @@ def _optimise_side_ca(
     if side == "left":
 
         def obj_d_rho(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            ca_l, _ca_r, _cll_l, _cll_r = evaluate_fn(p)
             return _cost_ca(ca_target, ca_l)
 
         def mask_d_rho(g):
@@ -221,7 +221,7 @@ def _optimise_side_ca(
             )
 
         def obj_phi(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            ca_l, _ca_r, _cll_l, _cll_r = evaluate_fn(p)
             return _cost_ca(ca_target, ca_l)
 
         def mask_phi(g):
@@ -235,7 +235,7 @@ def _optimise_side_ca(
     else:
 
         def obj_d_rho(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            _ca_l, ca_r, _cll_l, _cll_r = evaluate_fn(p)
             return _cost_ca(ca_target, ca_r)
 
         def mask_d_rho(g):
@@ -247,7 +247,7 @@ def _optimise_side_ca(
             )
 
         def obj_phi(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            _ca_l, ca_r, _cll_l, _cll_r = evaluate_fn(p)
             return _cost_ca(ca_target, ca_r)
 
         def mask_phi(g):

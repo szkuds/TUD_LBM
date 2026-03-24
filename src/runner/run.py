@@ -88,7 +88,6 @@ def init_state(
 
     lattice = setup.lattice
     nx, ny = setup.grid_shape[0], setup.grid_shape[1]
-    q = lattice.q
     d = lattice.d
 
     if f is None:

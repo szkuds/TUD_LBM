@@ -63,12 +63,12 @@ def collide_mrt(
     if k_diag is None:
         k_diag = jnp.array([0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0 / tau, 1.0 / tau])
 
-    K = jnp.diag(k_diag)
-    I = jnp.eye(len(k_diag))
+    k = jnp.diag(k_diag)
+    identity = jnp.eye(len(k_diag))
 
     # Pre-compute combined matrices
-    mat_f_neq = M_INV @ K @ M  # collision matrix
-    mat_source = M_INV @ (I - K / 2) @ M  # source matrix
+    mat_f_neq = M_INV @ k @ M  # collision matrix
+    mat_source = M_INV @ (identity - k / 2) @ M  # source matrix
 
     # Apply collision in moment space — work on (..., q) by squeezing last dim
     f_neq_post = jnp.einsum("ij,...j->...i", mat_f_neq, (feq - f)[..., 0])

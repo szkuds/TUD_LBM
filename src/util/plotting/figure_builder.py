@@ -5,9 +5,9 @@ import math
 import os
 import warnings
 from pathlib import Path
-import matplotlib
+import matplotlib as mpl
 
-matplotlib.use("Agg")
+mpl.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,7 +19,9 @@ _DEFAULT_FIELD_ORDER = ["density", "velocity", "force", "force_ext", "analysis"]
 class FigureBuilder:
     """Build and save composite figures for saved simulation snapshots."""
 
-    def __init__(self, config: dict, run_dir: str | os.PathLike, dpi: int = 150) -> None:
+    def __init__(
+        self, config: dict, run_dir: str | os.PathLike, dpi: int = 150
+    ) -> None:
         self.config = dict(config or {})
         self.run_dir = Path(run_dir)
         self.dpi = dpi
@@ -88,7 +90,11 @@ class FigureBuilder:
             row, col = divmod(idx, ncols)
             axes[row][col].set_visible(False)
 
-        title = self.config.get("plot_title") or self.config.get("simulation_name") or "simulation"
+        title = (
+            self.config.get("plot_title")
+            or self.config.get("simulation_name")
+            or "simulation"
+        )
         fig.suptitle(f"{title} - Timestep {timestep}", fontsize=12)
         plt.tight_layout(rect=(0, 0.03, 1, 0.95))
 

@@ -13,9 +13,9 @@ Use :func:`get_adapter` to obtain the right adapter for a given file path::
 
 from __future__ import annotations
 import importlib
-import os
 from abc import ABC
 from abc import abstractmethod
+from pathlib import Path
 from typing import Any
 import operators.force  # noqa: F401
 from config.simulation_config import SimulationConfig
@@ -66,8 +66,8 @@ class ConfigAdapter(ABC):
         """
         validated: list[dict[str, Any]] = []
         for entry in force_tables:
-            entry = dict(entry)  # shallow copy
-            force_type = entry.get("type")
+            processed = dict(entry)  # shallow copy
+            force_type = processed.get("type")
 
             if force_type is None:
                 raise KeyError("Each [[force]] table must have a 'type' key.")
@@ -78,7 +78,7 @@ class ConfigAdapter(ABC):
                     f"Unknown force type '{force_type}'. Registered types: {registered}",
                 )
 
-            validated.append(entry)
+            validated.append(processed)
         return validated
 
 
@@ -105,8 +105,7 @@ def get_adapter(path: str) -> ConfigAdapter:
     Raises:
         ValueError: If the file extension is not supported.
     """
-    _, ext = os.path.splitext(path)
-    ext = ext.lower()
+    ext = Path(path).suffix.lower()
 
     if ext not in _ADAPTER_MAP:
         supported = ", ".join(sorted(_ADAPTER_MAP))

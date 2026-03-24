@@ -170,13 +170,17 @@ class TestMakeWettingGradient:
     def test_returns_callable(self, lattice, periodic_pad, wetting_params):
         from operators.differential.gradient import compute_wetting_gradient
 
-        fn = compute_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
+        fn = compute_wetting_gradient(
+            lattice.w, lattice.c, periodic_pad, wetting_params
+        )
         assert callable(fn)
 
     def test_output_shape(self, lattice, periodic_pad, wetting_params, const_field):
         from operators.differential.gradient import compute_wetting_gradient
 
-        fn = compute_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
+        fn = compute_wetting_gradient(
+            lattice.w, lattice.c, periodic_pad, wetting_params
+        )
         out = fn(const_field)
         assert out.shape == (NX, NY, 1, 2)
 
@@ -208,7 +212,9 @@ class TestMakeWettingGradient:
     def test_jittable_result(self, lattice, periodic_pad, wetting_params, const_field):
         from operators.differential.gradient import compute_wetting_gradient
 
-        fn = compute_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
+        fn = compute_wetting_gradient(
+            lattice.w, lattice.c, periodic_pad, wetting_params
+        )
         # The closure is already jitted; calling it again should use the compiled version
         out = fn(const_field)
         out2 = fn(const_field)
@@ -258,7 +264,7 @@ class TestWettingUtil:
         from operators.wetting.wetting_util import resolve_wetting_fields
 
         p = {"phi": [1.2, 1.4], "d_rho": [0.03, 0.07]}
-        phi_l, phi_r, d_rho_l, d_rho_r = resolve_wetting_fields(p, chemical_step=0)
+        phi_l, phi_r, _d_rho_l, _d_rho_r = resolve_wetting_fields(p, chemical_step=0)
         assert phi_l == 1.2
         assert phi_r == 1.4
 
@@ -266,7 +272,7 @@ class TestWettingUtil:
         from operators.wetting.wetting_util import resolve_wetting_fields
 
         p = {"phi": [1.2, 1.4], "d_rho": [0.03, 0.07]}
-        phi_l, phi_r, d_rho_l, d_rho_r = resolve_wetting_fields(p, chemical_step=1)
+        phi_l, phi_r, _d_rho_l, _d_rho_r = resolve_wetting_fields(p, chemical_step=1)
         # step=1 swaps sides
         assert phi_l == 1.4
         assert phi_r == 1.2

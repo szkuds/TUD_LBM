@@ -306,7 +306,7 @@ class TestGetPureStepFn:
 
 
 # =====================================================================
-# run_pure (lax.scan)
+# --- run_pure (lax.scan) ---
 # =====================================================================
 
 
@@ -366,7 +366,7 @@ class TestRunPure:
         setup = _sp_setup()
         state = init_state(setup)
 
-        final_state, trajectory = run(setup, state, nt=5)
+        final_state, _trajectory = run(setup, state, nt=5)
 
         initial_mass = float(jnp.sum(state.f))
         final_mass = float(jnp.sum(final_state.f))
@@ -450,7 +450,7 @@ class TestStepWithBounceBack:
         setup = build_setup(cfg)
         state = init_state(setup)
 
-        final_state, trajectory = run(setup, state, nt=5)
+        final_state, _trajectory = run(setup, state, nt=5)
 
         assert int(final_state.t) == 5
         assert not jnp.isnan(final_state.f).any()
