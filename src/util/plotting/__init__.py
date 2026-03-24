@@ -11,6 +11,7 @@ visualise      — backward-compatible entry point for simulation objects
 from __future__ import annotations
 import json
 from pathlib import Path
+
 # Trigger operator self-registration at import time.
 from . import analysis as _analysis_mod  # noqa: F401
 from . import density as _density_mod  # noqa: F401

@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 import jax.numpy as jnp
+
 # Ensure BC modules are imported so decorators fire
 from operators.boundary import bounce_back as _bb  # noqa: F401
 from operators.boundary import periodic as _per  # noqa: F401
