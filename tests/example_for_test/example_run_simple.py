@@ -7,15 +7,15 @@ Configuration is loaded from config_simple.toml.
 """
 
 import sys
-import os
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../..", "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
 
-from config.jax_config import configure_jax
 from config.adapter_toml import TomlAdapter
+from config.jax_config import configure_jax
+from runner.run import init_state
+from runner.run import run
 from setup.simulation_setup import build_setup
-from runner.run import init_state, run
 from util.io import SimulationIO
 from util.plotting import FigureBuilder
 

@@ -27,16 +27,14 @@ can differentiate through it.
 """
 
 from __future__ import annotations
-
-from typing import NamedTuple, Tuple
-
+from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
-from state.state import WettingState
 from operators.wetting.contact_angle import compute_contact_angle
 from operators.wetting.contact_line import compute_contact_line_location
 from registry import wetting_operator
+from state.state import WettingState
 
 # ── Optimisable parameter container ─────────────────────────────────
 
@@ -82,7 +80,7 @@ def _optimise_single_param(
     grad_mask_fn,
     optimiser,
     max_iterations: int,
-) -> Tuple[WettingParams, jnp.ndarray]:
+) -> tuple[WettingParams, jnp.ndarray]:
     """Run an ``optax`` optimisation loop with masked gradients.
 
     Args:
@@ -133,7 +131,7 @@ def _optimise_side_cll(
     if side == "left":
 
         def obj_d_rho(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            _, _, cll_l, _ = evaluate_fn(p)
             return _cost_cll(cll_target, cll_l)
 
         def mask_d_rho(g):
@@ -145,7 +143,7 @@ def _optimise_side_cll(
             )
 
         def obj_phi(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            _, _, cll_l, _ = evaluate_fn(p)
             return _cost_cll(cll_target, cll_l)
 
         def mask_phi(g):
@@ -159,7 +157,7 @@ def _optimise_side_cll(
     else:
 
         def obj_d_rho(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            _, _, _, cll_r = evaluate_fn(p)
             return _cost_cll(cll_target, cll_r)
 
         def mask_d_rho(g):
@@ -171,7 +169,7 @@ def _optimise_side_cll(
             )
 
         def obj_phi(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            _, _, _, cll_r = evaluate_fn(p)
             return _cost_cll(cll_target, cll_r)
 
         def mask_phi(g):
@@ -183,10 +181,18 @@ def _optimise_side_cll(
             )
 
     p_drho, loss_drho = _optimise_single_param(
-        obj_d_rho, initial_params, mask_d_rho, optimiser, max_iterations
+        obj_d_rho,
+        initial_params,
+        mask_d_rho,
+        optimiser,
+        max_iterations,
     )
     p_phi, loss_phi = _optimise_single_param(
-        obj_phi, initial_params, mask_phi, optimiser, max_iterations
+        obj_phi,
+        initial_params,
+        mask_phi,
+        optimiser,
+        max_iterations,
     )
 
     return jax.lax.cond(loss_drho < loss_phi, lambda: p_drho, lambda: p_phi)
@@ -204,7 +210,7 @@ def _optimise_side_ca(
     if side == "left":
 
         def obj_d_rho(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            ca_l, _ca_r, _cll_l, _cll_r = evaluate_fn(p)
             return _cost_ca(ca_target, ca_l)
 
         def mask_d_rho(g):
@@ -216,7 +222,7 @@ def _optimise_side_ca(
             )
 
         def obj_phi(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            ca_l, _ca_r, _cll_l, _cll_r = evaluate_fn(p)
             return _cost_ca(ca_target, ca_l)
 
         def mask_phi(g):
@@ -230,7 +236,7 @@ def _optimise_side_ca(
     else:
 
         def obj_d_rho(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            _ca_l, ca_r, _cll_l, _cll_r = evaluate_fn(p)
             return _cost_ca(ca_target, ca_r)
 
         def mask_d_rho(g):
@@ -242,7 +248,7 @@ def _optimise_side_ca(
             )
 
         def obj_phi(p):
-            ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+            _ca_l, ca_r, _cll_l, _cll_r = evaluate_fn(p)
             return _cost_ca(ca_target, ca_r)
 
         def mask_phi(g):
@@ -254,10 +260,18 @@ def _optimise_side_ca(
             )
 
     p_drho, loss_drho = _optimise_single_param(
-        obj_d_rho, initial_params, mask_d_rho, optimiser, max_iterations
+        obj_d_rho,
+        initial_params,
+        mask_d_rho,
+        optimiser,
+        max_iterations,
     )
     p_phi, loss_phi = _optimise_single_param(
-        obj_phi, initial_params, mask_phi, optimiser, max_iterations
+        obj_phi,
+        initial_params,
+        mask_phi,
+        optimiser,
+        max_iterations,
     )
 
     return jax.lax.cond(loss_drho < loss_phi, lambda: p_drho, lambda: p_phi)
@@ -350,10 +364,20 @@ def update_wetting_state(
     new_params_left = jax.lax.cond(
         in_window_left,
         lambda p: _optimise_side_cll(
-            evaluate_fn, p, cll_left, "left", optimiser, max_iter
+            evaluate_fn,
+            p,
+            cll_left,
+            "left",
+            optimiser,
+            max_iter,
         ),
         lambda p: _optimise_side_ca(
-            evaluate_fn, p, ca_target_left, "left", optimiser, max_iter
+            evaluate_fn,
+            p,
+            ca_target_left,
+            "left",
+            optimiser,
+            max_iter,
         ),
         params,
     )
@@ -367,10 +391,20 @@ def update_wetting_state(
     new_params_right = jax.lax.cond(
         in_window_right,
         lambda p: _optimise_side_cll(
-            evaluate_fn, p, cll_right, "right", optimiser, max_iter
+            evaluate_fn,
+            p,
+            cll_right,
+            "right",
+            optimiser,
+            max_iter,
         ),
         lambda p: _optimise_side_ca(
-            evaluate_fn, p, ca_target_right, "right", optimiser, max_iter
+            evaluate_fn,
+            p,
+            ca_target_right,
+            "right",
+            optimiser,
+            max_iter,
         ),
         params,
     )
@@ -401,12 +435,12 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
     The closure captures *setup*, *f_t*, *force*, and *rho_mean* from
     the enclosing scope so the inner optimiser sees only ``params``.
     """
-    from operators.macroscopic.multiphase import compute_macroscopic_multiphase
+    from operators.boundary.composite import build_composite_bc
+    from operators.collision.factory import build_collision_fn
     from operators.equilibrium.equilibrium import compute_equilibrium
     from operators.force.source_term import source
-    from operators.collision.factory import build_collision_fn
+    from operators.macroscopic.multiphase import compute_macroscopic_multiphase
     from operators.streaming.streaming import stream
-    from operators.boundary.composite import build_composite_bc
 
     lattice = setup.lattice
     mp = setup.multiphase_params
@@ -440,7 +474,7 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
         feq = compute_equilibrium(rho_new, u_new, lattice)
         src = source(rho_new, u_new, force_tot, lattice, diff_ops=diff_ops)
         f_col = collision_fn(f_t, feq, setup.tau, src)
-        f_str = stream(f_col, lattice)
+        f_str = stream(f_col, lattice, bc_config=setup.bc_config)
         f_bc = bc_fn(f_str, f_col, setup.bc_masks)
 
         # Measure CA and CLL from the output

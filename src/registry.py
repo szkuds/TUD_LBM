@@ -28,9 +28,9 @@ Usage::
 """
 
 from __future__ import annotations
-
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict, Literal, Optional, Set, Union
+from typing import Literal
 
 # ---------------------------------------------------------------------------
 # Types
@@ -52,7 +52,7 @@ OperatorKind = Literal[
     "wetting",
 ]
 
-OperatorTarget = Union[Callable[..., object], type]
+OperatorTarget = Callable[..., object] | type
 
 
 @dataclass(frozen=True)
@@ -62,14 +62,43 @@ class OperatorEntry:
     name: str
     kind: str
     target: OperatorTarget
-    metadata: Optional[Dict[str, object]] = None
+    metadata: dict[str, object] | None = None
 
 
 # ---------------------------------------------------------------------------
 # Global registry
 # ---------------------------------------------------------------------------
 
-OPERATOR_REGISTRY: Dict[str, OperatorEntry] = {}
+OPERATOR_REGISTRY: dict[str, OperatorEntry] = {}
+
+# Secondary index: kind → {name → OperatorEntry}.
+# Maintained by register_operator; avoids O(n) scans of OPERATOR_REGISTRY.
+_KIND_INDEX: dict[str, dict[str, OperatorEntry]] = {}
+
+_REGISTRY_POPULATED: bool = False
+
+
+def ensure_registry() -> None:
+    """Import all operator packages so the registry is fully populated.
+
+    Safe to call multiple times — subsequent calls are no-ops.
+    """
+    global _REGISTRY_POPULATED  # noqa: PLW0603
+    if _REGISTRY_POPULATED:
+        return
+
+    import operators.boundary
+    import operators.collision
+    import operators.differential
+    import operators.equilibrium
+    import operators.force
+    import operators.initialise.factory
+    import operators.macroscopic
+    import operators.streaming
+    import operators.wetting  # noqa: F401
+    import setup.lattice  # noqa: F401
+
+    _REGISTRY_POPULATED = True
 
 
 # ---------------------------------------------------------------------------
@@ -105,23 +134,22 @@ def register_operator(
     """
 
     def decorator(obj: OperatorTarget) -> OperatorTarget:
-        resolved_name = (
-            name or getattr(obj, "name", None) or getattr(obj, "__name__", None)
-        )
+        resolved_name = name or getattr(obj, "name", None) or getattr(obj, "__name__", None)
         if not resolved_name:
             raise ValueError(
-                f"{obj!r} must define 'name' or have a __name__, "
-                f"or pass name= to @register_operator"
+                f"{obj!r} must define 'name' or have a __name__, or pass name= to @register_operator",
             )
         key = f"{kind}:{resolved_name}"
         if key in OPERATOR_REGISTRY:
             raise ValueError(f"Duplicate operator registration: {key}")
-        OPERATOR_REGISTRY[key] = OperatorEntry(
+        entry = OperatorEntry(
             name=resolved_name,
             kind=kind,
             target=obj,
             metadata=meta or None,
         )
+        OPERATOR_REGISTRY[key] = entry
+        _KIND_INDEX.setdefault(kind, {})[resolved_name] = entry
         return obj
 
     return decorator
@@ -132,7 +160,7 @@ def register_operator(
 # ---------------------------------------------------------------------------
 
 
-def get_operators(kind: str) -> Dict[str, OperatorEntry]:
+def get_operators(kind: str) -> dict[str, OperatorEntry]:
     """Return all registered operators of the given *kind*.
 
     Args:
@@ -141,23 +169,33 @@ def get_operators(kind: str) -> Dict[str, OperatorEntry]:
     Returns:
         ``{name: OperatorEntry, ...}``
     """
-    # TODO: This checks every key there should be a better way to get the desired information.
-    prefix = f"{kind}:"
-    return {
-        entry.name: entry
-        for key, entry in OPERATOR_REGISTRY.items()
-        if key.startswith(prefix)
-    }
+    return dict(_KIND_INDEX.get(kind, {}))
 
 
-def get_operator_names(kind: str) -> Set[str]:
+def get_operator_names(kind: str) -> set[str]:
     """Return the set of registered operator names for *kind*."""
-    return set(get_operators(kind).keys())
+    return set(_KIND_INDEX.get(kind, {}).keys())
 
 
-def get_operator_category() -> Set[str]:
+def get_operator_category() -> set[str]:
     """Return the set of all registered operator kinds."""
-    return {entry.kind for entry in OPERATOR_REGISTRY.values()}
+    return set(_KIND_INDEX.keys())
+
+
+def unregister_operator(kind: str, name: str) -> None:
+    """Remove an operator from the registry (for testing only).
+
+    Args:
+        kind: Operator category, e.g. ``"collision_models"``.
+        name: Operator name within that category.
+    """
+    key = f"{kind}:{name}"
+    OPERATOR_REGISTRY.pop(key, None)
+    sub = _KIND_INDEX.get(kind)
+    if sub is not None:
+        sub.pop(name, None)
+        if not sub:
+            del _KIND_INDEX[kind]
 
 
 # ---------------------------------------------------------------------------
@@ -166,83 +204,108 @@ def get_operator_category() -> Set[str]:
 
 
 def collision_model(
-    *, name: str | None = None, **meta: object
+    *,
+    name: str | None = None,
+    **meta: object,
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register a collision operator (kind ``"collision_models"``)."""
     return register_operator("collision_models", name=name, **meta)
 
 
 def force_model(
-    *, name: str | None = None, **meta: object
+    *,
+    name: str | None = None,
+    **meta: object,
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register a force operator (kind ``"force"``)."""
     return register_operator("force", name=name, **meta)
 
 
 def boundary_condition(
-    *, name: str | None = None, **meta: object
+    *,
+    name: str | None = None,
+    **meta: object,
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register a boundary-condition operator (kind ``"boundary_condition"``)."""
     return register_operator("boundary_condition", name=name, **meta)
 
 
 def macroscopic_operator(
-    *, name: str | None = None, **meta: object
+    *,
+    name: str | None = None,
+    **meta: object,
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register a macroscopic operator (kind ``"macroscopic"``)."""
     return register_operator("macroscopic", name=name, **meta)
 
 
 def initialise_operator(
-    *, name: str | None = None, **meta: object
+    *,
+    name: str | None = None,
+    **meta: object,
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register an initialisation operator (kind ``"initialise"``)."""
     return register_operator("initialise", name=name, **meta)
 
 
 def equilibrium_operator(
-    *, name: str | None = None, **meta: object
+    *,
+    name: str | None = None,
+    **meta: object,
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register an equilibrium operator (kind ``"equilibrium"``)."""
     return register_operator("equilibrium", name=name, **meta)
 
 
 def simulation_type_operator(
-    *, name: str | None = None, **meta: object
+    *,
+    name: str | None = None,
+    **meta: object,
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register a simulation type (kind ``"simulation_type"``)."""
     return register_operator("simulation_type", name=name, **meta)
 
 
 def stream_operator(
-    *, name: str | None = None, **meta: object
+    *,
+    name: str | None = None,
+    **meta: object,
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register a streaming operator (kind ``"stream"``)."""
     return register_operator("stream", name=name, **meta)
 
 
 def update_timestep_operator(
-    *, name: str | None = None, **meta: object
+    *,
+    name: str | None = None,
+    **meta: object,
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register an update-timestep operator (kind ``"update_timestep"``)."""
     return register_operator("update_timestep", name=name, **meta)
 
 
 def wetting_operator(
-    *, name: str | None = None, **meta: object
+    *,
+    name: str | None = None,
+    **meta: object,
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register a wetting operator (kind ``"wetting"``)."""
     return register_operator("wetting", name=name, **meta)
 
 
 def lattice_operator(
-    *, name: str | None = None, **meta: object
+    *,
+    name: str | None = None,
+    **meta: object,
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register a lattice model (kind ``"lattice"``)."""
     return register_operator("lattice", name=name, **meta)
 
+
 def plotting_operator(
-    *, name: str | None = None, **meta: object
+    *,
+    name: str | None = None,
+    **meta: object,
 ) -> Callable[[OperatorTarget], OperatorTarget]:
     """Register a plotting operator (kind ``"plotting"``)."""
     return register_operator("plotting", name=name, **meta)

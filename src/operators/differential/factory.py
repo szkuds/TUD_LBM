@@ -9,15 +9,13 @@ wetting / no-wetting split for differential operators.
 """
 
 from __future__ import annotations
-
 import jax
 import jax.numpy as jnp
-
 from operators.differential.config import DifferentialConfig
-from operators.differential.operators import DifferentialOperators
-from operators.differential.gradient import compute_gradient, compute_wetting_gradient
+from operators.differential.gradient import compute_gradient
+from operators.differential.gradient import compute_wetting_gradient
 from operators.differential.laplacian import compute_laplacian
-
+from operators.differential.operators import DifferentialOperators
 
 # ── Private closure builders ─────────────────────────────────────────
 
@@ -75,6 +73,7 @@ def build_differential_operators(cfg: DifferentialConfig) -> DifferentialOperato
             cfg.pad_modes,
             cfg.wetting_params,
             cfg.chemical_step,
+            cfg.bc_config,
         )
     else:
         grad_field = grad_standard  # same object, zero overhead
@@ -87,4 +86,3 @@ def build_differential_operators(cfg: DifferentialConfig) -> DifferentialOperato
         grad_field=grad_field,
         laplacian=laplacian,
     )
-

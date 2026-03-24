@@ -1,14 +1,11 @@
 """Analysis plot operator for saved simulation history."""
 
 from __future__ import annotations
-
 from pathlib import Path
-
 import matplotlib.axes
 import numpy as np
-
-from util.plotting.base import PlotOperator
 from registry import plotting_operator
+from util.plotting.base import PlotOperator
 
 
 @plotting_operator(name="analysis")
@@ -55,7 +52,14 @@ class AnalysisPlotOperator(PlotOperator):
             ratio_vals.append(float(np.max(rho)) / safe_min if safe_min != 0 else np.inf)
 
         if not iters:
-            ax.text(0.5, 0.5, "No data yet", ha="center", va="center", transform=ax.transAxes)
+            ax.text(
+                0.5,
+                0.5,
+                "No data yet",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
             ax.set_title("Analysis")
             ax.set_xlabel("Timestep")
             return
@@ -72,4 +76,3 @@ class AnalysisPlotOperator(PlotOperator):
         lines1, labels1 = ax.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax.legend(lines1 + lines2, labels1 + labels2, fontsize=7, loc="best")
-

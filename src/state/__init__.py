@@ -8,7 +8,8 @@ Public API::
     from state import State, WettingState
 """
 
-from state.state import State, WettingState
+from state.state import State
+from state.state import WettingState
 
 __all__ = [
     "State",

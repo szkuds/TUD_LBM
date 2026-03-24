@@ -1,20 +1,15 @@
-"""
-Verifies that:
-    - The new functional API is the only public surface.
-    - ``runner.step`` exports pure functions (no ``Operators`` bundle).
-    - ``runner.run`` works without legacy classes.
-    - ``config.from_dict`` and ``config.DictAdapter`` work end-to-end.
-    - Top-level ``src/__init__`` re-exports the correct symbols.
-    - No banned legacy patterns leak into the new modules.
-    - End-to-end: config → build_setup → init_state → run.
+"""Verifies that:
+- The new functional API is the only public surface.
+- ``runner.step`` exports pure functions (no ``Operators`` bundle).
+- ``runner.run`` works without legacy classes.
+- ``config.from_dict`` and ``config.DictAdapter`` work end-to-end.
+- Top-level ``src/__init__`` re-exports the correct symbols.
+- No banned legacy patterns leak into the new modules.
+- End-to-end: config → build_setup → init_state → run.
 """
 
 from __future__ import annotations
-
-import importlib
 import inspect
-import sys
-
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -185,8 +180,9 @@ class TestEndToEnd:
 
     def test_single_phase_e2e(self):
         from config import SimulationConfig
+        from runner import init_state
+        from runner import run
         from setup import build_setup
-        from runner import run, init_state
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=5)
         setup = build_setup(cfg)
@@ -200,8 +196,9 @@ class TestEndToEnd:
 
     def test_multiphase_e2e(self):
         from config import SimulationConfig
+        from runner import init_state
+        from runner import run
         from setup import build_setup
-        from runner import run, init_state
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -216,15 +213,16 @@ class TestEndToEnd:
         )
         setup = build_setup(cfg)
         state = init_state(setup)
-        final_state, trajectory = run(setup, state)
+        final_state, _trajectory = run(setup, state)
 
         assert int(final_state.t) == 3
         assert not jnp.isnan(final_state.f).any()
 
     def test_run_uses_setup_nt_default(self):
         from config import SimulationConfig
+        from runner import init_state
+        from runner import run
         from setup import build_setup
-        from runner import run, init_state
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=4)
         setup = build_setup(cfg)
@@ -234,8 +232,9 @@ class TestEndToEnd:
 
     def test_save_interval(self):
         from config import SimulationConfig
+        from runner import init_state
+        from runner import run
         from setup import build_setup
-        from runner import run, init_state
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
         setup = build_setup(cfg)
@@ -248,8 +247,9 @@ class TestEndToEnd:
 
     def test_step_single_phase_direct(self):
         from config import SimulationConfig
+        from runner import init_state
+        from runner import step_single_phase
         from setup import build_setup
-        from runner import step_single_phase, init_state
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=5)
         setup = build_setup(cfg)
@@ -261,8 +261,9 @@ class TestEndToEnd:
 
     def test_mass_conservation(self):
         from config import SimulationConfig
+        from runner import init_state
+        from runner import run
         from setup import build_setup
-        from runner import run, init_state
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
         setup = build_setup(cfg)

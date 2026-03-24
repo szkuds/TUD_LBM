@@ -5,12 +5,10 @@ using a tanh density profile with flipped sign.
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
-
-from setup.lattice import Lattice
 from operators.equilibrium.equilibrium import compute_equilibrium
 from registry import initialise_operator
+from setup.lattice import Lattice
 
 
 @initialise_operator(name="multiphase_droplet")
@@ -54,7 +52,7 @@ def init_multiphase_droplet(
     distance = jnp.sqrt((x - cx) ** 2 + (y - cy) ** 2)
 
     rho_2d = (rho_l + rho_v) / 2.0 - (rho_l - rho_v) / 2.0 * jnp.tanh(
-        (distance - radius) / interface_width
+        (distance - radius) / interface_width,
     )
     rho = rho_2d.reshape(nx, ny, 1, 1)
     u = jnp.zeros((nx, ny, 1, 2))

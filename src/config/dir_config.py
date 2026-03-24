@@ -3,11 +3,11 @@
 This module contains all directory-related configuration constants.
 """
 
-import os
+from pathlib import Path
 
 # =============================================================================
 # Directory Constants
 # =============================================================================
 
 #: Default directory for storing simulation_type results
-BASE_RESULTS_DIR: str = os.path.expanduser("~/TUD_LBM_data/results")
+BASE_RESULTS_DIR: str = str(Path("~/TUD_LBM_data/results").expanduser())

@@ -16,57 +16,71 @@ Usage::
 """
 
 from __future__ import annotations
-
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
+import dataclasses
+from dataclasses import dataclass
+from dataclasses import field
+from typing import Any
+from typing import Literal
 from config.dir_config import BASE_RESULTS_DIR
 
-# Fallback sets used when registry is not yet populated (e.g. config-only tests).
-_FALLBACK_COLLISION_SCHEMES = {"bgk", "mrt"}
-_FALLBACK_EOS = {"double-well", "carnahan-starling"}
-_FALLBACK_LATTICES = {"D2Q9", "D3Q19", "D3Q27"}
+# ── Serialisation section metadata ────────────────────────────────────
+#
+# Each dataclass field may carry a ``"config_section"`` metadata entry
+# that tells adapters which top-level section the field belongs to when
+# writing structured config files (TOML, YAML, JSON, …).
+# Fields *without* this key default to ``"simulation_type"``.
+#
+# Recognised section values
+# ─────────────────────────
+#   "simulation_type"       → core simulation parameters (the default)
+#   "multiphase"            → multiphase-specific parameters
+#   "output"                → output / IO overrides
+#   "boundary_conditions"   → boundary condition configuration
+#   "force"                 → force definitions (array-of-tables in TOML)
+#   "identity"              → special: sim_type → written as "type"
+#   "extra"                 → merged into simulation_type directly
+CONFIG_SECTION: str = "config_section"
+
+
+def get_fields_for_section(section: str) -> frozenset[str]:
+    """Return the field names whose ``config_section`` metadata equals *section*.
+
+    Fields without ``config_section`` metadata are treated as
+    ``"simulation_type"``.
+    """
+    return frozenset(
+        f.name
+        for f in dataclasses.fields(SimulationConfig)
+        if f.metadata.get(CONFIG_SECTION, "simulation_type") == section
+    )
 
 
 def _valid_collision_schemes() -> set:
-    """Return valid collision schemes from the registry, with fallback."""
-    try:
-        from registry import get_operator_names
+    """Return valid collision schemes from the registry."""
+    from registry import ensure_registry
+    from registry import get_operator_names
 
-        names = get_operator_names("collision_models")
-        if names:
-            return names
-    except Exception:
-        pass
-    return _FALLBACK_COLLISION_SCHEMES
+    ensure_registry()
+    return get_operator_names("collision_models")
 
 
 def _valid_eos() -> set:
-    """Return valid EOS names from the registry, with fallback."""
-    try:
-        from registry import get_operator_names
+    """Return valid EOS names from the registry."""
+    from registry import ensure_registry
+    from registry import get_operator_names
 
-        names = get_operator_names("macroscopic")
-        # EOS names are the multiphase macroscopic operator names (exclude 'standard')
-        eos_names = names - {"standard"}
-        if eos_names:
-            return eos_names
-    except Exception:
-        pass
-    return _FALLBACK_EOS
+    ensure_registry()
+    names = get_operator_names("macroscopic")
+    return names - {"standard"}
 
 
 def _valid_lattices() -> set:
-    """Return valid lattice types from the registry, with fallback."""
-    try:
-        from registry import get_operator_names
+    """Return valid lattice types from the registry."""
+    from registry import ensure_registry
+    from registry import get_operator_names
 
-        names = get_operator_names("lattice")
-        if names:
-            return names
-    except Exception:
-        pass
-    return _FALLBACK_LATTICES
+    ensure_registry()
+    return get_operator_names("lattice")
 
 
 @dataclass(frozen=True)
@@ -81,12 +95,15 @@ class SimulationConfig:
     """
 
     # ── Simulation identity ──────────────────────────────────────────
-    sim_type: Literal["single_phase", "multiphase"] = "single_phase"
-    simulation_name: Optional[str] = None
+    sim_type: Literal["single_phase", "multiphase"] = field(
+        default="single_phase",
+        metadata={CONFIG_SECTION: "identity"},
+    )
+    simulation_name: str | None = None
 
     # ── Lattice & grid ───────────────────────────────────────────────
     lattice_type: str = "D2Q9"
-    grid_shape: Tuple[int, ...] = (64, 64)
+    grid_shape: tuple[int, ...] = (64, 64)
 
     # ── Time stepping ────────────────────────────────────────────────
     nt: int = 1000
@@ -94,42 +111,73 @@ class SimulationConfig:
 
     # ── Collision ────────────────────────────────────────────────────
     collision_scheme: str = "bgk"
-    k_diag: Optional[Tuple[float, ...]] = None
+    k_diag: tuple[float, ...] | None = None
 
     # ── Boundary conditions ──────────────────────────────────────────
-    bc_config: Optional[Dict[str, Any]] = None
+    bc_config: dict[str, Any] | None = field(
+        default=None,
+        metadata={CONFIG_SECTION: "boundary_conditions"},
+    )
 
     # ── Force ────────────────────────────────────────────────────────
-    force_enabled: bool = False
-    force_config: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None
+    force_enabled: bool = field(
+        default=False,
+        metadata={CONFIG_SECTION: "force"},
+    )
+    force_config: dict[str, Any] | list[dict[str, Any]] | None = field(
+        default=None,
+        metadata={CONFIG_SECTION: "force"},
+    )
 
     # ── Initialisation ───────────────────────────────────────────────
     init_type: str = "standard"
-    init_dir: Optional[str] = None
+    init_dir: str | None = None
 
     # ── Output / IO ──────────────────────────────────────────────────
-    results_dir: str = BASE_RESULTS_DIR
+    results_dir: str = field(
+        default=BASE_RESULTS_DIR,
+        metadata={CONFIG_SECTION: "output"},
+    )
     save_interval: int = 0  # This is set to 0 to ensure that when nothing is passed the default is nt/10
     skip_interval: int = 0
-    save_fields: Optional[List[str]] = None
-    plot_fields: Optional[List[str]] = None
+    save_fields: list[str] | None = field(
+        default=None,
+        metadata={CONFIG_SECTION: "output"},
+    )
+    plot_fields: list[str] | None = field(
+        default=None,
+        metadata={CONFIG_SECTION: "output"},
+    )
+    output_format: str | list[str] | None = field(
+        default="numpy",
+        metadata={CONFIG_SECTION: "output"},
+    )
 
     # ── Multiphase (ignored when sim_type == "single_phase") ─────────
-    eos: Optional[str] = None
-    kappa: Optional[float] = None
-    rho_l: Optional[float] = None
-    rho_v: Optional[float] = None
-    interface_width: Optional[int] = None
-    bubble: bool = False
-    rho_ref: Optional[float] = None
-    g: Optional[float] = None
+    eos: str | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
+    kappa: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
+    rho_l: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
+    rho_v: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
+    interface_width: int | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
+    bubble: bool = field(default=False, metadata={CONFIG_SECTION: "multiphase"})
+    rho_ref: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
+    g: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
 
     # ── Wetting / hysteresis ─────────────────────────────────────────
-    wetting_config: Optional[Dict[str, Any]] = None
-    hysteresis_config: Optional[Dict[str, Any]] = None
+    wetting_config: dict[str, Any] | None = field(
+        default=None,
+        metadata={CONFIG_SECTION: "boundary_conditions"},
+    )
+    hysteresis_config: dict[str, Any] | None = field(
+        default=None,
+        metadata={CONFIG_SECTION: "boundary_conditions"},
+    )
 
     # ── Extra / extensible ───────────────────────────────────────────
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(
+        default_factory=dict,
+        metadata={CONFIG_SECTION: "extra"},
+    )
 
     # ══════════════════════════════════════════════════════════════════
     # Validation
@@ -146,6 +194,12 @@ class SimulationConfig:
         # Normalise grid_shape to tuple
         if not isinstance(self.grid_shape, tuple):
             object.__setattr__(self, "grid_shape", tuple(self.grid_shape))
+
+        # Normalise output_format: unwrap single-element list, lowercase
+        if isinstance(self.output_format, list):
+            object.__setattr__(self, "output_format", self.output_format[0])
+        if isinstance(self.output_format, str):
+            object.__setattr__(self, "output_format", self.output_format.lower())
 
         # Default bc_config to periodic on all edges
         if self.bc_config is None:
@@ -172,20 +226,18 @@ class SimulationConfig:
         # grid_shape
         if len(self.grid_shape) < 2:
             raise ValueError(
-                f"grid_shape must have at least 2 dimensions, "
-                f"got {len(self.grid_shape)}"
+                f"grid_shape must have at least 2 dimensions, got {len(self.grid_shape)}",
             )
         if any(d <= 0 for d in self.grid_shape):
             raise ValueError(
-                f"All grid dimensions must be positive, got {self.grid_shape}"
+                f"All grid dimensions must be positive, got {self.grid_shape}",
             )
 
         # lattice_type
         valid_lattices = _valid_lattices()
         if self.lattice_type not in valid_lattices:
             raise ValueError(
-                f"lattice_type must be one of {valid_lattices}, "
-                f"got '{self.lattice_type}'"
+                f"lattice_type must be one of {valid_lattices}, got '{self.lattice_type}'",
             )
 
         # tau
@@ -200,8 +252,7 @@ class SimulationConfig:
         valid_schemes = _valid_collision_schemes()
         if self.collision_scheme not in valid_schemes:
             raise ValueError(
-                f"collision_scheme must be one of "
-                f"{sorted(valid_schemes)}, got '{self.collision_scheme}'"
+                f"collision_scheme must be one of {sorted(valid_schemes)}, got '{self.collision_scheme}'",
             )
 
         # k_diag required for MRT
@@ -211,19 +262,19 @@ class SimulationConfig:
         # save_interval
         if self.save_interval < 0:
             raise ValueError(
-                f"save_interval must be positive, got {self.save_interval}"
+                f"save_interval must be positive, got {self.save_interval}",
             )
 
         # skip_interval
         if self.skip_interval < 0:
             raise ValueError(
-                f"skip_interval must be non-negative, got {self.skip_interval}"
+                f"skip_interval must be non-negative, got {self.skip_interval}",
             )
 
         # init_dir
         if self.init_type == "init_from_file" and self.init_dir is None:
             raise ValueError(
-                "init_dir must be provided when init_type is 'init_from_file'"
+                "init_dir must be provided when init_type is 'init_from_file'",
             )
 
         # save_fields
@@ -232,7 +283,7 @@ class SimulationConfig:
             invalid = set(self.save_fields) - valid_fields
             if invalid:
                 raise ValueError(
-                    f"Invalid save_fields: {invalid}. " f"Valid fields: {valid_fields}"
+                    f"Invalid save_fields: {invalid}. Valid fields: {valid_fields}",
                 )
 
     # ── Multiphase validation ────────────────────────────────────────
@@ -249,20 +300,20 @@ class SimulationConfig:
             raise ValueError(f"rho_v must be positive, got {self.rho_v}")
         if self.rho_l <= self.rho_v:
             raise ValueError(
-                f"rho_l ({self.rho_l}) must be greater than rho_v ({self.rho_v})"
+                f"rho_l ({self.rho_l}) must be greater than rho_v ({self.rho_v})",
             )
         if self.kappa <= 0:
             raise ValueError(f"kappa must be positive, got {self.kappa}")
         if self.interface_width <= 0:
             raise ValueError(
-                f"interface_width must be positive, got {self.interface_width}"
+                f"interface_width must be positive, got {self.interface_width}",
             )
 
         # EOS
         valid_eos = _valid_eos()
         if self.eos not in valid_eos:
             raise ValueError(
-                f"eos must be one of {sorted(valid_eos)}, " f"got '{self.eos}'"
+                f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'",
             )
 
     # ══════════════════════════════════════════════════════════════════
@@ -283,7 +334,7 @@ class SimulationConfig:
     # Serialisation
     # ══════════════════════════════════════════════════════════════════
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialise to a plain dict for logging / saving.
 
         Merges ``extra`` into the top-level dict and adds a

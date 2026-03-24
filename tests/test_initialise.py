@@ -10,10 +10,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-
-from setup.lattice import build_lattice
 from operators.initialise.factory import get_init_fn
 from registry import get_operators
+from setup.lattice import build_lattice
 
 NX, NY = 16, 16
 

@@ -10,13 +10,11 @@ which matches the padding order in ``gradient.py`` / ``laplacian.py``.
 """
 
 from __future__ import annotations
-
-from typing import Any, Dict, List, Optional
-
+from typing import Any
 from registry import get_operators
 
 
-def determine_pad_modes(bc_config: Optional[Dict[str, Any]]) -> List[str]:
+def determine_pad_modes(bc_config: dict[str, Any] | None) -> list[str]:
     """Derive the four pad-mode strings from a *bc_config* dict.
 
     Each edge's BC name is looked up in the global ``"boundary_condition"``
@@ -34,10 +32,8 @@ def determine_pad_modes(bc_config: Optional[Dict[str, Any]]) -> List[str]:
     """
     # Build lookup: bc_name -> pad_edge_mode from registry metadata
     bc_ops = get_operators("boundary_condition")
-    pad_for: Dict[str, str] = {
-        name: entry.metadata.get("pad_edge_mode", "edge")
-        if entry.metadata
-        else "edge"
+    pad_for: dict[str, str] = {
+        name: entry.metadata.get("pad_edge_mode", "edge") if entry.metadata else "edge"
         for name, entry in bc_ops.items()
     }
 
@@ -49,9 +45,8 @@ def determine_pad_modes(bc_config: Optional[Dict[str, Any]]) -> List[str]:
         return pad_for.get(bc_type, "edge")
 
     return [
-        _mode("right"),   # right-y pad
-        _mode("left"),    # left-y  pad
+        _mode("right"),  # right-y pad
+        _mode("left"),  # left-y  pad
         _mode("bottom"),  # bottom-x pad
-        _mode("top"),     # top-x   pad
+        _mode("top"),  # top-x   pad
     ]
-

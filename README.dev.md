@@ -258,8 +258,8 @@ The configuration package provides the primary user-facing interface for setting
 |--------|-----------|-------------|
 | `simulation_setup` | `SimulationSetup` | **Single public entry point** for configuring a simulation. A flat, validated dataclass that holds all physics, time-stepping, boundary-condition, initialisation, and I/O parameters. Multiphase fields are optional and only validated when `sim_type="multiphase"`. |
 | `registry` | `register_operator`, `get_operators`, `OPERATOR_REGISTRY` | Global operator registry. Every operator registers itself via the `@register_operator` class decorator. Per-kind look-ups (e.g. "all collision operators") are derived dynamically — adding a new operator only requires defining the class with a `name` attribute and applying the decorator. |
-| `adapter_base` | `ConfigAdapter`, `get_adapter` | Abstract base class for configuration file adapters. Each adapter reads a specific file format and returns a `SimulationSetup`. Use `get_adapter()` to obtain the right adapter for a given file path by extension. |
-| `adapter_toml` | `TomlAdapter` | TOML configuration file adapter. Reads `.toml` files and returns a validated `SimulationSetup`. Supports `[simulation_type]`, `[multiphase]`, `[[force]]`, `[boundary_conditions]`, and `[output]` tables. |
+| `adapter_base` | `ConfigAdapter`, `get_adapter` | Abstract base class for configuration file adapters. `load(path)` reads a file into a `SimulationConfig`; `save(config, path)` writes one back. The shared `build_sections(config)` helper provides a format-agnostic nested dict that any adapter's `save()` can serialise directly. Use `get_adapter()` to dispatch by file extension. |
+| `adapter_toml` | `TomlAdapter` | Reads and writes `.toml` configuration files. Supports `[simulation_type]`, `[multiphase]`, `[[force]]`, `[boundary_conditions]`, and `[output]` tables. |
 | `dir_config` | `BASE_RESULTS_DIR` | Directory configuration constants. Default base directory for storing simulation results (`~/TUD_LBM_data/results`). |
 | `jax_config` | `configure_jax`, `ENABLE_X64`, `DISABLE_JIT` | Centralised JAX configuration. Call `configure_jax()` at the start of your script to apply 64-bit precision and JIT settings. |
 | `saving_config` | `DEFAULT_SAVE_FIELDS`, `AVAILABLE_FIELDS`, `FORCE_REGISTRY` | Saving configuration constants. Defines default fields to save (`rho`, `u`) and all available fields (`rho`, `u`, `force`, `force_ext`, `f`, `h`). |
@@ -415,7 +415,7 @@ All operators register themselves via `@register_operator(kind)` and are resolve
 
 | Module | Description |
 |--------|-------------|
-| `io` | `SimulationIO` — handles saving timestep data (`.npz` files), configuration snapshots, and directory management. |
+| `io` | `SimulationIO` — handles saving timestep data (`.npz` files), configuration snapshots (via `config_file_type`, defaults to `.toml`), and directory management. |
 | `plotting` | Post-processing plotting utilities. Loads simulation results and configuration from run directories for visualisation. |
 
 ---

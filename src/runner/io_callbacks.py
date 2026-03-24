@@ -32,9 +32,7 @@ Usage (strategy 2)::
 """
 
 from __future__ import annotations
-
-from typing import Any, Callable, Optional, Tuple
-
+from collections.abc import Callable
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -67,7 +65,7 @@ def save_snapshot_callback(
     t: jnp.ndarray,
     save_interval: int,
     skip_interval: int = 0,
-    save_fields: Optional[tuple] = None,
+    save_fields: tuple | None = None,
 ) -> None:
     """Write a snapshot to disk (runs on host, not inside XLA).
 
@@ -114,7 +112,7 @@ def make_save_callback(
     io_handler,
     save_interval: int,
     skip_interval: int = 0,
-    save_fields: Optional[tuple] = None,
+    save_fields: tuple | None = None,
 ) -> Callable:
     """Build an I/O callback for use inside a ``lax.scan`` body.
 

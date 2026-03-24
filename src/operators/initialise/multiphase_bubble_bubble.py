@@ -4,12 +4,10 @@ Places two vapour bubbles side by side in the domain.
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
-
-from setup.lattice import Lattice
 from operators.equilibrium.equilibrium import compute_equilibrium
 from registry import initialise_operator
+from setup.lattice import Lattice
 
 
 @initialise_operator(name="multiphase_bubble_bubble")
@@ -47,14 +45,14 @@ def init_multiphase_bubble_bubble(
     cx1, cy1 = nx / 4.0, ny / 2.0
     d1 = jnp.sqrt((x - cx1) ** 2 + (y - cy1) ** 2)
     rho1 = (rho_l + rho_v) / 2.0 + (rho_l - rho_v) / 2.0 * jnp.tanh(
-        (d1 - radius) / interface_width
+        (d1 - radius) / interface_width,
     )
 
     # Bubble 2
     cx2, cy2 = nx * 2.4 / 4.0, ny / 2.0
     d2 = jnp.sqrt((x - cx2) ** 2 + (y - cy2) ** 2)
     rho2 = (rho_l + rho_v) / 2.0 + (rho_l - rho_v) / 2.0 * jnp.tanh(
-        (d2 - radius) / interface_width
+        (d2 - radius) / interface_width,
     )
 
     # Take the minimum to produce two separate low-density regions

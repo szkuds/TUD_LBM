@@ -1,12 +1,10 @@
 """Velocity magnitude and quiver plot operator."""
 
 from __future__ import annotations
-
 import matplotlib.axes
 import numpy as np
-
-from util.plotting.base import PlotOperator
 from registry import plotting_operator
+from util.plotting.base import PlotOperator
 
 
 @plotting_operator(name="velocity")

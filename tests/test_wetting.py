@@ -1,23 +1,16 @@
-"""
-Tests for:
-    - ``operators.wetting.contact_angle.compute_contact_angle``
-    - ``operators.wetting.contact_line.compute_contact_line_location``
-    - ``operators.wetting.hysteresis`` (WettingParams, clamp, cost fns,
-      optimise routines, update_wetting_state)
-    - Wiring into ``step_multiphase`` via ``WettingState``
+"""Tests for:
+- ``operators.wetting.contact_angle.compute_contact_angle``
+- ``operators.wetting.contact_line.compute_contact_line_location``
+- ``operators.wetting.hysteresis`` (WettingParams, clamp, cost fns,
+optimise routines, update_wetting_state)
+- Wiring into ``step_multiphase`` via ``WettingState``
 """
 
 from __future__ import annotations
-
-import math
 from functools import partial
-
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
-
-from setup.lattice import build_lattice
 
 # =====================================================================
 # Helpers — build a synthetic droplet rho field
@@ -41,11 +34,11 @@ def _droplet_rho(
     if radius is None:
         radius = nx / 4.0
 
-    x = jnp.arange(nx, dtype=jnp.float32)
-    y = jnp.arange(ny, dtype=jnp.float32)
-    X, Y = jnp.meshgrid(x, y, indexing="ij")  # (nx, ny)
+    _x = jnp.arange(nx, dtype=jnp.float32)
+    _y = jnp.arange(ny, dtype=jnp.float32)
+    x, y = jnp.meshgrid(_x, _y, indexing="ij")  # (nx, ny)
 
-    dist = jnp.sqrt((X - centre_x) ** 2 + Y**2)
+    dist = jnp.sqrt((x - centre_x) ** 2 + y**2)
     rho_2d = jnp.where(dist < radius, rho_l, rho_v)
     return rho_2d[:, :, None, None]
 
@@ -161,7 +154,8 @@ class TestWettingParamsHelpers:
         np.testing.assert_allclose(float(p2.d_rho_left), 0.1)
 
     def test_clamp_params(self):
-        from operators.wetting.hysteresis import WettingParams, _clamp_params
+        from operators.wetting.hysteresis import WettingParams
+        from operators.wetting.hysteresis import _clamp_params
 
         p = WettingParams(
             d_rho_left=jnp.array(-0.5),
@@ -195,8 +189,9 @@ class TestOptimiseSingleParam:
     """Inner optimisation loop."""
 
     def test_reduces_loss(self):
-        from operators.wetting.hysteresis import WettingParams, _optimise_single_param
         import optax
+        from operators.wetting.hysteresis import WettingParams
+        from operators.wetting.hysteresis import _optimise_single_param
 
         # Simple quadratic objective: minimise (d_rho_left - 0.1)^2
         target = 0.1
@@ -219,13 +214,14 @@ class TestOptimiseSingleParam:
             phi_right=jnp.array(1.2),
         )
         opt = optax.adam(0.01)
-        p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50)
+        _p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50)
         initial_loss = float(objective(p0))
         assert float(loss_final) < initial_loss
 
     def test_jittable(self):
-        from operators.wetting.hysteresis import WettingParams, _optimise_single_param
         import optax
+        from operators.wetting.hysteresis import WettingParams
+        from operators.wetting.hysteresis import _optimise_single_param
 
         def objective(p):
             return (p.d_rho_left - 0.1) ** 2
@@ -250,7 +246,7 @@ class TestOptimiseSingleParam:
         def run_opt(initial_params):
             return _optimise_single_param(objective, initial_params, mask_fn, opt, 10)
 
-        p_final, loss = run_opt(p0)
+        _p_final, loss = run_opt(p0)
         assert not jnp.isnan(loss)
 
 
@@ -315,8 +311,8 @@ class TestUpdateWettingState:
         assert isinstance(new_wetting, WettingState)
 
     def test_ca_fields_updated(self):
-        from operators.wetting.hysteresis import update_wetting_state
         from operators.wetting.contact_angle import compute_contact_angle
+        from operators.wetting.hysteresis import update_wetting_state
 
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
@@ -329,10 +325,14 @@ class TestUpdateWettingState:
         # measured by compute_contact_angle (not the initial placeholder)
         expected_ca_l, expected_ca_r = compute_contact_angle(rho, RHO_MEAN)
         np.testing.assert_allclose(
-            float(new_wetting.ca_left), float(expected_ca_l), atol=1e-4
+            float(new_wetting.ca_left),
+            float(expected_ca_l),
+            atol=1e-4,
         )
         np.testing.assert_allclose(
-            float(new_wetting.ca_right), float(expected_ca_r), atol=1e-4
+            float(new_wetting.ca_right),
+            float(expected_ca_r),
+            atol=1e-4,
         )
 
     def test_cll_fields_updated(self):
@@ -391,10 +391,10 @@ class TestStepMultiphaseWithWetting:
     @staticmethod
     def _setup_and_state():
         from config.simulation_config import SimulationConfig
-        from setup.simulation_setup import build_setup
-        from runner.run import init_state
-        from state.state import WettingState
         from operators.equilibrium.equilibrium import compute_equilibrium
+        from runner.run import init_state
+        from setup.simulation_setup import build_setup
+        from state.state import WettingState
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -474,9 +474,9 @@ class TestStepMultiphaseWithWetting:
 
     def test_without_wetting_state_unchanged(self):
         """When wetting is None, step should not fail."""
-        from runner.step import step_multiphase
-        from runner.run import init_state
         from config.simulation_config import SimulationConfig
+        from runner.run import init_state
+        from runner.step import step_multiphase
         from setup.simulation_setup import build_setup
 
         cfg = SimulationConfig(
@@ -508,9 +508,9 @@ class TestLegacyPhase3Unbroken:
     """Phase 3 functional API should still pass."""
 
     def test_phase3_functional_step(self):
-        from runner.step import step_single_phase
-        from runner.run import init_state
         from config.simulation_config import SimulationConfig
+        from runner.run import init_state
+        from runner.step import step_single_phase
         from setup.simulation_setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)

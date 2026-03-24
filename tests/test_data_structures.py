@@ -235,7 +235,7 @@ class TestSimulationConfigValidation:
     def test_invalid_tau_raises(self):
         from config.simulation_config import SimulationConfig
 
-        with pytest.raises(ValueError, match="tau must be > 0.5"):
+        with pytest.raises(ValueError, match=r"tau must be > 0\.5"):
             SimulationConfig(grid_shape=(8, 8), tau=0.3)
 
     def test_invalid_nt_raises(self):
@@ -346,7 +346,7 @@ class TestSimulationConfigMultiphase:
     def test_multiphase_invalid_densities_raises(self):
         from config.simulation_config import SimulationConfig
 
-        with pytest.raises(ValueError, match="rho_l.*must be greater than rho_v"):
+        with pytest.raises(ValueError, match=r"rho_l.*must be greater than rho_v"):
             SimulationConfig(
                 sim_type="multiphase",
                 grid_shape=(8, 8),
@@ -387,7 +387,7 @@ class TestSimulationConfigToDict:
 
 
 # =====================================================================
-# SimulationSetup (pytree) and build_setup
+# --- SimulationSetup (pytree) and build_setup ---
 # =====================================================================
 
 
@@ -444,7 +444,8 @@ class TestBuildSetup:
         assert setup2.grid_shape == setup.grid_shape
         assert setup2.tau == setup.tau
         np.testing.assert_array_equal(
-            np.array(setup2.lattice.c), np.array(setup.lattice.c)
+            np.array(setup2.lattice.c),
+            np.array(setup.lattice.c),
         )
 
     def test_save_fields_tuple(self):
@@ -526,7 +527,7 @@ class TestBuildSetup:
 
 
 # =====================================================================
-# build_bc_masks (standalone)
+# --- build_bc_masks (standalone) ---
 # =====================================================================
 
 
@@ -558,7 +559,7 @@ class TestBuildBCMasks:
 
 
 # =====================================================================
-# build_multiphase_params (standalone)
+# --- build_multiphase_params (standalone) ---
 # =====================================================================
 
 

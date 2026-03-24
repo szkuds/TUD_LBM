@@ -7,16 +7,16 @@ Tests validate that:
 4. The get_adapter factory dispatches correctly
 """
 
-import os
 import sys
 import textwrap
-
+from pathlib import Path
 import pytest
 
 # Ensure src/ is on the path so imports work from the tests/ directory
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from config.adapter_base import ConfigAdapter, get_adapter
+from config.adapter_base import ConfigAdapter
+from config.adapter_base import get_adapter
 from config.adapter_toml import TomlAdapter
 from config.simulation_config import SimulationConfig
 
@@ -319,7 +319,8 @@ class TestTomlAdapterErrors:
         p = tmp_path / "empty.toml"
         p.write_text("[output]\nresults_dir = '/tmp'\n")
         with pytest.raises(
-            ValueError, match="missing the required \\[simulation_type\\] table"
+            ValueError,
+            match="missing the required \\[simulation_type\\] table",
         ):
             TomlAdapter().load(str(p))
 
@@ -366,7 +367,7 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_tau.toml"
         p.write_text(content)
-        with pytest.raises(ValueError, match="tau must be > 0.5"):
+        with pytest.raises(ValueError, match=r"tau must be > 0\.5"):
             TomlAdapter().load(str(p))
 
 
@@ -396,24 +397,25 @@ class TestExampleFiles:
 
     @pytest.fixture
     def example_dir(self):
-        return os.path.join(os.path.dirname(__file__), "example_for_test")
+        return Path(__file__).parent / "example_for_test"
 
     def test_config_simple_loads(self, example_dir):
-        path = os.path.join(example_dir, "config_simple.toml")
-        if not os.path.exists(path):
+        path = example_dir / "config_simple.toml"
+        if not path.exists():
             pytest.skip("example_for_test/config_simple.toml not found")
-        bundle = TomlAdapter().load(path)
+        bundle = TomlAdapter().load(str(path))
         assert bundle.is_single_phase
         assert bundle.grid_shape == (100, 100)
 
     def test_config_complex_loads(self, example_dir):
         """Load the complex config — no mocking needed since forces are
-        now stored as plain dicts in force_config, not instantiated."""
-        path = os.path.join(example_dir, "config_complex.toml")
-        if not os.path.exists(path):
+        now stored as plain dicts in force_config, not instantiated.
+        """
+        path = example_dir / "config_complex.toml"
+        if not path.exists():
             pytest.skip("example_for_test/config_complex.toml not found")
 
-        bundle = TomlAdapter().load(path)
+        bundle = TomlAdapter().load(str(path))
 
         assert bundle.is_multiphase
         assert bundle.grid_shape == (201, 201)

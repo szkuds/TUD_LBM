@@ -15,13 +15,11 @@ Usage::
 """
 
 from __future__ import annotations
-
 from typing import NamedTuple
-
 import jax.numpy as jnp
 import numpy as np
-
-from registry import lattice_operator, get_operators
+from registry import get_operators
+from registry import lattice_operator
 
 
 class Lattice(NamedTuple):
@@ -66,16 +64,16 @@ _D2Q9_W = [4 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 36, 1 / 36, 1 / 36, 1 / 36]
 @lattice_operator(name="D2Q9", dim=2, q=9)
 def _build_d2q9() -> Lattice:
     """Construct a D2Q9 :class:`Lattice`."""
-    c_np = np.array(list(zip(_D2Q9_CX, _D2Q9_CY))).T  # shape (2, 9)
+    c_np = np.array(list(zip(_D2Q9_CX, _D2Q9_CY, strict=False))).T  # shape (2, 9)
     w_np = np.array(_D2Q9_W)
-    c_T = c_np.T  # shape (9, 2) — row per velocity
+    c_t = c_np.T  # shape (9, 2) — row per velocity
 
-    opp = np.array([c_T.tolist().index((-c_T[i]).tolist()) for i in range(9)])
-    main = np.nonzero((np.abs(c_T[:, 0]) + np.abs(c_T[:, 1])) == 1)[0]
-    right = np.nonzero(c_T[:, 0] == 1)[0]
-    left = np.nonzero(c_T[:, 0] == -1)[0]
-    top = np.nonzero(c_T[:, 1] == 1)[0]
-    bottom = np.nonzero(c_T[:, 1] == -1)[0]
+    opp = np.array([c_t.tolist().index((-c_t[i]).tolist()) for i in range(9)])
+    main = np.nonzero((np.abs(c_t[:, 0]) + np.abs(c_t[:, 1])) == 1)[0]
+    right = np.nonzero(c_t[:, 0] == 1)[0]
+    left = np.nonzero(c_t[:, 0] == -1)[0]
+    top = np.nonzero(c_t[:, 1] == 1)[0]
+    bottom = np.nonzero(c_t[:, 1] == -1)[0]
 
     return Lattice(
         name="D2Q9",

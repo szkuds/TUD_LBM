@@ -5,8 +5,7 @@ import pytest
 
 @pytest.mark.skip(reason="Package initialization needs to be completed")
 def test_package_imports():
-    """
-    Test that the tud_lbm package can be imported.
+    """Test that the tud_lbm package can be imported.
 
     Given: tud_lbm package is installed
     When: attempting to import tud_lbm
@@ -19,8 +18,7 @@ def test_package_imports():
 
 @pytest.mark.skip(reason="Package initialization needs to be completed")
 def test_package_has_core_modules():
-    """
-    Test that runner modules exist in the package.
+    """Test that runner modules exist in the package.
 
     Given: tud_lbm package is imported
     When: checking for runner submodules

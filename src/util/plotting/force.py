@@ -1,12 +1,10 @@
 """Force magnitude plot operators."""
 
 from __future__ import annotations
-
 import matplotlib.axes
 import numpy as np
-
-from util.plotting.base import PlotOperator
 from registry import plotting_operator
+from util.plotting.base import PlotOperator
 
 
 class _BaseForceOperator(PlotOperator):
@@ -64,4 +62,3 @@ class ExternalForcePlotOperator(_BaseForceOperator):
     name = "force_ext"
     field_name = "force_ext"
     title = "External force"
-

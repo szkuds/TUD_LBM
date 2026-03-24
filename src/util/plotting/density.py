@@ -1,13 +1,11 @@
 """Density field plot operator."""
 
 from __future__ import annotations
-
 import matplotlib.axes
 import matplotlib.colors
 import numpy as np
-
-from util.plotting.base import PlotOperator
 from registry import plotting_operator
+from util.plotting.base import PlotOperator
 
 
 @plotting_operator(name="density")
@@ -52,4 +50,3 @@ class DensityPlotOperator(PlotOperator):
         ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Density")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
-

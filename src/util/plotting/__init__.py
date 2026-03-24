@@ -9,10 +9,8 @@ visualise      — backward-compatible entry point for simulation objects
 """
 
 from __future__ import annotations
-
 import json
 from pathlib import Path
-from typing import Any
 
 # Trigger operator self-registration at import time.
 from . import analysis as _analysis_mod  # noqa: F401
@@ -22,6 +20,7 @@ from . import velocity as _velocity_mod  # noqa: F401
 from .base import PlotOperator
 from .figure_builder import FigureBuilder
 
+
 def visualise(run_dir, title: str = "LBM Simulation Results", skip: int = 0) -> None:
     """Plotting entry point.
 
@@ -29,7 +28,8 @@ def visualise(run_dir, title: str = "LBM Simulation Results", skip: int = 0) -> 
     path. In both cases, figures are rendered by :class:`FigureBuilder`.
     """
     # TODO: Need make this function with adapters
-    config = json.load(open(run_dir + "/config.json"))
+    with Path(run_dir + "/config.json").open() as _fh:
+        config = json.load(_fh)
     if title and "plot_title" not in config:
         config["plot_title"] = title
 

@@ -5,13 +5,9 @@ Computes density (zeroth moment) and velocity (first moment / density).
 """
 
 from __future__ import annotations
-
-from typing import Tuple
-
 import jax.numpy as jnp
-
-from setup.lattice import Lattice
 from registry import macroscopic_operator
+from setup.lattice import Lattice
 
 
 @macroscopic_operator(name="standard")
@@ -19,7 +15,7 @@ def compute_macroscopic(
     f: jnp.ndarray,
     lattice: Lattice,
     force: jnp.ndarray | None = None,
-) -> Tuple[jnp.ndarray, jnp.ndarray] | Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray] | tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Compute density and velocity from population distributions.
 
     Args:

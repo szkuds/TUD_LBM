@@ -23,10 +23,8 @@ closure.
 """
 
 from __future__ import annotations
-
 import jax
 import jax.numpy as jnp
-
 from registry import register_operator
 
 
@@ -96,8 +94,7 @@ def compute_gradient(
     nx, ny = grid_2d.shape
     out = jnp.zeros((nx, ny, 1, 2))
     out = out.at[:, :, 0, 0].set(gx)
-    out = out.at[:, :, 0, 1].set(gy)
-    return out
+    return out.at[:, :, 0, 1].set(gy)
 
 
 def compute_wetting_gradient(
@@ -106,6 +103,7 @@ def compute_wetting_gradient(
     pad_mode: list,
     wetting_params: dict,
     chemical_step: int | None = None,
+    bc_config: dict | None = None,
 ):
     """Return a jitted gradient closure with wetting ghost-cell correction.
 
@@ -124,18 +122,20 @@ def compute_wetting_gradient(
             ``d_rho_r``) **or** array-valued ``phi``/``drho`` with a
             ``chemical_step`` index.
         chemical_step: Optional step index for chemical-step simulations.
+        bc_config: Boundary-condition config dict, e.g.
+            ``{"bottom": "wetting", "top": "bounce-back", ...}``.
+            Passed through to :func:`apply_wetting_to_all_edges`.
 
     Returns:
         ``_grad(grid) → jnp.ndarray`` of shape ``(nx, ny, 1, 2)``.
         The returned function is already jitted.
     """
-    from operators.wetting.wetting_util import (
-        apply_wetting_to_all_edges,
-        resolve_wetting_fields,
-    )
+    from operators.wetting.wetting_util import apply_wetting_to_all_edges
+    from operators.wetting.wetting_util import resolve_wetting_fields
 
     phi_l, phi_r, d_rho_l, d_rho_r = resolve_wetting_fields(
-        wetting_params, chemical_step
+        wetting_params,
+        chemical_step,
     )
     rho_l = wetting_params["rho_l"]
     rho_v = wetting_params["rho_v"]
@@ -154,9 +154,17 @@ def compute_wetting_gradient(
         gp = jnp.pad(gp, ((0, 1), (0, 0)), mode=pad_mode[2])
         gp = jnp.pad(gp, ((1, 0), (0, 0)), mode=pad_mode[3])
 
-        # Overwrite bottom ghost row with wetting boundary values
+        # Overwrite wetting ghost rows for edges marked 'wetting' in bc_config
         gp = apply_wetting_to_all_edges(
-            gp, rho_l, rho_v, phi_l, phi_r, d_rho_l, d_rho_r, width
+            gp,
+            rho_l,
+            rho_v,
+            phi_l,
+            phi_r,
+            d_rho_l,
+            d_rho_r,
+            width,
+            bc_config,
         )
 
         # Delegate to the plain gradient on the corrected interior

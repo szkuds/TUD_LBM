@@ -5,14 +5,12 @@ boundaries require no additional transformation.
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
-
-from setup.lattice import Lattice
 from registry import boundary_condition
+from setup.lattice import Lattice
 
 
-@boundary_condition(name="periodic", pad_edge_mode='wrap')
+@boundary_condition(name="periodic", pad_edge_mode="wrap")
 def apply_periodic(
     f_streamed: jnp.ndarray,
     f_collision: jnp.ndarray,

@@ -43,12 +43,9 @@ Usage::
 """
 
 from __future__ import annotations
-
-from typing import TYPE_CHECKING, Optional, Tuple
-
+from typing import TYPE_CHECKING
 import jax
 import jax.numpy as jnp
-
 from state.state import State
 
 if TYPE_CHECKING:
@@ -61,8 +58,8 @@ if TYPE_CHECKING:
 def init_state(
     setup,
     *,
-    f: Optional[jnp.ndarray] = None,
-    init_kwargs: Optional[dict] = None,
+    f: jnp.ndarray | None = None,
+    init_kwargs: dict | None = None,
 ) -> State:
     """Create an initial :class:`State` for the given setup.
 
@@ -91,7 +88,6 @@ def init_state(
 
     lattice = setup.lattice
     nx, ny = setup.grid_shape[0], setup.grid_shape[1]
-    q = lattice.q
     d = lattice.d
 
     if f is None:
@@ -161,12 +157,12 @@ def init_state(
 def run(
     setup,
     initial_state: State,
-    nt: Optional[int] = None,
+    nt: int | None = None,
     save_interval: int = 1,
-    io_handler: Optional["SimulationIO"] = None,
+    io_handler: SimulationIO | None = None,
     skip_interval: int = 0,
-    save_fields: Optional[Tuple[str, ...]] = None,
-) -> Tuple[State, Optional[State]]:
+    save_fields: tuple[str, ...] | None = None,
+) -> tuple[State, State | None]:
     """Run *nt* steps via ``jax.lax.scan``.
 
     Args:

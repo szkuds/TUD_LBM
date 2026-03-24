@@ -29,20 +29,19 @@ Usage::
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
-
-from state.state import State
-from operators.macroscopic.single_phase import compute_macroscopic
-from operators.equilibrium.equilibrium import compute_equilibrium
-from operators.streaming.streaming import stream
-from operators.collision.factory import build_collision_fn
 from operators.boundary.composite import build_composite_bc
-from operators.force.source_term import source as compute_source
+from operators.collision.factory import build_collision_fn
+from operators.equilibrium.equilibrium import compute_equilibrium
+from operators.force.electric import compute_electric_force
+from operators.force.electric import update_hi
 from operators.force.gravity import compute_gravity_force
-from operators.force.electric import compute_electric_force, update_hi
+from operators.force.source_term import source as compute_source
 from operators.macroscopic.multiphase import compute_macroscopic_multiphase
+from operators.macroscopic.single_phase import compute_macroscopic
+from operators.streaming.streaming import stream
 from operators.wetting.hysteresis import update_wetting_state
+from state.state import State
 
 # ── Step functions ───────────────────────────────────────────────────
 
@@ -84,7 +83,7 @@ def step_single_phase(setup, state: State) -> State:
         f_col = collision_fn(state.f, feq, setup.tau)
 
     # 4. Streaming
-    f_stream = stream(f_col, lattice)
+    f_stream = stream(f_col, lattice, bc_config=setup.bc_config)
 
     # 5. Boundary conditions
     f_bc = bc_fn(f_stream, f_col, setup.bc_masks)
@@ -126,10 +125,7 @@ def step_multiphase(setup, state: State) -> State:
         # We need rho first for gravity — use a quick density computation
         rho_pre = jnp.sum(state.f, axis=2, keepdims=True)
         grav_force = compute_gravity_force(setup.gravity_template, rho_pre)
-        if force_ext is not None:
-            force_ext = force_ext + grav_force
-        else:
-            force_ext = grav_force
+        force_ext = force_ext + grav_force if force_ext is not None else grav_force
 
     # Electric force contribution
     new_h = state.h
@@ -148,10 +144,7 @@ def step_multiphase(setup, state: State) -> State:
             lattice,
             stream,
         )
-        if force_ext is not None:
-            force_ext = force_ext + elec_force
-        else:
-            force_ext = elec_force
+        force_ext = force_ext + elec_force if force_ext is not None else elec_force
 
     rho, u, force_tot = compute_macroscopic_multiphase(
         state.f,
@@ -169,7 +162,7 @@ def step_multiphase(setup, state: State) -> State:
     f_col = collision_fn(state.f, feq, setup.tau, src)
 
     # 4. Streaming
-    f_stream = stream(f_col, lattice)
+    f_stream = stream(f_col, lattice, bc_config=setup.bc_config)
 
     # 5. Boundary conditions
     f_bc = bc_fn(f_stream, f_col, setup.bc_masks)

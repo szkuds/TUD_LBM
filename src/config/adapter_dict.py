@@ -12,16 +12,14 @@ Usage::
 """
 
 from __future__ import annotations
-
-from typing import Any, Dict
-
+from typing import Any
 from config.simulation_config import SimulationConfig
 
 
 class DictAdapter:
     """Adapter that builds a :class:`SimulationConfig` from a dict."""
 
-    def load(self, d: Dict[str, Any]) -> SimulationConfig:
+    def load(self, d: dict[str, Any]) -> SimulationConfig:
         """Build a :class:`SimulationConfig` from *d*.
 
         Normalises common key formats (``grid_shape`` list → tuple)

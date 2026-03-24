@@ -9,12 +9,10 @@ Verifies:
 """
 
 from __future__ import annotations
-
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-
 from setup.lattice import build_lattice
 
 NX, NY = 16, 16
@@ -73,7 +71,10 @@ class TestComputeGradient:
         assert out.shape == (NX, NY, 1, 2)
 
     def test_x_gradient_nonzero_for_x_varying_field(
-        self, lattice, linear_x_field, periodic_pad
+        self,
+        lattice,
+        linear_x_field,
+        periodic_pad,
     ):
         from operators.differential.gradient import compute_gradient
 
@@ -180,20 +181,24 @@ class TestMakeWettingGradient:
         assert out.shape == (NX, NY, 1, 2)
 
     def test_differs_from_plain_gradient_on_nonuniform_field(
-        self, lattice, periodic_pad, wetting_params
+        self,
+        lattice,
+        periodic_pad,
+        wetting_params,
     ):
         """Ghost-cell correction should change the result for a non-constant field."""
-        from operators.differential.gradient import (
-            compute_gradient,
-            compute_wetting_gradient,
-        )
+        from operators.differential.gradient import compute_gradient
+        from operators.differential.gradient import compute_wetting_gradient
 
         # A non-trivial density field
         rho = jnp.linspace(0.3, 1.0, NX)[:, None, None, None] * jnp.ones((NX, NY, 1, 1))
 
         plain = compute_gradient(rho, lattice.w, lattice.c, periodic_pad)
         wetting_fn = compute_wetting_gradient(
-            lattice.w, lattice.c, periodic_pad, wetting_params
+            lattice.w,
+            lattice.c,
+            periodic_pad,
+            wetting_params,
         )
         with_wetting = wetting_fn(rho)
 
@@ -221,7 +226,11 @@ class TestMakeWettingGradient:
             "d_rho": [0.03, 0.07],
         }
         fn = compute_wetting_gradient(
-            lattice.w, lattice.c, periodic_pad, params_array, chemical_step=0
+            lattice.w,
+            lattice.c,
+            periodic_pad,
+            params_array,
+            chemical_step=0,
         )
         out = fn(const_field)
         assert out.shape == (NX, NY, 1, 2)
@@ -249,7 +258,7 @@ class TestWettingUtil:
         from operators.wetting.wetting_util import resolve_wetting_fields
 
         p = {"phi": [1.2, 1.4], "d_rho": [0.03, 0.07]}
-        phi_l, phi_r, d_rho_l, d_rho_r = resolve_wetting_fields(p, chemical_step=0)
+        phi_l, phi_r, _d_rho_l, _d_rho_r = resolve_wetting_fields(p, chemical_step=0)
         assert phi_l == 1.2
         assert phi_r == 1.4
 
@@ -257,7 +266,7 @@ class TestWettingUtil:
         from operators.wetting.wetting_util import resolve_wetting_fields
 
         p = {"phi": [1.2, 1.4], "d_rho": [0.03, 0.07]}
-        phi_l, phi_r, d_rho_l, d_rho_r = resolve_wetting_fields(p, chemical_step=1)
+        phi_l, phi_r, _d_rho_l, _d_rho_r = resolve_wetting_fields(p, chemical_step=1)
         # step=1 swaps sides
         assert phi_l == 1.4
         assert phi_r == 1.2

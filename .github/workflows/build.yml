@@ -1,94 +1,67 @@
-name: Tests
+name: Python package
 
 on:
   push:
     branches:
     - main
-    - develop
   pull_request:
     branches:
     - main
-    - develop
 
 jobs:
 
-  test:
-    name: Test on ${{ matrix.os }} (Python ${{ matrix.python-version }})
+  build:
+    name: Build for (${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
-        os: ['ubuntu-latest', 'macos-latest']
-        python-version: ['3.11', '3.12']
-    defaults:
-      run:
-        shell: bash -l {0}
-
+        os: ['ubuntu-latest', 'macos-latest', 'windows-latest']
+        python-version: ['3.14']
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Conda
-        uses: conda-incubator/setup-miniconda@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
-          miniconda-version: latest
-          auto-activate-base: true
-          activate-environment: tud-lbm
-          environment-file: environment.yml
           python-version: ${{ matrix.python-version }}
-
-      - name: Display Conda environment info
+      - name: Python info
+        shell: bash -e {0}
         run: |
-          conda info
-          conda list
+          which python
           python --version
-
-      - name: Install dev dependencies
+      - name: Upgrade pip and install dependencies
         run: |
-          pip install pytest-cov python-dotenv
-
-      - name: Run tests with pytest
+          python -m pip install --upgrade pip setuptools
+          python -m pip install pytest pytest-cov coverage python-dotenv
+          python -m pip install jax numpy scipy optax matplotlib click rich tomli_w
+          python -m pip install .
+      - name: Run unit tests
+        run: python -m pytest -v
+      - name: Verify that we can build the package
         run: |
-          pytest tests/ -v --tb=short --cov=src --cov-report=term-missing
-
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v3
-        if: always()
-        with:
-          files: ./coverage.xml
-          flags: unittests
-          name: codecov-umbrella
-
+          python -m pip install --upgrade build
+          python -m build.__main__
   lint:
-    name: Code quality checks
+    name: Linting build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash -l {0}
-
+    strategy:
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Conda
-        uses: conda-incubator/setup-miniconda@v3
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
         with:
-          miniconda-version: latest
-          auto-activate-base: true
-          activate-environment: tud-lbm
-          environment-file: environment.yml
-          python-version: '3.11'
-
-      - name: Display environment info
+          python-version: 3.14
+      - name: Python info
+        shell: bash -e {0}
         run: |
+          which python
           python --version
-          pip list
-
-      - name: Install linting tools
+      - name: Upgrade pip and install dependencies
         run: |
-          pip install ruff pylint black
-
-      - name: Check style with ruff
+          python -m pip install --upgrade pip setuptools
+          python -m pip install ruff
+      - name: Check style against standards using ruff
         run: |
-          ruff check src/
-
-      - name: Check formatting with black
-        run: |
-          black --check src/ tests/
+          ruff check
+          ruff format --check

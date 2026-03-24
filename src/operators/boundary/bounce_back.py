@@ -12,15 +12,13 @@ compile-time constants derived from the :class:`Lattice`.
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
 import numpy as np
-
-from setup.lattice import Lattice
 from registry import boundary_condition
+from setup.lattice import Lattice
 
 
-@boundary_condition(name="bounce-back", pad_edge_mode='edge')
+@boundary_condition(name="bounce-back", pad_edge_mode="edge")
 def apply_bounce_back(
     f_streamed: jnp.ndarray,
     f_collision: jnp.ndarray,

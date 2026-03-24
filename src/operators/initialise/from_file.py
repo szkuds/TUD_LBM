@@ -6,13 +6,11 @@ and is therefore only called at setup time, outside JIT.
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
 import numpy as np
-
-from setup.lattice import Lattice
 from operators.equilibrium.equilibrium import compute_equilibrium
 from registry import initialise_operator
+from setup.lattice import Lattice
 
 
 @initialise_operator(name="init_from_file")
@@ -40,21 +38,13 @@ def init_from_file(
 
     Raises:
         FileNotFoundError: If *npz_path* does not exist.
-        AssertionError: If the loaded shapes do not match ``(nx, ny, ...)``.
+        ValueError: If the loaded shapes do not match ``(nx, ny, ...)``.
     """
     data = np.load(npz_path)
     rho = jnp.array(data["rho"])
     u = jnp.array(data["u"])
-    assert rho.shape == (
-        nx,
-        ny,
-        1,
-        1,
-    ), f"Expected rho shape ({nx}, {ny}, 1, 1), got {rho.shape}"
-    assert u.shape == (
-        nx,
-        ny,
-        1,
-        2,
-    ), f"Expected u shape ({nx}, {ny}, 1, 2), got {u.shape}"
+    if rho.shape != (nx, ny, 1, 1):
+        raise ValueError(f"Expected rho shape ({nx}, {ny}, 1, 1), got {rho.shape}")
+    if u.shape != (nx, ny, 1, 2):
+        raise ValueError(f"Expected u shape ({nx}, {ny}, 1, 2), got {u.shape}")
     return compute_equilibrium(rho, u, lattice)

@@ -26,16 +26,15 @@ Usage::
 """
 
 from __future__ import annotations
-
-from typing import Any, Dict, NamedTuple, Optional, Tuple, List
-
+from typing import Any
+from typing import NamedTuple
 import jax.numpy as jnp
-
-from setup.lattice import Lattice, build_lattice
+from operators.differential.config import DifferentialConfig
 from operators.differential.factory import build_differential_operators
 from operators.differential.operators import DifferentialOperators
 from operators.differential.pad_modes import determine_pad_modes
-from operators.differential.config import DifferentialConfig
+from setup.lattice import Lattice
+from setup.lattice import build_lattice
 
 
 class BCMasks(NamedTuple):
@@ -69,8 +68,8 @@ class MultiphaseParams(NamedTuple):
     rho_v: float
     interface_width: int
     bubble: bool = False
-    rho_ref: Optional[float] = None
-    g: Optional[float] = None
+    rho_ref: float | None = None
+    g: float | None = None
 
 
 class SimulationSetup(NamedTuple):
@@ -105,58 +104,58 @@ class SimulationSetup(NamedTuple):
 
     # Lattice and grid
     lattice: Lattice
-    grid_shape: Tuple[int, ...]
+    grid_shape: tuple[int, ...]
 
     # Physics
     tau: float
     nt: int
     collision_scheme: str
-    k_diag: Optional[Tuple[float, ...]] = None
+    k_diag: tuple[float, ...] | None = None
 
     # Boundary
-    bc_config: Optional[Dict[str, Any]] = None
-    bc_masks: Optional[BCMasks] = None
+    bc_config: dict[str, Any] | None = None
+    bc_masks: BCMasks | None = None
 
     # Force
     force_enabled: bool = False
-    force_config: Optional[Dict[str, Any]] = None
+    force_config: dict[str, Any] | None = None
 
     # Initialisation
     init_type: str = "standard"
-    init_dir: Optional[str] = None
+    init_dir: str | None = None
 
     # IO
     results_dir: str = ""
     save_interval: int = 100
     skip_interval: int = 0
-    save_fields: Optional[tuple] = None  # tuple (immutable) instead of list
+    save_fields: tuple | None = None  # tuple (immutable) instead of list
 
     # Multiphase (None for single-phase)
-    multiphase_params: Optional[MultiphaseParams] = None
+    multiphase_params: MultiphaseParams | None = None
 
     # Wetting / hysteresis
-    wetting_config: Optional[Dict[str, Any]] = None
-    hysteresis_config: Optional[Dict[str, Any]] = None
+    wetting_config: dict[str, Any] | None = None
+    hysteresis_config: dict[str, Any] | None = None
 
     # Gravity force (pre-computed template, or None)
-    gravity_template: Optional[jnp.ndarray] = None
+    gravity_template: jnp.ndarray | None = None
 
     # Electric force params (or None)
-    electric_params: Optional[Any] = None  # ElectricParams NamedTuple
+    electric_params: Any | None = None  # ElectricParams NamedTuple
 
     # Differential operators (pre-built closures, or None)
-    diff_ops: Optional[DifferentialOperators] = None
+    diff_ops: DifferentialOperators | None = None
 
     # Extra
-    extra: Optional[Dict[str, Any]] = None
+    extra: dict[str, Any] | None = None
 
 
 # ── Helper factories ─────────────────────────────────────────────────
 
 
 def build_bc_masks(
-    grid_shape: Tuple[int, ...],
-    bc_config: Optional[Dict[str, Any]] = None,
+    grid_shape: tuple[int, ...],
+    bc_config: dict[str, Any] | None = None,
 ) -> BCMasks:
     """Construct pre-computed boundary-condition masks.
 
@@ -233,7 +232,7 @@ def build_setup(config) -> SimulationSetup:
     bc_masks = build_bc_masks(tuple(config.grid_shape), bc_config)
 
     # Build multiphase params if applicable
-    mp_params: Optional[MultiphaseParams] = None
+    mp_params: MultiphaseParams | None = None
     sim_type = getattr(config, "sim_type", "single_phase")
     if sim_type == "multiphase":
         mp_params = build_multiphase_params(config)
@@ -247,51 +246,48 @@ def build_setup(config) -> SimulationSetup:
     electric_params = None
     force_config = getattr(config, "force_config", None)
     if force_config:
+        import inspect
         from registry import get_operators
 
         force_ops = get_operators("force")
 
         # force_config can be a single dict or a list of dicts
-        force_entries = (
-            force_config if isinstance(force_config, list) else [force_config]
-        )
+        force_entries = force_config if isinstance(force_config, list) else [force_config]
         for entry in force_entries:
             if not isinstance(entry, dict):
                 continue
             ftype = entry.get("type", "")
+            if not ftype:
+                continue
 
-            # Resolve force builder from registry when possible
-            if ftype == "gravity_multiphase":
-                builder = force_ops[ftype].target if ftype in force_ops else None
-                if builder is None:
-                    from operators.force.gravity import build_gravity_force as builder
-                gravity_template = builder(
-                    tuple(config.grid_shape),
-                    force_g=entry.get("force_g", 0.0),
-                    inclination_angle_deg=entry.get("inclination_angle_deg", 0.0),
-                )
-            elif ftype == "electric":
-                builder = force_ops[ftype].target if ftype in force_ops else None
-                if builder is None:
-                    from operators.force.electric import (
-                        build_electric_params as builder,
-                    )
-                electric_params = builder(
-                    permittivity_liquid=entry.get("permittivity_liquid", 1.0),
-                    permittivity_vapour=entry.get("permittivity_vapour", 1.0),
-                    conductivity_liquid=entry.get("conductivity_liquid", 0.0),
-                    conductivity_vapour=entry.get("conductivity_vapour", 0.0),
-                    applied_voltage=entry.get("applied_voltage", 0.0),
-                    voltage_top=entry.get("voltage_top", 0.0),
-                    voltage_bottom=entry.get("voltage_bottom", 0.0),
-                )
+            if ftype not in force_ops:
+                raise ValueError(f"Unknown force type '{ftype}'. Available: {sorted(force_ops)}")
+
+            op_entry = force_ops[ftype]
+            builder = op_entry.target
+
+            # Build available kwargs: entry params (minus "type") + grid_shape
+            available = {k: v for k, v in entry.items() if k != "type"}
+            available["grid_shape"] = tuple(config.grid_shape)
+
+            # Only pass params the builder actually accepts
+            sig = inspect.signature(builder)
+            kwargs = {k: v for k, v in available.items() if k in sig.parameters}
+            result = builder(**kwargs)
+
+            # Store result in the field indicated by registry metadata
+            result_field = op_entry.metadata.get("result_field") if op_entry.metadata else None
+            if result_field == "gravity_template":
+                gravity_template = result
+            elif result_field == "electric_params":
+                electric_params = result
 
     # ── Build differential operators ──────────────────────────────────
     # Ensure BC modules are imported so their @boundary_condition decorators
     # have fired before we query pad_edge_mode metadata.
     from operators.boundary import bounce_back as _bb  # noqa: F401
-    from operators.boundary import symmetry as _sym     # noqa: F401
-    from operators.boundary import periodic as _per     # noqa: F401
+    from operators.boundary import periodic as _per  # noqa: F401
+    from operators.boundary import symmetry as _sym  # noqa: F401
 
     pad_modes = determine_pad_modes(bc_config)
     diff_cfg = DifferentialConfig(
@@ -300,6 +296,7 @@ def build_setup(config) -> SimulationSetup:
         pad_modes=pad_modes,
         wetting_params=getattr(config, "wetting_config", None),
         chemical_step=getattr(config, "chemical_step", None),
+        bc_config=bc_config,
     )
     diff_ops = build_differential_operators(diff_cfg)
     # ──────────────────────────────────────────────────────────────────

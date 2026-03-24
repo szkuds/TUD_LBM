@@ -8,15 +8,13 @@ mirrored distributions from the post-collision state.
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
 import numpy as np
-
-from setup.lattice import Lattice
 from registry import boundary_condition
+from setup.lattice import Lattice
 
 
-@boundary_condition(name="symmetry", pad_edge_mode='edge')
+@boundary_condition(name="symmetry", pad_edge_mode="edge")
 def apply_symmetry(
     f_streamed: jnp.ndarray,
     f_collision: jnp.ndarray,

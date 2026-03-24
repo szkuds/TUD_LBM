@@ -9,16 +9,14 @@ per-side arrays depending on whether a chemical step is used).
 
 ``apply_wetting_to_all_edges`` writes ghost-cell rows into the already-padded
 density field so that the LBM-stencil gradient "sees" the wetting boundary
-condition at the bottom wall.
+condition at whichever edges are marked ``"wetting"`` in ``bc_config``.
 
 All operations are pure Python / NumPy pre-computations that run *before*
 ``@jit``, so there are no tracing constraints.
 """
 
 from __future__ import annotations
-
-from typing import Any, Dict, Optional, Tuple
-
+from typing import Any
 import jax.numpy as jnp
 
 # ---------------------------------------------------------------------------
@@ -27,9 +25,9 @@ import jax.numpy as jnp
 
 
 def resolve_wetting_fields(
-    wetting_params: Dict[str, Any],
-    chemical_step: Optional[int] = None,
-) -> Tuple[Any, Any, Any, Any]:
+    wetting_params: dict[str, Any],
+    chemical_step: int | None = None,
+) -> tuple[Any, Any, Any, Any]:
     """Extract per-side wetting scalars from a *wetting_params* dict.
 
     Supports two layouts:
@@ -75,13 +73,15 @@ def apply_wetting_to_all_edges(
     d_rho_l: Any,
     d_rho_r: Any,
     width: int,
+    bc_config: dict[str, Any] | None = None,
 ) -> jnp.ndarray:
     """Write wetting ghost-cell rows into a padded density array.
 
     The padded array *gp* has shape ``(nx + 2, ny + 2)`` (one ghost cell on
-    each side).  This function overwrites the **bottom ghost row** (index 0)
-    with a wetting density value derived from the liquid/vapour densities and
-    the per-side wetting parameters.
+    each side).  This function overwrites the ghost rows for each edge
+    marked ``"wetting"`` in *bc_config* with a wetting density value
+    derived from the liquid/vapour densities and the per-side wetting
+    parameters.
 
     The ghost-cell value at column *i* is:
 
@@ -93,6 +93,9 @@ def apply_wetting_to_all_edges(
     for the right half, *d_rho* is the corresponding density offset, and
     *profile* is a smooth step function of width *width*.
 
+    If *bc_config* is ``None``, only the bottom ghost row is written
+    (legacy default behaviour).
+
     Args:
         gp: Padded density field, shape ``(nx + 2, ny + 2)``.
         rho_l: Liquid density.
@@ -102,11 +105,14 @@ def apply_wetting_to_all_edges(
         d_rho_l: Density offset (left side).
         d_rho_r: Density offset (right side).
         width: Interface width in lattice units.
+        bc_config: Boundary-condition config dict, e.g.
+            ``{"bottom": "wetting", "top": "bounce-back", ...}``.
+            ``None`` defaults to bottom-only injection.
 
     Returns:
-        Updated padded field with ghost-cell row set.
+        Updated padded field with ghost-cell rows set.
     """
-    nx2, ny2 = gp.shape  # nx+2, ny+2
+    nx2, _ny2 = gp.shape  # nx+2, ny+2
     nx = nx2 - 2
     half = nx // 2
 
@@ -129,8 +135,18 @@ def apply_wetting_to_all_edges(
     # Ghost-cell density
     rho_ghost = phi_col * rho_l + (1.0 - phi_col) * rho_v + d_rho_col * profile
 
-    # Write into the bottom ghost row (index 0 of the padded array)
-    # The interior columns in gp are indices 1 .. nx (padded by 1 on each side)
-    gp = gp.at[1:-1, 0].set(rho_ghost)
+    # Determine which edges to inject wetting ghost cells for.
+    if bc_config is not None:
+        edges_to_process = [e for e in ("bottom", "top") if bc_config.get(e) == "wetting"]
+    else:
+        edges_to_process = ["bottom"]  # legacy default
+
+    # Write into the ghost row(s) of the padded array.
+    # The interior columns in gp are indices 1 .. nx (padded by 1 on each side).
+    for edge in edges_to_process:
+        if edge == "bottom":
+            gp = gp.at[1:-1, 0].set(rho_ghost)
+        elif edge == "top":
+            gp = gp.at[1:-1, -1].set(rho_ghost)
 
     return gp
