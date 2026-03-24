@@ -91,8 +91,6 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 select = ["ALL"]
 ignore = [
     # --- ignores ---
-    "ANN101", # Missing type annotation for `self` in method
-    "ANN102", # Missing type annotation for `cls` in classmethod
     "ANN204", # Missing return type annotation for special (dunder) method
     "ANN205", # Missing return type annotation for staticmethod
     "FBT",    # Using boolean function arguments
