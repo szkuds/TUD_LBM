@@ -170,17 +170,13 @@ class TestMakeWettingGradient:
     def test_returns_callable(self, lattice, periodic_pad, wetting_params):
         from operators.differential.gradient import compute_wetting_gradient
 
-        fn = compute_wetting_gradient(
-            lattice.w, lattice.c, periodic_pad, wetting_params
-        )
+        fn = compute_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
         assert callable(fn)
 
     def test_output_shape(self, lattice, periodic_pad, wetting_params, const_field):
         from operators.differential.gradient import compute_wetting_gradient
 
-        fn = compute_wetting_gradient(
-            lattice.w, lattice.c, periodic_pad, wetting_params
-        )
+        fn = compute_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
         out = fn(const_field)
         assert out.shape == (NX, NY, 1, 2)
 
@@ -212,9 +208,7 @@ class TestMakeWettingGradient:
     def test_jittable_result(self, lattice, periodic_pad, wetting_params, const_field):
         from operators.differential.gradient import compute_wetting_gradient
 
-        fn = compute_wetting_gradient(
-            lattice.w, lattice.c, periodic_pad, wetting_params
-        )
+        fn = compute_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
         # The closure is already jitted; calling it again should use the compiled version
         out = fn(const_field)
         out2 = fn(const_field)

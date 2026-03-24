@@ -130,4 +130,3 @@ def apply_wetting_to_all_edges(
     # Write into the bottom ghost row (index 0 of the padded array)
     # The interior columns in gp are indices 1 .. nx (padded by 1 on each side)
     return gp.at[1:-1, 0].set(rho_ghost)
-

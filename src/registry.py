@@ -105,9 +105,7 @@ def register_operator(
     """
 
     def decorator(obj: OperatorTarget) -> OperatorTarget:
-        resolved_name = (
-            name or getattr(obj, "name", None) or getattr(obj, "__name__", None)
-        )
+        resolved_name = name or getattr(obj, "name", None) or getattr(obj, "__name__", None)
         if not resolved_name:
             raise ValueError(
                 f"{obj!r} must define 'name' or have a __name__, or pass name= to @register_operator",
@@ -142,11 +140,7 @@ def get_operators(kind: str) -> dict[str, OperatorEntry]:
     """
     # TODO: This checks every key there should be a better way to get the desired information.
     prefix = f"{kind}:"
-    return {
-        entry.name: entry
-        for key, entry in OPERATOR_REGISTRY.items()
-        if key.startswith(prefix)
-    }
+    return {entry.name: entry for key, entry in OPERATOR_REGISTRY.items() if key.startswith(prefix)}
 
 
 def get_operator_names(kind: str) -> set[str]:

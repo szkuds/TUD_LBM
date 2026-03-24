@@ -53,21 +53,13 @@ def compute_contact_angle(
     idx_right_j1 = jnp.where(diff_j1 == 1, size=1, fill_value=0)[0][0] + 1
 
     # Linear interpolation for sub-cell interface location
-    x_left_j0 = idx_left_j0 + (
-        (rho_mean - array_j0[idx_left_j0])
-        / (array_j0[idx_left_j0 + 1] - array_j0[idx_left_j0])
-    )
-    x_left_j1 = idx_left_j1 + (
-        (rho_mean - array_j1[idx_left_j1])
-        / (array_j1[idx_left_j1 + 1] - array_j1[idx_left_j1])
-    )
+    x_left_j0 = idx_left_j0 + ((rho_mean - array_j0[idx_left_j0]) / (array_j0[idx_left_j0 + 1] - array_j0[idx_left_j0]))
+    x_left_j1 = idx_left_j1 + ((rho_mean - array_j1[idx_left_j1]) / (array_j1[idx_left_j1 + 1] - array_j1[idx_left_j1]))
     x_right_j0 = idx_right_j0 - (
-        (rho_mean - array_j0[idx_right_j0])
-        / (array_j0[idx_right_j0 - 1] - array_j0[idx_right_j0])
+        (rho_mean - array_j0[idx_right_j0]) / (array_j0[idx_right_j0 - 1] - array_j0[idx_right_j0])
     )
     x_right_j1 = idx_right_j1 - (
-        (rho_mean - array_j1[idx_right_j1])
-        / (array_j1[idx_right_j1 - 1] - array_j1[idx_right_j1])
+        (rho_mean - array_j1[idx_right_j1]) / (array_j1[idx_right_j1 - 1] - array_j1[idx_right_j1])
     )
 
     ca_left = jnp.rad2deg(math.pi / 2.0 + jnp.arctan(x_left_j0 - x_left_j1))

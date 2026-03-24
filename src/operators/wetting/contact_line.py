@@ -47,13 +47,8 @@ def compute_contact_line_location(
     idx_right = jnp.where(diff_j0 == 1, size=1, fill_value=0)[0][0] + 1
 
     # Sub-cell interpolation
-    x_left_j0 = idx_left + (
-        (rho_mean - array_j0[idx_left]) / (array_j0[idx_left + 1] - array_j0[idx_left])
-    )
-    x_right_j0 = idx_right - (
-        (rho_mean - array_j0[idx_right])
-        / (array_j0[idx_right - 1] - array_j0[idx_right])
-    )
+    x_left_j0 = idx_left + ((rho_mean - array_j0[idx_left]) / (array_j0[idx_left + 1] - array_j0[idx_left]))
+    x_right_j0 = idx_right - ((rho_mean - array_j0[idx_right]) / (array_j0[idx_right - 1] - array_j0[idx_right]))
 
     # Project to solid surface using measured contact angle
     cll_left = x_left_j0 - 1.0 / (2.0 * jnp.tan(jnp.deg2rad(ca_left)))

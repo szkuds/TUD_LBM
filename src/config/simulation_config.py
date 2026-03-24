@@ -109,9 +109,7 @@ class SimulationConfig:
 
     # ── Output / IO ──────────────────────────────────────────────────
     results_dir: str = BASE_RESULTS_DIR
-    save_interval: int = (
-        0  # This is set to 0 to ensure that when nothing is passed the default is nt/10
-    )
+    save_interval: int = 0  # This is set to 0 to ensure that when nothing is passed the default is nt/10
     skip_interval: int = 0
     save_fields: list[str] | None = None
     plot_fields: list[str] | None = None

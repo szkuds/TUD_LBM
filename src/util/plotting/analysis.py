@@ -49,9 +49,7 @@ class AnalysisPlotOperator(PlotOperator):
             iters.append(step)
             umax_vals.append(float(np.max(vel_mag)))
             avg_rho_vals.append(float(np.mean(rho)))
-            ratio_vals.append(
-                float(np.max(rho)) / safe_min if safe_min != 0 else np.inf
-            )
+            ratio_vals.append(float(np.max(rho)) / safe_min if safe_min != 0 else np.inf)
 
         if not iters:
             ax.text(

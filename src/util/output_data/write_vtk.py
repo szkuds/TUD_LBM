@@ -21,20 +21,17 @@ class Vtk(OutputWriter):
 
         def vtk_ready(a):
             return np.ascontiguousarray(
-                    np.atleast_3d(a),
-                )  # Ensure data is in the right shape and memory layout for VTK
+                np.atleast_3d(a),
+            )  # Ensure data is in the right shape and memory layout for VTK
+
         data_vtk_ready = {}
         for key, field in data.items():
-            if (
-                field.shape[-1] == field.shape[-2] == 1
-            ):  # Scalar field => reshape to (Nx, Ny, Nz or 1)
+            if field.shape[-1] == field.shape[-2] == 1:  # Scalar field => reshape to (Nx, Ny, Nz or 1)
                 data_vtk_ready[key] = vtk_ready(field[..., 0, 0])
             elif (
                 field.shape[-1] > 1
             ):  # Vector field => reshape to length 3 tuple of (Nx, Ny, Nz or 1) for each component
-                vector_list = [
-                    vtk_ready(field[..., 0, j]) for j in range(field.shape[-1])
-                ]
+                vector_list = [vtk_ready(field[..., 0, j]) for j in range(field.shape[-1])]
                 if (
                     len(vector_list) < 3
                 ):  # Add zero z-component if only 2D vector field is present (otherwise VTK will complain)
