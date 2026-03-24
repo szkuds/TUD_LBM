@@ -247,7 +247,6 @@ def build_setup(config) -> SimulationSetup:
     force_config = getattr(config, "force_config", None)
     if force_config:
         import inspect
-
         from registry import get_operators
 
         force_ops = get_operators("force")
@@ -262,10 +261,7 @@ def build_setup(config) -> SimulationSetup:
                 continue
 
             if ftype not in force_ops:
-                raise ValueError(
-                    f"Unknown force type '{ftype}'. "
-                    f"Available: {sorted(force_ops)}"
-                )
+                raise ValueError(f"Unknown force type '{ftype}'. Available: {sorted(force_ops)}")
 
             op_entry = force_ops[ftype]
             builder = op_entry.target
@@ -276,17 +272,11 @@ def build_setup(config) -> SimulationSetup:
 
             # Only pass params the builder actually accepts
             sig = inspect.signature(builder)
-            kwargs = {
-                k: v for k, v in available.items() if k in sig.parameters
-            }
+            kwargs = {k: v for k, v in available.items() if k in sig.parameters}
             result = builder(**kwargs)
 
             # Store result in the field indicated by registry metadata
-            result_field = (
-                op_entry.metadata.get("result_field")
-                if op_entry.metadata
-                else None
-            )
+            result_field = op_entry.metadata.get("result_field") if op_entry.metadata else None
             if result_field == "gravity_template":
                 gravity_template = result
             elif result_field == "electric_params":
@@ -306,6 +296,7 @@ def build_setup(config) -> SimulationSetup:
         pad_modes=pad_modes,
         wetting_params=getattr(config, "wetting_config", None),
         chemical_step=getattr(config, "chemical_step", None),
+        bc_config=bc_config,
     )
     diff_ops = build_differential_operators(diff_cfg)
     # ──────────────────────────────────────────────────────────────────

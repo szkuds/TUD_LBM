@@ -466,7 +466,7 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
         feq = compute_equilibrium(rho_new, u_new, lattice)
         src = source(rho_new, u_new, force_tot, lattice, diff_ops=diff_ops)
         f_col = collision_fn(f_t, feq, setup.tau, src)
-        f_str = stream(f_col, lattice)
+        f_str = stream(f_col, lattice, bc_config=setup.bc_config)
         f_bc = bc_fn(f_str, f_col, setup.bc_masks)
 
         # Measure CA and CLL from the output

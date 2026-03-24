@@ -25,6 +25,9 @@ class DifferentialConfig(NamedTuple):
                         dict accepted by :func:`make_wetting_gradient`.
         chemical_step:  Optional step index for chemical-step wetting
                         geometries.
+        bc_config:      Boundary-condition config dict, e.g.
+                        ``{"bottom": "wetting", "top": "bounce-back"}``.
+                        Passed through to :func:`apply_wetting_to_all_edges`.
     """
 
     w: jnp.ndarray
@@ -32,6 +35,7 @@ class DifferentialConfig(NamedTuple):
     pad_modes: list[str]
     wetting_params: dict[str, Any] | None = None
     chemical_step: int | None = None
+    bc_config: dict[str, Any] | None = None
 
     @property
     def wetting_enabled(self) -> bool:

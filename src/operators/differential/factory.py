@@ -73,6 +73,7 @@ def build_differential_operators(cfg: DifferentialConfig) -> DifferentialOperato
             cfg.pad_modes,
             cfg.wetting_params,
             cfg.chemical_step,
+            cfg.bc_config,
         )
     else:
         grad_field = grad_standard  # same object, zero overhead

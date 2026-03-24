@@ -8,7 +8,7 @@ Use :func:`get_adapter` to obtain the right adapter for a given file path::
     from config.adapter_base import get_adapter
 
     adapter = get_adapter("config.toml")
-    config  = adapter.load("config.toml")
+    config = adapter.load("config.toml")
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ class ConfigAdapter(ABC):
     """Abstract adapter that converts a config file into a SimulationConfig.
 
     Concrete adapters must implement :meth:`load` (file → config) and
-    :meth:`save` (config → file).  The shared :meth:`build_sections`
+    :meth:`save` (config → file). The shared :meth:`build_sections`
     helper provides a format-agnostic structured dict that any
     ``save()`` implementation can serialise directly.
     """
@@ -54,7 +54,7 @@ class ConfigAdapter(ABC):
 
         Args:
             config: A validated :class:`SimulationConfig`.
-            path:   Destination file path (extension must match the adapter).
+            path: Destination file path (extension must match the adapter).
 
         Raises:
             OSError: If the file cannot be written.
@@ -71,10 +71,7 @@ class ConfigAdapter(ABC):
         Fields without a ``config_section`` metadata entry default to
         ``"simulation_type"``.
         """
-        return {
-            f.name: f.metadata.get(CONFIG_SECTION, "simulation_type")
-            for f in dataclasses.fields(SimulationConfig)
-        }
+        return {f.name: f.metadata.get(CONFIG_SECTION, "simulation_type") for f in dataclasses.fields(SimulationConfig)}
 
     @staticmethod
     def _serialize_safe(value: Any) -> Any:
@@ -92,29 +89,44 @@ class ConfigAdapter(ABC):
         return value
 
     @classmethod
+    def _handle_boundary_conditions(
+        cls,
+        key: str,
+        value: Any,
+        bc_out: dict[str, Any],
+    ) -> None:
+        if key == "bc_config":
+            bc_out.update(value)
+        elif key == "wetting_config":
+            bc_out["wetting_params"] = value
+        elif key == "hysteresis_config":
+            bc_out["hysteresis_params"] = value
+        else:
+            bc_out[key] = value
+
+    @classmethod
+    def _handle_force(
+        cls,
+        key: str,
+        value: Any,
+        force_list: list[dict[str, Any]],
+    ) -> None:
+        if key == "force_config":
+            items = list(value) if isinstance(value, list) else [value]
+            force_list[:] = items
+
+    @classmethod
+    def _handle_simulation_type(
+        cls,
+        key: str,
+        value: Any,
+        sim_table: dict[str, Any],
+    ) -> None:
+        sim_table[key] = cls._serialize_safe(value)
+
+    @classmethod
     def build_sections(cls, config: SimulationConfig) -> dict[str, Any]:
-        """Build a format-agnostic nested dict from *config*.
-
-        The returned dict mirrors the canonical config-file layout::
-
-            {
-                "simulation_type": { "type": "single_phase", ... },
-                "multiphase":      { ... },            # if applicable
-                "boundary_conditions": { ... },        # if present
-                "force":           [ {...}, ... ],      # if present
-                "output":          { ... },             # if present
-            }
-
-        Each adapter's :meth:`save` can pass this dict straight to its
-        format-specific serialiser (``tomli_w.dump``, ``yaml.dump``,
-        ``json.dump``, …).
-
-        Args:
-            config: A validated :class:`SimulationConfig`.
-
-        Returns:
-            A nested mapping suitable for serialisation.
-        """
+        """Build a format-agnostic nested dict from *config*."""
         d = dataclasses.asdict(config)
         sections = cls._section_map()
         sim_type = d.get("sim_type", "single_phase")
@@ -126,39 +138,38 @@ class ConfigAdapter(ABC):
         bc_out: dict[str, Any] = {}
         force_list: list[dict[str, Any]] = []
 
-        for key, value in d.items():
-            section = sections.get(key, "simulation_type")
+        def _iter_relevant_items():
+            for key, value in d.items():
+                section = sections.get(key, "simulation_type")
+                if section in {"identity", "extra"}:
+                    continue
+                if value is None:
+                    continue
+                yield key, value, section
 
-            # identity / extra are handled specially, not written as-is
-            if section in {"identity", "extra"}:
-                continue
-
-            if value is None:
-                continue
-
+        for key, value, section in _iter_relevant_items():
             if section == "multiphase" and sim_type == "multiphase":
                 multiphase_table[key] = value
-            elif section == "output":
+                continue
+
+            if section == "output":
                 output_table[key] = value
-            elif section == "boundary_conditions":
-                if key == "bc_config":
-                    bc_out.update(value)
-                elif key == "wetting_config":
-                    bc_out["wetting_params"] = value
-                elif key == "hysteresis_config":
-                    bc_out["hysteresis_params"] = value
-                else:
-                    bc_out[key] = value
-            elif section == "force":
-                if key == "force_config":
-                    force_list = list(value) if isinstance(value, list) else [value]
-                # force_enabled is derived — skip
-            elif section == "simulation_type":
-                sim_table[key] = cls._serialize_safe(value)
+                continue
+
+            if section == "boundary_conditions":
+                cls._handle_boundary_conditions(key, value, bc_out)
+                continue
+
+            if section == "force":
+                cls._handle_force(key, value, force_list)
+                continue
+
+            if section == "simulation_type":
+                cls._handle_simulation_type(key, value, sim_table)
 
         # Merge extra keys into the simulation_type table
-        for key, value in d.get("extra", {}).items():
-            sim_table[key] = cls._serialize_safe(value)
+        for extra_key, extra_value in d.get("extra", {}).items():
+            sim_table[extra_key] = cls._serialize_safe(extra_value)
 
         # ── Assemble top-level document ───────────────────────────────
         doc: dict[str, Any] = {"simulation_type": sim_table}
@@ -185,7 +196,7 @@ class ConfigAdapter(ABC):
         """Validate and normalise ``[[force]]`` tables into plain dicts.
 
         Each dict **must** contain a ``type`` key whose value is one of
-        :data:`VALID_FORCE_TYPES`.  The dicts are stored as-is in
+        :data:`VALID_FORCE_TYPES`. The dicts are stored as-is in
         ``SimulationConfig.force_config`` and later consumed by
         ``build_setup()`` to construct JAX-friendly force objects.
 
@@ -208,9 +219,7 @@ class ConfigAdapter(ABC):
 
             if force_type not in get_operator_names("force"):
                 registered = ", ".join(sorted(get_operator_names("force")))
-                raise KeyError(
-                    f"Unknown force type '{force_type}'. Registered types: {registered}",
-                )
+                raise KeyError(f"Unknown force type '{force_type}'. Registered types: {registered}")
 
             validated.append(processed)
         return validated
@@ -243,9 +252,7 @@ def get_adapter(path: str) -> ConfigAdapter:
 
     if ext not in _ADAPTER_MAP:
         supported = ", ".join(sorted(_ADAPTER_MAP))
-        raise ValueError(
-            f"Unsupported config file extension '{ext}'. Supported: {supported}",
-        )
+        raise ValueError(f"Unsupported config file extension '{ext}'. Supported: {supported}")
 
     fqn = _ADAPTER_MAP[ext]
     module_path, class_name = fqn.rsplit(".", 1)

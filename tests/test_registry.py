@@ -331,4 +331,3 @@ class TestDummyOperatorAutoExposure:
 
         assert "_test_cleanup:_cleanup_target" not in OPERATOR_REGISTRY
         assert "_cleanup_target" not in _KIND_INDEX.get("_test_cleanup", {})
-

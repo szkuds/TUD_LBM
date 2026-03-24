@@ -103,6 +103,7 @@ def compute_wetting_gradient(
     pad_mode: list,
     wetting_params: dict,
     chemical_step: int | None = None,
+    bc_config: dict | None = None,
 ):
     """Return a jitted gradient closure with wetting ghost-cell correction.
 
@@ -121,6 +122,9 @@ def compute_wetting_gradient(
             ``d_rho_r``) **or** array-valued ``phi``/``drho`` with a
             ``chemical_step`` index.
         chemical_step: Optional step index for chemical-step simulations.
+        bc_config: Boundary-condition config dict, e.g.
+            ``{"bottom": "wetting", "top": "bounce-back", ...}``.
+            Passed through to :func:`apply_wetting_to_all_edges`.
 
     Returns:
         ``_grad(grid) → jnp.ndarray`` of shape ``(nx, ny, 1, 2)``.
@@ -150,7 +154,7 @@ def compute_wetting_gradient(
         gp = jnp.pad(gp, ((0, 1), (0, 0)), mode=pad_mode[2])
         gp = jnp.pad(gp, ((1, 0), (0, 0)), mode=pad_mode[3])
 
-        # Overwrite bottom ghost row with wetting boundary values
+        # Overwrite wetting ghost rows for edges marked 'wetting' in bc_config
         gp = apply_wetting_to_all_edges(
             gp,
             rho_l,
@@ -160,6 +164,7 @@ def compute_wetting_gradient(
             d_rho_l,
             d_rho_r,
             width,
+            bc_config,
         )
 
         # Delegate to the plain gradient on the corrected interior

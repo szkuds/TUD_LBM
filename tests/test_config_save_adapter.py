@@ -10,7 +10,6 @@ Covers:
 
 import sys
 from pathlib import Path
-
 import pytest
 
 # Ensure src/ is on the path so imports work from the tests/ directory
@@ -20,11 +19,6 @@ from config.adapter_base import ConfigAdapter
 from config.adapter_base import get_adapter
 from config.adapter_toml import TomlAdapter
 from config.simulation_config import SimulationConfig
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TomlAdapter.save()
-# ══════════════════════════════════════════════════════════════════════
 
 
 class TestTomlAdapterSave:
@@ -130,8 +124,8 @@ class TestConfigAdapterABCSave:
         """A subclass that only implements load() should fail to instantiate."""
 
         class IncompleteAdapter(ConfigAdapter):
-            def load(self, path):
-                ...
+            def load(self, path): ...
+
             # save() not implemented
 
         with pytest.raises(TypeError):
@@ -141,8 +135,8 @@ class TestConfigAdapterABCSave:
         """A subclass that only implements save() should fail to instantiate."""
 
         class IncompleteAdapter(ConfigAdapter):
-            def save(self, config, path):
-                ...
+            def save(self, config, path): ...
+
             # load() not implemented
 
         with pytest.raises(TypeError):
@@ -204,5 +198,3 @@ class TestSimulationIOConfigFileType:
         assert loaded.grid_shape == (8, 8)
         assert loaded.tau == 0.7
         assert loaded.nt == 200
-
-

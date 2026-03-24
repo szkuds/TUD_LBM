@@ -17,8 +17,8 @@ type = "multiphase"
 grid_shape = [201, 201]
 lattice_type = "D2Q9"
 tau = 0.99
-nt = 35000
-init_type = "multiphase_droplet"
+nt = 2000
+init_type = "wetting"
 
 [multiphase]
 kappa = 0.017
@@ -37,7 +37,7 @@ inclination_angle_deg = 0
 left = "periodic"
 right = "periodic"
 top = "bounce-back"
-bottom = "bounce-back"
+bottom = "wetting"
 
 [boundary_conditions.wetting_params]
 phi_left = 1.0

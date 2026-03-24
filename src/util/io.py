@@ -5,6 +5,7 @@ from datetime import datetime
 from datetime import timezone
 from pathlib import Path
 from types import MethodType
+from src import SimulationConfig
 from .output_data import output_writers
 
 

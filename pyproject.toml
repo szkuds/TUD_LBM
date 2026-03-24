@@ -161,6 +161,7 @@ pydocstyle.convention = "google"
     "S101",   # Use of assert is detected
     "SLF001", # Private member access
     "INP001", # File is part of an implicit namespace package
+    "S108" # Probable insecure usage of temporary file or directory
 ]
 # Examples are standalone scripts, not part of the package
 "examples/**.py" = [

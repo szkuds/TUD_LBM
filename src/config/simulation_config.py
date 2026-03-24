@@ -96,7 +96,8 @@ class SimulationConfig:
 
     # ── Simulation identity ──────────────────────────────────────────
     sim_type: Literal["single_phase", "multiphase"] = field(
-        default="single_phase", metadata={CONFIG_SECTION: "identity"},
+        default="single_phase",
+        metadata={CONFIG_SECTION: "identity"},
     )
     simulation_name: str | None = None
 
@@ -114,15 +115,18 @@ class SimulationConfig:
 
     # ── Boundary conditions ──────────────────────────────────────────
     bc_config: dict[str, Any] | None = field(
-        default=None, metadata={CONFIG_SECTION: "boundary_conditions"},
+        default=None,
+        metadata={CONFIG_SECTION: "boundary_conditions"},
     )
 
     # ── Force ────────────────────────────────────────────────────────
     force_enabled: bool = field(
-        default=False, metadata={CONFIG_SECTION: "force"},
+        default=False,
+        metadata={CONFIG_SECTION: "force"},
     )
     force_config: dict[str, Any] | list[dict[str, Any]] | None = field(
-        default=None, metadata={CONFIG_SECTION: "force"},
+        default=None,
+        metadata={CONFIG_SECTION: "force"},
     )
 
     # ── Initialisation ───────────────────────────────────────────────
@@ -131,18 +135,22 @@ class SimulationConfig:
 
     # ── Output / IO ──────────────────────────────────────────────────
     results_dir: str = field(
-        default=BASE_RESULTS_DIR, metadata={CONFIG_SECTION: "output"},
+        default=BASE_RESULTS_DIR,
+        metadata={CONFIG_SECTION: "output"},
     )
     save_interval: int = 0  # This is set to 0 to ensure that when nothing is passed the default is nt/10
     skip_interval: int = 0
     save_fields: list[str] | None = field(
-        default=None, metadata={CONFIG_SECTION: "output"},
+        default=None,
+        metadata={CONFIG_SECTION: "output"},
     )
     plot_fields: list[str] | None = field(
-        default=None, metadata={CONFIG_SECTION: "output"},
+        default=None,
+        metadata={CONFIG_SECTION: "output"},
     )
     output_format: str | list[str] | None = field(
-        default="numpy", metadata={CONFIG_SECTION: "output"},
+        default="numpy",
+        metadata={CONFIG_SECTION: "output"},
     )
 
     # ── Multiphase (ignored when sim_type == "single_phase") ─────────
@@ -157,15 +165,18 @@ class SimulationConfig:
 
     # ── Wetting / hysteresis ─────────────────────────────────────────
     wetting_config: dict[str, Any] | None = field(
-        default=None, metadata={CONFIG_SECTION: "boundary_conditions"},
+        default=None,
+        metadata={CONFIG_SECTION: "boundary_conditions"},
     )
     hysteresis_config: dict[str, Any] | None = field(
-        default=None, metadata={CONFIG_SECTION: "boundary_conditions"},
+        default=None,
+        metadata={CONFIG_SECTION: "boundary_conditions"},
     )
 
     # ── Extra / extensible ───────────────────────────────────────────
     extra: dict[str, Any] = field(
-        default_factory=dict, metadata={CONFIG_SECTION: "extra"},
+        default_factory=dict,
+        metadata={CONFIG_SECTION: "extra"},
     )
 
     # ══════════════════════════════════════════════════════════════════

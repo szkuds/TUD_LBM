@@ -12,7 +12,7 @@ Example usage::
     from config.adapter_toml import TomlAdapter
 
     adapter = TomlAdapter()
-    config  = adapter.load("example_for_test/config_simple.toml")
+    config = adapter.load("example_for_test/config_simple.toml")
     adapter.save(config, "output/config.toml")
 """
 
@@ -32,21 +32,21 @@ class TomlAdapter(ConfigAdapter):
     Supported top-level tables
     --------------------------
     ``[simulation_type]``
-        Required.  Contains the simulation type (``type``), grid shape,
+        Required. Contains the simulation type (``type``), grid shape,
         physics parameters, and runner/IO fields.
 
     ``[multiphase]``
-        Optional.  Extra physics parameters when ``type = "multiphase"``.
+        Optional. Extra physics parameters when ``type = "multiphase"``.
 
     ``[[force]]``
-        Optional.  One or more force definitions (array-of-tables).
+        Optional. One or more force definitions (array-of-tables).
 
     ``[boundary_conditions]``
-        Optional.  Boundary condition configuration (including nested
+        Optional. Boundary condition configuration (including nested
         ``wetting_params`` and ``hysteresis_params``).
 
     ``[output]``
-        Optional.  Output/saving overrides (``results_dir``, ``fields``).
+        Optional. Output/saving overrides (``results_dir``, ``fields``).
     """
 
     @staticmethod
@@ -57,8 +57,9 @@ class TomlAdapter(ConfigAdapter):
         """Merge ``[output]`` overrides into *sim_table* in-place."""
         for key, value in output_table.items():
             if key == "results_dir":
-                value = str(Path(value).expanduser())
-            sim_table[key] = value
+                sim_table[key] = str(Path(value).expanduser())
+            else:
+                sim_table[key] = value
 
     def load(self, path: str) -> SimulationConfig:
         """Parse *path* and return a :class:`SimulationConfig`.
@@ -84,9 +85,7 @@ class TomlAdapter(ConfigAdapter):
         # ── [simulation_type] (required) ──────────────────────────────────
         sim_table = dict(raw.get("simulation_type", {}))
         if not sim_table:
-            raise ValueError(
-                f"Config file '{path}' is missing the required [simulation_type] table.",
-            )
+            raise ValueError(f"Config file '{path}' is missing the required [simulation_type] table.")
 
         sim_type: str = sim_table.pop("type", "single_phase")
 
@@ -97,12 +96,9 @@ class TomlAdapter(ConfigAdapter):
         # ── Merge [multiphase] table ─────────────────────────────────
         if sim_type == "multiphase":
             multiphase_table = raw.get("multiphase", {})
-
             sim_table.update(multiphase_table)
         elif sim_type != "single_phase":
-            raise ValueError(
-                f"Unknown simulation type '{sim_type}'. Expected 'single_phase' or 'multiphase'.",
-            )
+            raise ValueError(f"Unknown simulation type '{sim_type}'. Expected 'single_phase' or 'multiphase'.")
 
         # ── [boundary_conditions] (optional) ─────────────────────────
         bc_config = raw.get("boundary_conditions")
@@ -145,7 +141,7 @@ class TomlAdapter(ConfigAdapter):
 
         Args:
             config: A validated :class:`SimulationConfig`.
-            path:   Destination file path.
+            path: Destination file path.
 
         Raises:
             OSError: If the file cannot be written.
