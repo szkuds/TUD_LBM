@@ -63,7 +63,14 @@ def step_single_phase(setup, state: State) -> State:
 
     # 1. Macroscopic fields
     if setup.force_enabled and state.force_ext is not None:
-        rho, u, force_tot = compute_macroscopic(state.f, lattice, force=state.force_ext)
+        # Apply gravity force template if present
+        force_ext = state.force_ext
+        if setup.gravity_template is not None:
+            rho_pre = jnp.sum(state.f, axis=2, keepdims=True)
+            grav_force = compute_gravity_force(setup.gravity_template, rho_pre)
+            force_ext = force_ext + grav_force
+
+        rho, u, force_tot = compute_macroscopic(state.f, lattice, force=force_ext)
         # 2. Equilibrium
         feq = compute_equilibrium(rho, u, lattice)
         # 3. Source term + collision

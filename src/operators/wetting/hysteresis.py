@@ -32,7 +32,6 @@ from typing import NamedTuple, Tuple
 
 import jax
 import jax.numpy as jnp
-import optax
 
 from state.state import WettingState
 from operators.wetting.contact_angle import compute_contact_angle
@@ -104,6 +103,7 @@ def _optimise_single_param(
         loss, grads = jax.value_and_grad(objective_fn)(params)
         grads = grad_mask_fn(grads)
         updates, new_opt_state = optimiser.update(grads, opt_state, params)
+        import optax  # lazy import — optional dependency
         new_params = optax.apply_updates(params, updates)
         new_params = _clamp_params(new_params)
         return (new_params, new_opt_state), loss
@@ -328,6 +328,13 @@ def update_wetting_state(
         phi_right=wetting.phi_right,
     )
 
+    try:
+        import optax  # lazy import — optional dependency
+    except ImportError:
+        raise ImportError(
+            "The 'optax' package is required for hysteresis wetting.\n"
+            "Install it with:  pip install optax"
+        )
     optimiser = optax.adam(lr)
 
     # 4. Build evaluate_fn if not supplied

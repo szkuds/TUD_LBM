@@ -44,6 +44,11 @@ tud-lbm = "cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: Integration tests that validate end-to-end physics pipelines",
+    "unit: Unit tests for individual operators",
+    "conformance: Tests that verify operators satisfy protocol contracts",
+]
 
 
 [tool.coverage.run]
