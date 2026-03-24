@@ -16,7 +16,7 @@ import jax.numpy as jnp
 from registry import force_model
 
 
-@force_model(name="gravity_multiphase")
+@force_model(name="gravity_multiphase", result_field="gravity_template")
 def build_gravity_force(
     grid_shape: tuple[int, int],
     force_g: float,

@@ -246,6 +246,8 @@ def build_setup(config) -> SimulationSetup:
     electric_params = None
     force_config = getattr(config, "force_config", None)
     if force_config:
+        import inspect
+
         from registry import get_operators
 
         force_ops = get_operators("force")
@@ -256,30 +258,39 @@ def build_setup(config) -> SimulationSetup:
             if not isinstance(entry, dict):
                 continue
             ftype = entry.get("type", "")
+            if not ftype:
+                continue
 
-            # Resolve force builder from registry when possible
-            if ftype == "gravity_multiphase":
-                builder = force_ops[ftype].target if ftype in force_ops else None
-                if builder is None:
-                    from operators.force.gravity import build_gravity_force as builder
-                gravity_template = builder(
-                    tuple(config.grid_shape),
-                    force_g=entry.get("force_g", 0.0),
-                    inclination_angle_deg=entry.get("inclination_angle_deg", 0.0),
+            if ftype not in force_ops:
+                raise ValueError(
+                    f"Unknown force type '{ftype}'. "
+                    f"Available: {sorted(force_ops)}"
                 )
-            elif ftype == "electric":
-                builder = force_ops[ftype].target if ftype in force_ops else None
-                if builder is None:
-                    from operators.force.electric import build_electric_params as builder
-                electric_params = builder(
-                    permittivity_liquid=entry.get("permittivity_liquid", 1.0),
-                    permittivity_vapour=entry.get("permittivity_vapour", 1.0),
-                    conductivity_liquid=entry.get("conductivity_liquid", 0.0),
-                    conductivity_vapour=entry.get("conductivity_vapour", 0.0),
-                    applied_voltage=entry.get("applied_voltage", 0.0),
-                    voltage_top=entry.get("voltage_top", 0.0),
-                    voltage_bottom=entry.get("voltage_bottom", 0.0),
-                )
+
+            op_entry = force_ops[ftype]
+            builder = op_entry.target
+
+            # Build available kwargs: entry params (minus "type") + grid_shape
+            available = {k: v for k, v in entry.items() if k != "type"}
+            available["grid_shape"] = tuple(config.grid_shape)
+
+            # Only pass params the builder actually accepts
+            sig = inspect.signature(builder)
+            kwargs = {
+                k: v for k, v in available.items() if k in sig.parameters
+            }
+            result = builder(**kwargs)
+
+            # Store result in the field indicated by registry metadata
+            result_field = (
+                op_entry.metadata.get("result_field")
+                if op_entry.metadata
+                else None
+            )
+            if result_field == "gravity_template":
+                gravity_template = result
+            elif result_field == "electric_params":
+                electric_params = result
 
     # ── Build differential operators ──────────────────────────────────
     # Ensure BC modules are imported so their @boundary_condition decorators

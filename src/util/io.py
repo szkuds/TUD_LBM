@@ -1,29 +1,43 @@
-import json
 import logging
 import sys
+from dataclasses import fields as dc_fields
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
 from types import MethodType
-import jax.numpy as jnp
 from .output_data import output_writers
 
 
-class CustomJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        # Handle JAX arrays
-        if isinstance(obj, jnp.ndarray):
-            return obj.tolist()
-        # Handle custom force objects
-        if hasattr(obj, "__class__") and hasattr(obj, "__dict__"):
-            return {
-                "__class__": obj.__class__.__name__,
-                "__module__": obj.__class__.__module__,
-            }
-        # Handle other numpy arrays if present
-        if hasattr(obj, "tolist"):
-            return obj.tolist()
-        return super().default(obj)
+def _config_from_dict(d: dict) -> "SimulationConfig":
+    """Build a :class:`SimulationConfig` from a ``to_dict()``-style dict.
+
+    ``SimulationConfig.to_dict()`` adds ``simulation_type`` and merges
+    ``extra`` into the top-level dict — both of which are not valid
+    constructor kwargs.  This helper strips/remaps them before
+    instantiation.
+    """
+    from config.simulation_config import SimulationConfig
+
+    d = dict(d)  # shallow copy
+    d.pop("simulation_type", None)  # added by to_dict(), not a ctor param
+
+    # Normalise grid_shape to tuple
+    if "grid_shape" in d and not isinstance(d["grid_shape"], tuple):
+        d["grid_shape"] = tuple(d["grid_shape"])
+
+    # Separate known fields from extras
+    known = {f.name for f in dc_fields(SimulationConfig)}
+    kwargs = {}
+    extra = {}
+    for k, v in d.items():
+        if k in known:
+            kwargs[k] = v
+        else:
+            extra[k] = v
+    if extra:
+        kwargs["extra"] = extra
+
+    return SimulationConfig(**kwargs)
 
 
 class SimulationIO:
@@ -34,7 +48,8 @@ class SimulationIO:
         base_dir: str = "results",
         config: dict | None = None,
         simulation_name: str | None = None,
-        output_format: str = "Numpy",
+        output_format: str = "numpy",
+        config_file_type: str = ".toml",
     ):
         """Initialises the IO handler.
 
@@ -43,9 +58,12 @@ class SimulationIO:
             config (Dict, optional): A dictionary containing the simulation configuration to save.
             simulation_name (str, optional): Name of the simulation to include in the results directory.
             output_format (str): Output writer format — ``"Numpy"`` (default) or ``"Vtk"``.
+            config_file_type (str): Extension for the saved config file — ``".toml"`` (default).
+                Must match a registered adapter in :func:`~config.adapter_base.get_adapter`.
         """
         self.base_dir = str(Path(base_dir).expanduser())
         self.simulation_name = simulation_name
+        self.config_file_type = config_file_type
         self.run_dir = self._create_timestamped_directory()
         self.data_dir = str(Path(self.run_dir) / "data")
         Path(self.data_dir).mkdir(parents=True, exist_ok=True)
@@ -115,13 +133,16 @@ class SimulationIO:
         return str(run_dir)
 
     def save_config(self, config: dict):
-        """Saves the simulation configuration to a JSON file using CustomJSONEncoder."""
-        config_path = Path(self.run_dir) / "config.json"
+        """Save the simulation configuration to the run directory.
 
-        # Rename boundary condition details if present (avoids duplication)
-        if "bc_config" in config:
-            config["boundary_conditions"] = config.pop("bc_config")
+        Uses :func:`~config.adapter_base.get_adapter` to dispatch to the
+        correct adapter based on :attr:`config_file_type`.
+        """
+        from config.adapter_base import get_adapter
 
-        with config_path.open("w") as f:
-            json.dump(config, f, indent=4, cls=CustomJSONEncoder)
-        print(f"Configuration saved to {config_path}")
+        dest = Path(self.run_dir) / f"config{self.config_file_type}"
+        adapter = get_adapter(str(dest))
+        cfg = _config_from_dict(config)
+        adapter.save(cfg, str(dest))
+
+        print(f"Configuration saved to {dest}")

@@ -71,6 +71,35 @@ class OperatorEntry:
 
 OPERATOR_REGISTRY: dict[str, OperatorEntry] = {}
 
+# Secondary index: kind → {name → OperatorEntry}.
+# Maintained by register_operator; avoids O(n) scans of OPERATOR_REGISTRY.
+_KIND_INDEX: dict[str, dict[str, OperatorEntry]] = {}
+
+_REGISTRY_POPULATED: bool = False
+
+
+def ensure_registry() -> None:
+    """Import all operator packages so the registry is fully populated.
+
+    Safe to call multiple times — subsequent calls are no-ops.
+    """
+    global _REGISTRY_POPULATED  # noqa: PLW0603
+    if _REGISTRY_POPULATED:
+        return
+
+    import operators.boundary  # noqa: F401
+    import operators.collision  # noqa: F401
+    import operators.differential  # noqa: F401
+    import operators.equilibrium  # noqa: F401
+    import operators.force  # noqa: F401
+    import operators.initialise.factory  # noqa: F401
+    import operators.macroscopic  # noqa: F401
+    import operators.streaming  # noqa: F401
+    import operators.wetting  # noqa: F401
+    import setup.lattice  # noqa: F401
+
+    _REGISTRY_POPULATED = True
+
 
 # ---------------------------------------------------------------------------
 # Core registration decorator
@@ -113,12 +142,14 @@ def register_operator(
         key = f"{kind}:{resolved_name}"
         if key in OPERATOR_REGISTRY:
             raise ValueError(f"Duplicate operator registration: {key}")
-        OPERATOR_REGISTRY[key] = OperatorEntry(
+        entry = OperatorEntry(
             name=resolved_name,
             kind=kind,
             target=obj,
             metadata=meta or None,
         )
+        OPERATOR_REGISTRY[key] = entry
+        _KIND_INDEX.setdefault(kind, {})[resolved_name] = entry
         return obj
 
     return decorator
@@ -138,19 +169,33 @@ def get_operators(kind: str) -> dict[str, OperatorEntry]:
     Returns:
         ``{name: OperatorEntry, ...}``
     """
-    # TODO: This checks every key there should be a better way to get the desired information.
-    prefix = f"{kind}:"
-    return {entry.name: entry for key, entry in OPERATOR_REGISTRY.items() if key.startswith(prefix)}
+    return dict(_KIND_INDEX.get(kind, {}))
 
 
 def get_operator_names(kind: str) -> set[str]:
     """Return the set of registered operator names for *kind*."""
-    return set(get_operators(kind).keys())
+    return set(_KIND_INDEX.get(kind, {}).keys())
 
 
 def get_operator_category() -> set[str]:
     """Return the set of all registered operator kinds."""
-    return {entry.kind for entry in OPERATOR_REGISTRY.values()}
+    return set(_KIND_INDEX.keys())
+
+
+def unregister_operator(kind: str, name: str) -> None:
+    """Remove an operator from the registry (for testing only).
+
+    Args:
+        kind: Operator category, e.g. ``"collision_models"``.
+        name: Operator name within that category.
+    """
+    key = f"{kind}:{name}"
+    OPERATOR_REGISTRY.pop(key, None)
+    sub = _KIND_INDEX.get(kind)
+    if sub is not None:
+        sub.pop(name, None)
+        if not sub:
+            del _KIND_INDEX[kind]
 
 
 # ---------------------------------------------------------------------------

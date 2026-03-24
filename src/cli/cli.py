@@ -24,28 +24,14 @@ from rich.table import Table
 console = Console()
 
 
-def _ensure_operators_imported() -> None:
-    """Import all operator packages so the global registry is fully populated."""
-    import operators.boundary
-    import operators.collision
-    import operators.differential
-    import operators.equilibrium
-    import operators.force
-    import operators.initialise.factory
-    import operators.macroscopic
-    import operators.streaming
-    import operators.wetting  # noqa: F401
-    import setup.lattice  # noqa: F401
-    import util.plotting  # noqa: F401
-
-
 def _display_operators() -> None:
     """Display all registered operators grouped by kind in Rich tables."""
     from registry import OPERATOR_REGISTRY
+    from registry import ensure_registry
     from registry import get_operator_category
     from registry import get_operators
 
-    _ensure_operators_imported()
+    ensure_registry()
 
     categories = sorted(get_operator_category())
 

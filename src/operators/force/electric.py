@@ -47,7 +47,7 @@ class ElectricParams(NamedTuple):
 # ── Setup-time helpers (non-jitted) ─────────────────────────────────
 
 
-@force_model(name="electric")
+@force_model(name="electric", result_field="electric_params")
 def build_electric_params(
     *,
     permittivity_liquid: float,

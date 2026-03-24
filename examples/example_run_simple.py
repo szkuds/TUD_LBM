@@ -45,6 +45,7 @@ def run_and_save():
         base_dir=config.results_dir,
         config=config.to_dict(),
         simulation_name=config.simulation_name,
+        output_format=config.output_format,
     )
     print(f"  Run directory      : {io.run_dir}")
 

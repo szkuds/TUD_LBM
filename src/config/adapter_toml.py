@@ -1,6 +1,6 @@
 """TOML configuration file adapter.
 
-Reads a ``.toml`` file and returns a :class:`SimulationConfig`.
+Reads and writes ``.toml`` config files.
 
 Requires Python ≥ 3.11 (``tomllib`` in stdlib) **or** the ``tomli``
 back-port on Python 3.10::
@@ -13,19 +13,21 @@ Example usage::
 
     adapter = TomlAdapter()
     config  = adapter.load("example_for_test/config_simple.toml")
+    adapter.save(config, "output/config.toml")
 """
 
 from __future__ import annotations
 import dataclasses
 from pathlib import Path
 from typing import Any
+import tomli_w
 import tomllib
 from config.adapter_base import ConfigAdapter
 from config.simulation_config import SimulationConfig
 
 
 class TomlAdapter(ConfigAdapter):
-    """Adapter that reads TOML configuration files.
+    """Adapter that reads and writes TOML configuration files.
 
     Supported top-level tables
     --------------------------
@@ -53,12 +55,10 @@ class TomlAdapter(ConfigAdapter):
         output_table: dict[str, Any],
     ) -> None:
         """Merge ``[output]`` overrides into *sim_table* in-place."""
-        if "results_dir" in output_table:
-            sim_table["results_dir"] = str(Path(output_table["results_dir"]).expanduser())
-        if "save_fields" in output_table:
-            sim_table["save_fields"] = list(output_table["save_fields"])
-        if "plot_fields" in output_table:
-            sim_table["plot_fields"] = list(output_table["plot_fields"])
+        for key, value in output_table.items():
+            if key == "results_dir":
+                value = str(Path(value).expanduser())
+            sim_table[key] = value
 
     def load(self, path: str) -> SimulationConfig:
         """Parse *path* and return a :class:`SimulationConfig`.
@@ -135,3 +135,25 @@ class TomlAdapter(ConfigAdapter):
         config_kwargs["extra"] = extra
 
         return SimulationConfig(**config_kwargs)
+
+    def save(self, config: SimulationConfig, path: str) -> None:
+        """Serialise *config* to a ``.toml`` file at *path*.
+
+        Delegates the field → section bucketing to
+        :meth:`~ConfigAdapter.build_sections` (shared by all adapters)
+        and writes the result with ``tomli_w``.
+
+        Args:
+            config: A validated :class:`SimulationConfig`.
+            path:   Destination file path.
+
+        Raises:
+            OSError: If the file cannot be written.
+        """
+        path = Path(path).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        doc = self.build_sections(config)
+
+        with path.open("wb") as fh:
+            tomli_w.dump(doc, fh)

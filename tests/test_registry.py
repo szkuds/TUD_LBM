@@ -28,6 +28,7 @@ from registry import get_operator_category
 from registry import get_operator_names
 from registry import get_operators
 from registry import register_operator
+from registry import unregister_operator
 
 # =====================================================================
 # Registration mechanics
@@ -47,7 +48,7 @@ class TestRegisterOperator:
         assert entry.kind == "_test_kind"
         assert entry.target is my_fn
         # cleanup
-        del OPERATOR_REGISTRY["_test_kind:_test_fn"]
+        unregister_operator("_test_kind", "_test_fn")
 
     def test_register_class_with_name_attr(self):
         @register_operator("_test_kind")
@@ -56,7 +57,7 @@ class TestRegisterOperator:
 
         entry = OPERATOR_REGISTRY["_test_kind:_test_cls"]
         assert entry.target is MyCls
-        del OPERATOR_REGISTRY["_test_kind:_test_cls"]
+        unregister_operator("_test_kind", "_test_cls")
 
     def test_register_function_uses_dunder_name(self):
         @register_operator("_test_kind")
@@ -64,7 +65,7 @@ class TestRegisterOperator:
             pass
 
         assert "_test_kind:_test_auto_name" in OPERATOR_REGISTRY
-        del OPERATOR_REGISTRY["_test_kind:_test_auto_name"]
+        unregister_operator("_test_kind", "_test_auto_name")
 
     def test_duplicate_raises(self):
         @register_operator("_test_dup", name="_dup")
@@ -77,7 +78,7 @@ class TestRegisterOperator:
             def fn2():
                 pass
 
-        del OPERATOR_REGISTRY["_test_dup:_dup"]
+        unregister_operator("_test_dup", "_dup")
 
     def test_metadata_stored(self):
         @register_operator("_test_meta", name="_meta", foo="bar")
@@ -86,7 +87,7 @@ class TestRegisterOperator:
 
         entry = OPERATOR_REGISTRY["_test_meta:_meta"]
         assert entry.metadata == {"foo": "bar"}
-        del OPERATOR_REGISTRY["_test_meta:_meta"]
+        unregister_operator("_test_meta", "_meta")
 
 
 # =====================================================================
@@ -238,3 +239,96 @@ class TestCollisionFactoryViaRegistry:
 
         with pytest.raises(ValueError, match="Unknown collision scheme"):
             build_collision_fn("nonexistent")
+
+
+# =====================================================================
+# End-to-end "no list to edit" acceptance tests
+# =====================================================================
+
+
+class TestDummyOperatorAutoExposure:
+    """Prove that a decorator-only registration is visible end-to-end.
+
+    No operator list, factory switch-case, or config allow-list is
+    edited — the decorator alone is sufficient.
+    """
+
+    def test_new_dummy_collision_appears_without_list_edit(self):
+        """Register a dummy collision model and verify it's discoverable."""
+        from registry import collision_model
+
+        try:
+
+            @collision_model(name="_dummy_test_col")
+            def _dummy_collide(f, feq, tau, source=None):
+                return f  # identity — good enough for a test
+
+            ops = get_operators("collision_models")
+            assert "_dummy_test_col" in ops
+            assert ops["_dummy_test_col"].target is _dummy_collide
+
+            # Also visible via get_operator_names
+            names = get_operator_names("collision_models")
+            assert "_dummy_test_col" in names
+
+            # The factory can resolve it
+            from operators.collision.factory import build_collision_fn
+
+            fn = build_collision_fn("_dummy_test_col")
+            assert fn is _dummy_collide
+        finally:
+            unregister_operator("collision_models", "_dummy_test_col")
+
+    def test_new_dummy_force_appears_without_list_edit(self):
+        """Register a dummy force builder and verify it's discoverable."""
+        from registry import force_model
+
+        try:
+
+            @force_model(name="_dummy_test_force", result_field="gravity_template")
+            def _dummy_force_builder(grid_shape=(4, 4)):
+                import jax.numpy as jnp
+
+                return jnp.zeros((*grid_shape, 1, 2))
+
+            ops = get_operators("force")
+            assert "_dummy_test_force" in ops
+            assert ops["_dummy_test_force"].target is _dummy_force_builder
+
+            # Metadata carries result_field
+            assert ops["_dummy_test_force"].metadata["result_field"] == "gravity_template"
+        finally:
+            unregister_operator("force", "_dummy_test_force")
+
+    def test_new_dummy_boundary_appears_without_list_edit(self):
+        """Register a dummy boundary condition and verify it's discoverable."""
+        from registry import boundary_condition
+
+        try:
+
+            @boundary_condition(name="_dummy_test_bc")
+            def _dummy_bc(f, **kwargs):
+                return f
+
+            ops = get_operators("boundary_condition")
+            assert "_dummy_test_bc" in ops
+            assert ops["_dummy_test_bc"].target is _dummy_bc
+        finally:
+            unregister_operator("boundary_condition", "_dummy_test_bc")
+
+    def test_unregister_removes_from_all_indices(self):
+        """unregister_operator cleans both OPERATOR_REGISTRY and _KIND_INDEX."""
+        from registry import _KIND_INDEX
+
+        @register_operator("_test_cleanup", name="_cleanup_target")
+        def _fn():
+            pass
+
+        assert "_test_cleanup:_cleanup_target" in OPERATOR_REGISTRY
+        assert "_cleanup_target" in _KIND_INDEX.get("_test_cleanup", {})
+
+        unregister_operator("_test_cleanup", "_cleanup_target")
+
+        assert "_test_cleanup:_cleanup_target" not in OPERATOR_REGISTRY
+        assert "_cleanup_target" not in _KIND_INDEX.get("_test_cleanup", {})
+
