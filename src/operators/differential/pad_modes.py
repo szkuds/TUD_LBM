@@ -45,8 +45,8 @@ def determine_pad_modes(bc_config: dict[str, Any] | None) -> list[str]:
         return pad_for.get(bc_type, "edge")
 
     return [
-        _mode("right"),  # right-y pad
-        _mode("left"),  # left-y  pad
-        _mode("bottom"),  # bottom-x pad
-        _mode("top"),  # top-x   pad
+        _mode("top"),
+        _mode("bottom"),
+        _mode("right"),
+        _mode("left"),
     ]
