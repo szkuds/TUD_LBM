@@ -1,6 +1,14 @@
-"""BGK (Bhatnagar–Gross–Krook) collision operator — pure function.
+"""BGK (Bhatnagar–Gross–Krook) collision operator — IMPLEMENTATION.
 
-Extracted from :class:`simulation_operators.collision_models.CollisionBGK`.
+This is an internal implementation of the CollisionOperator protocol.
+Do NOT import this module directly.
+
+RECOMMENDED USAGE:
+    from operators.collision import build_collision_fn
+    from operators.protocols import CollisionOperator
+    
+    bgk: CollisionOperator = build_collision_fn("bgk")
+
 The formula matches the legacy class exactly:
 
 .. math::
@@ -24,7 +32,21 @@ def collide_bgk(
     tau: float,
     source: jnp.ndarray | None = None,
 ) -> jnp.ndarray:
-    """BGK collision: f_col = (1 − 1/τ) f + (1/τ) feq [+ (1 − 1/(2τ)) source].
+    """BGK collision — implementation of CollisionOperator protocol.
+    
+    Satisfies the CollisionOperator protocol:
+        Input: (f, feq, tau, source) + **kwargs
+        Output: f_col (same shape as f)
+    
+    Use via factory: from operators.collision import build_collision_fn
+    bgk = build_collision_fn("bgk")
+    
+    Or via protocol type hint:
+        from operators.protocols import CollisionOperator
+        op: CollisionOperator = build_collision_fn("bgk")
+
+    Physics formula:
+        f_col = (1 − 1/τ) f + (1/τ) feq [+ (1 − 1/(2τ)) source]
 
     Args:
         f: Pre-collision populations, shape ``(nx, ny, q, 1)``.

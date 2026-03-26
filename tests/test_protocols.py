@@ -62,7 +62,7 @@ class TestCollisionProtocol:
 
     def test_bgk_collision_conformance(self, lattice_d2q9, grid_shape):
         """BGK collision operator should accept the protocol signature."""
-        from operators.collision.factory import build_collision_fn
+        from operators.collision import build_collision_fn
 
         bgk_fn = build_collision_fn("bgk")
 
@@ -78,7 +78,7 @@ class TestCollisionProtocol:
 
     def test_mrt_collision_conformance(self, lattice_d2q9, grid_shape):
         """MRT collision operator should accept the protocol signature."""
-        from operators.collision.factory import build_collision_fn
+        from operators.collision import build_collision_fn
 
         mrt_fn = build_collision_fn("mrt")
 
@@ -103,7 +103,9 @@ class TestStreamingProtocol:
 
     def test_standard_streaming_conformance(self, lattice_d2q9, grid_shape):
         """Standard streaming should match protocol."""
-        from operators.streaming.streaming import stream
+        from operators.streaming import build_streaming_fn
+
+        stream = build_streaming_fn("standard")
 
         nx, ny = grid_shape
         q = lattice_d2q9.q
@@ -123,10 +125,12 @@ class TestEquilibriumProtocol:
 
     def test_wb_equilibrium_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Well-balanced equilibrium should match protocol."""
-        from operators.equilibrium.equilibrium import compute_equilibrium
+        from operators.equilibrium import build_equilibrium_fn
+
+        equilibrium = build_equilibrium_fn("wb")
 
         _, rho, u = test_state
-        feq = compute_equilibrium(rho, u, lattice_d2q9)
+        feq = equilibrium(rho, u, lattice_d2q9)
 
         nx, ny = grid_shape
         q = lattice_d2q9.q
@@ -145,11 +149,13 @@ class TestMacroscopicProtocol:
         self, lattice_d2q9, grid_shape, test_state
     ):
         """Standard macroscopic should match protocol."""
-        from operators.macroscopic.single_phase import compute_macroscopic
+        from operators.macroscopic import build_macroscopic_fn
+
+        macroscopic = build_macroscopic_fn("standard")
 
         f, rho_expected, u_expected = test_state
 
-        rho, u = compute_macroscopic(f, lattice_d2q9)
+        rho, u = macroscopic(f, lattice_d2q9)
         assert rho.shape == rho_expected.shape
         assert u.shape == u_expected.shape
 
@@ -157,12 +163,14 @@ class TestMacroscopicProtocol:
         self, lattice_d2q9, grid_shape, test_state
     ):
         """Macroscopic with force should return 3-tuple."""
-        from operators.macroscopic.single_phase import compute_macroscopic
+        from operators.macroscopic import build_macroscopic_fn
+
+        macroscopic = build_macroscopic_fn("standard")
 
         f, rho_expected, u_expected = test_state
         force = jnp.zeros((grid_shape[0], grid_shape[1], 1, 2))
 
-        rho, u, force_out = compute_macroscopic(f, lattice_d2q9, force=force)
+        rho, u, force_out = macroscopic(f, lattice_d2q9, force=force)
         assert rho.shape == rho_expected.shape
         assert u.shape == u_expected.shape
         assert force_out.shape == force.shape
