@@ -6,7 +6,7 @@ population distributions at equilibrium.
 
 from __future__ import annotations
 import jax.numpy as jnp
-from operators.equilibrium.equilibrium import compute_equilibrium
+from operators.equilibrium import build_equilibrium_fn
 from registry import initialise_operator
 from setup.lattice import Lattice
 
@@ -33,6 +33,7 @@ def init_standard(
     Returns:
         Initial distribution ``f``, shape ``(nx, ny, q, 1)``.
     """
+    equilibrium_fn = build_equilibrium_fn("wb")
     rho = jnp.full((nx, ny, 1, 1), density)
     u = jnp.broadcast_to(jnp.array(velocity).reshape(1, 1, 1, 2), (nx, ny, 1, 2))
-    return compute_equilibrium(rho, u, lattice)
+    return equilibrium_fn(rho, u, lattice)

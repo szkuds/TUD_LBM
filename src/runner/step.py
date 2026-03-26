@@ -31,15 +31,14 @@ Usage::
 from __future__ import annotations
 import jax.numpy as jnp
 from operators.boundary.composite import build_composite_bc
-from operators.collision.factory import build_collision_fn
-from operators.equilibrium.equilibrium import compute_equilibrium
+from operators.collision import build_collision_fn
+from operators.equilibrium import build_equilibrium_fn
 from operators.force.electric import compute_electric_force
 from operators.force.electric import update_hi
 from operators.force.gravity import compute_gravity_force
 from operators.force.source_term import source as compute_source
-from operators.macroscopic.multiphase import compute_macroscopic_multiphase
-from operators.macroscopic.single_phase import compute_macroscopic
-from operators.streaming.streaming import stream
+from operators.macroscopic import build_macroscopic_fn
+from operators.streaming import build_streaming_fn
 from operators.wetting.hysteresis import update_wetting_state
 from state.state import State
 
@@ -58,6 +57,9 @@ def step_single_phase(setup, state: State) -> State:
     """
     lattice = setup.lattice
     collision_fn = build_collision_fn(setup.collision_scheme)
+    equilibrium_fn = build_equilibrium_fn("wb")  # Default to weakly-compressible
+    streaming_fn = build_streaming_fn("standard")
+    macroscopic_fn = build_macroscopic_fn("standard")  # Single-phase
     bc_fn = build_composite_bc(setup.bc_config, lattice)
 
     # 1. Macroscopic fields
@@ -69,21 +71,21 @@ def step_single_phase(setup, state: State) -> State:
             grav_force = compute_gravity_force(setup.gravity_template, rho_pre)
             force_ext = force_ext + grav_force
 
-        rho, u, force_tot = compute_macroscopic(state.f, lattice, force=force_ext)
+        rho, u, force_tot = macroscopic_fn(state.f, lattice, force=force_ext)
         # 2. Equilibrium
-        feq = compute_equilibrium(rho, u, lattice)
+        feq = equilibrium_fn(rho, u, lattice)
         # 3. Source term + collision
         src = compute_source(rho, u, force_tot, lattice, diff_ops=setup.diff_ops)
         f_col = collision_fn(state.f, feq, setup.tau, src)
     else:
-        rho, u = compute_macroscopic(state.f, lattice)
+        rho, u = macroscopic_fn(state.f, lattice)
         # 2. Equilibrium
-        feq = compute_equilibrium(rho, u, lattice)
+        feq = equilibrium_fn(rho, u, lattice)
         # 3. Collision (no source)
         f_col = collision_fn(state.f, feq, setup.tau)
 
     # 4. Streaming
-    f_stream = stream(f_col, lattice, bc_config=setup.bc_config)
+    f_stream = streaming_fn(f_col, lattice)
 
     # 5. Boundary conditions
     f_bc = bc_fn(f_stream, f_col, setup.bc_masks)
@@ -114,6 +116,9 @@ def step_multiphase(setup, state: State) -> State:
     mp = setup.multiphase_params
     diff_ops = setup.diff_ops
     collision_fn = build_collision_fn(setup.collision_scheme)
+    equilibrium_fn = build_equilibrium_fn("wb")
+    streaming_fn = build_streaming_fn("standard")
+    macroscopic_fn = build_macroscopic_fn("double-well")  # Multiphase uses double-well
     bc_fn = build_composite_bc(setup.bc_config, lattice)
 
     # 1. Multiphase macroscopic (includes chemical potential, gradient, Laplacian)
@@ -142,11 +147,11 @@ def step_multiphase(setup, state: State) -> State:
             rho_pre,
             setup.electric_params,
             lattice,
-            stream,
+            streaming_fn,
         )
         force_ext = force_ext + elec_force if force_ext is not None else elec_force
 
-    rho, u, force_tot = compute_macroscopic_multiphase(
+    rho, u, force_tot = macroscopic_fn(
         state.f,
         lattice,
         mp,
@@ -155,7 +160,7 @@ def step_multiphase(setup, state: State) -> State:
     )
 
     # 2. Equilibrium
-    feq = compute_equilibrium(rho, u, lattice)
+    feq = equilibrium_fn(rho, u, lattice)
 
     # 3. Source term + collision
     src = compute_source(rho, u, force_tot, lattice, diff_ops=diff_ops)

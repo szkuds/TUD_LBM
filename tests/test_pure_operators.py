@@ -41,9 +41,10 @@ def rest_state(lattice):
     u = jnp.zeros((NX, NY, 1, 2))
     # At rest: feq_0 = rho - sum_rest, feq_i = w_i * rho for i>0
     # Actually, compute equilibrium properly
-    from operators.equilibrium.equilibrium import compute_equilibrium
+    from operators.equilibrium import build_equilibrium_fn
 
-    feq = compute_equilibrium(rho, u, lattice)
+    equilibrium_fn = build_equilibrium_fn("wb")
+    feq = equilibrium_fn(rho, u, lattice)
     return feq, rho, u
 
 
@@ -174,24 +175,24 @@ class TestCollideMRT:
 
 
 class TestCollisionFactory:
-    """``get_collision_fn`` dispatches to the correct function."""
+    """``build_collision_fn`` dispatches to the correct function."""
 
     def test_bgk(self):
-        from operators.collision.bgk import collide_bgk
-        from operators.collision.factory import build_collision_fn
+        from operators.collision._bgk import collide_bgk
+        from operators.collision import build_collision_fn
 
         assert build_collision_fn("bgk") is collide_bgk
 
     def test_mrt(self):
-        from operators.collision.factory import build_collision_fn
-        from operators.collision.mrt import collide_mrt
+        from operators.collision import build_collision_fn
+        from operators.collision._mrt import collide_mrt
 
         assert build_collision_fn("mrt") is collide_mrt
 
     def test_unknown_raises(self):
-        from operators.collision.factory import build_collision_fn
+        from operators.collision import build_collision_fn
 
-        with pytest.raises(ValueError, match="Unknown collision scheme"):
+        with pytest.raises(ValueError, match="Unknown collision"):
             build_collision_fn("invalid")
 
 
@@ -205,7 +206,7 @@ class TestStream:
 
     def test_rest_direction_unchanged(self, lattice):
         """Direction 0 (zero velocity) should not move."""
-        from operators.streaming.streaming import stream
+        from operators.streaming._streaming import stream
 
         f = jnp.zeros((NX, NY, 9, 1))
         f = f.at[3, 3, 0, 0].set(1.0)
@@ -217,7 +218,7 @@ class TestStream:
 
     def test_direction_1_shifts_right(self, lattice):
         """Direction 1 (cx=1, cy=0) shifts +1 in x."""
-        from operators.streaming.streaming import stream
+        from operators.streaming._streaming import stream
 
         f = jnp.zeros((NX, NY, 9, 1))
         f = f.at[3, 3, 1, 0].set(1.0)
@@ -276,7 +277,7 @@ class TestComputeEquilibrium:
     """``compute_equilibrium`` matches the legacy WB equilibrium."""
 
     def test_rest_state(self, lattice):
-        from operators.equilibrium.equilibrium import compute_equilibrium
+        from operators.equilibrium._equilibrium import compute_equilibrium
 
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
@@ -292,7 +293,7 @@ class TestComputeEquilibrium:
         )
 
     def test_mass_conservation_with_velocity(self, lattice):
-        from operators.equilibrium.equilibrium import compute_equilibrium
+        from operators.equilibrium._equilibrium import compute_equilibrium
 
         rho = jnp.ones((NX, NY, 1, 1)) * 1.5
         u = jnp.ones((NX, NY, 1, 2)) * 0.05
@@ -307,7 +308,7 @@ class TestComputeEquilibrium:
         )
 
     def test_shape_preserved(self, lattice):
-        from operators.equilibrium.equilibrium import compute_equilibrium
+        from operators.equilibrium._equilibrium import compute_equilibrium
 
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
@@ -316,7 +317,7 @@ class TestComputeEquilibrium:
         assert feq.shape == (NX, NY, 9, 1)
 
     def test_jittable(self, lattice):
-        from operators.equilibrium.equilibrium import compute_equilibrium
+        from operators.equilibrium._equilibrium import compute_equilibrium
 
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
@@ -722,10 +723,10 @@ class TestEndToEndPureFunctions:
 
     def test_single_step_mass_conservation(self, lattice):
         """One full step should conserve mass on a periodic domain."""
-        from operators.collision.bgk import collide_bgk
-        from operators.equilibrium.equilibrium import compute_equilibrium
-        from operators.macroscopic.single_phase import compute_macroscopic
-        from operators.streaming.streaming import stream
+        from operators.collision._bgk import collide_bgk
+        from operators.equilibrium._equilibrium import compute_equilibrium
+        from operators.macroscopic._single_phase import compute_macroscopic
+        from operators.streaming._streaming import stream
 
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
@@ -745,10 +746,10 @@ class TestEndToEndPureFunctions:
 
     def test_jit_full_step(self, lattice):
         """A full step wrapped in jax.jit compiles and runs."""
-        from operators.collision.bgk import collide_bgk
-        from operators.equilibrium.equilibrium import compute_equilibrium
-        from operators.macroscopic.single_phase import compute_macroscopic
-        from operators.streaming.streaming import stream
+        from operators.collision._bgk import collide_bgk
+        from operators.equilibrium._equilibrium import compute_equilibrium
+        from operators.macroscopic._single_phase import compute_macroscopic
+        from operators.streaming._streaming import stream
 
         def one_step(f, tau):
             rho, u = compute_macroscopic(f, lattice)
@@ -769,10 +770,10 @@ class TestEndToEndPureFunctions:
     def test_step_with_bounce_back(self, lattice):
         """Full step with bounce-back BCs compiles and runs."""
         from operators.boundary.composite import build_composite_bc
-        from operators.collision.bgk import collide_bgk
-        from operators.equilibrium.equilibrium import compute_equilibrium
-        from operators.macroscopic.single_phase import compute_macroscopic
-        from operators.streaming.streaming import stream
+        from operators.collision._bgk import collide_bgk
+        from operators.equilibrium._equilibrium import compute_equilibrium
+        from operators.macroscopic._single_phase import compute_macroscopic
+        from operators.streaming._streaming import stream
 
         bc_config = {
             "top": "bounce-back",
@@ -787,8 +788,8 @@ class TestEndToEndPureFunctions:
         f = compute_equilibrium(rho, u, lattice)
         tau = 0.8
 
-        rho_n, u_n = compute_macroscopic(f, lattice)
-        feq = compute_equilibrium(rho_n, u_n, lattice)
+        rho_n, u_new = compute_macroscopic(f, lattice)
+        feq = compute_equilibrium(rho_n, u_new, lattice)
         f_col = collide_bgk(f, feq, tau)
         f_stream = stream(f_col, lattice)
         f_bc = bc_fn(f_stream, f_col, None)

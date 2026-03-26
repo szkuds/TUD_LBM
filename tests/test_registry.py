@@ -220,24 +220,24 @@ class TestLatticeViaRegistry:
 
 
 class TestCollisionFactoryViaRegistry:
-    """get_collision_fn uses the registry correctly."""
+    """build_collision_fn uses the registry correctly."""
 
     def test_get_bgk(self):
-        from operators.collision.factory import build_collision_fn
+        from operators.collision import build_collision_fn
 
         fn = build_collision_fn("bgk")
         assert callable(fn)
 
     def test_get_mrt(self):
-        from operators.collision.factory import build_collision_fn
+        from operators.collision import build_collision_fn
 
         fn = build_collision_fn("mrt")
         assert callable(fn)
 
     def test_unknown_raises(self):
-        from operators.collision.factory import build_collision_fn
+        from operators.collision import build_collision_fn
 
-        with pytest.raises(ValueError, match="Unknown collision scheme"):
+        with pytest.raises(ValueError, match="Unknown collision"):
             build_collision_fn("nonexistent")
 
 
@@ -272,7 +272,7 @@ class TestDummyOperatorAutoExposure:
             assert "_dummy_test_col" in names
 
             # The factory can resolve it
-            from operators.collision.factory import build_collision_fn
+            from operators.collision import build_collision_fn
 
             fn = build_collision_fn("_dummy_test_col")
             assert fn is _dummy_collide

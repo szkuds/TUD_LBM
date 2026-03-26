@@ -436,11 +436,11 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
     the enclosing scope so the inner optimiser sees only ``params``.
     """
     from operators.boundary.composite import build_composite_bc
-    from operators.collision.factory import build_collision_fn
-    from operators.equilibrium.equilibrium import compute_equilibrium
+    from operators.collision import build_collision_fn
+    from operators.equilibrium import build_equilibrium_fn
     from operators.force.source_term import source
-    from operators.macroscopic.multiphase import compute_macroscopic_multiphase
-    from operators.streaming.streaming import stream
+    from operators.macroscopic import build_macroscopic_fn
+    from operators.streaming import build_streaming_fn
 
     lattice = setup.lattice
     mp = setup.multiphase_params
@@ -455,26 +455,26 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
         # the boundary condition, which is handled externally).
 
         # Standard multiphase step
+        macroscopic_fn = build_macroscopic_fn("standard")
+        equilibrium_fn = build_equilibrium_fn("wb")
+        streaming_fn = build_streaming_fn("standard")
+
         if setup.force_enabled and force is not None:
-            rho_new, u_new, force_tot = compute_macroscopic_multiphase(
+            rho_new, u_new, force_tot = macroscopic_fn(
                 f_t,
                 lattice,
-                mp,
-                force_ext=force,
-                diff_ops=diff_ops,
+                force=force,
             )
         else:
-            rho_new, u_new, force_tot = compute_macroscopic_multiphase(
+            rho_new, u_new, force_tot = macroscopic_fn(
                 f_t,
                 lattice,
-                mp,
-                diff_ops=diff_ops,
             )
 
-        feq = compute_equilibrium(rho_new, u_new, lattice)
+        feq = equilibrium_fn(rho_new, u_new, lattice)
         src = source(rho_new, u_new, force_tot, lattice, diff_ops=diff_ops)
         f_col = collision_fn(f_t, feq, setup.tau, src)
-        f_str = stream(f_col, lattice, bc_config=setup.bc_config)
+        f_str = streaming_fn(f_col, lattice)
         f_bc = bc_fn(f_str, f_col, setup.bc_masks)
 
         # Measure CA and CLL from the output

@@ -8,7 +8,7 @@ and is therefore only called at setup time, outside JIT.
 from __future__ import annotations
 import jax.numpy as jnp
 import numpy as np
-from operators.equilibrium.equilibrium import compute_equilibrium
+from operators.equilibrium import build_equilibrium_fn
 from registry import initialise_operator
 from setup.lattice import Lattice
 
@@ -40,6 +40,7 @@ def init_from_file(
         FileNotFoundError: If *npz_path* does not exist.
         ValueError: If the loaded shapes do not match ``(nx, ny, ...)``.
     """
+    equilibrium_fn = build_equilibrium_fn("wb")
     data = np.load(npz_path)
     rho = jnp.array(data["rho"])
     u = jnp.array(data["u"])
@@ -47,4 +48,4 @@ def init_from_file(
         raise ValueError(f"Expected rho shape ({nx}, {ny}, 1, 1), got {rho.shape}")
     if u.shape != (nx, ny, 1, 2):
         raise ValueError(f"Expected u shape ({nx}, {ny}, 1, 2), got {u.shape}")
-    return compute_equilibrium(rho, u, lattice)
+    return equilibrium_fn(rho, u, lattice)
