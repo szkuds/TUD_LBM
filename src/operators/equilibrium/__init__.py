@@ -15,9 +15,10 @@ from __future__ import annotations
 
 from operators.protocols import EquilibriumOperator
 from operators.factory import build_operator
+from operators._loader import auto_load_operators
 
-# ── Private: Import implementation module to trigger registry registration ──
-from operators.equilibrium import _equilibrium as _eq_impl  # noqa: F401
+# Auto-discover and import private operator modules for registry registration
+auto_load_operators('operators.equilibrium')
 
 
 def build_equilibrium_fn(scheme: str = "wb") -> EquilibriumOperator:

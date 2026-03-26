@@ -4,7 +4,7 @@ Places two vapour bubbles stacked vertically in the domain.
 
 from __future__ import annotations
 import jax.numpy as jnp
-from operators.equilibrium.equilibrium import compute_equilibrium
+from operators.equilibrium._equilibrium import compute_equilibrium
 from registry import initialise_operator
 from setup.lattice import Lattice
 

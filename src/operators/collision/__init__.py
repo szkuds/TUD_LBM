@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from operators.protocols import CollisionOperator
 from operators.factory import build_operator
+from operators._loader import auto_load_operators
 
-# ── Private: Import implementation modules to trigger registry registration ──
-from operators.collision import _bgk as _bgk_impl  # noqa: F401
-from operators.collision import _mrt as _mrt_impl  # noqa: F401
+# Auto-discover and import private operator modules for registry registration
+auto_load_operators('operators.collision')
 
 
 def build_collision_fn(scheme: str) -> CollisionOperator:

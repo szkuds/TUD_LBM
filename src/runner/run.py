@@ -84,7 +84,7 @@ def init_state(
     Returns:
         A :class:`State` ready to be passed to :func:`run`.
     """
-    from operators.initialise.factory import get_init_fn
+    from operators.initialise import build_initialise_fn
 
     lattice = setup.lattice
     nx, ny = setup.grid_shape[0], setup.grid_shape[1]
@@ -92,7 +92,7 @@ def init_state(
 
     if f is None:
         init_type = getattr(setup, "init_type", "standard")
-        init_fn = get_init_fn(init_type)
+        init_fn = build_initialise_fn(init_type)
 
         # Build kwargs from setup for multiphase initialisers
         kw: dict = {}

@@ -285,9 +285,9 @@ def build_setup(config) -> SimulationSetup:
     # ── Build differential operators ──────────────────────────────────
     # Ensure BC modules are imported so their @boundary_condition decorators
     # have fired before we query pad_edge_mode metadata.
-    from operators.boundary import bounce_back as _bb  # noqa: F401
-    from operators.boundary import periodic as _per  # noqa: F401
-    from operators.boundary import symmetry as _sym  # noqa: F401
+    from operators.boundary import _bounce_back as _bb  # noqa: F401
+    from operators.boundary import _periodic as _per  # noqa: F401
+    from operators.boundary import _symmetry as _sym  # noqa: F401
 
     pad_modes = determine_pad_modes(bc_config)
     diff_cfg = DifferentialConfig(

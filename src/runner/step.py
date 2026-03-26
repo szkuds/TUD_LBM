@@ -167,7 +167,7 @@ def step_multiphase(setup, state: State) -> State:
     f_col = collision_fn(state.f, feq, setup.tau, src)
 
     # 4. Streaming
-    f_stream = stream(f_col, lattice, bc_config=setup.bc_config)
+    f_stream = streaming_fn(f_col, lattice)
 
     # 5. Boundary conditions
     f_bc = bc_fn(f_stream, f_col, setup.bc_masks)

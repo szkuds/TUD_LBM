@@ -15,9 +15,9 @@ from typing import Any
 import jax.numpy as jnp
 
 # Ensure BC modules are imported so decorators fire
-from operators.boundary import bounce_back as _bb  # noqa: F401
-from operators.boundary import periodic as _per  # noqa: F401
-from operators.boundary import symmetry as _sym  # noqa: F401
+from operators.boundary import _bounce_back as _bb  # noqa: F401
+from operators.boundary import _periodic as _per  # noqa: F401
+from operators.boundary import _symmetry as _sym  # noqa: F401
 from registry import get_operators
 from setup.lattice import Lattice
 

@@ -92,7 +92,7 @@ def ensure_registry() -> None:
     import operators.differential
     import operators.equilibrium
     import operators.force
-    import operators.initialise.factory
+    import operators.initialise
     import operators.macroscopic
     import operators.streaming
     import operators.wetting  # noqa: F401

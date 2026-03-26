@@ -225,9 +225,9 @@ class TestInitialiserProtocol:
 
     def test_standard_initialiser_conformance(self, lattice_d2q9, grid_shape):
         """Standard initialiser should match protocol."""
-        from operators.initialise.factory import get_init_fn
+        from operators.initialise import build_initialise_fn
 
-        init_fn = get_init_fn("standard")
+        init_fn = build_initialise_fn("standard")
         nx, ny = grid_shape
         q = lattice_d2q9.q
 

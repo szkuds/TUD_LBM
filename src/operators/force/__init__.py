@@ -1,21 +1,50 @@
-"""Force operators — pure functions."""
+"""Force operators — implementations of ForcingOperator protocol.
 
-from operators.force.electric import ElectricParams
-from operators.force.electric import build_electric_params
-from operators.force.electric import compute_electric_force
-from operators.force.electric import init_hi
-from operators.force.electric import update_hi
-from operators.force.gravity import build_gravity_force
-from operators.force.gravity import compute_gravity_force
-from operators.force.source_term import source
+Public API: build_force_fn()
 
-__all__ = [
-    "ElectricParams",
-    "build_electric_params",
-    "build_gravity_force",
-    "compute_electric_force",
-    "compute_gravity_force",
-    "init_hi",
-    "source",
-    "update_hi",
-]
+Implementation modules are internal; use the factory to access.
+
+Example:
+    from operators.force import build_force_fn
+    
+    force_fn = build_force_fn("gravity_multiphase")
+    template = force_fn(grid_shape=(64, 64), force_g=0.001)
+"""
+
+from __future__ import annotations
+
+from operators.protocols import ForcingOperator
+from operators.factory import build_operator
+from operators._loader import auto_load_operators
+
+# Auto-discover and import private operator modules for registry registration
+auto_load_operators('operators.force')
+
+
+def build_force_fn(scheme: str) -> ForcingOperator:
+    """Return a force operator satisfying ForcingOperator protocol.
+
+    Args:
+        scheme: Force model name ("gravity_multiphase", "electric", etc).
+
+    Returns:
+        A callable satisfying the ForcingOperator protocol.
+        
+        Type-checkers see this as a ForcingOperator.
+
+    Raises:
+        ValueError: If scheme is not registered.
+        
+    Examples:
+        >>> from operators.force import build_force_fn
+        >>> gravity = build_force_fn("gravity_multiphase")
+        >>> template = gravity(grid_shape=(64, 64), force_g=0.001)
+    """
+    # Lazy import to avoid circular dependencies
+    from operators.force import electric as _elec_impl  # noqa: F401
+    from operators.force import gravity as _grav_impl  # noqa: F401
+    
+    return build_operator("force_model", scheme)
+
+
+__all__ = ["build_force_fn"]

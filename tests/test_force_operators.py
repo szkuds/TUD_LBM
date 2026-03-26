@@ -251,7 +251,7 @@ class TestUpdateHi:
         from operators.force.electric import build_electric_params
         from operators.force.electric import init_hi
         from operators.force.electric import update_hi
-        from operators.streaming.streaming import stream
+        from operators.streaming._streaming import stream
 
         ep = build_electric_params(
             permittivity_liquid=80.0,
