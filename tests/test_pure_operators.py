@@ -405,7 +405,7 @@ class TestComputeMacroscopicMultiphase:
 
     def _diff_ops(self, lattice):
         from operators.differential.config import DifferentialConfig
-        from operators.differential.factory import build_differential_operators
+        from operators.differential import build_differential_operators
 
         cfg = DifferentialConfig(
             w=lattice.w,

@@ -116,9 +116,9 @@ def step_multiphase(setup, state: State) -> State:
     mp = setup.multiphase_params
     diff_ops = setup.diff_ops
     collision_fn = build_collision_fn(setup.collision_scheme)
-    equilibrium_fn = build_equilibrium_fn("wb")
-    streaming_fn = build_streaming_fn("standard")
-    macroscopic_fn = build_macroscopic_fn("double-well")  # Multiphase uses double-well
+    equilibrium_fn = build_equilibrium_fn()
+    streaming_fn = build_streaming_fn()
+    macroscopic_fn = build_macroscopic_fn(setup.multiphase_params.eos)  # Multiphase uses double-well
     bc_fn = build_composite_bc(setup.bc_config, lattice)
 
     # 1. Multiphase macroscopic (includes chemical potential, gradient, Laplacian)

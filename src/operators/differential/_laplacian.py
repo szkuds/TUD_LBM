@@ -1,5 +1,7 @@
 """LBM-stencil Laplacian operator — pure function.
 
+Registered as ``("differential", "laplacian")`` via ``@register_operator``.
+
 The Laplacian formula follows the standard LBM isotropic stencil:
 
 .. math::
@@ -13,18 +15,19 @@ lattice (``c_s^2 = 1/3``).
 from __future__ import annotations
 import jax.numpy as jnp
 from registry import register_operator
+from operators.differential._pad_utils import apply_stencil_padding, to_2d
 
 
 @register_operator("differential", name="laplacian")
 def compute_laplacian(
     grid: jnp.ndarray,
     w: jnp.ndarray,
-    pad_mode: list,
+    pad_mode: list | tuple,
 ) -> jnp.ndarray:
     """LBM-stencil Laplacian of a scalar field.
 
-    ``pad_mode`` must be a compile-time constant (Python list of strings).
-    To JIT-compile calls to this function, use::
+    ``pad_mode`` must be a compile-time constant (Python list/tuple of
+    strings).  To JIT-compile calls to this function, use::
 
         jax.jit(compute_laplacian, static_argnames=("pad_mode",))
 
@@ -33,18 +36,13 @@ def compute_laplacian(
     Args:
         grid: Scalar field, shape ``(nx, ny, 1, 1)`` or ``(nx, ny)``.
         w: Lattice weights, shape ``(q,)``.
-        pad_mode: Four padding modes ``[right_y, left_y, bottom_x, top_x]``.
+        pad_mode: Four padding modes ``(right_y, left_y, bottom_x, top_x)``.
 
     Returns:
         Laplacian field, shape ``(nx, ny, 1, 1)``.
     """
-    grid_2d = grid[:, :, 0, 0] if grid.ndim == 4 else grid
-
-    # Apply four pads to obtain one ghost cell on every side
-    gp = jnp.pad(grid_2d, ((0, 0), (0, 1)), mode=pad_mode[0])
-    gp = jnp.pad(gp, ((0, 0), (1, 0)), mode=pad_mode[1])
-    gp = jnp.pad(gp, ((0, 1), (0, 0)), mode=pad_mode[2])
-    gp = jnp.pad(gp, ((1, 0), (0, 0)), mode=pad_mode[3])
+    grid_2d = to_2d(grid)
+    gp = apply_stencil_padding(grid_2d, tuple(pad_mode))
 
     i0 = gp[1:-1, 1:-1]  # centre values
 
