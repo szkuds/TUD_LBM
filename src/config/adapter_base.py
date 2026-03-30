@@ -16,12 +16,11 @@ import dataclasses
 import importlib
 from abc import ABC
 from abc import abstractmethod
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
-import operators.force  # noqa: F401
 from config.simulation_config import CONFIG_SECTION
 from config.simulation_config import SimulationConfig
-from registry import get_operator_names
 
 
 class ConfigAdapter(ABC):
@@ -89,140 +88,45 @@ class ConfigAdapter(ABC):
         return value
 
     @classmethod
-    def _handle_boundary_conditions(
-        cls,
-        key: str,
-        value: Any,
-        bc_out: dict[str, Any],
-    ) -> None:
-        if key == "bc_config":
-            bc_out.update(value)
-        elif key == "wetting_config":
-            bc_out["wetting_params"] = value
-        elif key == "hysteresis_config":
-            bc_out["hysteresis_params"] = value
-        else:
-            bc_out[key] = value
-
-    @classmethod
-    def _handle_force(
-        cls,
-        key: str,
-        value: Any,
-        force_list: list[dict[str, Any]],
-    ) -> None:
-        if key == "force_config":
-            items = list(value) if isinstance(value, list) else [value]
-            force_list[:] = items
-
-    @classmethod
-    def _handle_simulation_type(
-        cls,
-        key: str,
-        value: Any,
-        sim_table: dict[str, Any],
-    ) -> None:
-        sim_table[key] = cls._serialize_safe(value)
-
-    @classmethod
     def build_sections(cls, config: SimulationConfig) -> dict[str, Any]:
-        """Build a format-agnostic nested dict from *config*."""
+        """Build a format-agnostic nested dict from *config*.
+
+        Section routing is driven entirely by CONFIG_SECTION metadata.
+        No per-section handler methods needed — every field drops into
+        its declared section bucket.
+        """
         d = dataclasses.asdict(config)
         sections = cls._section_map()
         sim_type = d.get("sim_type", "single_phase")
 
-        # ── Bucket every field by its declared section ────────────────
-        sim_table: dict[str, Any] = {"type": sim_type}
-        multiphase_table: dict[str, Any] = {}
-        output_table: dict[str, Any] = {}
-        bc_out: dict[str, Any] = {}
-        force_list: list[dict[str, Any]] = []
+        # Accumulator: one dict per section name
+        buckets: dict[str, dict[str, Any]] = defaultdict(dict)
 
-        def _iter_relevant_items():
-            for key, value in d.items():
-                section = sections.get(key, "simulation_type")
-                if section in {"identity", "extra"}:
-                    continue
-                if value is None:
-                    continue
-                yield key, value, section
+        for key, value in d.items():
+            if value is None:
+                continue
+            section = sections.get(key, "simulation_type")
 
-        for key, value, section in _iter_relevant_items():
-            if section == "multiphase" and sim_type == "multiphase":
-                multiphase_table[key] = value
+            if section in {"identity", "extra"}:
                 continue
 
-            if section == "output":
-                output_table[key] = value
+            if section == "multiphase" and sim_type != "multiphase":
                 continue
 
-            if section == "boundary_conditions":
-                cls._handle_boundary_conditions(key, value, bc_out)
-                continue
+            # Everything — including forces — drops into its section bucket
+            buckets[section][key] = cls._serialize_safe(value)
 
-            if section == "force":
-                cls._handle_force(key, value, force_list)
-                continue
+        buckets["simulation_type"]["type"] = sim_type
 
-            if section == "simulation_type":
-                cls._handle_simulation_type(key, value, sim_table)
+        for ek, ev in d.get("extra", {}).items():
+            buckets["simulation_type"][ek] = cls._serialize_safe(ev)
 
-        # Merge extra keys into the simulation_type table
-        for extra_key, extra_value in d.get("extra", {}).items():
-            sim_table[extra_key] = cls._serialize_safe(extra_value)
-
-        # ── Assemble top-level document ───────────────────────────────
-        doc: dict[str, Any] = {"simulation_type": sim_table}
-
-        if multiphase_table:
-            doc["multiphase"] = multiphase_table
-        if bc_out:
-            doc["boundary_conditions"] = bc_out
-        if force_list:
-            doc["force"] = force_list
-        if output_table:
-            doc["output"] = output_table
+        doc: dict[str, Any] = {"simulation_type": buckets.pop("simulation_type", {})}
+        for section_name in sorted(buckets):
+            if buckets[section_name]:
+                doc[section_name] = buckets[section_name]
 
         return doc
-
-    # ------------------------------------------------------------------
-    # Shared helpers available to all adapters
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def parse_force_tables(
-        force_tables: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        """Validate and normalise ``[[force]]`` tables into plain dicts.
-
-        Each dict **must** contain a ``type`` key whose value is one of
-        :data:`VALID_FORCE_TYPES`. The dicts are stored as-is in
-        ``SimulationConfig.force_config`` and later consumed by
-        ``build_setup()`` to construct JAX-friendly force objects.
-
-        Args:
-            force_tables: List of dicts, each with at least a ``type`` key.
-
-        Returns:
-            A list of validated force configuration dicts.
-
-        Raises:
-            KeyError: If a ``type`` is not recognised.
-        """
-        validated: list[dict[str, Any]] = []
-        for entry in force_tables:
-            processed = dict(entry)  # shallow copy
-            force_type = processed.get("type")
-
-            if force_type is None:
-                raise KeyError("Each [[force]] table must have a 'type' key.")
-
-            if force_type not in get_operator_names("force"):
-                registered = ", ".join(sorted(get_operator_names("force")))
-                raise KeyError(f"Unknown force type '{force_type}'. Registered types: {registered}")
-
-            validated.append(processed)
-        return validated
 
 
 # ------------------------------------------------------------------

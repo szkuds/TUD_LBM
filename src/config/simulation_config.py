@@ -85,75 +85,66 @@ def _valid_lattices() -> set:
 
 @dataclass(frozen=True)
 class SimulationConfig:
-    """Validated, immutable simulation configuration.
-
-    Not a JAX pytree — used only *outside* JIT for parsing,
-    validation, and serialisation.
-
-    Raises:
-        ValueError: If any field value is invalid.
-    """
-
-    # ── Simulation identity ──────────────────────────────────────────
+    # ── Simulation identity ──────────────────────────────────────
     sim_type: Literal["single_phase", "multiphase"] = field(
         default="single_phase",
         metadata={CONFIG_SECTION: "identity"},
     )
     simulation_name: str | None = None
 
-    # ── Lattice & grid ───────────────────────────────────────────────
+    # ── Lattice & grid ───────────────────────────────────────────
     lattice_type: str = "D2Q9"
     grid_shape: tuple[int, ...] = (64, 64)
 
-    # ── Time stepping ────────────────────────────────────────────────
+    # ── Time stepping ────────────────────────────────────────────
     nt: int = 1000
     tau: float = 1.0
 
-    # ── Collision ────────────────────────────────────────────────────
+    # ── Collision ────────────────────────────────────────────────
     collision_scheme: str = "bgk"
     k_diag: tuple[float, ...] | None = None
 
-    # ── Boundary conditions ──────────────────────────────────────────
+    # ── Boundary conditions (ONLY topology: which BC on which face) ──
     bc_config: dict[str, Any] | None = field(
         default=None,
         metadata={CONFIG_SECTION: "boundary_conditions"},
     )
 
-    # ── Force ────────────────────────────────────────────────────────
-    force_enabled: bool = field(
-        default=False,
-        metadata={CONFIG_SECTION: "force"},
-    )
-    force_config: dict[str, Any] | list[dict[str, Any]] | None = field(
+    # ── Wetting model (promoted to first-class section) ──────────
+    wetting_config: dict[str, Any] | None = field(
         default=None,
-        metadata={CONFIG_SECTION: "force"},
+        metadata={CONFIG_SECTION: "wetting"},           # was "boundary_conditions"
     )
 
-    # ── Initialisation ───────────────────────────────────────────────
+    # ── Hysteresis model (promoted to first-class section) ───────
+    hysteresis_config: dict[str, Any] | None = field(
+        default=None,
+        metadata={CONFIG_SECTION: "hysteresis"},         # was "boundary_conditions"
+    )
+
+    # ── Forces (each force is its own field, named by physics) ───
+    gravity_force: dict[str, Any] | None = field(
+        default=None,
+        metadata={CONFIG_SECTION: "gravity_force"},
+    )
+    electric_force: dict[str, Any] | None = field(
+        default=None,
+        metadata={CONFIG_SECTION: "electric_force"},
+    )
+
+    # ── Initialisation ───────────────────────────────────────────
     init_type: str = "standard"
     init_dir: str | None = None
 
-    # ── Output / IO ──────────────────────────────────────────────────
-    results_dir: str = field(
-        default=BASE_RESULTS_DIR,
-        metadata={CONFIG_SECTION: "output"},
-    )
-    save_interval: int = 0  # This is set to 0 to ensure that when nothing is passed the default is nt/10
+    # ── Output / IO ──────────────────────────────────────────────
+    results_dir: str = field(default=BASE_RESULTS_DIR, metadata={CONFIG_SECTION: "output"})
+    save_interval: int = 0
     skip_interval: int = 0
-    save_fields: list[str] | None = field(
-        default=None,
-        metadata={CONFIG_SECTION: "output"},
-    )
-    plot_fields: list[str] | None = field(
-        default=None,
-        metadata={CONFIG_SECTION: "output"},
-    )
-    output_format: str | list[str] | None = field(
-        default="numpy",
-        metadata={CONFIG_SECTION: "output"},
-    )
+    save_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
+    plot_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
+    output_format: str | list[str] | None = field(default="numpy", metadata={CONFIG_SECTION: "output"})
 
-    # ── Multiphase (ignored when sim_type == "single_phase") ─────────
+    # ── Multiphase ───────────────────────────────────────────────
     eos: str | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
     kappa: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
     rho_l: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
@@ -163,21 +154,8 @@ class SimulationConfig:
     rho_ref: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
     g: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
 
-    # ── Wetting / hysteresis ─────────────────────────────────────────
-    wetting_config: dict[str, Any] | None = field(
-        default=None,
-        metadata={CONFIG_SECTION: "boundary_conditions"},
-    )
-    hysteresis_config: dict[str, Any] | None = field(
-        default=None,
-        metadata={CONFIG_SECTION: "boundary_conditions"},
-    )
-
-    # ── Extra / extensible ───────────────────────────────────────────
-    extra: dict[str, Any] = field(
-        default_factory=dict,
-        metadata={CONFIG_SECTION: "extra"},
-    )
+    # ── Extra / extensible ───────────────────────────────────────
+    extra: dict[str, Any] = field(default_factory=dict, metadata={CONFIG_SECTION: "extra"})
 
     # ══════════════════════════════════════════════════════════════════
     # Validation
@@ -329,6 +307,15 @@ class SimulationConfig:
     def is_multiphase(self) -> bool:
         """Whether this is a multiphase simulation."""
         return self.sim_type == "multiphase"
+
+    @property
+    def force_enabled(self) -> bool:
+        """True if any *_force field is populated. Replaces the old boolean flag."""
+        return any(
+            getattr(self, f.name) is not None
+            for f in dataclasses.fields(self)
+            if f.name.endswith("_force")
+        )
 
     # ══════════════════════════════════════════════════════════════════
     # Serialisation

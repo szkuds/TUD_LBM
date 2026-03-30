@@ -1,58 +1,56 @@
-# TUD-LBM Complex Multiphase Simulation Configuration
-#
-# Load this config via the TOML adapter:
-#
-#   from config.adapter_toml import TomlAdapter
-#   from setup.simulation_setup import build_setup
-#   from runner.run import init_state, run
-#
-#   config = TomlAdapter().load("config_complex.toml")
-#   setup  = build_setup(config)
-#   state  = init_state(setup)
-#   final_state, trajectory = run(setup, state)
-
+# ─── Core simulation parameters ─────────────────────────────────────
 [simulation_type]
-simulation_name = 'Test complex simulation'
-type = "multiphase"
-grid_shape = [201, 201]
-lattice_type = "D2Q9"
-tau = 0.99
-nt = 2000
-init_type = "wetting"
+simulation_name = "Test complex simulation"
+type            = "multiphase"
+grid_shape      = [201, 201]
+lattice_type    = "D2Q9"
+tau             = 0.99
+nt              = 2000
+init_type       = "wetting"
 
 [multiphase]
-kappa = 0.017
-rho_l = 1.0
-rho_v = 0.33
+kappa           = 0.017
+rho_l           = 1.0
+rho_v           = 0.33
 interface_width = 5
-eos = "double-well"
-
-# Force configuration - can have multiple [[force]] tables
-[[force]]
-type = "gravity_multiphase"
-force_g = 2e-6
-inclination_angle_deg = 0
+eos             = "double-well"
 
 [boundary_conditions]
-left = "periodic"
-right = "periodic"
-top = "bounce-back"
+left   = "periodic"
+right  = "periodic"
+top    = "bounce-back"
 bottom = "wetting"
 
-[boundary_conditions.wetting_params]
-phi_left = 1.0
-phi_right = 1.0
-d_rho_left = 0.0
+[wetting]
+phi_left    = 1.0
+phi_right   = 1.0
+d_rho_left  = 0.0
 d_rho_right = 0.0
 
-[boundary_conditions.hysteresis_params]
-ca_advancing = 90.0
-ca_receding = 80.0
-learning_rate = 0.05
-max_iterations = 10
+[hysteresis]
+ca_advancing    = 90.0
+ca_receding     = 80.0
+learning_rate   = 0.05
+max_iterations  = 10
 
+# ─── Forces (each force is its own section, named by physics) ───────
+#
+# Any section whose name ends in "_force" is automatically discovered,
+# constructed via the operator registry, and summed into the total
+# external force. No [[force]] array-of-tables, no "type" key needed.
+
+[gravity_force]
+force_g               = 2e-6
+inclination_angle_deg = 0
+
+# To add a second force, just add another section:
+#
+# [electric_force]
+# voltage_top    = 1.0
+# voltage_bottom = 0.0
+
+# ─── Output / IO ────────────────────────────────────────────────────
 [output]
 results_dir = "~/TUD_LBM_data/results"
 save_fields = ["rho", "u"]
-plot_fields = ["density", 'velocity', 'analysis']
-
+plot_fields = ["density", "velocity", "analysis"]
