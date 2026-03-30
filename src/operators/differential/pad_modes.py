@@ -28,7 +28,7 @@ def determine_pad_modes(bc_config: dict[str, Any] | None) -> list[str]:
             ``None`` means all-periodic (→ all ``"wrap"``).
 
     Returns:
-        Four padding-mode strings ``[right_y, left_y, bottom_x, top_x]``.
+        Four padding-mode strings ``[top, bottom, left, right]``.
     """
     # Build lookup: bc_name -> pad_edge_mode from registry metadata
     bc_ops = get_operators("boundary_condition")
@@ -45,8 +45,8 @@ def determine_pad_modes(bc_config: dict[str, Any] | None) -> list[str]:
         return pad_for.get(bc_type, "edge")
 
     return [
-        _mode("right"),  # right-y pad
-        _mode("left"),  # left-y  pad
-        _mode("bottom"),  # bottom-x pad
-        _mode("top"),  # top-x   pad
+        _mode("top"),
+        _mode("bottom"),
+        _mode("left"),
+        _mode("right"),
     ]
