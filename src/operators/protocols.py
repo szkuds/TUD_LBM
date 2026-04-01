@@ -256,7 +256,7 @@ class ForceOperator(Protocol):
         """Construct precomputed data for the force module."""
         ...
 
-    def compute(self, state: Any, precomputed: Any) -> jnp.ndarray:
+    def compute(self, state: Any, precomputed: Any, *, diff_ops: Any = None) -> jnp.ndarray:
         """Compute the force contribution for the current state."""
         ...
 

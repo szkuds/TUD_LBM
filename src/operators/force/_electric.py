@@ -14,16 +14,16 @@ Usage::
     from operators.force import build_force_fn
 
     module = build_force_fn("electric_force")
-    params = module.build(config_dict, (64, 64), lattice)
-    force = module.compute(state, params, lattice)
+    params = module.build(config_dict, (64, 64))
+    force = module.compute(state, params, diff_ops=diff_ops)
     extra = module.init_state((64, 64), lattice, params)
     state = module.update_state(state, params, lattice, stream_fn)
 
     # Direct (internal / testing)
     from operators.force._electric import ElectricForceModule
 
-    params = ElectricForceModule.build(config_dict, (64, 64), lattice)
-    force = ElectricForceModule.compute(state, params, lattice)
+    params = ElectricForceModule.build(config_dict, (64, 64))
+    force = ElectricForceModule.compute(state, params, diff_ops=diff_ops)
 """
 
 from __future__ import annotations
@@ -115,13 +115,6 @@ def _equilibrium_h(
     return w[None, None, :, None] * potential
 
 
-def _gradient_2d(field_2d: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Central-difference gradient on a 2D field (periodic BCs)."""
-    df_dx = (jnp.roll(field_2d, -1, axis=0) - jnp.roll(field_2d, 1, axis=0)) / 2.0
-    df_dy = (jnp.roll(field_2d, -1, axis=1) - jnp.roll(field_2d, 1, axis=1)) / 2.0
-    return df_dx, df_dy
-
-
 # ══════════════════════════════════════════════════════════════════════
 # Registry-backed force module
 # ══════════════════════════════════════════════════════════════════════
@@ -160,17 +153,22 @@ class ElectricForceModule:
     def compute(
         state,
         precomputed: ElectricParams,
+        *,
+        diff_ops=None,
     ) -> jnp.ndarray:
         """Compute electric force (step-time, jittable).
 
         Reads ``state.f`` for density and ``state.h`` for the current
-        electric potential distribution.
+        electric potential distribution.  Uses the pre-built differential
+        operators from the differential package for spatial gradients.
 
         Args:
             state: Current simulation :class:`State`.
             precomputed: :class:`ElectricParams` from :meth:`build`.
-            lattice: Simulation lattice (weights and velocities for
-                gradient computation).
+            diff_ops: Pre-built
+                :class:`~operators.differential.operators.DifferentialOperators`.
+                ``diff_ops.grad_standard`` is used for all gradient
+                computations.
 
         Returns:
             Electric force field, shape ``(nx, ny, 1, 2)``.
@@ -183,16 +181,26 @@ class ElectricForceModule:
         )
 
         potential_2d = jnp.sum(state.h, axis=2)[:, :, 0]
-        du_dx, du_dy = _gradient_2d(potential_2d)
+
+        # Gradient of potential → electric field  (via differential package)
+        grad_potential = diff_ops.grad_standard(potential_2d[:, :, None, None])
+        du_dx = grad_potential[:, :, 0, 0]
+        du_dy = grad_potential[:, :, 0, 1]
         ex = -du_dx
         ey = -du_dy
 
-        deps_dx, deps_dy = _gradient_2d(epsilon_2d)
+        # Gradient of permittivity
+        grad_eps = diff_ops.grad_standard(epsilon_2d[:, :, None, None])
+        deps_dx = grad_eps[:, :, 0, 0]
+        deps_dy = grad_eps[:, :, 0, 1]
 
+        # Divergence of (epsilon * E):  d(eps*ex)/dx + d(eps*ey)/dy
         eps_ex = epsilon_2d * ex
         eps_ey = epsilon_2d * ey
-        d_eps_ex_dx = (jnp.roll(eps_ex, -1, axis=0) - jnp.roll(eps_ex, 1, axis=0)) / 2.0
-        d_eps_ey_dy = (jnp.roll(eps_ey, -1, axis=1) - jnp.roll(eps_ey, 1, axis=1)) / 2.0
+        grad_eps_ex = diff_ops.grad_standard(eps_ex[:, :, None, None])
+        grad_eps_ey = diff_ops.grad_standard(eps_ey[:, :, None, None])
+        d_eps_ex_dx = grad_eps_ex[:, :, 0, 0]
+        d_eps_ey_dy = grad_eps_ey[:, :, 0, 1]
         rho_e = -(d_eps_ex_dx + d_eps_ey_dy)
 
         e2 = ex * ex + ey * ey

@@ -8,14 +8,14 @@ Usage::
     from operators.force import build_force_fn
 
     module = build_force_fn("gravity_force")
-    template = module.build({"force_g": 0.001}, (64, 64), lattice)
-    force = module.compute(state, template, lattice)
+    template = module.build({"force_g": 0.001}, (64, 64))
+    force = module.compute(state, template, diff_ops=diff_ops)
 
     # Direct (internal / testing)
     from operators.force._gravity import GravityForceModule
 
-    template = GravityForceModule.build({"force_g": 0.001}, (64, 64), lattice)
-    force = GravityForceModule.compute(state, template, lattice)
+    template = GravityForceModule.build({"force_g": 0.001}, (64, 64))
+    force = GravityForceModule.compute(state, template, diff_ops=diff_ops)
 """
 
 from __future__ import annotations
@@ -68,6 +68,8 @@ class GravityForceModule:
     def compute(
         state,
         precomputed: jnp.ndarray,
+        *,
+        diff_ops=None,
     ) -> jnp.ndarray:
         """Compute gravity force (step-time, jittable).
 
@@ -75,8 +77,9 @@ class GravityForceModule:
             state: Current simulation :class:`State`. Only ``state.f``
                 is used (to compute density).
             precomputed: Gravity template from :meth:`build`.
-            lattice: Simulation lattice (unused for gravity, but
-                required by the ``ForceOperator`` protocol).
+            diff_ops: Pre-built
+                :class:`~operators.differential.operators.DifferentialOperators`.
+                Unused for gravity, but accepted for protocol consistency.
 
         Returns:
             Gravity force field, shape ``(nx, ny, 1, 2)``.

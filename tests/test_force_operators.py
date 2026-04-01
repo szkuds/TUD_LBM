@@ -15,6 +15,20 @@ def lattice():
     return build_lattice("D2Q9")
 
 
+@pytest.fixture
+def diff_ops(lattice):
+    """Build differential operators with periodic (wrap) padding."""
+    from operators.differential.config import DifferentialConfig
+    from operators.differential import build_differential_operators
+
+    cfg = DifferentialConfig(
+        w=lattice.w,
+        c=lattice.c,
+        pad_modes=["wrap", "wrap", "wrap", "wrap"],
+    )
+    return build_differential_operators(cfg)
+
+
 def make_state(lattice, rho_value=1.0, h=None):
     f = jnp.ones((NX, NY, lattice.q, 1)) * (rho_value / lattice.q)
     rho = jnp.sum(f, axis=2, keepdims=True)
@@ -193,7 +207,7 @@ class TestInitState:
 class TestComputeElectricForce:
     """ElectricForceModule.compute returns correct shape and is jittable."""
 
-    def test_shape(self, lattice):
+    def test_shape(self, lattice, diff_ops):
         from operators.force._electric import ElectricForceModule
 
         params = ElectricForceModule.build({
@@ -206,10 +220,10 @@ class TestComputeElectricForce:
         hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
-        force = ElectricForceModule.compute(state, params)
+        force = ElectricForceModule.compute(state, params, diff_ops=diff_ops)
         assert force.shape == (NX, NY, 1, 2)
 
-    def test_zero_voltage_zero_force(self, lattice):
+    def test_zero_voltage_zero_force(self, lattice, diff_ops):
         from operators.force._electric import ElectricForceModule
 
         params = ElectricForceModule.build({
@@ -223,10 +237,10 @@ class TestComputeElectricForce:
         hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
-        force = ElectricForceModule.compute(state, params)
+        force = ElectricForceModule.compute(state, params, diff_ops=diff_ops)
         np.testing.assert_allclose(np.array(force), 0.0, atol=1e-10)
 
-    def test_jittable(self, lattice):
+    def test_jittable(self, lattice, diff_ops):
         from operators.force._electric import ElectricForceModule
 
         params = ElectricForceModule.build({
@@ -239,7 +253,7 @@ class TestComputeElectricForce:
         hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
-        jitted = jax.jit(lambda s: ElectricForceModule.compute(s, params))
+        jitted = jax.jit(lambda s: ElectricForceModule.compute(s, params, diff_ops=diff_ops))
         force = jitted(state)
         assert force.shape == (NX, NY, 1, 2)
 

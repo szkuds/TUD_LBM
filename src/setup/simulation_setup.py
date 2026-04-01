@@ -249,8 +249,8 @@ def _build_forces(
     """Discover *_force fields on config, build ForceSpec for each.
 
     Each force operator in the registry must expose:
-      - build(params, grid_shape, lattice) → precomputed data (or None)
-      - compute(state, precomputed, lattice) → force array
+      - build(params, grid_shape) → precomputed data (or None)
+      - compute(state, precomputed, *, diff_ops=None) → force array
       - init_state(grid_shape, lattice, precomputed) → dict of extra State fields
       - update_state(state, precomputed, lattice, stream_fn) → state
 

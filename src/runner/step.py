@@ -50,7 +50,7 @@ def _compute_total_force_ext(setup, state: State, streaming_fn):
         return total_force, state
 
     for spec in setup.forces:
-        contribution = spec.compute_fn(state, spec.precomputed)
+        contribution = spec.compute_fn(state, spec.precomputed, diff_ops=setup.diff_ops)
         total_force = contribution if total_force is None else total_force + contribution
         state = spec.update_state_fn(state, spec.precomputed, setup.lattice, streaming_fn)
 
