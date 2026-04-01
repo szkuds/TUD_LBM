@@ -6,19 +6,18 @@ Implementation modules (_single_phase.py, _multiphase.py) are internal; use the 
 
 Example:
     from operators.macroscopic import build_macroscopic_fn
-    
+
     macro = build_macroscopic_fn("standard")
     rho, u = macro(f, lattice)
 """
 
 from __future__ import annotations
-
-from operators.protocols import MacroscopicOperator
-from operators.factory import build_operator
 from operators._loader import auto_load_operators
+from operators.factory import build_operator
+from operators.protocols import MacroscopicOperator
 
 # Auto-discover and import private operator modules for registry registration
-auto_load_operators('operators.macroscopic')
+auto_load_operators("operators.macroscopic")
 
 
 def build_macroscopic_fn(scheme: str = "standard") -> MacroscopicOperator:
@@ -31,15 +30,15 @@ def build_macroscopic_fn(scheme: str = "standard") -> MacroscopicOperator:
     Returns:
         A callable satisfying the MacroscopicOperator protocol.
         Can be called as: operator(f, lattice, force=None) → (rho, u)
-        
+
         Type-checkers see this as a MacroscopicOperator, so:
             op: MacroscopicOperator = build_macroscopic_fn("standard")
-        
+
         Type-checkers will verify any use of op matches the protocol.
 
     Raises:
         ValueError: If scheme is not registered.
-        
+
     Examples:
         >>> from operators.macroscopic import build_macroscopic_fn
         >>> macroscopic = build_macroscopic_fn("standard")

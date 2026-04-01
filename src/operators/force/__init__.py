@@ -12,15 +12,13 @@ Example:
 """
 
 from __future__ import annotations
-
-from typing import Callable
-
-from operators.factory import build_operator
+from collections.abc import Callable
 from operators._loader import auto_load_operators
+from operators.factory import build_operator
 from operators.protocols import ForceOperator
 
 # Auto-discover and import private operator modules for registry registration
-auto_load_operators('operators.force')
+auto_load_operators("operators.force")
 
 
 def build_force_fn(scheme: str) -> Callable[..., object] | type:
@@ -47,4 +45,4 @@ def build_force_fn(scheme: str) -> Callable[..., object] | type:
     return build_operator("force", scheme)
 
 
-__all__ = ["build_force_fn"]
+__all__ = ["ForceOperator", "build_force_fn"]

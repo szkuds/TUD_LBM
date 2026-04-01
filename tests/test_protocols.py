@@ -6,27 +6,15 @@ registered, it must satisfy its protocol's structural requirements.
 """
 
 import sys
-import os
-
-import numpy as np
-import pytest
+from pathlib import Path
 import jax.numpy as jnp
+import pytest
 
 # Ensure src/ is importable
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from operators.protocols import (
-    CollisionOperator,
-    StreamingOperator,
-    EquilibriumOperator,
-    MacroscopicOperator,
-    BoundaryOperator,
-    InitialiserOperator,
-)
 from setup.lattice import build_lattice
 from setup.simulation_setup import build_bc_masks
-from registry import get_operators
-
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -145,9 +133,7 @@ class TestEquilibriumProtocol:
 class TestMacroscopicProtocol:
     """Verify macroscopic operators conform to MacroscopicOperator."""
 
-    def test_standard_macroscopic_conformance(
-        self, lattice_d2q9, grid_shape, test_state
-    ):
+    def test_standard_macroscopic_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Standard macroscopic should match protocol."""
         from operators.macroscopic import build_macroscopic_fn
 
@@ -159,9 +145,7 @@ class TestMacroscopicProtocol:
         assert rho.shape == rho_expected.shape
         assert u.shape == u_expected.shape
 
-    def test_macroscopic_with_force_conformance(
-        self, lattice_d2q9, grid_shape, test_state
-    ):
+    def test_macroscopic_with_force_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Macroscopic with force should return 3-tuple."""
         from operators.macroscopic import build_macroscopic_fn
 

@@ -26,4 +26,3 @@ def apply_stencil_padding(
 def to_2d(grid: jnp.ndarray) -> jnp.ndarray:
     """Squeeze ``(nx, ny, 1, 1)`` → ``(nx, ny)``; no-op if already 2-D."""
     return grid[:, :, 0, 0] if grid.ndim == 4 else grid
-

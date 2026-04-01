@@ -171,9 +171,12 @@ class TestBuildWettingGradient:
         """Invoke the wetting closure with explicit params."""
         return fn(
             grid,
-            params["phi_l"], params["phi_r"],
-            params["d_rho_l"], params["d_rho_r"],
-            params["rho_l"], params["rho_v"],
+            params["phi_l"],
+            params["phi_r"],
+            params["d_rho_l"],
+            params["d_rho_r"],
+            params["rho_l"],
+            params["rho_v"],
             params["width"],
         )
 
@@ -232,11 +235,13 @@ class TestBuildWettingGradient:
         fn = build_wetting_gradient(lattice.w, lattice.c, periodic_pad)
         out = fn(
             const_field,
-            phi_l, phi_r,
-            d_rho_l, d_rho_r,
-            1.0,   # rho_l
-            0.1,   # rho_v
-            4,     # width
+            phi_l,
+            phi_r,
+            d_rho_l,
+            d_rho_r,
+            1.0,  # rho_l
+            0.1,  # rho_v
+            4,  # width
         )
         assert out.shape == (NX, NY, 1, 2)
 

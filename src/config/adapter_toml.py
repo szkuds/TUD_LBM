@@ -61,6 +61,31 @@ class TomlAdapter(ConfigAdapter):
             else:
                 sim_table[key] = value
 
+    @staticmethod
+    def _validate_and_process_forces(
+        raw: dict[str, Any],
+        sim_table: dict[str, Any],
+    ) -> None:
+        """Extract and validate force sections from raw TOML.
+
+        Args:
+            raw: Raw TOML dictionary.
+            sim_table: Mutable simulation table to update in-place.
+
+        Raises:
+            KeyError: If force type is unknown.
+            TypeError: If force section is not a table.
+        """
+        known_force_fields = {f.name for f in dataclasses.fields(SimulationConfig) if f.name.endswith("_force")}
+        for key, value in raw.items():
+            if not key.endswith("_force"):
+                continue
+            if key not in known_force_fields:
+                raise KeyError(f"Unknown force type '{key}'")
+            if not isinstance(value, dict):
+                raise TypeError(f"Force section '[{key}]' must be a table, got {type(value).__name__}.")
+            sim_table[key] = dict(value)
+
     def load(self, path: str) -> SimulationConfig:
         """Parse *path* and return a :class:`SimulationConfig`.
 
@@ -111,19 +136,7 @@ class TomlAdapter(ConfigAdapter):
             sim_table["hysteresis_config"] = dict(raw["hysteresis"])
 
         # ── Force sections ──────────────────────────────────────────
-        known_force_fields = {
-            f.name
-            for f in dataclasses.fields(SimulationConfig)
-            if f.name.endswith("_force")
-        }
-        for key, value in raw.items():
-            if not key.endswith("_force"):
-                continue
-            if key not in known_force_fields:
-                raise KeyError(f"Unknown force type '{key}'")
-            if not isinstance(value, dict):
-                raise ValueError(f"Force section '[{key}]' must be a table.")
-            sim_table[key] = dict(value)
+        self._validate_and_process_forces(raw, sim_table)
 
         # ── [output] overrides ───────────────────────────────────────
         self._apply_output_overrides(sim_table, raw.get("output", {}))

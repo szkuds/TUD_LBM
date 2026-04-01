@@ -24,9 +24,10 @@ Usage::
 """
 
 from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any, Optional, Protocol, Tuple, runtime_checkable
-
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Protocol
+from typing import runtime_checkable
 import jax.numpy as jnp
 
 if TYPE_CHECKING:
@@ -55,7 +56,7 @@ class CollisionOperator(Protocol):
         f: jnp.ndarray,
         feq: jnp.ndarray,
         tau: float,
-        source: Optional[jnp.ndarray] = None,
+        source: jnp.ndarray | None = None,
         **kwargs: Any,
     ) -> jnp.ndarray:
         """Compute post-collision distribution.
@@ -149,9 +150,9 @@ class MacroscopicOperator(Protocol):
         self,
         f: jnp.ndarray,
         lattice: Lattice,
-        force: Optional[jnp.ndarray] = None,
+        force: jnp.ndarray | None = None,
         **kwargs: Any,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray] | Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    ) -> tuple[jnp.ndarray, jnp.ndarray] | tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """Compute density and velocity fields.
 
         Args:
@@ -329,9 +330,9 @@ class SimulationRepository(Protocol):
 
     def save_snapshot(
         self,
-        state: "State",
+        state: State,
         time_step: int,
-        field_names: Optional[Tuple[str, ...]] = None,
+        field_names: tuple[str, ...] | None = None,
     ) -> None:
         """Persist a simulation state snapshot.
 
@@ -343,7 +344,7 @@ class SimulationRepository(Protocol):
         """
         ...
 
-    def load_snapshot(self, time_step: int) -> "State":
+    def load_snapshot(self, time_step: int) -> State:
         """Load a previously saved snapshot.
 
         Args:
@@ -386,15 +387,14 @@ class ConfigReader(Protocol):
 
 __all__ = [
     # Core operators
-    "CollisionOperator",
-    "StreamingOperator",
-    "EquilibriumOperator",
-    "MacroscopicOperator",
     "BoundaryOperator",
-    "InitialiserOperator",
-    "ForceOperator",
-    "DifferentialOperator",
-    # Ports
-    "SimulationRepository",
+    "CollisionOperator",
     "ConfigReader",
+    "DifferentialOperator",
+    "EquilibriumOperator",
+    "ForceOperator",
+    "InitialiserOperator",
+    "MacroscopicOperator",
+    "SimulationRepository",
+    "StreamingOperator",
 ]

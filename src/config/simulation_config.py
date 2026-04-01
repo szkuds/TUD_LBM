@@ -114,13 +114,13 @@ class SimulationConfig:
     # ── Wetting model (promoted to first-class section) ──────────
     wetting_config: dict[str, Any] | None = field(
         default=None,
-        metadata={CONFIG_SECTION: "wetting"},           # was "boundary_conditions"
+        metadata={CONFIG_SECTION: "wetting"},  # was "boundary_conditions"
     )
 
     # ── Hysteresis model (promoted to first-class section) ───────
     hysteresis_config: dict[str, Any] | None = field(
         default=None,
-        metadata={CONFIG_SECTION: "hysteresis"},         # was "boundary_conditions"
+        metadata={CONFIG_SECTION: "hysteresis"},  # was "boundary_conditions"
     )
 
     # ── Forces (each force is its own field, named by physics) ───
@@ -310,11 +310,7 @@ class SimulationConfig:
     @property
     def force_enabled(self) -> bool:
         """True if any ``*_force`` field is populated."""
-        return any(
-            getattr(self, f.name) is not None
-            for f in dataclasses.fields(self)
-            if f.name.endswith("_force")
-        )
+        return any(getattr(self, f.name) is not None for f in dataclasses.fields(self) if f.name.endswith("_force"))
 
     # ══════════════════════════════════════════════════════════════════
     # Serialisation

@@ -110,7 +110,11 @@ def _display_config_summary(config) -> None:
         table.add_row("Interface Width", str(config.interface_width))
 
     if config.force_enabled:
-        active_forces = [f.name for f in config.__dataclass_fields__.values() if f.name.endswith("_force") and getattr(config, f.name) is not None]
+        active_forces = [
+            f.name
+            for f in config.__dataclass_fields__.values()
+            if f.name.endswith("_force") and getattr(config, f.name) is not None
+        ]
         table.add_row("Forces", ", ".join(active_forces) if active_forces else "enabled")
 
     console.print(table)

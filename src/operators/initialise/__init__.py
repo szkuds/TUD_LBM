@@ -12,13 +12,12 @@ Example:
 """
 
 from __future__ import annotations
-
-from operators.protocols import InitialiserOperator
-from operators.factory import build_operator
 from operators._loader import auto_load_operators
+from operators.factory import build_operator
+from operators.protocols import InitialiserOperator
 
 # Auto-discover and import private operator modules for registry registration
-auto_load_operators('operators.initialise')
+auto_load_operators("operators.initialise")
 
 
 def _import_initialise_modules() -> None:

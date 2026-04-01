@@ -178,8 +178,8 @@ class TestCollisionFactory:
     """``build_collision_fn`` dispatches to the correct function."""
 
     def test_bgk(self):
-        from operators.collision._bgk import collide_bgk
         from operators.collision import build_collision_fn
+        from operators.collision._bgk import collide_bgk
 
         assert build_collision_fn("bgk") is collide_bgk
 
@@ -404,8 +404,8 @@ class TestComputeMacroscopicMultiphase:
         )
 
     def _diff_ops(self, lattice):
-        from operators.differential.config import DifferentialConfig
         from operators.differential import build_differential_operators
+        from operators.differential.config import DifferentialConfig
 
         cfg = DifferentialConfig(
             w=lattice.w,

@@ -26,13 +26,12 @@ Usage::
 """
 
 from __future__ import annotations
-
 import dataclasses
 from typing import Any
 from typing import NamedTuple
 import jax.numpy as jnp
-from operators.differential.config import DifferentialConfig
 from operators.differential import build_differential_operators
+from operators.differential.config import DifferentialConfig
 from operators.differential.operators import DifferentialOperators
 from operators.differential.pad_modes import determine_pad_modes
 from setup.lattice import Lattice
@@ -84,6 +83,7 @@ class ForceParams(NamedTuple):
                  stateless forces use a no-op default that returns ``{}``.
         precomputed: Optional pre-computed data (e.g. gravity template array).
     """
+
     name: str
     compute_fn: Any
     init_fn: Any
@@ -143,7 +143,7 @@ class SimulationSetup(NamedTuple):
     lattice: Lattice
     grid_shape: tuple[int, ...]
 
-    #Run time
+    # Run time
     nt: int
 
     # Physics
@@ -241,6 +241,7 @@ def build_multiphase_params(config) -> MultiphaseParams:
         g=getattr(config, "g", None),
     )
 
+
 def _build_forces(
     config,
     grid_shape: tuple[int, ...],
@@ -257,9 +258,9 @@ def _build_forces(
     Stateless force modules may omit the state hooks; they are replaced
     here with no-op defaults.
     """
+    from typing import cast
     from operators.force import build_force_fn
     from operators.protocols import ForceOperator
-    from typing import cast
 
     specs = []
     seen: set[str] = set()
@@ -271,21 +272,23 @@ def _build_forces(
             continue
         seen.add(f.name)
 
-        op = cast(ForceOperator, cast(object, build_force_fn(f.name)))
-        build_fn = getattr(op, "build")
-        compute_fn = getattr(op, "compute")
+        op = cast("ForceOperator", cast("object", build_force_fn(f.name)))
+        build_fn = op.build
+        compute_fn = op.compute
         init_fn = getattr(op, "init_state", _state_force_init)
         update_state_fn = getattr(op, "update_state", _state_force_update)
 
         precomputed = build_fn(params, grid_shape)
 
-        specs.append(ForceParams(
-            name=f.name,
-            compute_fn=compute_fn,
-            init_fn=init_fn,
-            precomputed=precomputed,
-            update_state_fn=update_state_fn,
-        ))
+        specs.append(
+            ForceParams(
+                name=f.name,
+                compute_fn=compute_fn,
+                init_fn=init_fn,
+                precomputed=precomputed,
+                update_state_fn=update_state_fn,
+            )
+        )
 
     return tuple(specs)
 

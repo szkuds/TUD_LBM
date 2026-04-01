@@ -22,8 +22,9 @@ close over it to get a jittable closure.
 
 from __future__ import annotations
 import jax.numpy as jnp
+from operators.differential._pad_utils import apply_stencil_padding
+from operators.differential._pad_utils import to_2d
 from registry import register_operator
-from operators.differential._pad_utils import apply_stencil_padding, to_2d
 
 
 @register_operator("differential", name="gradient")
@@ -73,14 +74,14 @@ def grad_core(
         Gradient field, shape ``(nx, ny, 1, 2)``.
     """
     # Neighbour slices (D2Q9 directions 1–8; direction 0 cancels out)
-    ip1_j0 = padded[2:, 1:-1]      # (i+1, j)
-    im1_j0 = padded[:-2, 1:-1]     # (i-1, j)
-    i0_jp1 = padded[1:-1, 2:]      # (i, j+1)
-    i0_jm1 = padded[1:-1, :-2]     # (i, j-1)
-    ip1_jp1 = padded[2:, 2:]       # (i+1, j+1)
-    im1_jp1 = padded[:-2, 2:]      # (i-1, j+1)
-    im1_jm1 = padded[:-2, :-2]     # (i-1, j-1)
-    ip1_jm1 = padded[2:, :-2]      # (i+1, j-1)
+    ip1_j0 = padded[2:, 1:-1]  # (i+1, j)
+    im1_j0 = padded[:-2, 1:-1]  # (i-1, j)
+    i0_jp1 = padded[1:-1, 2:]  # (i, j+1)
+    i0_jm1 = padded[1:-1, :-2]  # (i, j-1)
+    ip1_jp1 = padded[2:, 2:]  # (i+1, j+1)
+    im1_jp1 = padded[:-2, 2:]  # (i-1, j+1)
+    im1_jm1 = padded[:-2, :-2]  # (i-1, j-1)
+    ip1_jm1 = padded[2:, :-2]  # (i+1, j-1)
 
     # x-component: sum over directions with non-zero cx
     gx = 3.0 * (

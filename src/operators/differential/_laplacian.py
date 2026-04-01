@@ -14,8 +14,9 @@ lattice (``c_s^2 = 1/3``).
 
 from __future__ import annotations
 import jax.numpy as jnp
+from operators.differential._pad_utils import apply_stencil_padding
+from operators.differential._pad_utils import to_2d
 from registry import register_operator
-from operators.differential._pad_utils import apply_stencil_padding, to_2d
 
 
 @register_operator("differential", name="laplacian")

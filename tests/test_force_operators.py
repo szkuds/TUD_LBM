@@ -18,8 +18,8 @@ def lattice():
 @pytest.fixture
 def diff_ops(lattice):
     """Build differential operators with periodic (wrap) padding."""
-    from operators.differential.config import DifferentialConfig
     from operators.differential import build_differential_operators
+    from operators.differential.config import DifferentialConfig
 
     cfg = DifferentialConfig(
         w=lattice.w,
@@ -132,24 +132,30 @@ class TestElectricParams:
     def test_creation(self, lattice):
         from operators.force._electric import ElectricForceModule
 
-        ep = ElectricForceModule.build({
-            "permittivity_liquid": 80.0,
-            "permittivity_vapour": 1.0,
-            "conductivity_liquid": 0.01,
-            "conductivity_vapour": 0.001,
-        }, (NX, NY))
+        ep = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+            },
+            (NX, NY),
+        )
         assert ep.permittivity_liquid == 80.0
         assert ep.permittivity_vapour == 1.0
 
     def test_is_pytree(self, lattice):
         from operators.force._electric import ElectricForceModule
 
-        ep = ElectricForceModule.build({
-            "permittivity_liquid": 80.0,
-            "permittivity_vapour": 1.0,
-            "conductivity_liquid": 0.01,
-            "conductivity_vapour": 0.001,
-        }, (NX, NY))
+        ep = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+            },
+            (NX, NY),
+        )
         leaves, treedef = jax.tree_util.tree_flatten(ep)
         ep2 = treedef.unflatten(leaves)
         assert ep2.permittivity_liquid == ep.permittivity_liquid
@@ -167,12 +173,15 @@ class TestInitState:
     def _params(lattice):
         from operators.force._electric import ElectricForceModule
 
-        return ElectricForceModule.build({
-            "permittivity_liquid": 80.0,
-            "permittivity_vapour": 1.0,
-            "conductivity_liquid": 0.01,
-            "conductivity_vapour": 0.001,
-        }, (NX, NY))
+        return ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+            },
+            (NX, NY),
+        )
 
     def test_shape(self, lattice):
         from operators.force._electric import ElectricForceModule
@@ -210,13 +219,16 @@ class TestComputeElectricForce:
     def test_shape(self, lattice, diff_ops):
         from operators.force._electric import ElectricForceModule
 
-        params = ElectricForceModule.build({
-            "permittivity_liquid": 80.0,
-            "permittivity_vapour": 1.0,
-            "conductivity_liquid": 0.01,
-            "conductivity_vapour": 0.001,
-            "voltage_top": 1.0,
-        }, (NX, NY))
+        params = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+                "voltage_top": 1.0,
+            },
+            (NX, NY),
+        )
         hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
@@ -226,14 +238,17 @@ class TestComputeElectricForce:
     def test_zero_voltage_zero_force(self, lattice, diff_ops):
         from operators.force._electric import ElectricForceModule
 
-        params = ElectricForceModule.build({
-            "permittivity_liquid": 1.0,
-            "permittivity_vapour": 1.0,
-            "conductivity_liquid": 0.0,
-            "conductivity_vapour": 0.0,
-            "voltage_top": 0.0,
-            "voltage_bottom": 0.0,
-        }, (NX, NY))
+        params = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 1.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.0,
+                "conductivity_vapour": 0.0,
+                "voltage_top": 0.0,
+                "voltage_bottom": 0.0,
+            },
+            (NX, NY),
+        )
         hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
@@ -243,13 +258,16 @@ class TestComputeElectricForce:
     def test_jittable(self, lattice, diff_ops):
         from operators.force._electric import ElectricForceModule
 
-        params = ElectricForceModule.build({
-            "permittivity_liquid": 80.0,
-            "permittivity_vapour": 1.0,
-            "conductivity_liquid": 0.01,
-            "conductivity_vapour": 0.001,
-            "voltage_top": 1.0,
-        }, (NX, NY))
+        params = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+                "voltage_top": 1.0,
+            },
+            (NX, NY),
+        )
         hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
@@ -270,14 +288,17 @@ class TestUpdateState:
         from operators.force._electric import ElectricForceModule
         from operators.streaming._streaming import stream
 
-        params = ElectricForceModule.build({
-            "permittivity_liquid": 80.0,
-            "permittivity_vapour": 1.0,
-            "conductivity_liquid": 0.01,
-            "conductivity_vapour": 0.001,
-            "voltage_top": 1.0,
-            "voltage_bottom": 0.0,
-        }, (NX, NY))
+        params = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+                "voltage_top": 1.0,
+                "voltage_bottom": 0.0,
+            },
+            (NX, NY),
+        )
         hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 

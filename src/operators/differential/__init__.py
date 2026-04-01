@@ -15,12 +15,11 @@ Example:
 """
 
 from __future__ import annotations
-
-from operators.protocols import DifferentialOperator
-from operators.factory import build_operator
 from operators._loader import auto_load_operators
 from operators.differential.config import DifferentialConfig
 from operators.differential.operators import DifferentialOperators
+from operators.factory import build_operator
+from operators.protocols import DifferentialOperator
 
 # Auto-discover _gradient.py, _laplacian.py, _gradient_wetting.py
 # to trigger their @register_operator decorators.
@@ -99,9 +98,12 @@ def build_differential_operators(cfg: DifferentialConfig) -> DifferentialOperato
         def grad_field(grid: jnp.ndarray) -> jnp.ndarray:
             return _wetting_grad(
                 grid,
-                ws["phi_l"], ws["phi_r"],
-                ws["d_rho_l"], ws["d_rho_r"],
-                ws["rho_l"], ws["rho_v"],
+                ws["phi_l"],
+                ws["phi_r"],
+                ws["d_rho_l"],
+                ws["d_rho_r"],
+                ws["rho_l"],
+                ws["rho_v"],
                 ws["width"],
             )
     else:

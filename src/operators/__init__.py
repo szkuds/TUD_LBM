@@ -8,14 +8,14 @@ no ``static_argnums`` — just arrays in, arrays out.
 RECOMMENDED USAGE PATTERN:
     1. Import protocol interface:
         from operators.protocols import CollisionOperator
-    
+
     2. Get operator via factory (primary API):
         from operators.collision import build_collision_fn
         op: CollisionOperator = build_collision_fn("bgk")
-    
+
     3. Use operator via protocol interface:
         f_col = op(f, feq, tau)
-    
+
     This keeps your code independent of specific implementations.
 
 SUBPACKAGES:
@@ -25,7 +25,7 @@ SUBPACKAGES:
     macroscopic: MacroscopicOperator implementations + factory
     boundary: BoundaryConditionOperator implementations + factory
     initialise: InitialiserOperator implementations + factory
-    
+
     (Additional: force, differential, wetting for advanced use)
 
 DESIGN PRINCIPLE:

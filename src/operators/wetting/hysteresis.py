@@ -30,7 +30,6 @@ from __future__ import annotations
 from typing import NamedTuple
 import jax
 import jax.numpy as jnp
-
 from operators.wetting.contact_angle import compute_contact_angle
 from operators.wetting.contact_line import compute_contact_line_location
 from registry import wetting_operator
@@ -102,6 +101,7 @@ def _optimise_single_param(
         grads = grad_mask_fn(grads)
         updates, new_opt_state = optimiser.update(grads, opt_state, params)
         import optax  # lazy import — optional dependency
+
         new_params = optax.apply_updates(params, updates)
         new_params = _clamp_params(new_params)
         return (new_params, new_opt_state), loss
@@ -344,11 +344,10 @@ def update_wetting_state(
 
     try:
         import optax  # lazy import — optional dependency
-    except ImportError:
+    except ImportError as err:
         raise ImportError(
-            "The 'optax' package is required for hysteresis wetting.\n"
-            "Install it with:  pip install optax"
-        )
+            "The 'optax' package is required for hysteresis wetting.\nInstall it with:  pip install optax"
+        ) from err
     optimiser = optax.adam(lr)
 
     # 4. Build evaluate_fn if not supplied
@@ -443,7 +442,6 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
     from operators.streaming import build_streaming_fn
 
     lattice = setup.lattice
-    mp = setup.multiphase_params
     diff_ops = setup.diff_ops
     collision_fn = build_collision_fn(setup.collision_scheme)
     bc_fn = build_composite_bc(setup.bc_config, lattice)

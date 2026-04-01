@@ -29,7 +29,8 @@ Usage::
 """
 
 from __future__ import annotations
-from typing import Any, cast
+from typing import Any
+from typing import cast
 from operators.boundary.composite import build_composite_bc
 from operators.collision import build_collision_fn
 from operators.equilibrium import build_equilibrium_fn
@@ -132,7 +133,7 @@ def step_multiphase(setup, state: State) -> State:
     # 1. Multiphase macroscopic (includes chemical potential, gradient, Laplacian)
     force_ext, state = _compute_total_force_ext(setup, state, streaming_fn)
 
-    rho, u, force_tot = cast(Any, macroscopic_fn)(
+    rho, u, force_tot = cast("Any", macroscopic_fn)(
         state.f,
         lattice,
         mp,

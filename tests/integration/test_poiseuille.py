@@ -25,29 +25,29 @@ Acceptance criteria
 """
 
 import sys
-import os
-
+from pathlib import Path
 import numpy as np
 import pytest
 
 # Ensure src/ is importable
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from config.simulation_config import SimulationConfig
+from runner.run import init_state
+from runner.run import run
 from setup.simulation_setup import build_setup
-from runner.run import init_state, run
-
 
 # ── Test parameters ──────────────────────────────────────────────────
 
-NX = 5           # short channel (periodic direction — length doesn't matter)
-NY = 32          # wall-normal direction
-TAU = 0.8        # relaxation time  → nu = (0.8 - 0.5)/3 = 0.1
-NT = 5000        # timesteps to reach steady state
+NX = 5  # short channel (periodic direction — length doesn't matter)
+NY = 32  # wall-normal direction
+TAU = 0.8  # relaxation time  → nu = (0.8 - 0.5)/3 = 0.1
+NT = 5000  # timesteps to reach steady state
 BODY_FORCE_G = 1e-6  # small force for low-Re flow
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def analytical_poiseuille(ny, tau, g):
     """Return the analytical parabolic velocity profile u_x(y).
@@ -67,7 +67,7 @@ def analytical_poiseuille(ny, tau, g):
 def poiseuille_simulation():
     """Build and run simulation to steady state using functional API.
 
-    Returns
+    Returns:
     -------
     dict
         - "final_state": State after NT timesteps
@@ -103,6 +103,7 @@ def poiseuille_simulation():
 
 # ── Integration Tests ────────────────────────────────────────────────
 
+
 @pytest.mark.integration
 def test_poiseuille_parabolic_profile(poiseuille_simulation):
     """Simulated velocity profile matches analytical parabolic solution.
@@ -115,9 +116,9 @@ def test_poiseuille_parabolic_profile(poiseuille_simulation):
     """
     final_state = poiseuille_simulation["final_state"]
 
-    u = np.array(final_state.u)        # (nx, ny, 1, 2)
-    ux = u[:, :, 0, 0]                 # (nx, ny) — x-velocity
-    ux_mean = ux.mean(axis=0)          # average over periodic direction
+    u = np.array(final_state.u)  # (nx, ny, 1, 2)
+    ux = u[:, :, 0, 0]  # (nx, ny) — x-velocity
+    ux_mean = ux.mean(axis=0)  # average over periodic direction
 
     u_analytical = analytical_poiseuille(NY, TAU, BODY_FORCE_G)
 
@@ -148,9 +149,7 @@ def test_poiseuille_symmetry(poiseuille_simulation):
     ux_norm = ux_mean / (ux_mean.max() + 1e-30)
     symmetry_error = np.max(np.abs(ux_norm - ux_norm[::-1]))
 
-    assert symmetry_error < 0.01, (
-        f"Profile asymmetry {symmetry_error:.4f} exceeds 1% tolerance"
-    )
+    assert symmetry_error < 0.01, f"Profile asymmetry {symmetry_error:.4f} exceeds 1% tolerance"
 
 
 @pytest.mark.integration
