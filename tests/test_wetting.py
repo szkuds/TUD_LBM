@@ -310,7 +310,7 @@ class TestUpdateWettingState:
         new_wetting = update_wetting_state(wetting, rho, setup, f_bc, force)
         assert isinstance(new_wetting, WettingState)
 
-        # def test_ca_fields_updated(self):
+    def test_ca_fields_updated(self):
         from operators.wetting.contact_angle import compute_contact_angle
         from operators.wetting.hysteresis import update_wetting_state
 
@@ -335,7 +335,7 @@ class TestUpdateWettingState:
             atol=1e-4,
         )
 
-        # def test_cll_fields_updated(self):
+    def test_cll_fields_updated(self):
         from operators.wetting.hysteresis import update_wetting_state
 
         setup = self._make_setup()
@@ -348,7 +348,7 @@ class TestUpdateWettingState:
         # CLL should reflect actual droplet footprint
         assert float(new_wetting.cll_left) < float(new_wetting.cll_right)
 
-        # def test_params_stay_clamped(self):
+    def test_params_stay_clamped(self):
         from operators.wetting.hysteresis import update_wetting_state
 
         setup = self._make_setup()
@@ -363,7 +363,7 @@ class TestUpdateWettingState:
         assert 1.0 <= float(new_wetting.phi_left) <= 1.5
         assert 1.0 <= float(new_wetting.phi_right) <= 1.5
 
-        # def test_no_nan(self):
+    def test_no_nan(self):
         from operators.wetting.hysteresis import update_wetting_state
         from state.state import WettingState
 

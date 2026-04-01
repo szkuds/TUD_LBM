@@ -464,10 +464,11 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
                 force=force,
             )
         else:
-            rho_new, u_new, force_tot = macroscopic_fn(
+            rho_new, u_new = macroscopic_fn(
                 f_t,
                 lattice,
             )
+            force_tot = force if force is not None else jnp.zeros((f_t.shape[0], f_t.shape[1], 1, 2))
 
         feq = equilibrium_fn(rho_new, u_new, lattice)
         src = source(rho_new, u_new, force_tot, lattice, diff_ops=diff_ops)
