@@ -47,6 +47,6 @@ def determine_pad_modes(bc_config: dict[str, Any] | None) -> list[str]:
     return [
         _mode("top"),
         _mode("bottom"),
-        _mode("left"),
         _mode("right"),
+        _mode("left"),
     ]
