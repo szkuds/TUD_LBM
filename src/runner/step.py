@@ -29,13 +29,10 @@ Usage::
 """
 
 from __future__ import annotations
-import jax.numpy as jnp
+from typing import Any, cast
 from operators.boundary.composite import build_composite_bc
 from operators.collision import build_collision_fn
 from operators.equilibrium import build_equilibrium_fn
-from operators.force.electric import compute_electric_force
-from operators.force.electric import update_hi
-from operators.force.gravity import compute_gravity_force
 from operators.force.source_term import source as compute_source
 from operators.macroscopic import build_macroscopic_fn
 from operators.streaming import build_streaming_fn
@@ -43,6 +40,21 @@ from operators.wetting.hysteresis import update_wetting_state
 from state.state import State
 
 # ── Step functions ───────────────────────────────────────────────────
+
+
+def _compute_total_force_ext(setup, state: State, streaming_fn):
+    """Compute the summed external force contribution and update stateful hooks."""
+    total_force = state.force_ext
+
+    if not getattr(setup, "forces", ()):
+        return total_force, state
+
+    for spec in setup.forces:
+        contribution = spec.compute_fn(state, spec.precomputed)
+        total_force = contribution if total_force is None else total_force + contribution
+        state = spec.update_state_fn(state, spec.precomputed, setup.lattice, streaming_fn)
+
+    return total_force, state
 
 
 def step_single_phase(setup, state: State) -> State:
@@ -62,15 +74,11 @@ def step_single_phase(setup, state: State) -> State:
     macroscopic_fn = build_macroscopic_fn("standard")  # Single-phase
     bc_fn = build_composite_bc(setup.bc_config, lattice)
 
-    # 1. Macroscopic fields
-    if setup.force_enabled and state.force_ext is not None:
-        # Apply gravity force template if present
-        force_ext = state.force_ext
-        if setup.gravity_template is not None:
-            rho_pre = jnp.sum(state.f, axis=2, keepdims=True)
-            grav_force = compute_gravity_force(setup.gravity_template, rho_pre)
-            force_ext = force_ext + grav_force
+    # 1. External forces
+    force_ext, state = _compute_total_force_ext(setup, state, streaming_fn)
 
+    # 2. Macroscopic fields
+    if force_ext is not None:
         rho, u, force_tot = macroscopic_fn(state.f, lattice, force=force_ext)
         # 2. Equilibrium
         feq = equilibrium_fn(rho, u, lattice)
@@ -122,41 +130,14 @@ def step_multiphase(setup, state: State) -> State:
     bc_fn = build_composite_bc(setup.bc_config, lattice)
 
     # 1. Multiphase macroscopic (includes chemical potential, gradient, Laplacian)
-    #    Start with external force from gravity / electric if applicable.
-    force_ext = state.force_ext
+    force_ext, state = _compute_total_force_ext(setup, state, streaming_fn)
 
-    # Gravity force contribution
-    if setup.gravity_template is not None:
-        # We need rho first for gravity — use a quick density computation
-        rho_pre = jnp.sum(state.f, axis=2, keepdims=True)
-        grav_force = compute_gravity_force(setup.gravity_template, rho_pre)
-        force_ext = force_ext + grav_force if force_ext is not None else grav_force
-
-    # Electric force contribution
-    new_h = state.h
-    if setup.electric_params is not None and state.h is not None:
-        rho_pre = jnp.sum(state.f, axis=2, keepdims=True)
-        elec_force = compute_electric_force(
-            rho_pre,
-            state.h,
-            setup.electric_params,
-            lattice,
-        )
-        new_h = update_hi(
-            state.h,
-            rho_pre,
-            setup.electric_params,
-            lattice,
-            streaming_fn,
-        )
-        force_ext = force_ext + elec_force if force_ext is not None else elec_force
-
-    rho, u, force_tot = macroscopic_fn(
+    rho, u, force_tot = cast(Any, macroscopic_fn)(
         state.f,
         lattice,
         mp,
-        force_ext=force_ext,
-        diff_ops=diff_ops,
+        force_ext,
+        diff_ops=diff_ops,  # type: ignore[call-arg]
     )
 
     # 2. Equilibrium
@@ -189,7 +170,6 @@ def step_multiphase(setup, state: State) -> State:
         u=u,
         force=force_tot,
         t=state.t + 1,
-        h=new_h,
         wetting=new_wetting,
     )
 

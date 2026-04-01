@@ -14,6 +14,7 @@ Example Python usage::
 
 import os
 import sys
+from typing import Any
 import click
 from rich.console import Console
 from rich.panel import Panel
@@ -64,10 +65,9 @@ def _display_operators() -> None:
             entry = ops[name]
             target = entry.target
             # Build a human-readable target description
-            if isinstance(target, type):
-                target_str = f"{target.__module__}.{target.__qualname__}"
-            else:
-                target_str = f"{target.__module__}.{target.__qualname__}"
+            target_mod = getattr(target, "__module__", type(target).__module__)
+            target_name = getattr(target, "__qualname__", getattr(target, "__name__", type(target).__name__))
+            target_str = f"{target_mod}.{target_name}"
 
             meta_str = ""
             if entry.metadata:
@@ -110,13 +110,14 @@ def _display_config_summary(config) -> None:
         table.add_row("Interface Width", str(config.interface_width))
 
     if config.force_enabled:
-        table.add_row("Force", "enabled")
+        active_forces = [f.name for f in config.__dataclass_fields__.values() if f.name.endswith("_force") and getattr(config, f.name) is not None]
+        table.add_row("Forces", ", ".join(active_forces) if active_forces else "enabled")
 
     console.print(table)
     console.print()
 
 
-def _run_simulation(config):
+def _run_simulation(config: Any):
     """Run the simulation with the given configuration."""
     from config.jax_config import configure_jax
 

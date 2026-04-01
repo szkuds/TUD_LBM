@@ -25,15 +25,13 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional, Protocol, Tuple
+from typing import TYPE_CHECKING, Any, Optional, Protocol, Tuple, runtime_checkable
 
 import jax.numpy as jnp
 
-if False:  # TYPE_CHECKING
+if TYPE_CHECKING:
     from setup.lattice import Lattice
-    from setup.simulation_setup import BCMasks, SimulationSetup
-    from state.state import State, WettingState
-    from operators.differential.operators import DifferentialOperators
+    from state.state import State
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -152,6 +150,7 @@ class MacroscopicOperator(Protocol):
         f: jnp.ndarray,
         lattice: Lattice,
         force: Optional[jnp.ndarray] = None,
+        **kwargs: Any,
     ) -> Tuple[jnp.ndarray, jnp.ndarray] | Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """Compute density and velocity fields.
 
@@ -243,24 +242,40 @@ class InitialiserOperator(Protocol):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-class ForcingOperator(Protocol):
-    """Generic forcing operator — computes external forces.
+@runtime_checkable
+class ForceOperator(Protocol):
+    """Unified protocol for force operator modules.
 
-    Examples: gravity (body force), electric force (charged fluids).
-
-    Signature::
-
-        def compute_force(state_fields, ...) → force_field
+    Every force module exposes setup-time ``build`` and step-time
+    ``compute`` methods. Forces with auxiliary carry fields may also
+    implement ``init_state`` and ``update_state``; stateless forces can
+    rely on the default no-op behaviour documented here.
     """
 
-    def __call__(self, **kwargs: Any) -> jnp.ndarray:
-        """Compute external force field.
+    def build(self, params: Any, grid_shape: tuple[int, ...]) -> Any:
+        """Construct precomputed data for the force module."""
+        ...
 
-        Args:
-            **kwargs: Force-specific parameters (e.g., ``rho``, ``h``, ``template``).
+    def compute(self, state: Any, precomputed: Any) -> jnp.ndarray:
+        """Compute the force contribution for the current state."""
+        ...
 
-        Returns:
-            Force field, typically shape ``(nx, ny, 1, d)``.
+    def init_state(
+        self,
+        grid_shape: tuple[int, ...],
+        lattice: Lattice,
+        precomputed: Any,
+    ) -> dict[str, jnp.ndarray]:
+        """Create additional state fields required at t=0.
+
+        Stateless forces may use the default empty mapping.
+        """
+        ...
+
+    def update_state(self, state: Any, precomputed: Any, lattice: Lattice, stream_fn: Any) -> Any:
+        """Update auxiliary state fields by one step.
+
+        Stateless forces may use the default identity update.
         """
         ...
 
@@ -268,7 +283,7 @@ class ForcingOperator(Protocol):
 class DifferentialOperator(Protocol):
     """Differential operator — computes spatial derivatives.
 
-    Typically gradients and Laplacians on lattice grids, used for
+    Gradients and Laplacians on lattice grids, used for
     multiphase chemical potential and interfacial stress.
 
     Signature::
@@ -314,7 +329,7 @@ class SimulationRepository(Protocol):
 
     def save_snapshot(
         self,
-        state: State,
+        state: "State",
         time_step: int,
         field_names: Optional[Tuple[str, ...]] = None,
     ) -> None:
@@ -328,7 +343,7 @@ class SimulationRepository(Protocol):
         """
         ...
 
-    def load_snapshot(self, time_step: int) -> State:
+    def load_snapshot(self, time_step: int) -> "State":
         """Load a previously saved snapshot.
 
         Args:
@@ -377,7 +392,7 @@ __all__ = [
     "MacroscopicOperator",
     "BoundaryOperator",
     "InitialiserOperator",
-    "ForcingOperator",
+    "ForceOperator",
     "DifferentialOperator",
     # Ports
     "SimulationRepository",

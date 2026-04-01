@@ -586,7 +586,6 @@ class TestBuildMultiphaseParams:
         assert mp.rho_l == 1.0
         assert mp.rho_v == 0.33
         assert mp.interface_width == 4
-        assert mp.bubble is False
 
     def test_missing_field_raises(self):
         from dataclasses import dataclass

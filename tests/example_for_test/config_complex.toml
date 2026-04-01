@@ -12,7 +12,7 @@
 #   final_state, trajectory = run(setup, state)
 
 [simulation_type]
-simulation_name = 'Test complex simulation'
+simulation_name = "Test complex simulation"
 type = "multiphase"
 grid_shape = [201, 201]
 lattice_type = "D2Q9"
@@ -27,32 +27,29 @@ rho_v = 0.33
 interface_width = 5
 eos = "double-well"
 
-# Force configuration - can have multiple [[force]] tables
-[[force]]
-type = "gravity_multiphase"
-force_g = 2e-6
-inclination_angle_deg = 0
-
 [boundary_conditions]
 left = "periodic"
 right = "periodic"
 top = "bounce-back"
 bottom = "wetting"
 
-[boundary_conditions.wetting_params]
+[wetting]
 phi_left = 1.0
 phi_right = 1.0
 d_rho_left = 0.0
 d_rho_right = 0.0
 
-[boundary_conditions.hysteresis_params]
+[hysteresis]
 ca_advancing = 90.0
 ca_receding = 80.0
 learning_rate = 0.05
 max_iterations = 10
 
+[gravity_force]
+force_g = 2e-6
+inclination_angle_deg = 0
+
 [output]
 results_dir = "~/TUD_LBM_data/results"
 save_fields = ["rho", "u"]
-plot_fields = ["density", 'velocity']
-
+plot_fields = ["density", "velocity"]

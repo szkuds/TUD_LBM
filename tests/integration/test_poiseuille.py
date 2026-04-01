@@ -79,12 +79,7 @@ def poiseuille_simulation():
         lattice_type="D2Q9",
         tau=TAU,
         nt=NT,
-        force_enabled=True,
-        force_config={
-            "type": "gravity_multiphase",
-            "force_g": BODY_FORCE_G,
-            "inclination_angle_deg": 90.0,  # force along x
-        },
+        gravity_force={"force_g": BODY_FORCE_G, "inclination_angle_deg": 90.0},
         bc_config={
             "left": "periodic",
             "right": "periodic",

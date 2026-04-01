@@ -36,7 +36,8 @@ from config.dir_config import BASE_RESULTS_DIR
 #   "multiphase"            → multiphase-specific parameters
 #   "output"                → output / IO overrides
 #   "boundary_conditions"   → boundary condition configuration
-#   "force"                 → force definitions (array-of-tables in TOML)
+#   "gravity_force" / "electric_force" / ...
+#                           → canonical top-level force sections
 #   "identity"              → special: sim_type → written as "type"
 #   "extra"                 → merged into simulation_type directly
 CONFIG_SECTION: str = "config_section"
@@ -150,8 +151,6 @@ class SimulationConfig:
     rho_l: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
     rho_v: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
     interface_width: int | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
-    bubble: bool = field(default=False, metadata={CONFIG_SECTION: "multiphase"})
-    rho_ref: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
     g: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
 
     # ── Extra / extensible ───────────────────────────────────────
@@ -310,7 +309,7 @@ class SimulationConfig:
 
     @property
     def force_enabled(self) -> bool:
-        """True if any *_force field is populated. Replaces the old boolean flag."""
+        """True if any ``*_force`` field is populated."""
         return any(
             getattr(self, f.name) is not None
             for f in dataclasses.fields(self)
