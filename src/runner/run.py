@@ -84,7 +84,7 @@ def init_state(
     Returns:
         A :class:`State` ready to be passed to :func:`run`.
     """
-    from operators.initialise.factory import get_init_fn
+    from operators.initialise import build_initialise_fn
 
     lattice = setup.lattice
     nx, ny = setup.grid_shape[0], setup.grid_shape[1]
@@ -92,7 +92,7 @@ def init_state(
 
     if f is None:
         init_type = getattr(setup, "init_type", "standard")
-        init_fn = get_init_fn(init_type)
+        init_fn = build_initialise_fn(init_type)
 
         # Build kwargs from setup for multiphase initialisers
         kw: dict = {}
@@ -126,19 +126,9 @@ def init_state(
     force = jnp.zeros((nx, ny, 1, d)) if is_multiphase else None
     force_ext = jnp.zeros((nx, ny, 1, d)) if setup.force_enabled else None
 
-    # Electric potential distribution (if electric force is enabled)
-    h = None
-    if getattr(setup, "electric_params", None) is not None:
-        from operators.force.electric import init_hi
-
-        ep = setup.electric_params
-        h = init_hi(
-            nx,
-            ny,
-            lattice,
-            voltage_top=ep.voltage_top,
-            voltage_bottom=ep.voltage_bottom,
-        )
+    extra_state: dict[str, jnp.ndarray] = {}
+    for spec in getattr(setup, "forces", ()):
+        extra_state.update(spec.init_fn(setup.grid_shape, lattice, spec.precomputed))
 
     return State(
         f=f,
@@ -147,7 +137,7 @@ def init_state(
         t=t,
         force=force,
         force_ext=force_ext,
-        h=h,
+        **extra_state,
     )
 
 

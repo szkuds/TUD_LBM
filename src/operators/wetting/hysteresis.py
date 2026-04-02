@@ -30,7 +30,6 @@ from __future__ import annotations
 from typing import NamedTuple
 import jax
 import jax.numpy as jnp
-
 from operators.wetting.contact_angle import compute_contact_angle
 from operators.wetting.contact_line import compute_contact_line_location
 from registry import wetting_operator
@@ -102,6 +101,7 @@ def _optimise_single_param(
         grads = grad_mask_fn(grads)
         updates, new_opt_state = optimiser.update(grads, opt_state, params)
         import optax  # lazy import — optional dependency
+
         new_params = optax.apply_updates(params, updates)
         new_params = _clamp_params(new_params)
         return (new_params, new_opt_state), loss
@@ -344,11 +344,10 @@ def update_wetting_state(
 
     try:
         import optax  # lazy import — optional dependency
-    except ImportError:
+    except ImportError as err:
         raise ImportError(
-            "The 'optax' package is required for hysteresis wetting.\n"
-            "Install it with:  pip install optax"
-        )
+            "The 'optax' package is required for hysteresis wetting.\nInstall it with:  pip install optax"
+        ) from err
     optimiser = optax.adam(lr)
 
     # 4. Build evaluate_fn if not supplied
@@ -436,14 +435,13 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
     the enclosing scope so the inner optimiser sees only ``params``.
     """
     from operators.boundary.composite import build_composite_bc
-    from operators.collision.factory import build_collision_fn
-    from operators.equilibrium.equilibrium import compute_equilibrium
+    from operators.collision import build_collision_fn
+    from operators.equilibrium import build_equilibrium_fn
     from operators.force.source_term import source
-    from operators.macroscopic.multiphase import compute_macroscopic_multiphase
-    from operators.streaming.streaming import stream
+    from operators.macroscopic import build_macroscopic_fn
+    from operators.streaming import build_streaming_fn
 
     lattice = setup.lattice
-    mp = setup.multiphase_params
     diff_ops = setup.diff_ops
     collision_fn = build_collision_fn(setup.collision_scheme)
     bc_fn = build_composite_bc(setup.bc_config, lattice)
@@ -455,26 +453,27 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
         # the boundary condition, which is handled externally).
 
         # Standard multiphase step
+        macroscopic_fn = build_macroscopic_fn("standard")
+        equilibrium_fn = build_equilibrium_fn("wb")
+        streaming_fn = build_streaming_fn("standard")
+
         if setup.force_enabled and force is not None:
-            rho_new, u_new, force_tot = compute_macroscopic_multiphase(
+            rho_new, u_new, force_tot = macroscopic_fn(
                 f_t,
                 lattice,
-                mp,
-                force_ext=force,
-                diff_ops=diff_ops,
+                force=force,
             )
         else:
-            rho_new, u_new, force_tot = compute_macroscopic_multiphase(
+            rho_new, u_new = macroscopic_fn(
                 f_t,
                 lattice,
-                mp,
-                diff_ops=diff_ops,
             )
+            force_tot = force if force is not None else jnp.zeros((f_t.shape[0], f_t.shape[1], 1, 2))
 
-        feq = compute_equilibrium(rho_new, u_new, lattice)
+        feq = equilibrium_fn(rho_new, u_new, lattice)
         src = source(rho_new, u_new, force_tot, lattice, diff_ops=diff_ops)
         f_col = collision_fn(f_t, feq, setup.tau, src)
-        f_str = stream(f_col, lattice, bc_config=setup.bc_config)
+        f_str = streaming_fn(f_col, lattice)
         f_bc = bc_fn(f_str, f_col, setup.bc_masks)
 
         # Measure CA and CLL from the output

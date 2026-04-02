@@ -94,8 +94,7 @@ MULTIPHASE_WITH_FORCE_TOML = textwrap.dedent("""\
     interface_width = 4
     eos = "double-well"
 
-    [[force]]
-    type = "gravity_multiphase"
+    [gravity_force]
     force_g = 2e-6
     inclination_angle_deg = 60
 """)
@@ -274,35 +273,27 @@ class TestTomlAdapterMultiphase:
 
 
 class TestTomlAdapterForces:
-    """Tests for force config loading from TOML [[force]] tables.
-
-    Since the migration to the functional architecture, the adapter
-    no longer instantiates force objects.  Instead, ``[[force]]``
-    tables are validated and stored as plain dicts in
-    ``SimulationConfig.force_config``.  Actual JAX force objects are
-    built later in ``build_setup()``.
-    """
+    """Tests for canonical top-level ``[gravity_force]`` TOML tables."""
 
     def test_force_enabled_when_forces_present(self, multiphase_force_toml_file):
         bundle = TomlAdapter().load(multiphase_force_toml_file)
         assert bundle.force_enabled is True
 
-    def test_force_config_is_list_of_dicts(self, multiphase_force_toml_file):
+    def test_gravity_force_is_dict(self, multiphase_force_toml_file):
         bundle = TomlAdapter().load(multiphase_force_toml_file)
-        assert isinstance(bundle.force_config, list)
-        assert len(bundle.force_config) == 1
-        assert isinstance(bundle.force_config[0], dict)
+        assert isinstance(bundle.gravity_force, dict)
 
-    def test_force_config_contains_correct_type(self, multiphase_force_toml_file):
+    def test_gravity_force_section_loaded(self, multiphase_force_toml_file):
         bundle = TomlAdapter().load(multiphase_force_toml_file)
-        entry = bundle.force_config[0]
-        assert entry["type"] == "gravity_multiphase"
+        assert bundle.gravity_force == {
+            "force_g": 2e-6,
+            "inclination_angle_deg": 60,
+        }
 
-    def test_force_config_contains_correct_params(self, multiphase_force_toml_file):
+    def test_gravity_force_contains_correct_params(self, multiphase_force_toml_file):
         bundle = TomlAdapter().load(multiphase_force_toml_file)
-        entry = bundle.force_config[0]
-        assert entry["force_g"] == 2e-6
-        assert entry["inclination_angle_deg"] == 60
+        assert bundle.gravity_force["force_g"] == 2e-6
+        assert bundle.gravity_force["inclination_angle_deg"] == 60
 
 
 # ── Error handling ───────────────────────────────────────────────────
@@ -350,8 +341,8 @@ class TestTomlAdapterErrors:
             interface_width = 4
             eos = "double-well"
 
-            [[force]]
-            type = "nonexistent_force"
+            [nonexistent_force]
+            strength = 1.0
         """)
         p = tmp_path / "bad_force.toml"
         p.write_text(content)
@@ -408,9 +399,7 @@ class TestExampleFiles:
         assert bundle.grid_shape == (100, 100)
 
     def test_config_complex_loads(self, example_dir):
-        """Load the complex config — no mocking needed since forces are
-        now stored as plain dicts in force_config, not instantiated.
-        """
+        """Load the complex config using canonical top-level force sections."""
         path = example_dir / "config_complex.toml"
         if not path.exists():
             pytest.skip("example_for_test/config_complex.toml not found")
@@ -422,5 +411,7 @@ class TestExampleFiles:
         assert bundle.kappa == 0.017
         assert bundle.save_interval == 400
         assert bundle.force_enabled is True
-        assert isinstance(bundle.force_config, list)
-        assert bundle.force_config[0]["type"] == "gravity_multiphase"
+        assert bundle.gravity_force == {
+            "force_g": 2e-6,
+            "inclination_angle_deg": 0,
+        }

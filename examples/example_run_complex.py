@@ -39,7 +39,6 @@ def wetting_hysteresis_simulation():
     print(f"  Config loaded from : {config_path.name}")
     print(f"  Grid               : {config.grid_shape}")
     print(f"  Steps              : {config.nt}  (save every {config.save_interval})")
-    print(f"  Gravity present    : {simulation_setup.gravity_template is not None}")
 
     # Create the I/O handler — makes the timestamped run directory.
     io = SimulationIO(

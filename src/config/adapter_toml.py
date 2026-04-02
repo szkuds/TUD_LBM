@@ -38,8 +38,8 @@ class TomlAdapter(ConfigAdapter):
     ``[multiphase]``
         Optional. Extra physics parameters when ``type = "multiphase"``.
 
-    ``[[force]]``
-        Optional. One or more force definitions (array-of-tables).
+    ``[gravity_force]`` / ``[electric_force]`` / ...
+        Optional. One top-level table per force model.
 
     ``[boundary_conditions]``
         Optional. Boundary condition configuration (including nested
@@ -61,6 +61,31 @@ class TomlAdapter(ConfigAdapter):
             else:
                 sim_table[key] = value
 
+    @staticmethod
+    def _validate_and_process_forces(
+        raw: dict[str, Any],
+        sim_table: dict[str, Any],
+    ) -> None:
+        """Extract and validate force sections from raw TOML.
+
+        Args:
+            raw: Raw TOML dictionary.
+            sim_table: Mutable simulation table to update in-place.
+
+        Raises:
+            KeyError: If force type is unknown.
+            TypeError: If force section is not a table.
+        """
+        known_force_fields = {f.name for f in dataclasses.fields(SimulationConfig) if f.name.endswith("_force")}
+        for key, value in raw.items():
+            if not key.endswith("_force"):
+                continue
+            if key not in known_force_fields:
+                raise KeyError(f"Unknown force type '{key}'")
+            if not isinstance(value, dict):
+                raise TypeError(f"Force section '[{key}]' must be a table, got {type(value).__name__}.")
+            sim_table[key] = dict(value)
+
     def load(self, path: str) -> SimulationConfig:
         """Parse *path* and return a :class:`SimulationConfig`.
 
@@ -73,7 +98,6 @@ class TomlAdapter(ConfigAdapter):
         Raises:
             FileNotFoundError: If *path* does not exist.
             ValueError: If required sections/keys are missing or invalid.
-            KeyError: If a ``[[force]]`` type is not in the force registry.
         """
         path = Path(path).expanduser()
         if not path.is_file():
@@ -105,13 +129,14 @@ class TomlAdapter(ConfigAdapter):
         if bc_config is not None:
             sim_table["bc_config"] = dict(bc_config)
 
-        # ── [[force]] (optional) ─────────────────────────────────────
-        force_tables: list[dict[str, Any]] = raw.get("force", [])
-        if force_tables:
-            sim_table["force_enabled"] = True
-            # Store as plain dicts — actual JAX force objects are built
-            # later in ``build_setup()``.
-            sim_table["force_config"] = self.parse_force_tables(force_tables)
+        # ── Wetting sections ─────────────────────────────────────────
+        if "wetting" in raw:
+            sim_table["wetting_config"] = dict(raw["wetting"])
+        if "hysteresis" in raw:
+            sim_table["hysteresis_config"] = dict(raw["hysteresis"])
+
+        # ── Force sections ──────────────────────────────────────────
+        self._validate_and_process_forces(raw, sim_table)
 
         # ── [output] overrides ───────────────────────────────────────
         self._apply_output_overrides(sim_table, raw.get("output", {}))

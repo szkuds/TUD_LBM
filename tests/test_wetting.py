@@ -391,7 +391,7 @@ class TestStepMultiphaseWithWetting:
     @staticmethod
     def _setup_and_state():
         from config.simulation_config import SimulationConfig
-        from operators.equilibrium.equilibrium import compute_equilibrium
+        from operators.equilibrium._equilibrium import compute_equilibrium
         from runner.run import init_state
         from setup.simulation_setup import build_setup
         from state.state import WettingState

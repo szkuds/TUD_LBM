@@ -121,7 +121,7 @@ class TestStepSinglePhase:
 
     def test_rest_equilibrium_unchanged(self):
         """At rest equilibrium, one step should not change f."""
-        from operators.equilibrium.equilibrium import compute_equilibrium
+        from operators.equilibrium._equilibrium import compute_equilibrium
         from runner.run import init_state
         from runner.step import step_single_phase
 

@@ -58,8 +58,8 @@ class TestSource:
     """``source`` computes a well-balanced forcing source term."""
 
     def _diff_ops(self, lattice):
+        from operators.differential import build_differential_operators
         from operators.differential.config import DifferentialConfig
-        from operators.differential.factory import build_differential_operators
 
         cfg = DifferentialConfig(
             w=lattice.w,

@@ -5,7 +5,7 @@ Places a sessile droplet (half-circle) at the bottom wall.
 
 from __future__ import annotations
 import jax.numpy as jnp
-from operators.equilibrium.equilibrium import compute_equilibrium
+from operators.equilibrium._equilibrium import compute_equilibrium
 from registry import initialise_operator
 from setup.lattice import Lattice
 

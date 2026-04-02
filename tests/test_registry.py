@@ -18,7 +18,7 @@ import operators.collision
 import operators.differential
 import operators.equilibrium
 import operators.force
-import operators.initialise.factory
+import operators.initialise
 import operators.macroscopic
 import operators.streaming
 import operators.wetting  # noqa: F401
@@ -149,7 +149,7 @@ class TestRegistryPopulated:
 
     def test_force_registered(self):
         names = get_operator_names("force")
-        assert names >= {"source_term_wb", "gravity_multiphase", "electric"}
+        assert names >= {"source_term_wb", "gravity_force", "electric_force"}
 
     def test_initialise_registered(self):
         names = get_operator_names("initialise")
@@ -220,24 +220,24 @@ class TestLatticeViaRegistry:
 
 
 class TestCollisionFactoryViaRegistry:
-    """get_collision_fn uses the registry correctly."""
+    """build_collision_fn uses the registry correctly."""
 
     def test_get_bgk(self):
-        from operators.collision.factory import build_collision_fn
+        from operators.collision import build_collision_fn
 
         fn = build_collision_fn("bgk")
         assert callable(fn)
 
     def test_get_mrt(self):
-        from operators.collision.factory import build_collision_fn
+        from operators.collision import build_collision_fn
 
         fn = build_collision_fn("mrt")
         assert callable(fn)
 
     def test_unknown_raises(self):
-        from operators.collision.factory import build_collision_fn
+        from operators.collision import build_collision_fn
 
-        with pytest.raises(ValueError, match="Unknown collision scheme"):
+        with pytest.raises(ValueError, match="Unknown collision"):
             build_collision_fn("nonexistent")
 
 
@@ -272,7 +272,7 @@ class TestDummyOperatorAutoExposure:
             assert "_dummy_test_col" in names
 
             # The factory can resolve it
-            from operators.collision.factory import build_collision_fn
+            from operators.collision import build_collision_fn
 
             fn = build_collision_fn("_dummy_test_col")
             assert fn is _dummy_collide

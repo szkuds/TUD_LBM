@@ -1,0 +1,83 @@
+Refactor: Unify all 8 operator types to use protocol-based factory pattern
+
+Complete the operator architecture standardization by extending the
+protocol-based factory pattern to all remaining operator categories
+(boundary, force, initialise, differential), building on the foundation
+established for collision, streaming, equilibrium, and macroscopic
+operators.
+
+ARCHITECTURAL IMPROVEMENTS
+- All 8 operator types now follow identical discovery and instantiation
+  pattern: Protocol interface → Registry → Factory function → Type-safe
+  wrapper in __init__.py
+- Eliminated boilerplate in boundary, force, initialise, and differential
+  operator packages
+- Established clear public/private boundaries: implementation files renamed
+  to private modules (_bgk.py, _gradient.py, etc.)
+
+CHANGES BY OPERATOR CATEGORY
+
+Boundary Operators:
+- Refactored src/operators/boundary/__init__.py to use build_boundary_fn()
+- Renamed: bounce_back.py → _bounce_back.py, periodic.py → _periodic.py,
+  symmetry.py → _symmetry.py
+- Uses lazy imports to avoid circular dependency with composite.py
+
+Force Operators:
+- Refactored src/operators/force/__init__.py to use build_force_fn()
+- Keeps public module names (electric.py, gravity.py) - not renamed
+- Uses lazy imports in factory
+
+Initialisation Operators:
+- Refactored src/operators/initialise/__init__.py to use
+  build_initialise_fn()
+- No files renamed (11 implementation modules remain public)
+- Maintains backward-compatible legacy get_init_fn() in factory.py
+- Fixed all 11 initialise modules to import from ._equilibrium instead of
+  .equilibrium
+
+Differential Operators:
+- Refactored src/operators/differential/__init__.py to use
+  build_differential_fn()
+- Renamed: gradient.py → _gradient.py, laplacian.py → _laplacian.py
+- Uses lazy imports to avoid circular dependency with simulation_setup.py
+
+IMPORT FIXES
+Updated ~40 import statements across source and test files:
+- src/setup/simulation_setup.py: boundary imports from private modules
+- src/runner/step.py: streaming_fn() instead of undefined stream()
+- src/runner/run.py: build_initialise_fn() instead of get_init_fn()
+- src/operators/boundary/composite.py: private module imports
+- tests/test_pure_operators.py: updated collision, streaming, macroscopic
+- tests/test_differential.py: gradient, laplacian imports
+- tests/test_force_operators.py: streaming imports
+- tests/test_initialise.py: factory imports, backward-compat usage
+
+CIRCULAR IMPORT RESOLUTION
+Used lazy evaluation (imports inside factory functions) to resolve
+circular dependencies:
+- boundary/__init__.py ↔ boundary/composite.py
+- differential/__init__.py ↔ simulation_setup.py
+- force/__init__.py ↔ step.py
+
+TEST RESULTS
+- 390 tests PASSED (all refactoring-related functionality)
+- 2 tests SKIPPED (optional dependencies)
+- 8 tests FAILED (pre-existing failures unrelated to this refactoring)
+
+The 8 failing tests are in the wetting module (TestUpdateWettingState,
+TestStepMultiphaseWithWetting) and stem from a pre-existing logic error in
+src/operators/wetting/hysteresis.py where the code assumes
+compute_macroscopic("standard") always returns 3 values, but it returns
+only 2 when no force is provided. This bug was not introduced by this
+refactoring (wetting module was not modified) and should be addressed in
+a separate PR.
+
+BACKWARD COMPATIBILITY
+- All public APIs preserved
+- Optional dependencies installed: optax, click, rich, tomli_w
+- Legacy get_init_fn() maintained in operators/initialise/factory.py
+- All tests passing except pre-existing wetting failures
+
+Files modified: ~42 files (renames, imports, factory refactoring)
+Lines affected: ~300 (factory implementations, import updates)

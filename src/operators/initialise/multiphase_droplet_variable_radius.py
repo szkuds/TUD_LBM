@@ -5,7 +5,7 @@ Places a liquid droplet at the domain centre with a user-supplied radius.
 
 from __future__ import annotations
 import jax.numpy as jnp
-from operators.equilibrium.equilibrium import compute_equilibrium
+from operators.equilibrium._equilibrium import compute_equilibrium
 from registry import initialise_operator
 from setup.lattice import Lattice
 

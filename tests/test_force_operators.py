@@ -1,16 +1,11 @@
-"""Tests for force operators — gravity and electric.
-
-Tests for:
-    - ``operators.force.gravity.build_gravity_force``
-    - ``operators.force.gravity.compute_gravity_force``
-    - ``operators.force.electric.*``
-"""
+"""Tests for force operators — gravity and electric."""
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 from setup.lattice import build_lattice
+from state.state import State
 
 NX, NY = 8, 8
 
@@ -20,29 +15,53 @@ def lattice():
     return build_lattice("D2Q9")
 
 
+@pytest.fixture
+def diff_ops(lattice):
+    """Build differential operators with periodic (wrap) padding."""
+    from operators.differential import build_differential_operators
+    from operators.differential.config import DifferentialConfig
+
+    cfg = DifferentialConfig(
+        w=lattice.w,
+        c=lattice.c,
+        pad_modes=["wrap", "wrap", "wrap", "wrap"],
+    )
+    return build_differential_operators(cfg)
+
+
+def make_state(lattice, rho_value=1.0, h=None):
+    f = jnp.ones((NX, NY, lattice.q, 1)) * (rho_value / lattice.q)
+    rho = jnp.sum(f, axis=2, keepdims=True)
+    return State(
+        f=f,
+        rho=rho,
+        u=jnp.zeros((NX, NY, 1, lattice.d)),
+        t=jnp.array(0),
+        h=h,
+    )
+
+
 # =====================================================================
 # Gravity force
 # =====================================================================
 
 
 class TestGravityForce:
-    """``build_gravity_force`` and ``compute_gravity_force`` are correct."""
+    """GravityForceModule build/compute behaviour."""
 
-    def test_template_shape(self):
-        from operators.force.gravity import build_gravity_force
+    def test_template_shape(self, lattice):
+        from operators.force._gravity import GravityForceModule
 
-        template = build_gravity_force((NX, NY), force_g=0.001)
+        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY))
         assert template.shape == (NX, NY, 1, 2)
 
-    def test_vertical_gravity(self):
-        from operators.force.gravity import build_gravity_force
+    def test_vertical_gravity(self, lattice):
+        from operators.force._gravity import GravityForceModule
 
-        template = build_gravity_force(
+        template = GravityForceModule.build(
+            {"force_g": 0.001, "inclination_angle_deg": 0.0},
             (NX, NY),
-            force_g=0.001,
-            inclination_angle_deg=0.0,
         )
-        # At 0 degrees: force_x = 0, force_y = force_g
         np.testing.assert_allclose(
             float(template[0, 0, 0, 0]),
             0.0,
@@ -54,15 +73,13 @@ class TestGravityForce:
             atol=1e-10,
         )
 
-    def test_inclined_gravity(self):
-        from operators.force.gravity import build_gravity_force
+    def test_inclined_gravity(self, lattice):
+        from operators.force._gravity import GravityForceModule
 
-        template = build_gravity_force(
+        template = GravityForceModule.build(
+            {"force_g": 0.001, "inclination_angle_deg": 90.0},
             (NX, NY),
-            force_g=0.001,
-            inclination_angle_deg=90.0,
         )
-        # At 90 degrees: force_x = -force_g, force_y ≈ 0
         np.testing.assert_allclose(
             float(template[0, 0, 0, 0]),
             -0.001,
@@ -74,22 +91,20 @@ class TestGravityForce:
             atol=1e-10,
         )
 
-    def test_compute_gravity_force_shape(self):
-        from operators.force.gravity import build_gravity_force
-        from operators.force.gravity import compute_gravity_force
+    def test_compute_gravity_force_shape(self, lattice):
+        from operators.force._gravity import GravityForceModule
 
-        template = build_gravity_force((NX, NY), force_g=0.001)
-        rho = jnp.ones((NX, NY, 1, 1))
-        force = compute_gravity_force(template, rho)
+        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY))
+        state = make_state(lattice, rho_value=1.0)
+        force = GravityForceModule.compute(state, template)
         assert force.shape == (NX, NY, 1, 2)
 
-    def test_compute_gravity_force_value(self):
-        from operators.force.gravity import build_gravity_force
-        from operators.force.gravity import compute_gravity_force
+    def test_compute_gravity_force_value(self, lattice):
+        from operators.force._gravity import GravityForceModule
 
-        template = build_gravity_force((NX, NY), force_g=0.001)
-        rho = jnp.ones((NX, NY, 1, 1)) * 2.0
-        force = compute_gravity_force(template, rho)
+        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY))
+        state = make_state(lattice, rho_value=2.0)
+        force = GravityForceModule.compute(state, template)
         expected = -template * 2.0
         np.testing.assert_allclose(
             np.array(force),
@@ -97,13 +112,12 @@ class TestGravityForce:
             atol=1e-12,
         )
 
-    def test_jittable(self):
-        from operators.force.gravity import build_gravity_force
-        from operators.force.gravity import compute_gravity_force
+    def test_jittable(self, lattice):
+        from operators.force._gravity import GravityForceModule
 
-        template = build_gravity_force((NX, NY), force_g=0.001)
-        rho = jnp.ones((NX, NY, 1, 1))
-        force = jax.jit(compute_gravity_force)(template, rho)
+        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY))
+        state = make_state(lattice, rho_value=1.0)
+        force = jax.jit(lambda s: GravityForceModule.compute(s, template))(state)
         assert force.shape == (NX, NY, 1, 2)
 
 
@@ -113,28 +127,34 @@ class TestGravityForce:
 
 
 class TestElectricParams:
-    """``build_electric_params`` creates a valid NamedTuple pytree."""
+    """ElectricForceModule.build creates a valid NamedTuple pytree."""
 
-    def test_creation(self):
-        from operators.force.electric import build_electric_params
+    def test_creation(self, lattice):
+        from operators.force._electric import ElectricForceModule
 
-        ep = build_electric_params(
-            permittivity_liquid=80.0,
-            permittivity_vapour=1.0,
-            conductivity_liquid=0.01,
-            conductivity_vapour=0.001,
+        ep = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+            },
+            (NX, NY),
         )
         assert ep.permittivity_liquid == 80.0
         assert ep.permittivity_vapour == 1.0
 
-    def test_is_pytree(self):
-        from operators.force.electric import build_electric_params
+    def test_is_pytree(self, lattice):
+        from operators.force._electric import ElectricForceModule
 
-        ep = build_electric_params(
-            permittivity_liquid=80.0,
-            permittivity_vapour=1.0,
-            conductivity_liquid=0.01,
-            conductivity_vapour=0.001,
+        ep = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+            },
+            (NX, NY),
         )
         leaves, treedef = jax.tree_util.tree_flatten(ep)
         ep2 = treedef.unflatten(leaves)
@@ -146,22 +166,36 @@ class TestElectricParams:
 # =====================================================================
 
 
-class TestInitHi:
-    """``init_hi`` produces a valid initial electric distribution."""
+class TestInitState:
+    """ElectricForceModule.init_state produces a valid initial distribution."""
+
+    @staticmethod
+    def _params(lattice):
+        from operators.force._electric import ElectricForceModule
+
+        return ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+            },
+            (NX, NY),
+        )
 
     def test_shape(self, lattice):
-        from operators.force.electric import init_hi
+        from operators.force._electric import ElectricForceModule
 
-        hi = init_hi(NX, NY, lattice)
+        params = self._params(lattice)
+        hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
         assert hi.shape == (NX, NY, 9, 1)
 
     def test_linear_profile(self, lattice):
-        from operators.force.electric import init_hi
+        from operators.force._electric import ElectricForceModule
 
-        hi = init_hi(NX, NY, lattice, voltage_top=1.0, voltage_bottom=0.0)
-        # Macroscopic potential should be linear from bottom to top
+        params = self._params(lattice)._replace(voltage_top=1.0, voltage_bottom=0.0)
+        hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
         potential = jnp.sum(hi, axis=2, keepdims=True)
-        # Bottom row (y=0) should be ~0, top row (y=NY-1) should be ~1
         np.testing.assert_allclose(
             float(potential[0, 0, 0, 0]),
             0.0,
@@ -180,62 +214,65 @@ class TestInitHi:
 
 
 class TestComputeElectricForce:
-    """``compute_electric_force`` returns correct shape and is jittable."""
+    """ElectricForceModule.compute returns correct shape and is jittable."""
 
-    def test_shape(self, lattice):
-        from operators.force.electric import build_electric_params
-        from operators.force.electric import compute_electric_force
-        from operators.force.electric import init_hi
+    def test_shape(self, lattice, diff_ops):
+        from operators.force._electric import ElectricForceModule
 
-        ep = build_electric_params(
-            permittivity_liquid=80.0,
-            permittivity_vapour=1.0,
-            conductivity_liquid=0.01,
-            conductivity_vapour=0.001,
+        params = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+                "voltage_top": 1.0,
+            },
+            (NX, NY),
         )
-        rho = jnp.ones((NX, NY, 1, 1))
-        hi = init_hi(NX, NY, lattice, voltage_top=1.0)
+        hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
+        state = make_state(lattice, rho_value=1.0, h=hi)
 
-        force = compute_electric_force(rho, hi, ep, lattice)
+        force = ElectricForceModule.compute(state, params, diff_ops=diff_ops)
         assert force.shape == (NX, NY, 1, 2)
 
-    def test_zero_voltage_zero_force(self, lattice):
-        from operators.force.electric import build_electric_params
-        from operators.force.electric import compute_electric_force
-        from operators.force.electric import init_hi
+    def test_zero_voltage_zero_force(self, lattice, diff_ops):
+        from operators.force._electric import ElectricForceModule
 
-        ep = build_electric_params(
-            permittivity_liquid=1.0,
-            permittivity_vapour=1.0,
-            conductivity_liquid=0.0,
-            conductivity_vapour=0.0,
+        params = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 1.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.0,
+                "conductivity_vapour": 0.0,
+                "voltage_top": 0.0,
+                "voltage_bottom": 0.0,
+            },
+            (NX, NY),
         )
-        rho = jnp.ones((NX, NY, 1, 1))
-        hi = init_hi(NX, NY, lattice, voltage_top=0.0, voltage_bottom=0.0)
+        hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
+        state = make_state(lattice, rho_value=1.0, h=hi)
 
-        force = compute_electric_force(rho, hi, ep, lattice)
+        force = ElectricForceModule.compute(state, params, diff_ops=diff_ops)
         np.testing.assert_allclose(np.array(force), 0.0, atol=1e-10)
 
-    def test_jittable(self, lattice):
-        from functools import partial
-        from operators.force.electric import build_electric_params
-        from operators.force.electric import compute_electric_force
-        from operators.force.electric import init_hi
+    def test_jittable(self, lattice, diff_ops):
+        from operators.force._electric import ElectricForceModule
 
-        ep = build_electric_params(
-            permittivity_liquid=80.0,
-            permittivity_vapour=1.0,
-            conductivity_liquid=0.01,
-            conductivity_vapour=0.001,
+        params = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+                "voltage_top": 1.0,
+            },
+            (NX, NY),
         )
-        rho = jnp.ones((NX, NY, 1, 1))
-        hi = init_hi(NX, NY, lattice, voltage_top=1.0)
+        hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
+        state = make_state(lattice, rho_value=1.0, h=hi)
 
-        # Close over ep and lattice (contain Python scalars/strings)
-        jitted = jax.jit(
-            partial(compute_electric_force, electric_params=ep, lattice=lattice),
-        )
-        force = jitted(rho, hi)
+        jitted = jax.jit(lambda s: ElectricForceModule.compute(s, params, diff_ops=diff_ops))
+        force = jitted(state)
         assert force.shape == (NX, NY, 1, 2)
 
 
@@ -244,25 +281,26 @@ class TestComputeElectricForce:
 # =====================================================================
 
 
-class TestUpdateHi:
-    """``update_hi`` advances the electric potential distribution."""
+class TestUpdateState:
+    """ElectricForceModule.update_state advances the electric distribution."""
 
     def test_shape(self, lattice):
-        from operators.force.electric import build_electric_params
-        from operators.force.electric import init_hi
-        from operators.force.electric import update_hi
-        from operators.streaming.streaming import stream
+        from operators.force._electric import ElectricForceModule
+        from operators.streaming._streaming import stream
 
-        ep = build_electric_params(
-            permittivity_liquid=80.0,
-            permittivity_vapour=1.0,
-            conductivity_liquid=0.01,
-            conductivity_vapour=0.001,
-            voltage_top=1.0,
-            voltage_bottom=0.0,
+        params = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+                "voltage_top": 1.0,
+                "voltage_bottom": 0.0,
+            },
+            (NX, NY),
         )
-        rho = jnp.ones((NX, NY, 1, 1))
-        hi = init_hi(NX, NY, lattice, voltage_top=1.0)
+        hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
+        state = make_state(lattice, rho_value=1.0, h=hi)
 
-        hi_new = update_hi(hi, rho, ep, lattice, stream)
-        assert hi_new.shape == hi.shape
+        state_new = ElectricForceModule.update_state(state, params, lattice, stream)
+        assert state_new.h.shape == hi.shape

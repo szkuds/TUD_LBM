@@ -51,20 +51,20 @@ class TestComputeGradient:
     """``compute_gradient`` output shape and basic maths."""
 
     def test_output_shape(self, lattice, const_field, periodic_pad):
-        from operators.differential.gradient import compute_gradient
+        from operators.differential._gradient import compute_gradient
 
         out = compute_gradient(const_field, lattice.w, lattice.c, periodic_pad)
         assert out.shape == (NX, NY, 1, 2)
 
     def test_constant_field_zero_gradient(self, lattice, const_field, periodic_pad):
-        from operators.differential.gradient import compute_gradient
+        from operators.differential._gradient import compute_gradient
 
         out = compute_gradient(const_field, lattice.w, lattice.c, periodic_pad)
         np.testing.assert_allclose(np.array(out), 0.0, atol=1e-5)
 
     def test_2d_input_accepted(self, lattice, periodic_pad):
         """Also accepts a bare (nx, ny) array."""
-        from operators.differential.gradient import compute_gradient
+        from operators.differential._gradient import compute_gradient
 
         field_2d = jnp.ones((NX, NY))
         out = compute_gradient(field_2d, lattice.w, lattice.c, periodic_pad)
@@ -76,7 +76,7 @@ class TestComputeGradient:
         linear_x_field,
         periodic_pad,
     ):
-        from operators.differential.gradient import compute_gradient
+        from operators.differential._gradient import compute_gradient
 
         out = compute_gradient(linear_x_field, lattice.w, lattice.c, periodic_pad)
         # gx should be nonzero almost everywhere (periodic wrap creates edge artefacts)
@@ -85,7 +85,7 @@ class TestComputeGradient:
         assert float(np.mean(np.abs(gx[1:-1, :]))) > 0.1
 
     def test_jittable(self, lattice, const_field, periodic_pad):
-        from operators.differential.gradient import compute_gradient
+        from operators.differential._gradient import compute_gradient
 
         jitted = jax.jit(compute_gradient, static_argnames=("pad_mode",))
         out = jitted(const_field, lattice.w, lattice.c, pad_mode=tuple(periodic_pad))
@@ -106,26 +106,26 @@ class TestComputeLaplacian:
     """``compute_laplacian`` output shape and basic maths."""
 
     def test_output_shape(self, lattice, const_field, periodic_pad):
-        from operators.differential.laplacian import compute_laplacian
+        from operators.differential._laplacian import compute_laplacian
 
         out = compute_laplacian(const_field, lattice.w, periodic_pad)
         assert out.shape == (NX, NY, 1, 1)
 
     def test_constant_field_zero_laplacian(self, lattice, const_field, periodic_pad):
-        from operators.differential.laplacian import compute_laplacian
+        from operators.differential._laplacian import compute_laplacian
 
         out = compute_laplacian(const_field, lattice.w, periodic_pad)
         np.testing.assert_allclose(np.array(out), 0.0, atol=1e-5)
 
     def test_2d_input_accepted(self, lattice, periodic_pad):
-        from operators.differential.laplacian import compute_laplacian
+        from operators.differential._laplacian import compute_laplacian
 
         out = compute_laplacian(jnp.ones((NX, NY)), lattice.w, periodic_pad)
         assert out.shape == (NX, NY, 1, 1)
 
     def test_quadratic_field_nonzero_laplacian(self, lattice, periodic_pad):
         """f(i,j) = i² — Laplacian should be ~2 in the interior."""
-        from operators.differential.laplacian import compute_laplacian
+        from operators.differential._laplacian import compute_laplacian
 
         xs = jnp.arange(NX, dtype=jnp.float32)
         field = (xs**2)[:, None, None, None] * jnp.ones((NX, NY, 1, 1))
@@ -135,7 +135,7 @@ class TestComputeLaplacian:
         assert float(np.mean(np.abs(lap_interior))) > 0.5
 
     def test_jittable(self, lattice, const_field, periodic_pad):
-        from operators.differential.laplacian import compute_laplacian
+        from operators.differential._laplacian import compute_laplacian
 
         jitted = jax.jit(compute_laplacian, static_argnames=("pad_mode",))
         out = jitted(const_field, lattice.w, pad_mode=tuple(periodic_pad))
@@ -152,8 +152,8 @@ class TestComputeLaplacian:
 # =====================================================================
 
 
-class TestMakeWettingGradient:
-    """``make_wetting_gradient`` returns a jitted closure with correct behaviour."""
+class TestBuildWettingGradient:
+    """``build_wetting_gradient`` returns a closure with correct behaviour."""
 
     @pytest.fixture
     def wetting_params(self):
@@ -167,17 +167,30 @@ class TestMakeWettingGradient:
             "d_rho_r": 0.05,
         }
 
-    def test_returns_callable(self, lattice, periodic_pad, wetting_params):
-        from operators.differential.gradient import compute_wetting_gradient
+    def _call_wetting(self, fn, grid, params):
+        """Invoke the wetting closure with explicit params."""
+        return fn(
+            grid,
+            params["phi_l"],
+            params["phi_r"],
+            params["d_rho_l"],
+            params["d_rho_r"],
+            params["rho_l"],
+            params["rho_v"],
+            params["width"],
+        )
 
-        fn = compute_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
+    def test_returns_callable(self, lattice, periodic_pad, wetting_params):
+        from operators.differential._gradient_wetting import build_wetting_gradient
+
+        fn = build_wetting_gradient(lattice.w, lattice.c, periodic_pad)
         assert callable(fn)
 
     def test_output_shape(self, lattice, periodic_pad, wetting_params, const_field):
-        from operators.differential.gradient import compute_wetting_gradient
+        from operators.differential._gradient_wetting import build_wetting_gradient
 
-        fn = compute_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
-        out = fn(const_field)
+        fn = build_wetting_gradient(lattice.w, lattice.c, periodic_pad)
+        out = self._call_wetting(fn, const_field, wetting_params)
         assert out.shape == (NX, NY, 1, 2)
 
     def test_differs_from_plain_gradient_on_nonuniform_field(
@@ -187,53 +200,55 @@ class TestMakeWettingGradient:
         wetting_params,
     ):
         """Ghost-cell correction should change the result for a non-constant field."""
-        from operators.differential.gradient import compute_gradient
-        from operators.differential.gradient import compute_wetting_gradient
+        from operators.differential._gradient import compute_gradient
+        from operators.differential._gradient_wetting import build_wetting_gradient
 
         # A non-trivial density field
         rho = jnp.linspace(0.3, 1.0, NX)[:, None, None, None] * jnp.ones((NX, NY, 1, 1))
 
         plain = compute_gradient(rho, lattice.w, lattice.c, periodic_pad)
-        wetting_fn = compute_wetting_gradient(
-            lattice.w,
-            lattice.c,
-            periodic_pad,
-            wetting_params,
-        )
-        with_wetting = wetting_fn(rho)
+        wetting_fn = build_wetting_gradient(lattice.w, lattice.c, periodic_pad)
+        with_wetting = self._call_wetting(wetting_fn, rho, wetting_params)
 
         # They should not be identical (ghost cells differ)
         assert not jnp.allclose(plain, with_wetting, atol=1e-9)
 
-    def test_jittable_result(self, lattice, periodic_pad, wetting_params, const_field):
-        from operators.differential.gradient import compute_wetting_gradient
+    def test_deterministic_result(self, lattice, periodic_pad, wetting_params, const_field):
+        from operators.differential._gradient_wetting import build_wetting_gradient
 
-        fn = compute_wetting_gradient(lattice.w, lattice.c, periodic_pad, wetting_params)
-        # The closure is already jitted; calling it again should use the compiled version
-        out = fn(const_field)
-        out2 = fn(const_field)
+        fn = build_wetting_gradient(lattice.w, lattice.c, periodic_pad)
+        out = self._call_wetting(fn, const_field, wetting_params)
+        out2 = self._call_wetting(fn, const_field, wetting_params)
         np.testing.assert_array_equal(np.array(out), np.array(out2))
 
     def test_chemical_step_variant(self, lattice, periodic_pad, const_field):
-        """make_wetting_gradient with chemical_step uses per-step wetting fields."""
-        from operators.differential.gradient import compute_wetting_gradient
+        """build_wetting_gradient with resolved chemical-step wetting fields."""
+        from operators.differential._gradient_wetting import build_wetting_gradient
+        from operators.wetting.wetting_util import resolve_wetting_fields
 
         params_array = {
-            "rho_l": 1.0,
-            "rho_v": 0.1,
-            "width": 4,
             "phi": [1.2, 1.4],
             "d_rho": [0.03, 0.07],
         }
-        fn = compute_wetting_gradient(
-            lattice.w,
-            lattice.c,
-            periodic_pad,
-            params_array,
-            chemical_step=0,
+        phi_l, phi_r, d_rho_l, d_rho_r = resolve_wetting_fields(params_array, chemical_step=0)
+
+        fn = build_wetting_gradient(lattice.w, lattice.c, periodic_pad)
+        out = fn(
+            const_field,
+            phi_l,
+            phi_r,
+            d_rho_l,
+            d_rho_r,
+            1.0,  # rho_l
+            0.1,  # rho_v
+            4,  # width
         )
-        out = fn(const_field)
         assert out.shape == (NX, NY, 1, 2)
+
+    def test_registered_in_registry(self):
+        from registry import get_operator_names
+
+        assert "gradient_wetting" in get_operator_names("differential")
 
 
 # =====================================================================
