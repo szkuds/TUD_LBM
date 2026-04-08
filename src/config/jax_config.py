@@ -8,7 +8,7 @@ import jax
 
 # Configuration flags
 ENABLE_X64 = True  # Enable 64-bit precision for JAX arrays
-DISABLE_JIT = True # Set to True for debugging (disables JIT compilation)
+DISABLE_JIT = False  # Set to True for debugging (disables JIT compilation)
 
 
 def configure_jax(

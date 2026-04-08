@@ -177,12 +177,24 @@ def run(
         * **With io_handler** — *trajectory* is ``None``; data has been
           written to ``io_handler.data_dir``.
     """
-    from runner.step import get_step_fn
+    from registry import ensure_registry, get_operators
 
     if nt is None:
         nt = setup.nt
 
-    step_fn = get_step_fn(setup)
+    # Ensure registry is populated and retrieve the appropriate step function
+    ensure_registry()
+    step_ops = get_operators("update_timestep")
+
+    # Dispatch based on simulation type
+    if setup.multiphase_params is not None:
+        step_fn = step_ops["multiphase"].target
+    else:
+        step_fn = step_ops["single_phase"].target
+
+    # Create a wrapper that closes over setup
+    def _step(state: State) -> State:
+        return step_fn(setup, state)
 
     # ── Streaming I/O mode ───────────────────────────────────────
     if io_handler is not None:
@@ -197,7 +209,7 @@ def run(
 
         @jax.jit
         def scan_body_io(state, t):
-            new_state = step_fn(state)
+            new_state = _step(state)
             do_save(new_state, t)
             return new_state, None
 
@@ -211,7 +223,7 @@ def run(
     # ── In-memory trajectory mode ────────────────────────────────
     @jax.jit
     def scan_body(state, t):
-        new_state = step_fn(state)
+        new_state = _step(state)
         return new_state, new_state
 
     final_state, trajectory = jax.lax.scan(

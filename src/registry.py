@@ -68,6 +68,7 @@ _OPERATOR_MODULES: list[str] = [
     "operators.macroscopic",
     "operators.streaming",
     "operators.wetting",
+    "runner.step",
     "setup.lattice",
 ]
 

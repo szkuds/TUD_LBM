@@ -3,7 +3,6 @@ import sys
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
-from types import MethodType
 from src import SimulationConfig
 from .output_data import output_writers
 
@@ -43,10 +42,7 @@ class SimulationIO:
         if config:
             self.save_config(config)
 
-        self.save_data_step = MethodType(
-            output_writers[output_format].save_data_step,
-            self,
-        )
+        self.save_data_step = output_writers[output_format].save_data_step.__get__(self, type(self))
 
     def _setup_logging(self) -> None:
         """Configure root logger so everything printed to the console is
@@ -119,3 +115,4 @@ class SimulationIO:
         adapter.save(config, str(dest))
 
         print(f"Configuration saved to {dest}")
+

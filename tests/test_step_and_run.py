@@ -188,29 +188,46 @@ class TestStepMultiphase:
 
 
 # =====================================================================
-# get_step_fn
+# =====================================================================
+# get_step_fn → registry lookup
 # =====================================================================
 
 
 class TestGetStepFn:
-    """Step function dispatch."""
+    """Step function dispatch via registry."""
 
     def test_single_phase_dispatch(self):
         from runner.run import init_state
-        from runner.step import get_step_fn
+        from registry import ensure_registry, get_operators
 
         setup = _single_phase_setup()
-        step_fn = get_step_fn(setup)
+
+        ensure_registry()
+        step_ops = get_operators("update_timestep")
+        step_fn_target = step_ops["single_phase"].target
+
+        # Create wrapper that closes over setup
+        def step_fn(state):
+            return step_fn_target(setup, state)
+
         state = init_state(setup)
         new_state = step_fn(state)
         assert int(new_state.t) == 1
 
     def test_multiphase_dispatch(self):
         from runner.run import init_state
-        from runner.step import get_step_fn
+        from registry import ensure_registry, get_operators
 
         setup = _multiphase_setup()
-        step_fn = get_step_fn(setup)
+
+        ensure_registry()
+        step_ops = get_operators("update_timestep")
+        step_fn_target = step_ops["multiphase"].target
+
+        # Create wrapper that closes over setup
+        def step_fn(state):
+            return step_fn_target(setup, state)
+
         state = init_state(setup)
         new_state = step_fn(state)
         assert int(new_state.t) == 1

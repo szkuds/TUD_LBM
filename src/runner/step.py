@@ -20,17 +20,16 @@ Design
 
 Usage::
 
-    from runner.step import step_single_phase, get_step_fn
-    from runner.run import init_state
+    from runner.run import init_state, run
 
-    step_fn = get_step_fn(setup)
     state = init_state(setup)
-    new_state = step_fn(state)
+    final_state, trajectory = run(setup, state)
 """
 
 from __future__ import annotations
 from typing import Any
 from typing import cast
+from registry import update_timestep_operator
 from operators.boundary.composite import build_composite_bc
 from operators.collision import build_collision_fn
 from operators.equilibrium import build_equilibrium_fn
@@ -64,6 +63,7 @@ def _compute_total_force_ext(setup, state: State, streaming_fn):
     return total_force, state
 
 
+@update_timestep_operator(name="single_phase")
 def step_single_phase(setup, state: State) -> State:
     """Single-phase LBM step using pure-function operators.
 
@@ -119,6 +119,7 @@ def step_single_phase(setup, state: State) -> State:
     )
 
 
+@update_timestep_operator(name="multiphase")
 def step_multiphase(setup, state: State) -> State:
     """Multiphase LBM step using pure-function operators.
 
@@ -192,24 +193,3 @@ def step_multiphase(setup, state: State) -> State:
         wetting=new_wetting,
     )
 
-
-def get_step_fn(setup):
-    """Return the appropriate step function with *setup* closed over.
-
-    Args:
-        setup: :class:`~setup.simulation_setup.SimulationSetup`.
-
-    Returns:
-        A callable ``step_fn(state) → state``.
-    """
-    if setup.multiphase_params is not None:
-
-        def _step(state: State) -> State:
-            return step_multiphase(setup, state)
-
-    else:
-
-        def _step(state: State) -> State:
-            return step_single_phase(setup, state)
-
-    return _step

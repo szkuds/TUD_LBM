@@ -247,32 +247,56 @@ class TestStepMultiphasePure:
 
 
 class TestGetPureStepFn:
-    """``get_step_fn`` dispatches based on simulation type."""
+    """Step function dispatch via registry based on simulation type."""
 
     def test_single_phase_dispatch(self):
-        from runner.step import get_step_fn
+        from registry import ensure_registry, get_operators
 
         setup = _sp_setup()
-        step_fn = get_step_fn(setup)
+
+        ensure_registry()
+        step_ops = get_operators("update_timestep")
+        step_fn_target = step_ops["single_phase"].target
+
+        # Create wrapper that closes over setup
+        def step_fn(state):
+            return step_fn_target(setup, state)
+
         state = init_state(setup)
         new_state = step_fn(state)
         assert int(new_state.t) == 1
 
     def test_multiphase_dispatch(self):
-        from runner.step import get_step_fn
+        from registry import ensure_registry, get_operators
 
         setup = _mp_setup()
-        step_fn = get_step_fn(setup)
+
+        ensure_registry()
+        step_ops = get_operators("update_timestep")
+        step_fn_target = step_ops["multiphase"].target
+
+        # Create wrapper that closes over setup
+        def step_fn(state):
+            return step_fn_target(setup, state)
+
         state = init_state(setup)
         new_state = step_fn(state)
         assert int(new_state.t) == 1
 
     def test_jit_single_phase(self):
         """The closed-over step_fn should be jittable."""
-        from runner.step import get_step_fn
+        from registry import ensure_registry, get_operators
 
         setup = _sp_setup()
-        step_fn = get_step_fn(setup)
+
+        ensure_registry()
+        step_ops = get_operators("update_timestep")
+        step_fn_target = step_ops["single_phase"].target
+
+        # Create wrapper that closes over setup
+        def step_fn(state):
+            return step_fn_target(setup, state)
+
         state = init_state(setup)
 
         jitted_step = jax.jit(step_fn)
@@ -283,10 +307,18 @@ class TestGetPureStepFn:
 
     def test_jit_multiphase(self):
         """The closed-over multiphase step_fn should be jittable."""
-        from runner.step import get_step_fn
+        from registry import ensure_registry, get_operators
 
         setup = _mp_setup()
-        step_fn = get_step_fn(setup)
+
+        ensure_registry()
+        step_ops = get_operators("update_timestep")
+        step_fn_target = step_ops["multiphase"].target
+
+        # Create wrapper that closes over setup
+        def step_fn(state):
+            return step_fn_target(setup, state)
+
         state = init_state(setup)
 
         jitted_step = jax.jit(step_fn)

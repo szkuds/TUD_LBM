@@ -34,6 +34,7 @@ import jax.numpy as jnp
 from operators.differential import build_differential_fn
 from setup.lattice import Lattice
 from setup.lattice import build_lattice
+from src import State
 
 
 class BCMasks(NamedTuple):
@@ -137,6 +138,7 @@ class SimulationSetup(NamedTuple):
         gradient_standard: Standard gradient which is required to determine the chemical potential.
         gradient: Gradient operator which is adapted for wetting when wetting_config and the wetting boundary condition are present
         laplacian: Laplacian operator which is adapted for wetting when wetting_config and the wetting boundary condition are present
+        step: The resolved step function (closed over setup), ``Callable[[State], State]``.
         extra: Catch-all for additional parameters.
     """
 
@@ -180,6 +182,9 @@ class SimulationSetup(NamedTuple):
     gradient_standard: Callable[[jnp.ndarray], jnp.ndarray] | None = None
     gradient: Callable[[jnp.ndarray], jnp.ndarray] | None = None
     laplacian: Callable[[jnp.ndarray], jnp.ndarray] | None = None
+
+    # Step function (closed over setup)
+    step: Any = None
 
     # Extra
     extra: dict[str, Any] | None = None
@@ -358,7 +363,14 @@ def build_setup(config) -> SimulationSetup:
         _laplacian = build_differential_fn("laplacian")
     # ──────────────────────────────────────────────────────────────────
 
-    return SimulationSetup(
+    # ── Resolve step operator from registry ─────────────────────────────
+    from operators.factory import build_operator
+
+    sim_type = getattr(config, "sim_type", "single_phase")
+    _step_fn = build_operator("update_timestep", sim_type)
+
+    # Create setup with placeholder step (chicken-and-egg: step needs setup)
+    setup = SimulationSetup(
         lattice=lattice,
         grid_shape=tuple(config.grid_shape),
         tau=config.tau,
@@ -380,5 +392,14 @@ def build_setup(config) -> SimulationSetup:
         gradient=_gradient,
         laplacian=_laplacian,
         forces=forces,
+        step=None,  # placeholder — replaced below
         extra=getattr(config, "extra", None),
     )
+
+    # Close over setup and replace the placeholder
+    def bound_step(state: State) -> State:
+        return _step_fn(setup, state)
+
+    setup = setup._replace(step=bound_step)
+    return setup
+
