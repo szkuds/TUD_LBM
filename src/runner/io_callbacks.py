@@ -54,7 +54,7 @@ def _state_to_numpy(state, fields: tuple | None = None, t: int | None = None) ->
     data = {
         k: np.asarray(v)
         for k, v in vars(state).items()
-        if v is not None and hasattr(v, 'shape')
+        if v is not None and hasattr(v, "shape")
         and (fields is None or k in fields)
     }
     bad = [k for k, v in data.items() if np.isnan(v).any()]

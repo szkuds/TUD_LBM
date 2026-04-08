@@ -26,15 +26,19 @@ Usage::
 """
 
 from __future__ import annotations
-from collections.abc import Callable
 import dataclasses
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
+
+if TYPE_CHECKING:
+    from state.state import State
 import jax.numpy as jnp
+from config.simulation_config import SimulationConfig
 from operators.differential import build_differential_fn
 from setup.lattice import Lattice
 from setup.lattice import build_lattice
-from src import State
 
 
 class BCMasks(NamedTuple):
@@ -110,87 +114,56 @@ def _state_force_update(
 
 
 class SimulationSetup(NamedTuple):
-    """Immutable, JAX-friendly simulation setup.
+    """Immutable operator container — only what the jitted step needs.
 
-    Passed as a static / closed-over argument to jitted functions.
-    All fields are either JAX arrays, Python scalars, tuples, or
-    nested :class:`NamedTuple` values.
+    ``SimulationSetup`` stores built artifacts (operators, masks, closures)
+    and physics scalars that the step function reads at JIT time.  IO and
+    initialisation metadata live on the original
+    :class:`~config.simulation_config.SimulationConfig`, accessible via
+    the :attr:`config` reference.
 
     Attributes:
+        config: The original :class:`SimulationConfig` — for IO, init,
+            and any metadata that does not enter the JIT boundary.
         lattice: The :class:`~setup.lattice.Lattice` pytree.
         grid_shape: Spatial dimensions, e.g. ``(64, 64)``.
         tau: Relaxation time (> 0.5).
-        nt: Number of time steps.
         collision_scheme: Name of the collision model (``"bgk"`` / ``"mrt"``).
         k_diag: MRT relaxation rates (``None`` for BGK).
-        bc_config: Boundary-condition mapping (edge → type string).
         bc_masks: Pre-computed boundary-condition masks (:class:`BCMasks`).
         forces: Pre-built force specs.
-        init_type: Initialisation strategy identifier.
-        init_dir: Directory for ``init_from_file`` runs.
-        results_dir: Where to write output.
-        save_interval: How often to save snapshots.
-        skip_interval: Steps to skip before first save.
-        save_fields: Which fields to save (``None`` = all defaults).
         multiphase_params: ``None`` for single-phase runs.
-        wetting_config: Optional wetting configuration dict.
-        hysteresis_config: Optional hysteresis configuration dict.
         gradient_standard: Standard gradient which is required to determine the chemical potential.
-        gradient: Gradient operator which is adapted for wetting when wetting_config and the wetting boundary condition are present
-        laplacian: Laplacian operator which is adapted for wetting when wetting_config and the wetting boundary condition are present
+        gradient: Gradient operator which is adapted for wetting when wetting_config and the wetting boundary condition are present.
+        laplacian: Laplacian operator which is adapted for wetting when wetting_config and the wetting boundary condition are present.
         step_fn: The unbound step operator resolved from the registry,
             ``Callable[[SimulationSetup, State], State]``.  Use the
             :meth:`step` convenience method instead of calling this
             directly.
-        extra: Catch-all for additional parameters.
     """
 
-    # Lattice and grid
+    # ── Core references ──
+    config: SimulationConfig
     lattice: Lattice
+
+    # ── Physics scalars (read at runtime inside JIT) ──
     grid_shape: tuple[int, ...]
-
-    # Run time
-    nt: int
-
-    # Physics
-    collision_scheme: str
     tau: float
+    collision_scheme: str
     k_diag: tuple[float, ...] | None = None
 
-    # Boundary
-    bc_config: dict[str, Any] | None = None
+    # ── Pre-built operators ──
     bc_masks: BCMasks | None = None
-
-    # Forces — uniform interface, no per-force fields
     forces: tuple[ForceParams, ...] = ()
-
-    # Initialisation
-    init_type: str = "standard"
-    init_dir: str | None = None
-
-    # IO
-    results_dir: str = ""
-    save_interval: int = 100
-    skip_interval: int = 0
-    save_fields: tuple | None = None  # tuple (immutable) instead of list
-
-    # Multiphase (None for single-phase)
     multiphase_params: MultiphaseParams | None = None
 
-    # Wetting / hysteresis
-    wetting_config: dict[str, Any] | None = None
-    hysteresis_config: dict[str, Any] | None = None
-
-    # Differential operator callables (pre-built closures)
+    # ── Differential operator closures (pre-built) ──
     gradient_standard: Callable[[jnp.ndarray], jnp.ndarray] | None = None
     gradient: Callable[[jnp.ndarray], jnp.ndarray] | None = None
     laplacian: Callable[[jnp.ndarray], jnp.ndarray] | None = None
 
-    # Step function (unbound: (setup, state) -> State)
+    # ── Step function (unbound: (setup, state) -> State) ──
     step_fn: Any = None
-
-    # Extra
-    extra: dict[str, Any] | None = None
 
     def step(self, state: State) -> State:
         """Execute one time step.
@@ -317,98 +290,91 @@ def _build_forces(
     return tuple(specs)
 
 
+# ── Differential operator builder ────────────────────────────────────
+
+
+def _build_diff_ops(
+    config: SimulationConfig,
+    mp_params: MultiphaseParams | None,
+) -> tuple[Callable, Callable, Callable]:
+    """Build gradient/laplacian closures, wetting-aware if applicable.
+
+    Ensures boundary-condition modules are imported so that their
+    ``@boundary_condition`` decorators have fired before we query
+    pad-edge-mode metadata.
+
+    Args:
+        config: Validated simulation configuration.
+        mp_params: Multiphase parameters (``None`` for single-phase).
+
+    Returns:
+        ``(gradient_standard, gradient, laplacian)`` — three callable
+        differential-operator closures.
+    """
+    from operators.boundary import _bounce_back as _bb  # noqa: F401
+    from operators.boundary import _periodic as _per  # noqa: F401
+    from operators.boundary import _symmetry as _sym  # noqa: F401
+
+    gradient_standard = build_differential_fn("gradient")
+
+    wetting_config = config.wetting_config
+    if wetting_config is not None and mp_params is not None:
+        gradient = build_differential_fn("gradient_wetting")
+        laplacian = build_differential_fn("laplacian_wetting")
+    else:
+        gradient = build_differential_fn("gradient")
+        laplacian = build_differential_fn("laplacian")
+
+    return gradient_standard, gradient, laplacian
+
+
 # ── Main factory ─────────────────────────────────────────────────────
 
 
-def build_setup(config) -> SimulationSetup:
+def build_setup(config: SimulationConfig) -> SimulationSetup:
     """Construct a JAX-friendly :class:`SimulationSetup` from a config.
 
-    *config* can be either a
-    :class:`~config.simulation_config.SimulationConfig` or the legacy
-    :class:`~app_setup.simulation_setup.SimulationSetup` dataclass — any
-    object whose attributes match the expected field names.
-
     Args:
-        config: A validated configuration object.
+        config: A validated :class:`SimulationConfig`.
 
     Returns:
         An immutable :class:`SimulationSetup` NamedTuple ready for the
         jitted step function.
     """
     lattice = build_lattice(config.lattice_type)
-
-    # Build pre-computed boundary masks
-    bc_config = getattr(config, "bc_config", None)
-    bc_masks = build_bc_masks(tuple(config.grid_shape), bc_config)
+    bc_masks = build_bc_masks(tuple(config.grid_shape), config.bc_config)
 
     # Build multiphase params if applicable
-    mp_params = None
-    if getattr(config, "sim_type", "single_phase") == "multiphase":
-        mp_params = build_multiphase_params(config)
+    mp_params = (
+        build_multiphase_params(config)
+        if config.sim_type == "multiphase"
+        else None
+    )
 
-    # Normalise save_fields to tuple (immutable) or None
-    sf = getattr(config, "save_fields", None)
-    save_fields_tuple = tuple(sf) if sf is not None else None
-
-    # Build force object
+    # Build force specs
     forces = _build_forces(config, tuple(config.grid_shape), lattice)
 
-    # ── Build differential operators ──────────────────────────────────
-    # Ensure BC modules are imported so their @boundary_condition decorators
-    # have fired before we query pad_edge_mode metadata.
-    from operators.boundary import _bounce_back as _bb  # noqa: F401
-    from operators.boundary import _periodic as _per  # noqa: F401
-    from operators.boundary import _symmetry as _sym  # noqa: F401
+    # Build differential operators
+    gradient_standard, gradient, laplacian = _build_diff_ops(config, mp_params)
 
-    _gradient_standard = build_differential_fn("gradient")
-
-    # Prepare wetting parameters if applicable
-    wetting_config = getattr(config, "wetting_config", None)
-    if wetting_config is not None and mp_params is not None:
-        # Make a shallow copy to avoid mutating the original config
-        wetting_config = dict(wetting_config)
-        wetting_config["rho_l"] = mp_params.rho_l
-        wetting_config["rho_v"] = mp_params.rho_v
-        wetting_config["width"] = mp_params.interface_width
-        _gradient = build_differential_fn("gradient_wetting")
-        _laplacian = build_differential_fn("laplacian_wetting")
-
-    else:
-        # Build base (standard) gradient and Laplacian
-        _gradient = build_differential_fn("gradient")
-        _laplacian = build_differential_fn("laplacian")
-    # ──────────────────────────────────────────────────────────────────
-
-    # ── Resolve step operator from registry ─────────────────────────────
+    # Resolve step operator from registry
     from operators.factory import build_operator
 
-    sim_type = getattr(config, "sim_type", "single_phase")
-    _step_fn = build_operator("update_timestep", sim_type)
+    step_fn = build_operator("update_timestep", config.sim_type)
 
     return SimulationSetup(
+        config=config,
         lattice=lattice,
         grid_shape=tuple(config.grid_shape),
         tau=config.tau,
-        nt=config.nt,
         collision_scheme=config.collision_scheme,
         k_diag=config.k_diag,
-        bc_config=bc_config,
         bc_masks=bc_masks,
-        init_type=getattr(config, "init_type", "standard"),
-        init_dir=getattr(config, "init_dir", None),
-        results_dir=getattr(config, "results_dir", ""),
-        save_interval=getattr(config, "save_interval", 100),
-        skip_interval=getattr(config, "skip_interval", 0),
-        save_fields=save_fields_tuple,
-        multiphase_params=mp_params,
-        wetting_config=getattr(config, "wetting_config", None),
-        hysteresis_config=getattr(config, "hysteresis_config", None),
-        gradient_standard=_gradient_standard,
-        gradient=_gradient,
-        laplacian=_laplacian,
         forces=forces,
-        step_fn=_step_fn,
-        extra=getattr(config, "extra", None),
+        multiphase_params=mp_params,
+        gradient_standard=gradient_standard,
+        gradient=gradient,
+        laplacian=laplacian,
+        step_fn=step_fn,
     )
-
 

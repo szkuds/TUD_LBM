@@ -8,7 +8,6 @@ Uses the density gradient operator for computing gravity corrections.
 from __future__ import annotations
 import jax.numpy as jnp
 import numpy as np
-
 from operators.protocols import DifferentialOperator
 from registry import force_model
 from setup.lattice import Lattice

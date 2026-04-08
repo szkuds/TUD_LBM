@@ -41,7 +41,6 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
         >>> init = build_initialise_fn("standard")
         >>> f = init(64, 64, lattice, density=1.0)
     """
-
     return build_operator("initialise", scheme)
 
 

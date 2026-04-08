@@ -405,8 +405,8 @@ class TestComputeMacroscopicMultiphase:
 
     def _gradient_and_laplacian(self, lattice):
         """Build gradient and laplacian_wetting callables."""
-        from operators.differential import build_differential_fn
         import jax
+        from operators.differential import build_differential_fn
 
         pad_modes = ("wrap", "wrap", "wrap", "wrap")
 

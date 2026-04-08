@@ -91,7 +91,7 @@ def init_state(
     d = lattice.d
 
     if f is None:
-        init_type = getattr(setup, "init_type", "standard")
+        init_type = setup.config.init_type
         init_fn = build_initialise_fn(init_type)
 
         # Build kwargs from setup for multiphase initialisers
@@ -109,7 +109,7 @@ def init_state(
 
         # For init_from_file, inject npz_path from init_dir
         if init_type == "init_from_file" and "npz_path" not in kw:
-            init_dir = getattr(setup, "init_dir", None)
+            init_dir = setup.config.init_dir
             if init_dir is not None:
                 kw["npz_path"] = init_dir
 
@@ -158,7 +158,7 @@ def run(
     Args:
         setup: :class:`~setup.simulation_setup.SimulationSetup`.
         initial_state: Starting :class:`~state.state.State`.
-        nt: Number of time steps.  Defaults to ``setup.nt``.
+        nt: Number of time steps.  Defaults to ``setup.config.nt``.
         save_interval: Snapshot frequency (default: 1 = every step).
         io_handler: Optional :class:`~util.io.SimulationIO`.  When
             supplied, snapshots are streamed to disk via host callbacks
@@ -178,7 +178,7 @@ def run(
           written to ``io_handler.data_dir``.
     """
     if nt is None:
-        nt = setup.nt
+        nt = setup.config.nt
 
     # ── Streaming I/O mode ───────────────────────────────────────
     if io_handler is not None:

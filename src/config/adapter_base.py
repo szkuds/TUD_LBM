@@ -3,11 +3,13 @@
 from __future__ import annotations
 import dataclasses
 import importlib
-from abc import ABC, abstractmethod
+from abc import ABC
+from abc import abstractmethod
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
-from config.simulation_config import CONFIG_SECTION, SimulationConfig
+from config.simulation_config import CONFIG_SECTION
+from config.simulation_config import SimulationConfig
 
 
 class ConfigAdapter(ABC):

@@ -325,7 +325,7 @@ def update_wetting_state(
     )
 
     # 2. Hysteresis window parameters
-    hc = setup.hysteresis_config
+    hc = setup.config.hysteresis_config
     ca_adv = hc["ca_advancing"]
     ca_rec = hc["ca_receding"]
     lr = hc.get("learning_rate", 0.01)
@@ -443,7 +443,7 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
 
     lattice = setup.lattice
     collision_fn = build_collision_fn(setup.collision_scheme)
-    bc_fn = build_composite_bc(setup.bc_config, lattice)
+    bc_fn = build_composite_bc(setup.config.bc_config, lattice)
 
     def evaluate_fn(params: WettingParams):
         # TODO: Thread wetting params through the macroscopic step

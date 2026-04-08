@@ -255,8 +255,8 @@ class TestFunctionalRun:
 
         setup = _single_phase_setup()
         state = init_state(setup)
-        final, _ = run(setup, state)  # nt defaults to setup.nt
-        assert int(final.t) == setup.nt
+        final, _ = run(setup, state)  # nt defaults to setup.config.nt
+        assert int(final.t) == setup.config.nt
 
 
 # =====================================================================

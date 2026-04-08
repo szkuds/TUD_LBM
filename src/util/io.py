@@ -7,7 +7,6 @@ from src import SimulationConfig
 from .output_data import output_writers
 
 
-
 class SimulationIO:
     """Handles all I/O operations for the simulation, including logging and saving results."""
 

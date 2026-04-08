@@ -448,16 +448,16 @@ class TestBuildSetup:
             np.array(setup.lattice.c),
         )
 
-    def test_save_fields_tuple(self):
-        """save_fields is converted to a tuple (immutable)."""
+    def test_save_fields_on_config(self):
+        """save_fields lives on the config, not the setup."""
         from config.simulation_config import SimulationConfig
         from setup.simulation_setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), save_fields=["f", "rho"])
         setup = build_setup(cfg)
 
-        assert isinstance(setup.save_fields, tuple)
-        assert setup.save_fields == ("f", "rho")
+        assert isinstance(setup.config.save_fields, list)
+        assert setup.config.save_fields == ["f", "rho"]
 
     def test_bc_config_preserved(self):
         from config.simulation_config import SimulationConfig
@@ -472,8 +472,8 @@ class TestBuildSetup:
         cfg = SimulationConfig(grid_shape=(8, 8), bc_config=bc)
         setup = build_setup(cfg)
 
-        assert setup.bc_config["top"] == "symmetry"
-        assert setup.bc_config["bottom"] == "bounce-back"
+        assert setup.config.bc_config["top"] == "symmetry"
+        assert setup.config.bc_config["bottom"] == "bounce-back"
 
     def test_bc_masks_present(self):
         """build_setup produces BCMasks on the setup."""

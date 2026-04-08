@@ -58,8 +58,8 @@ class TestSource:
     """``source`` computes a well-balanced forcing source term."""
 
     def test_shape(self):
-        from operators.force._source_term import source
         from operators.differential import build_differential_fn
+        from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
         gradient = build_differential_fn("gradient")

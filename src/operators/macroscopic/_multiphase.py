@@ -12,14 +12,11 @@ padding and optional wetting ghost-cell correction).
 """
 
 from __future__ import annotations
-from typing import Any
 import jax.numpy as jnp
-
 from operators.protocols import DifferentialOperator
 from registry import macroscopic_operator
 from setup.lattice import Lattice
 from setup.simulation_setup import MultiphaseParams
-
 
 # ── EOS and chemical potential ───────────────────────────────────────
 
