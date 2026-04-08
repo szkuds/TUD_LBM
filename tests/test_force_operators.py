@@ -19,7 +19,7 @@ def lattice():
 def diff_ops(lattice):
     """Build differential operators with periodic (wrap) padding."""
     from operators.differential import build_differential_operators
-    from operators.differential.config import DifferentialConfig
+    from operators.differential import DifferentialConfig
 
     cfg = DifferentialConfig(
         w=lattice.w,

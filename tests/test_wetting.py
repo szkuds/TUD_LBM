@@ -504,10 +504,10 @@ class TestStepMultiphaseWithWetting:
 # =====================================================================
 
 
-class TestLegacyPhase3Unbroken:
+class TestFunctionalStep:
     """Phase 3 functional API should still pass."""
 
-    def test_phase3_functional_step(self):
+    def test_functional_step(self):
         from config.simulation_config import SimulationConfig
         from runner.run import init_state
         from runner.step import step_single_phase

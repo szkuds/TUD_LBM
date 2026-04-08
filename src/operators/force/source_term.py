@@ -14,7 +14,7 @@ from registry import force_model
 from setup.lattice import Lattice
 
 if TYPE_CHECKING:
-    from operators.differential.operators import DifferentialOperators
+    from operators.differential import DifferentialOperators
 
 
 @force_model(name="source_term_wb")

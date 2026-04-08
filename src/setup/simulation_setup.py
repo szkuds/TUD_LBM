@@ -30,10 +30,10 @@ import dataclasses
 from typing import Any
 from typing import NamedTuple
 import jax.numpy as jnp
+from operators.differential import DifferentialConfig
+from operators.differential import DifferentialOperators
 from operators.differential import build_differential_operators
-from operators.differential.config import DifferentialConfig
-from operators.differential.operators import DifferentialOperators
-from operators.differential.pad_modes import determine_pad_modes
+from operators.differential._pad_utils import determine_pad_modes
 from setup.lattice import Lattice
 from setup.lattice import build_lattice
 

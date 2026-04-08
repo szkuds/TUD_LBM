@@ -42,25 +42,42 @@ def compute_laplacian(
     Returns:
         Laplacian field, shape ``(nx, ny, 1, 1)``.
     """
-    grid_2d = to_2d(grid)
-    gp = apply_stencil_padding(grid_2d, tuple(pad_mode))
+    gp = apply_stencil_padding(to_2d(grid), tuple(pad_mode))
+    return lap_core(gp, w)
 
-    i0 = gp[1:-1, 1:-1]  # centre values
+
+def lap_core(
+    padded: jnp.ndarray,
+    w: jnp.ndarray,
+) -> jnp.ndarray:
+    """Laplacian kernel on an already-padded ``(nx+2, ny+2)`` array.
+
+    Public so the wetting addon can reuse it after modifying ghost cells.
+
+    Args:
+        padded: Shape ``(nx + 2, ny + 2)``.
+        w: Lattice weights, shape ``(q,)``.
+
+    Returns:
+        Laplacian field, shape ``(nx, ny, 1, 1)``.
+    """
+    i0 = padded[1:-1, 1:-1]  # centre values
 
     lap = (
         6.0
         * (
-            w[1] * (gp[2:, 1:-1] - i0)  # (i+1, j)
-            + w[2] * (gp[1:-1, 2:] - i0)  # (i, j+1)
-            + w[3] * (gp[:-2, 1:-1] - i0)  # (i-1, j)
-            + w[4] * (gp[1:-1, :-2] - i0)  # (i, j-1)
-            + w[5] * (gp[2:, 2:] - i0)  # (i+1, j+1)
-            + w[6] * (gp[:-2, 2:] - i0)  # (i-1, j+1)
-            + w[7] * (gp[:-2, :-2] - i0)  # (i-1, j-1)
-            + w[8] * (gp[2:, :-2] - i0)  # (i+1, j-1)
+            w[1] * (padded[2:, 1:-1] - i0)  # (i+1, j)
+            + w[2] * (padded[1:-1, 2:] - i0)  # (i, j+1)
+            + w[3] * (padded[:-2, 1:-1] - i0)  # (i-1, j)
+            + w[4] * (padded[1:-1, :-2] - i0)  # (i, j-1)
+            + w[5] * (padded[2:, 2:] - i0)  # (i+1, j+1)
+            + w[6] * (padded[:-2, 2:] - i0)  # (i-1, j+1)
+            + w[7] * (padded[:-2, :-2] - i0)  # (i-1, j-1)
+            + w[8] * (padded[2:, :-2] - i0)  # (i+1, j-1)
         )
     )
 
-    nx, ny = grid_2d.shape
+    nx = padded.shape[0] - 2
+    ny = padded.shape[1] - 2
     out = jnp.zeros((nx, ny, 1, 1))
     return out.at[:, :, 0, 0].set(lap)

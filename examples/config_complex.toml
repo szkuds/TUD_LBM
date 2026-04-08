@@ -2,11 +2,11 @@
 [simulation_type]
 simulation_name = "Test complex simulation"
 type            = "multiphase"
-grid_shape      = [201, 201]
+grid_shape      = [401, 201]
 lattice_type    = "D2Q9"
 tau             = 0.99
-nt              = 2000
-init_type       = "wetting"
+nt              = 10000
+init_type       = "wetting_chem_step"
 
 [multiphase]
 kappa           = 0.017
@@ -22,8 +22,8 @@ top    = "bounce-back"
 bottom = "wetting"
 
 [wetting]
-phi_left    = 1.0
-phi_right   = 1.0
+phi_left    = 1.2
+phi_right   = 1.2
 d_rho_left  = 0.0
 d_rho_right = 0.0
 
@@ -39,9 +39,9 @@ max_iterations  = 10
 # constructed via the operator registry, and summed into the total
 # external force. No [[force]] array-of-tables, no "type" key needed.
 
-[gravity_force]
-force_g               = 2e-6
-inclination_angle_deg = 0
+#[gravity_force]
+#force_g               = 2e-6
+#inclination_angle_deg = 0
 
 # To add a second force, just add another section:
 #

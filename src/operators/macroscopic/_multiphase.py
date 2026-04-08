@@ -20,7 +20,7 @@ from setup.lattice import Lattice
 from setup.simulation_setup import MultiphaseParams
 
 if TYPE_CHECKING:
-    from operators.differential.operators import DifferentialOperators
+    from operators.differential import DifferentialOperators
 
 
 # ── EOS and chemical potential ───────────────────────────────────────

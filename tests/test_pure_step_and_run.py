@@ -59,7 +59,7 @@ class TestSource:
 
     def _diff_ops(self, lattice):
         from operators.differential import build_differential_operators
-        from operators.differential.config import DifferentialConfig
+        from operators.differential import DifferentialConfig
 
         cfg = DifferentialConfig(
             w=lattice.w,

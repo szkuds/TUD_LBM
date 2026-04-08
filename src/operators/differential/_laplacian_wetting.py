@@ -1,0 +1,87 @@
+"""Wetting-aware Laplacian — addon layer on the base Laplacian.
+
+Registered as ``("differential", "laplacian_wetting")``.
+Auto-discovered alongside the base operators by ``auto_load_operators``.
+
+Imports the Laplacian stencil logic and wetting utilities.
+The base ``_laplacian`` module has zero knowledge of wetting.
+"""
+
+from __future__ import annotations
+import jax.numpy as jnp
+from operators.differential._laplacian import lap_core
+from operators.differential._pad_utils import apply_stencil_padding
+from operators.differential._pad_utils import to_2d
+from operators.wetting.wetting_util import apply_wetting_to_all_edges
+from registry import register_operator
+
+
+@register_operator("differential", name="laplacian_wetting")
+def build_wetting_laplacian(
+    w: jnp.ndarray,
+    pad_mode: tuple[str, ...] | list[str],
+    bc_config: dict | None = None,
+):
+    """Return a wetting-corrected Laplacian closure.
+
+    Closes over static config (w, pad_mode, bc_config).
+    The returned callable accepts the grid plus dynamic wetting
+    parameters and returns shape ``(nx, ny, 1, 1)``.
+
+    Args:
+        w:         Lattice weights ``(q,)``.
+        pad_mode:  ``(right_y, left_y, bottom_x, top_x)``.
+        bc_config: Boundary-condition edge map, e.g.
+                   ``{"bottom": "wetting", "top": "bounce-back"}``.
+
+    Returns:
+        ``lap(grid, phi_l, phi_r, d_rho_l, d_rho_r, rho_l, rho_v, width) → (nx, ny, 1, 1)``
+    """
+    _pad_mode = tuple(pad_mode)
+
+    def _lap(
+        grid: jnp.ndarray,
+        phi_l: jnp.ndarray,
+        phi_r: jnp.ndarray,
+        d_rho_l: jnp.ndarray,
+        d_rho_r: jnp.ndarray,
+        rho_l: jnp.ndarray,
+        rho_v: jnp.ndarray,
+        width: jnp.ndarray,
+    ) -> jnp.ndarray:
+        """Wetting-corrected Laplacian of a scalar field.
+
+        Args:
+            grid: Scalar field, shape ``(nx, ny, 1, 1)`` or ``(nx, ny)``.
+            phi_l: Contact angle (left edge), scalar or 0-d array.
+            phi_r: Contact angle (right edge), scalar or 0-d array.
+            d_rho_l: Density offset (left edge), scalar or 0-d array.
+            d_rho_r: Density offset (right edge), scalar or 0-d array.
+            rho_l: Liquid density, scalar or 0-d array.
+            rho_v: Vapor density, scalar or 0-d array.
+            width: Ghost-cell layers per edge, int.
+
+        Returns:
+            Laplacian field, shape ``(nx, ny, 1, 1)``.
+        """
+        grid_2d = to_2d(grid)
+        gp = apply_stencil_padding(grid_2d, _pad_mode)
+
+        # Wetting ghost-cell correction on the padded array
+        gp = apply_wetting_to_all_edges(
+            gp,
+            rho_l,
+            rho_v,
+            phi_l,
+            phi_r,
+            d_rho_l,
+            d_rho_r,
+            width,
+            bc_config,
+        )
+
+        # Pass FULL padded array to lap_core.
+        return lap_core(gp, w)
+
+    return _lap
+
