@@ -34,7 +34,7 @@ from typing import cast
 from operators.boundary.composite import build_composite_bc
 from operators.collision import build_collision_fn
 from operators.equilibrium import build_equilibrium_fn
-from operators.force.source_term import source as compute_source
+from operators.force._source_term import source as compute_source
 from operators.macroscopic import build_macroscopic_fn
 from operators.streaming import build_streaming_fn
 from operators.wetting.hysteresis import update_wetting_state
@@ -51,7 +51,13 @@ def _compute_total_force_ext(setup, state: State, streaming_fn):
         return total_force, state
 
     for spec in setup.forces:
-        contribution = spec.compute_fn(state, spec.precomputed, diff_ops=setup.diff_ops)
+        contribution = spec.compute_fn(
+            state,
+            spec.precomputed,
+            gradient_standard=setup.gradient,
+            gradient_wetting=setup.gradient_wetting,
+            laplacian_wetting=setup.laplacian_wetting,
+        )
         total_force = contribution if total_force is None else total_force + contribution
         state = spec.update_state_fn(state, spec.precomputed, setup.lattice, streaming_fn)
 
@@ -84,7 +90,13 @@ def step_single_phase(setup, state: State) -> State:
         # 2. Equilibrium
         feq = equilibrium_fn(rho, u, lattice)
         # 3. Source term + collision
-        src = compute_source(rho, u, force_tot, lattice, diff_ops=setup.diff_ops)
+        src = compute_source(
+            rho,
+            u,
+            force_tot,
+            lattice,
+            gradient=setup.gradient,
+        )
         f_col = collision_fn(state.f, feq, setup.tau, src)
     else:
         rho, u = macroscopic_fn(state.f, lattice)
@@ -123,7 +135,6 @@ def step_multiphase(setup, state: State) -> State:
     """
     lattice = setup.lattice
     mp = setup.multiphase_params
-    diff_ops = setup.diff_ops
     collision_fn = build_collision_fn(setup.collision_scheme)
     equilibrium_fn = build_equilibrium_fn()
     streaming_fn = build_streaming_fn()
@@ -138,14 +149,21 @@ def step_multiphase(setup, state: State) -> State:
         lattice,
         mp,
         force_ext,
-        diff_ops=diff_ops,  # type: ignore[call-arg]
+        gradient=setup.gradient,
+        laplacian=setup.laplacian,
     )
 
     # 2. Equilibrium
     feq = equilibrium_fn(rho, u, lattice)
 
     # 3. Source term + collision
-    src = compute_source(rho, u, force_tot, lattice, diff_ops=diff_ops)
+    src = compute_source(
+        rho,
+        u,
+        force_tot,
+        lattice,
+        gradient=setup.gradient,
+    )
     f_col = collision_fn(state.f, feq, setup.tau, src)
 
     # 4. Streaming

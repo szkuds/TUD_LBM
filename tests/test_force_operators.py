@@ -15,20 +15,6 @@ def lattice():
     return build_lattice("D2Q9")
 
 
-@pytest.fixture
-def diff_ops(lattice):
-    """Build differential operators with periodic (wrap) padding."""
-    from operators.differential import build_differential_operators
-    from operators.differential import DifferentialConfig
-
-    cfg = DifferentialConfig(
-        w=lattice.w,
-        c=lattice.c,
-        pad_modes=["wrap", "wrap", "wrap", "wrap"],
-    )
-    return build_differential_operators(cfg)
-
-
 def make_state(lattice, rho_value=1.0, h=None):
     f = jnp.ones((NX, NY, lattice.q, 1)) * (rho_value / lattice.q)
     rho = jnp.sum(f, axis=2, keepdims=True)

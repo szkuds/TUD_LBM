@@ -2,19 +2,16 @@
 
 Implements the well-balanced forcing scheme for LBM.
 
-Uses pre-built :class:`~operators.differential.operators.DifferentialOperators`
-for the density gradient (with correct per-edge padding).
+Uses the density gradient operator for computing gravity corrections.
 """
 
 from __future__ import annotations
-from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import numpy as np
+
+from operators.protocols import DifferentialOperator
 from registry import force_model
 from setup.lattice import Lattice
-
-if TYPE_CHECKING:
-    from operators.differential import DifferentialOperators
 
 
 @force_model(name="source_term_wb")
@@ -24,7 +21,7 @@ def source(
     force: jnp.ndarray,
     lattice: Lattice,
     *,
-    diff_ops: DifferentialOperators,
+    gradient: DifferentialOperator,
 ) -> jnp.ndarray:
     """Compute the well-balanced forcing source term.
 
@@ -33,9 +30,8 @@ def source(
         u: Velocity field, shape ``(nx, ny, 1, 2)``.
         force: Force field, shape ``(nx, ny, 1, 2)``.
         lattice: :class:`~setup.lattice.Lattice`.
-        diff_ops: Pre-built
-            :class:`~operators.differential.operators.DifferentialOperators`.
-            ``diff_ops.grad_standard`` is used for the density gradient.
+        gradient: Standard LBM-stencil gradient callable
+            (grid) → _gradient  Used for density gradient.
 
     Returns:
         Source term, shape ``(nx, ny, q, 1)``.
@@ -57,7 +53,7 @@ def source(
     rho_2d = rho[:, :, 0, 0]
 
     # Density gradient via LBM-stencil operator
-    grad_rho_4d = diff_ops.grad_standard(rho)  # (nx, ny, 1, 2)
+    grad_rho_4d = gradient(rho)  # (nx, ny, 1, 2)
     grad_rho_x = grad_rho_4d[:, :, 0, 0]
     grad_rho_y = grad_rho_4d[:, :, 0, 1]
 

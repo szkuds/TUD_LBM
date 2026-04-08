@@ -403,29 +403,39 @@ class TestComputeMacroscopicMultiphase:
             interface_width=4,
         )
 
-    def _diff_ops(self, lattice):
-        from operators.differential import build_differential_operators
-        from operators.differential import DifferentialConfig
+    def _gradient_and_laplacian(self, lattice):
+        """Build gradient and laplacian_wetting callables."""
+        from operators.differential import build_differential_fn
+        import jax
 
-        cfg = DifferentialConfig(
-            w=lattice.w,
-            c=lattice.c,
-            pad_modes=["wrap", "wrap", "wrap", "wrap"],
-        )
-        return build_differential_operators(cfg)
+        pad_modes = ("wrap", "wrap", "wrap", "wrap")
+
+        _gradient = build_differential_fn("gradient")
+        _laplacian = build_differential_fn("laplacian")
+
+        @jax.jit
+        def gradient_standard(grid):
+            return _gradient(grid, lattice.w, lattice.c, pad_modes)
+
+        @jax.jit
+        def laplacian_field(grid):
+            return _laplacian(grid, lattice.w, pad_modes)
+
+        return gradient_standard, laplacian_field
 
     def test_returns_triple(self, lattice):
         from operators.macroscopic._multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
-        diff_ops = self._diff_ops(lattice)
+        gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
         f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
 
         rho, u_eq, force_total = compute_macroscopic_multiphase(
             f,
             lattice,
             mp,
-            diff_ops=diff_ops,
+            gradient=gradient_standard,
+            laplacian=laplacian_field,
         )
 
         assert rho.shape == (16, 16, 1, 1)
@@ -437,7 +447,7 @@ class TestComputeMacroscopicMultiphase:
         from operators.macroscopic._multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
-        diff_ops = self._diff_ops(lattice)
+        gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
         # Uniform density = rho_l
         rho_0 = mp.rho_l
         f = jnp.ones((16, 16, 9, 1)) * (rho_0 / 9.0)
@@ -446,7 +456,8 @@ class TestComputeMacroscopicMultiphase:
             f,
             lattice,
             mp,
-            diff_ops=diff_ops,
+            gradient=gradient_standard,
+            laplacian=laplacian_field,
         )
 
         # Interaction force should be ~0 for uniform field (gradients vanish)
@@ -456,7 +467,7 @@ class TestComputeMacroscopicMultiphase:
         from operators.macroscopic._multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
-        diff_ops = self._diff_ops(lattice)
+        gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
         f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
 
         jitted_mp = jax.jit(
@@ -464,7 +475,8 @@ class TestComputeMacroscopicMultiphase:
                 compute_macroscopic_multiphase,
                 lattice=lattice,
                 mp=mp,
-                diff_ops=diff_ops,
+                gradient_standard=gradient_standard,
+                laplacian_field=laplacian_field,
             ),
         )
         rho, _u_eq, _force = jitted_mp(f)
@@ -474,7 +486,7 @@ class TestComputeMacroscopicMultiphase:
         from operators.macroscopic._multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
-        diff_ops = self._diff_ops(lattice)
+        gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
         f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
         force_ext = jnp.ones((16, 16, 1, 2)) * 0.001
 
@@ -483,7 +495,8 @@ class TestComputeMacroscopicMultiphase:
             lattice,
             mp,
             force_ext=force_ext,
-            diff_ops=diff_ops,
+            gradient=gradient_standard,
+            laplacian=laplacian_field,
         )
 
         # Force total should include the external contribution

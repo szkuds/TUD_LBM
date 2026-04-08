@@ -2,7 +2,7 @@
 
 Public API: build_initialise_fn()
 
-Implementation modules are internal; use the factory to access.
+Implementation modules (_standard.py, _multiphase_bubble.py) are internal; use the factory to access.
 
 Example:
     from operators.initialise import build_initialise_fn
@@ -18,24 +18,6 @@ from operators.protocols import InitialiserOperator
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("operators.initialise")
-
-
-def _import_initialise_modules() -> None:
-    """Import concrete initialiser modules so decorators register them."""
-    from operators.initialise import from_file as _ff_impl  # noqa: F401
-    from operators.initialise import multiphase_bubble as _mb_impl  # noqa: F401
-    from operators.initialise import multiphase_bubble_bot as _mbb_impl  # noqa: F401
-    from operators.initialise import multiphase_bubble_bubble as _mbbb_impl  # noqa: F401
-    from operators.initialise import multiphase_droplet as _md_impl  # noqa: F401
-    from operators.initialise import multiphase_droplet_top as _mdt_impl  # noqa: F401
-    from operators.initialise import multiphase_droplet_variable_radius as _mdvr_impl  # noqa: F401
-    from operators.initialise import multiphase_lateral_bubble as _mlb_impl  # noqa: F401
-    from operators.initialise import standard as _std_impl  # noqa: F401
-    from operators.initialise import wetting as _wet_impl  # noqa: F401
-    from operators.initialise import wetting_chemical_step as _wcs_impl  # noqa: F401
-
-
-_import_initialise_modules()
 
 
 def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
@@ -59,7 +41,6 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
         >>> init = build_initialise_fn("standard")
         >>> f = init(64, 64, lattice, density=1.0)
     """
-    _import_initialise_modules()
 
     return build_operator("initialise", scheme)
 

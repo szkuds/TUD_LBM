@@ -30,27 +30,7 @@ Usage::
 from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal
 
-# ---------------------------------------------------------------------------
-# Types
-# ---------------------------------------------------------------------------
-
-OperatorKind = Literal[
-    "boundary_condition",
-    "collision_models",
-    "differential",
-    "equilibrium",
-    "force",
-    "initialise",
-    "lattice",
-    "macroscopic",
-    "plotting",
-    "simulation_type",
-    "stream",
-    "update_timestep",
-    "wetting",
-]
 
 OperatorTarget = Callable[..., object] | type
 
@@ -78,6 +58,20 @@ _KIND_INDEX: dict[str, dict[str, OperatorEntry]] = {}
 _REGISTRY_POPULATED: bool = False
 
 
+_OPERATOR_MODULES: list[str] = [
+    "operators.boundary",
+    "operators.collision",
+    "operators.differential",
+    "operators.equilibrium",
+    "operators.force",
+    "operators.initialise",
+    "operators.macroscopic",
+    "operators.streaming",
+    "operators.wetting",
+    "setup.lattice",
+]
+
+
 def ensure_registry() -> None:
     """Import all operator packages so the registry is fully populated.
 
@@ -87,16 +81,10 @@ def ensure_registry() -> None:
     if _REGISTRY_POPULATED:
         return
 
-    import operators.boundary
-    import operators.collision
-    import operators.differential
-    import operators.equilibrium
-    import operators.force
-    import operators.initialise
-    import operators.macroscopic
-    import operators.streaming
-    import operators.wetting  # noqa: F401
-    import setup.lattice  # noqa: F401
+    import importlib
+
+    for module in _OPERATOR_MODULES:
+        importlib.import_module(module)
 
     _REGISTRY_POPULATED = True
 

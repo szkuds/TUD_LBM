@@ -26,14 +26,12 @@ Usage::
 """
 
 from __future__ import annotations
+from collections.abc import Callable
 import dataclasses
 from typing import Any
 from typing import NamedTuple
 import jax.numpy as jnp
-from operators.differential import DifferentialConfig
-from operators.differential import DifferentialOperators
-from operators.differential import build_differential_operators
-from operators.differential._pad_utils import determine_pad_modes
+from operators.differential import build_differential_fn
 from setup.lattice import Lattice
 from setup.lattice import build_lattice
 
@@ -56,7 +54,7 @@ class BCMasks(NamedTuple):
     left: jnp.ndarray
     right: jnp.ndarray
 
-
+#TODO: This should be stored in the simulation config and not be a separate class.
 class MultiphaseParams(NamedTuple):
     """Equation-of-state and surface-tension parameters.
 
@@ -136,6 +134,9 @@ class SimulationSetup(NamedTuple):
         multiphase_params: ``None`` for single-phase runs.
         wetting_config: Optional wetting configuration dict.
         hysteresis_config: Optional hysteresis configuration dict.
+        gradient_standard: Standard gradient which is required to determine the chemical potential.
+        gradient: Gradient operator which is adapted for wetting when wetting_config and the wetting boundary condition are present
+        laplacian: Laplacian operator which is adapted for wetting when wetting_config and the wetting boundary condition are present
         extra: Catch-all for additional parameters.
     """
 
@@ -175,8 +176,10 @@ class SimulationSetup(NamedTuple):
     wetting_config: dict[str, Any] | None = None
     hysteresis_config: dict[str, Any] | None = None
 
-    # Differential operators (pre-built closures, or None)
-    diff_ops: DifferentialOperators | None = None
+    # Differential operator callables (pre-built closures)
+    gradient_standard: Callable[[jnp.ndarray], jnp.ndarray] | None = None
+    gradient: Callable[[jnp.ndarray], jnp.ndarray] | None = None
+    laplacian: Callable[[jnp.ndarray], jnp.ndarray] | None = None
 
     # Extra
     extra: dict[str, Any] | None = None
@@ -336,16 +339,23 @@ def build_setup(config) -> SimulationSetup:
     from operators.boundary import _periodic as _per  # noqa: F401
     from operators.boundary import _symmetry as _sym  # noqa: F401
 
-    pad_modes = determine_pad_modes(bc_config)
-    diff_cfg = DifferentialConfig(
-        w=lattice.w,
-        c=lattice.c,
-        pad_modes=pad_modes,
-        wetting_params=getattr(config, "wetting_config", None),
-        chemical_step=getattr(config, "chemical_step", None),
-        bc_config=bc_config,
-    )
-    diff_ops = build_differential_operators(diff_cfg)
+    _gradient_standard = build_differential_fn("gradient")
+
+    # Prepare wetting parameters if applicable
+    wetting_config = getattr(config, "wetting_config", None)
+    if wetting_config is not None and mp_params is not None:
+        # Make a shallow copy to avoid mutating the original config
+        wetting_config = dict(wetting_config)
+        wetting_config["rho_l"] = mp_params.rho_l
+        wetting_config["rho_v"] = mp_params.rho_v
+        wetting_config["width"] = mp_params.interface_width
+        _gradient = build_differential_fn("gradient_wetting")
+        _laplacian = build_differential_fn("laplacian_wetting")
+
+    else:
+        # Build base (standard) gradient and Laplacian
+        _gradient = build_differential_fn("gradient")
+        _laplacian = build_differential_fn("laplacian")
     # ──────────────────────────────────────────────────────────────────
 
     return SimulationSetup(
@@ -366,7 +376,9 @@ def build_setup(config) -> SimulationSetup:
         multiphase_params=mp_params,
         wetting_config=getattr(config, "wetting_config", None),
         hysteresis_config=getattr(config, "hysteresis_config", None),
+        gradient_standard=_gradient_standard,
+        gradient=_gradient,
+        laplacian=_laplacian,
         forces=forces,
-        diff_ops=diff_ops,
         extra=getattr(config, "extra", None),
     )

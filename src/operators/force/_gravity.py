@@ -46,8 +46,6 @@ class GravityForceModule:
                 Required key: ``force_g``.
                 Optional key: ``inclination_angle_deg`` (default 0).
             grid_shape: Spatial dimensions ``(nx, ny, ...)``.
-            lattice: Simulation lattice (unused for gravity, but
-                required by the ``ForceOperator`` protocol).
 
         Returns:
             Gravity template array, shape ``(nx, ny, 1, 2)``.
@@ -65,8 +63,6 @@ class GravityForceModule:
     def compute(
         state,
         precomputed: jnp.ndarray,
-        *,
-        diff_ops=None,
     ) -> jnp.ndarray:
         """Compute gravity force (step-time, jittable).
 
@@ -74,9 +70,6 @@ class GravityForceModule:
             state: Current simulation :class:`State`. Only ``state.f``
                 is used (to compute density).
             precomputed: Gravity template from :meth:`build`.
-            diff_ops: Pre-built
-                :class:`~operators.differential.operators.DifferentialOperators`.
-                Unused for gravity, but accepted for protocol consistency.
 
         Returns:
             Gravity force field, shape ``(nx, ny, 1, 2)``.

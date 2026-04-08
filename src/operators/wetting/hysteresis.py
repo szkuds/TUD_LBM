@@ -437,12 +437,11 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
     from operators.boundary.composite import build_composite_bc
     from operators.collision import build_collision_fn
     from operators.equilibrium import build_equilibrium_fn
-    from operators.force.source_term import source
+    from operators.force._source_term import source
     from operators.macroscopic import build_macroscopic_fn
     from operators.streaming import build_streaming_fn
 
     lattice = setup.lattice
-    diff_ops = setup.diff_ops
     collision_fn = build_collision_fn(setup.collision_scheme)
     bc_fn = build_composite_bc(setup.bc_config, lattice)
 
@@ -471,7 +470,13 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
             force_tot = force if force is not None else jnp.zeros((f_t.shape[0], f_t.shape[1], 1, 2))
 
         feq = equilibrium_fn(rho_new, u_new, lattice)
-        src = source(rho_new, u_new, force_tot, lattice, diff_ops=diff_ops)
+        src = source(
+            rho_new,
+            u_new,
+            force_tot,
+            lattice,
+            gradient=setup.gradient,
+        )
         f_col = collision_fn(f_t, feq, setup.tau, src)
         f_str = streaming_fn(f_col, lattice)
         f_bc = bc_fn(f_str, f_col, setup.bc_masks)

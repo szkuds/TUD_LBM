@@ -16,6 +16,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from config.simulation_config import SimulationConfig
+from operators.differential import build_differential_fn
 from runner.run import init_state
 from setup.lattice import build_lattice
 from setup.simulation_setup import build_setup
@@ -57,65 +58,55 @@ def _mp_setup():
 class TestSource:
     """``source`` computes a well-balanced forcing source term."""
 
-    def _diff_ops(self, lattice):
-        from operators.differential import build_differential_operators
-        from operators.differential import DifferentialConfig
-
-        cfg = DifferentialConfig(
-            w=lattice.w,
-            c=lattice.c,
-            pad_modes=["wrap", "wrap", "wrap", "wrap"],
-        )
-        return build_differential_operators(cfg)
-
     def test_shape(self):
-        from operators.force.source_term import source
+        from operators.force._source_term import source
+        from operators.differential import build_differential_fn
 
         lattice = build_lattice("D2Q9")
-        diff_ops = self._diff_ops(lattice)
+        gradient = build_differential_fn("gradient")
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.ones((NX, NY, 1, 2)) * 0.001
 
-        src = source(rho, u, force, lattice, diff_ops=diff_ops)
+        src = source(rho, u, force, lattice, gradient=gradient)
         assert src.shape == (NX, NY, 9, 1)
 
     def test_zero_force_zero_source(self):
-        from operators.force.source_term import source
+        from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
-        diff_ops = self._diff_ops(lattice)
+        gradient = build_differential_fn("gradient")
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.zeros((NX, NY, 1, 2))
 
-        src = source(rho, u, force, lattice, diff_ops=diff_ops)
+        src = source(rho, u, force, lattice, gradient=gradient)
         np.testing.assert_allclose(np.array(src), 0.0, atol=1e-10)
 
     def test_jittable(self):
-        from operators.force.source_term import source
+        from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
-        diff_ops = self._diff_ops(lattice)
+        gradient = build_differential_fn("gradient")
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.ones((NX, NY, 1, 2)) * 0.001
 
-        jitted = jax.jit(partial(source, lattice=lattice, diff_ops=diff_ops))
+        jitted = jax.jit(partial(source, lattice=lattice, gradient_standard=gradient))
         src = jitted(rho, u, force)
         assert src.shape == (NX, NY, 9, 1)
 
     def test_source_sums_to_zero(self):
         """For a uniform field the source should sum to zero over q."""
-        from operators.force.source_term import source
+        from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
-        diff_ops = self._diff_ops(lattice)
+        gradient = build_differential_fn("gradient")
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.ones((NX, NY, 1, 2)) * 0.01
 
-        src = source(rho, u, force, lattice, diff_ops=diff_ops)
+        src = source(rho, u, force, lattice, gradient=gradient)
         # The source should satisfy ∑_i S_i = 0 (mass conservation)
         src_sum = jnp.sum(src, axis=2)
         np.testing.assert_allclose(np.array(src_sum), 0.0, atol=1e-6)

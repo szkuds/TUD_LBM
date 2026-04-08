@@ -38,74 +38,34 @@ import jax.numpy as jnp
 import numpy as np
 
 
-def _state_to_numpy(state) -> dict:
+def _state_to_numpy(state, fields: tuple | None = None, t: int | None = None) -> dict:
     """Convert a :class:`~state.state.State` pytree to a NumPy dict.
 
     Only includes non-``None`` array fields suitable for saving.
-    """
-    mapping = {}
-    if state.f is not None:
-        mapping["f"] = np.array(state.f)
-    if state.rho is not None:
-        mapping["rho"] = np.array(state.rho)
-    if state.u is not None:
-        mapping["u"] = np.array(state.u)
-    if state.force is not None:
-        mapping["force"] = np.array(state.force)
-    if state.force_ext is not None:
-        mapping["force_ext"] = np.array(state.force_ext)
-    if state.h is not None:
-        mapping["h"] = np.array(state.h)
-    return mapping
-
-
-def save_snapshot_callback(
-    io_handler,
-    state,
-    t: jnp.ndarray,
-    save_interval: int,
-    skip_interval: int = 0,
-    save_fields: tuple | None = None,
-) -> None:
-    """Write a snapshot to disk (runs on host, not inside XLA).
-
-    This function is meant to be called via ``jax.debug.callback``
-    from inside a ``lax.scan`` body.
+    Detects and raises on NaN values.
 
     Args:
-        io_handler: A :class:`~util.io.SimulationIO` instance.
-        state: Current :class:`~state.state.State`.
-        t: Current timestep (scalar JAX array → Python int inside callback).
-        save_interval: How often to save.
-        skip_interval: Steps to skip before first save.
-        save_fields: Optional tuple of field names to save.
+        state: The state object to convert.
+        fields: Optional tuple of field names to include. If None, includes all.
+        t: Optional timestep for error messages.
+
+    Raises:
+        FloatingPointError: If NaN values are detected.
     """
-    it = int(t)
-    if it <= skip_interval:
-        return
-    if it % save_interval != 0:
-        return
-
-    data = _state_to_numpy(state)
-
-    # Filter fields if requested
-    if save_fields is not None:
-        data = {k: v for k, v in data.items() if k in save_fields}
-
-    # TODO: when a NaN is triggered it still needs to plot id that is enabled.
-    # TODO: The error which this return is not yet clear since it is too long.
-    # NaN check before writing
-    bad = []
-    for name, arr in data.items():
-        if np.isnan(arr).any():
-            bad.append(name)
-
+    data = {
+        k: np.asarray(v)
+        for k, v in vars(state).items()
+        if v is not None and hasattr(v, 'shape')
+        and (fields is None or k in fields)
+    }
+    bad = [k for k, v in data.items() if np.isnan(v).any()]
     if bad:
         # Raising here causes the jax.debug.callback to fail
         # and the lax.scan / run(...) to abort at this timestep.
-        raise FloatingPointError(f"NaNs detected at t={it} in fields: {bad}")
-
-    io_handler.save_data_step(it, data)
+        # TODO: when a NaN is triggered it still needs to plot id that is enabled.
+        # TODO: The error which this return is not yet clear since it is too long.
+        raise FloatingPointError(f"NaNs detected at t={t} in fields: {bad}")
+    return data
 
 
 def make_save_callback(
@@ -117,8 +77,8 @@ def make_save_callback(
     """Build an I/O callback for use inside a ``lax.scan`` body.
 
     Returns a callable ``do_save(state, t)`` that can be placed in
-    the scan body.  It uses ``jax.debug.callback`` (ordered) so it
-    doesn't interfere with XLA compilation.
+    the scan body. Interval checking is performed on-device via
+    ``jax.lax.cond``; callback only executes when conditions are met.
 
     Args:
         io_handler: A :class:`~util.io.SimulationIO` instance.
@@ -141,16 +101,17 @@ def make_save_callback(
     """
 
     def _host_save(state, t):
-        save_snapshot_callback(
-            io_handler,
-            state,
-            t,
-            save_interval=save_interval,
-            skip_interval=skip_interval,
-            save_fields=save_fields,
-        )
+        """Write state to disk; interval already checked on-device."""
+        it = int(t)
+        data = _state_to_numpy(state, fields=save_fields, t=it)
+        io_handler.save_data_step(it, data)
 
     def do_save(state, t):
-        jax.debug.callback(_host_save, state, t, ordered=True)
+        jax.lax.cond(
+            (t > skip_interval) & (t % save_interval == 0),
+            lambda s, t: jax.debug.callback(_host_save, s, t, ordered=True),
+            lambda s, t: None,
+            state, t,
+        )
 
     return do_save

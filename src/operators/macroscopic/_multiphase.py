@@ -7,20 +7,18 @@ Computes density, force-corrected velocity, and the interparticle
 (chemical-potential) force for the diffuse-interface model with a
 double-well bulk free energy.
 
-Uses pre-built :class:`~operators.differential.operators.DifferentialOperators`
-for the LBM-stencil gradient and Laplacian operators (with correct per-edge
+Uses LBM-stencil gradient and Laplacian operators (with correct per-edge
 padding and optional wetting ghost-cell correction).
 """
 
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import Any
 import jax.numpy as jnp
+
+from operators.protocols import DifferentialOperator
 from registry import macroscopic_operator
 from setup.lattice import Lattice
 from setup.simulation_setup import MultiphaseParams
-
-if TYPE_CHECKING:
-    from operators.differential import DifferentialOperators
 
 
 # ── EOS and chemical potential ───────────────────────────────────────
@@ -56,7 +54,8 @@ def compute_macroscopic_multiphase(
     mp: MultiphaseParams,
     force_ext: jnp.ndarray | None = None,
     *,
-    diff_ops: DifferentialOperators,
+    laplacian: DifferentialOperator,
+    gradient_standard: DifferentialOperator
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Compute density, equilibrium velocity, and total force for multiphase.
 
@@ -65,10 +64,10 @@ def compute_macroscopic_multiphase(
         lattice: :class:`~setup.lattice.Lattice`.
         mp: :class:`~setup.simulation_setup.MultiphaseParams`.
         force_ext: Optional external force, shape ``(nx, ny, 1, 2)``.
-        diff_ops: Pre-built
-            :class:`~operators.differential.operators.DifferentialOperators`.
-            Provides the LBM-stencil gradient / Laplacian with correct
-            per-edge pad modes and optional wetting correction.
+        gradient: Standard LBM-stencil gradient callable
+            (grid) → gradient_wetting.
+        laplacian: LBM-stencil Laplacian callable (grid) → laplacian_wetting.
+            May be wetting-aware.
 
     Returns:
         ``(rho, u_eq, force_total)``
@@ -94,13 +93,13 @@ def compute_macroscopic_multiphase(
     # 3. Interparticle force from chemical potential
     beta = 8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
 
-    # Laplacian and grad_standard are always pad-modes-only.
+    # Laplacian and gradient are always pad-modes-only.
     mu_0 = _eos_double_well(rho[:, :, 0, 0], beta, mp.rho_l, mp.rho_v)
-    lap_rho = diff_ops.laplacian(rho)  # (nx, ny, 1, 1)
+    lap_rho = laplacian(rho)  # (nx, ny, 1, 1)
     mu = mu_0[..., None, None] - mp.kappa * lap_rho  # (nx, ny, 1, 1)
 
     # Chemical-potential gradient — always the standard (non-wetting) gradient
-    grad_mu = diff_ops.grad_standard(mu)  # (nx, ny, 1, 2)
+    grad_mu = gradient_standard(mu)  # (nx, ny, 1, 2)
 
     # F_int = −ρ ∇μ
     force_int = -rho * grad_mu  # (nx, ny, 1, 2)
