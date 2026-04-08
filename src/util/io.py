@@ -1,6 +1,5 @@
 import logging
 import sys
-from dataclasses import fields as dc_fields
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
@@ -9,37 +8,6 @@ from src import SimulationConfig
 from .output_data import output_writers
 
 
-def _config_from_dict(d: dict) -> "SimulationConfig":
-    """Build a :class:`SimulationConfig` from a ``to_dict()``-style dict.
-
-    ``SimulationConfig.to_dict()`` adds ``simulation_type`` and merges
-    ``extra`` into the top-level dict — both of which are not valid
-    constructor kwargs.  This helper strips/remaps them before
-    instantiation.
-    """
-    from config.simulation_config import SimulationConfig
-
-    d = dict(d)  # shallow copy
-    d.pop("simulation_type", None)  # added by to_dict(), not a ctor param
-
-    # Normalise grid_shape to tuple
-    if "grid_shape" in d and not isinstance(d["grid_shape"], tuple):
-        d["grid_shape"] = tuple(d["grid_shape"])
-
-    # Separate known fields from extras
-    known = {f.name for f in dc_fields(SimulationConfig)}
-    kwargs = {}
-    extra = {}
-    for k, v in d.items():
-        if k in known:
-            kwargs[k] = v
-        else:
-            extra[k] = v
-    if extra:
-        kwargs["extra"] = extra
-
-    return SimulationConfig(**kwargs)
-
 
 class SimulationIO:
     """Handles all I/O operations for the simulation, including logging and saving results."""
@@ -47,7 +15,7 @@ class SimulationIO:
     def __init__(
         self,
         base_dir: str = "results",
-        config: dict | None = None,
+        config: SimulationConfig | None = None,
         simulation_name: str | None = None,
         output_format: str = "numpy",
         config_file_type: str = ".toml",
@@ -56,7 +24,8 @@ class SimulationIO:
 
         Args:
             base_dir (str): The base directory to store simulation results.
-            config (Dict, optional): A dictionary containing the simulation configuration to save.
+            config (SimulationConfig, optional): A SimulationConfig object
+                containing the simulation configuration to save.
             simulation_name (str, optional): Name of the simulation to include in the results directory.
             output_format (str): Output writer format — ``"Numpy"`` (default) or ``"Vtk"``.
             config_file_type (str): Extension for the saved config file — ``".toml"`` (default).
@@ -133,17 +102,20 @@ class SimulationIO:
         print(f"Created results directory: {run_dir}")
         return str(run_dir)
 
-    def save_config(self, config: dict):
+    def save_config(self, config: SimulationConfig):
         """Save the simulation configuration to the run directory.
 
+        Accepts  a :class:`SimulationConfig`.
         Uses :func:`~config.adapter_base.get_adapter` to dispatch to the
         correct adapter based on :attr:`config_file_type`.
+
+        Args:
+            config: A configuration dict or SimulationConfig object.
         """
         from config.adapter_base import get_adapter
 
         dest = Path(self.run_dir) / f"config{self.config_file_type}"
         adapter = get_adapter(str(dest))
-        cfg = _config_from_dict(config)
-        adapter.save(cfg, str(dest))
+        adapter.save(config, str(dest))
 
         print(f"Configuration saved to {dest}")

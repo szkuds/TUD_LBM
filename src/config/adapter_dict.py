@@ -22,9 +22,13 @@ class DictAdapter:
     def load(self, d: dict[str, Any]) -> SimulationConfig:
         """Build a :class:`SimulationConfig` from *d*.
 
-        Normalises common key formats (``grid_shape`` list → tuple)
-        and passes everything through to the ``SimulationConfig``
-        constructor, which performs full validation.
+        Handles conversion from dict (e.g. from ``to_dict()`` or user input):
+
+        - Strips ``simulation_type`` metadata (added by ``to_dict()``, not a ctor param)
+        - Normalises ``grid_shape`` list → tuple
+        - Separates known fields from extras (unknown keys are collected into ``extra``)
+        - Passes everything through to the ``SimulationConfig`` constructor
+          for full validation.
 
         Args:
             d: Configuration dict.

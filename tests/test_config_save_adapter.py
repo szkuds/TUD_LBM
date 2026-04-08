@@ -174,7 +174,7 @@ class TestSimulationIOConfigFileType:
         cfg = SimulationConfig(grid_shape=(8, 8))
         io = SimulationIO(
             base_dir=str(tmp_path),
-            config=cfg.to_dict(),
+            config=cfg,
             config_file_type=".toml",
             output_format="numpy",
         )
@@ -189,7 +189,7 @@ class TestSimulationIOConfigFileType:
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.7, nt=200)
         io = SimulationIO(
             base_dir=str(tmp_path),
-            config=cfg.to_dict(),
+            config=cfg,
             config_file_type=".toml",
             output_format="numpy",
         )
