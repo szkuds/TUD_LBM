@@ -63,11 +63,6 @@ class TestRunnerExports:
 
         assert hasattr(runner, "step_multiphase")
 
-    def test_exports_get_step_fn(self):
-        import runner
-
-        assert hasattr(runner, "get_step_fn")
-
     def test_no_legacy_exports(self):
         import runner
 
@@ -82,6 +77,7 @@ class TestRunnerExports:
             "step_single_phase_pure",
             "step_multiphase_pure",
             "get_pure_step_fn",
+            "get_step_fn",
         ):
             assert not hasattr(runner, name), f"Legacy export {name!r} still present"
 

@@ -138,7 +138,10 @@ class SimulationSetup(NamedTuple):
         gradient_standard: Standard gradient which is required to determine the chemical potential.
         gradient: Gradient operator which is adapted for wetting when wetting_config and the wetting boundary condition are present
         laplacian: Laplacian operator which is adapted for wetting when wetting_config and the wetting boundary condition are present
-        step: The resolved step function (closed over setup), ``Callable[[State], State]``.
+        step_fn: The unbound step operator resolved from the registry,
+            ``Callable[[SimulationSetup, State], State]``.  Use the
+            :meth:`step` convenience method instead of calling this
+            directly.
         extra: Catch-all for additional parameters.
     """
 
@@ -183,11 +186,24 @@ class SimulationSetup(NamedTuple):
     gradient: Callable[[jnp.ndarray], jnp.ndarray] | None = None
     laplacian: Callable[[jnp.ndarray], jnp.ndarray] | None = None
 
-    # Step function (closed over setup)
-    step: Any = None
+    # Step function (unbound: (setup, state) -> State)
+    step_fn: Any = None
 
     # Extra
     extra: dict[str, Any] | None = None
+
+    def step(self, state: State) -> State:
+        """Execute one time step.
+
+        Convenience wrapper that calls ``self.step_fn(self, state)``,
+        giving callers the clean ``setup.step(state)`` interface.
+
+        Raises:
+            TypeError: If no step function has been set.
+        """
+        if self.step_fn is None:
+            raise TypeError("step_fn has not been set on this SimulationSetup")
+        return self.step_fn(self, state)
 
     @property
     def force_enabled(self) -> bool:
@@ -369,8 +385,7 @@ def build_setup(config) -> SimulationSetup:
     sim_type = getattr(config, "sim_type", "single_phase")
     _step_fn = build_operator("update_timestep", sim_type)
 
-    # Create setup with placeholder step (chicken-and-egg: step needs setup)
-    setup = SimulationSetup(
+    return SimulationSetup(
         lattice=lattice,
         grid_shape=tuple(config.grid_shape),
         tau=config.tau,
@@ -392,14 +407,8 @@ def build_setup(config) -> SimulationSetup:
         gradient=_gradient,
         laplacian=_laplacian,
         forces=forces,
-        step=None,  # placeholder — replaced below
+        step_fn=_step_fn,
         extra=getattr(config, "extra", None),
     )
 
-    # Close over setup and replace the placeholder
-    def bound_step(state: State) -> State:
-        return _step_fn(setup, state)
-
-    setup = setup._replace(step=bound_step)
-    return setup
 

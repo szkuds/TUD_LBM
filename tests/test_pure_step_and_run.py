@@ -3,7 +3,7 @@
 Tests for the **new pure-function API** (Phase 3):
     - ``runner.step.step_single_phase``
     - ``runner.step.step_multiphase``
-    - ``runner.step.get_step_fn``
+    - ``setup.step`` convenience method
     - ``runner.run.run_pure``
     - ``operators.force.source_term.source``
 
@@ -16,7 +16,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from config.simulation_config import SimulationConfig
-from operators.differential import build_differential_fn
 from runner.run import init_state
 from setup.lattice import build_lattice
 from setup.simulation_setup import build_setup
@@ -242,90 +241,25 @@ class TestStepMultiphasePure:
 
 
 # =====================================================================
-# get_step_fn
+# setup.step convenience method
 # =====================================================================
 
 
-class TestGetPureStepFn:
-    """Step function dispatch via registry based on simulation type."""
+class TestSetupStep:
+    """Step function dispatch via setup.step()."""
 
-    def test_single_phase_dispatch(self):
-        from registry import ensure_registry, get_operators
-
+    def test_single_phase_via_setup(self):
         setup = _sp_setup()
-
-        ensure_registry()
-        step_ops = get_operators("update_timestep")
-        step_fn_target = step_ops["single_phase"].target
-
-        # Create wrapper that closes over setup
-        def step_fn(state):
-            return step_fn_target(setup, state)
-
         state = init_state(setup)
-        new_state = step_fn(state)
+        new_state = setup.step(state)
         assert int(new_state.t) == 1
 
-    def test_multiphase_dispatch(self):
-        from registry import ensure_registry, get_operators
-
+    def test_multiphase_via_setup(self):
         setup = _mp_setup()
-
-        ensure_registry()
-        step_ops = get_operators("update_timestep")
-        step_fn_target = step_ops["multiphase"].target
-
-        # Create wrapper that closes over setup
-        def step_fn(state):
-            return step_fn_target(setup, state)
-
         state = init_state(setup)
-        new_state = step_fn(state)
+        new_state = setup.step(state)
         assert int(new_state.t) == 1
 
-    def test_jit_single_phase(self):
-        """The closed-over step_fn should be jittable."""
-        from registry import ensure_registry, get_operators
-
-        setup = _sp_setup()
-
-        ensure_registry()
-        step_ops = get_operators("update_timestep")
-        step_fn_target = step_ops["single_phase"].target
-
-        # Create wrapper that closes over setup
-        def step_fn(state):
-            return step_fn_target(setup, state)
-
-        state = init_state(setup)
-
-        jitted_step = jax.jit(step_fn)
-        new_state = jitted_step(state)
-
-        assert int(new_state.t) == 1
-        assert not jnp.isnan(new_state.f).any()
-
-    def test_jit_multiphase(self):
-        """The closed-over multiphase step_fn should be jittable."""
-        from registry import ensure_registry, get_operators
-
-        setup = _mp_setup()
-
-        ensure_registry()
-        step_ops = get_operators("update_timestep")
-        step_fn_target = step_ops["multiphase"].target
-
-        # Create wrapper that closes over setup
-        def step_fn(state):
-            return step_fn_target(setup, state)
-
-        state = init_state(setup)
-
-        jitted_step = jax.jit(step_fn)
-        new_state = jitted_step(state)
-
-        assert int(new_state.t) == 1
-        assert not jnp.isnan(new_state.f).any()
 
 
 # =====================================================================
