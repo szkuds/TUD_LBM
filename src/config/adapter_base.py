@@ -39,11 +39,11 @@ class ConfigAdapter(ABC):
             f.name: f.metadata.get(CONFIG_SECTION, "simulation_type")
             for f in dataclasses.fields(SimulationConfig)
         }
-        sim_type = config.get("sim_type", "single_phase")
+        sim_type = config.sim_type
         skip = {"identity", "extra"}
 
         buckets: dict[str, dict[str, Any]] = defaultdict(dict)
-        for key, value in config.items():
+        for key, value in dataclasses.asdict(config).items():
             section = sections.get(key, "simulation_type")
             if value is None or section in skip:
                 continue
@@ -52,7 +52,7 @@ class ConfigAdapter(ABC):
             buckets[section][key] = cls._serialize_safe(value)
 
         buckets["simulation_type"]["type"] = sim_type
-        for ek, ev in (config.get("extra") or {}).items():
+        for ek, ev in (config.extra or {}).items():
             buckets["simulation_type"][ek] = cls._serialize_safe(ev)
 
         return {"simulation_type": buckets.pop("simulation_type", {}),

@@ -53,7 +53,7 @@ def _state_to_numpy(state, fields: tuple | None = None, t: int | None = None) ->
     """
     data = {
         k: np.asarray(v)
-        for k, v in vars(state).items()
+        for k, v in state._asdict().items()
         if v is not None and hasattr(v, "shape")
         and (fields is None or k in fields)
     }

@@ -7,14 +7,34 @@ Public API::
     from setup import BCMasks, MultiphaseParams
 """
 
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from setup.lattice import Lattice
 from setup.lattice import build_lattice
-from setup.simulation_setup import BCMasks
-from setup.simulation_setup import MultiphaseParams
 from setup.simulation_setup import SimulationSetup
-from setup.simulation_setup import build_bc_masks
-from setup.simulation_setup import build_multiphase_params
 from setup.simulation_setup import build_setup
+
+# Re-export from their canonical locations; avoid circular imports
+# by using TYPE_CHECKING for type hints and lazy imports for runtime
+if TYPE_CHECKING:
+    from operators.boundary import BCMasks
+    from operators.macroscopic import MultiphaseParams
+
+def __getattr__(name: str):
+    """Lazy import to avoid circular dependencies."""
+    if name == "BCMasks":
+        from operators.boundary import BCMasks
+        return BCMasks
+    if name == "build_bc_masks":
+        from operators.boundary import build_bc_masks
+        return build_bc_masks
+    if name == "MultiphaseParams":
+        from operators.macroscopic import MultiphaseParams
+        return MultiphaseParams
+    if name == "build_multiphase_params":
+        from operators.macroscopic import build_multiphase_params
+        return build_multiphase_params
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "BCMasks",

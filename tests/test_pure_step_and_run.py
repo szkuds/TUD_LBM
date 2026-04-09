@@ -57,12 +57,24 @@ def _mp_setup():
 class TestSource:
     """``source`` computes a well-balanced forcing source term."""
 
-    def test_shape(self):
+    @staticmethod
+    def _build_gradient_closure(lattice):
+        """Build a gradient closure that takes only (grid)."""
         from operators.differential import build_differential_fn
+
+        _gradient = build_differential_fn("gradient")
+        pad_modes = ("wrap", "wrap", "wrap", "wrap")
+
+        def gradient(grid):
+            return _gradient(grid, lattice.w, lattice.c, pad_modes)
+
+        return gradient
+
+    def test_shape(self):
         from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
-        gradient = build_differential_fn("gradient")
+        gradient = self._build_gradient_closure(lattice)
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.ones((NX, NY, 1, 2)) * 0.001
@@ -74,7 +86,7 @@ class TestSource:
         from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
-        gradient = build_differential_fn("gradient")
+        gradient = self._build_gradient_closure(lattice)
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.zeros((NX, NY, 1, 2))
@@ -86,12 +98,12 @@ class TestSource:
         from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
-        gradient = build_differential_fn("gradient")
+        gradient = self._build_gradient_closure(lattice)
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.ones((NX, NY, 1, 2)) * 0.001
 
-        jitted = jax.jit(partial(source, lattice=lattice, gradient_standard=gradient))
+        jitted = jax.jit(partial(source, lattice=lattice, gradient=gradient))
         src = jitted(rho, u, force)
         assert src.shape == (NX, NY, 9, 1)
 
@@ -100,7 +112,7 @@ class TestSource:
         from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
-        gradient = build_differential_fn("gradient")
+        gradient = self._build_gradient_closure(lattice)
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.ones((NX, NY, 1, 2)) * 0.01

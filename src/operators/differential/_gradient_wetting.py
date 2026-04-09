@@ -13,7 +13,7 @@ import jax.numpy as jnp
 from operators.differential._gradient import grad_core
 from operators.differential._pad_utils import apply_stencil_padding
 from operators.differential._pad_utils import to_2d
-from operators.wetting.wetting_util import apply_wetting_to_all_edges
+from operators.wetting.wetting_util import build_wetting_applicator
 from registry import register_operator
 
 
@@ -23,12 +23,15 @@ def build_wetting_gradient(
     c: jnp.ndarray,
     pad_mode: tuple[str, ...] | list[str],
     bc_config: dict | None = None,
+    rho_l: float | None = None,
+    rho_v: float | None = None,
+    width: int | None = None,
 ):
     """Return a wetting-corrected gradient closure.
 
-    Closes over static config (w, c, pad_mode, bc_config).
-    The returned callable accepts the grid plus dynamic wetting
-    parameters and returns shape ``(nx, ny, 1, 2)``.
+    Closes over static config (w, c, pad_mode, bc_config, rho_l, rho_v, width).
+    The returned callable accepts only the grid and dynamic wetting parameters,
+    returning shape ``(nx, ny, 1, 2)``.
 
     Args:
         w:         Lattice weights ``(q,)``.
@@ -36,11 +39,15 @@ def build_wetting_gradient(
         pad_mode:  ``(right_y, left_y, bottom_x, top_x)``.
         bc_config: Boundary-condition edge map, e.g.
                    ``{"bottom": "wetting", "top": "bounce-back"}``.
+        rho_l:     Liquid density (baked into closure at build time).
+        rho_v:     Vapour density (baked into closure at build time).
+        width:     Interface width in lattice units (baked into closure at build time).
 
     Returns:
-        ``grad(grid, phi_l, phi_r, d_rho_l, d_rho_r, rho_l, rho_v, width) → (nx,ny,1,2)``
+        ``grad(grid, phi_l, phi_r, d_rho_l, d_rho_r) → (nx,ny,1,2)``
     """
     _pad_mode = tuple(pad_mode)
+    _apply_wetting = build_wetting_applicator(rho_l, rho_v, width, bc_config)
 
     def _grad(
         grid: jnp.ndarray,
@@ -48,28 +55,14 @@ def build_wetting_gradient(
         phi_r: jnp.ndarray,
         d_rho_l: jnp.ndarray,
         d_rho_r: jnp.ndarray,
-        rho_l: jnp.ndarray,
-        rho_v: jnp.ndarray,
-        width: jnp.ndarray,
     ) -> jnp.ndarray:
         gp = apply_stencil_padding(to_2d(grid), _pad_mode)
 
         # Wetting ghost-cell correction on the padded array
-        gp = apply_wetting_to_all_edges(
-            gp,
-            rho_l,
-            rho_v,
-            phi_l,
-            phi_r,
-            d_rho_l,
-            d_rho_r,
-            width,
-            bc_config,
-        )
+        # (rho_l, rho_v, width now baked into the applicator)
+        gp = _apply_wetting(gp, phi_l, phi_r, d_rho_l, d_rho_r)
 
         # Pass FULL padded array to grad_core.
-        # BUG FIX: old code stripped ghost cells before calling
-        # _grad_core, which broke the [2:, 1:-1] neighbour slicing.
         return grad_core(gp, w, c)
 
     return _grad

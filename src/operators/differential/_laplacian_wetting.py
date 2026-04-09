@@ -12,7 +12,7 @@ import jax.numpy as jnp
 from operators.differential._laplacian import lap_core
 from operators.differential._pad_utils import apply_stencil_padding
 from operators.differential._pad_utils import to_2d
-from operators.wetting.wetting_util import apply_wetting_to_all_edges
+from operators.wetting.wetting_util import build_wetting_applicator
 from registry import register_operator
 
 
@@ -21,23 +21,30 @@ def build_wetting_laplacian(
     w: jnp.ndarray,
     pad_mode: tuple[str, ...] | list[str],
     bc_config: dict | None = None,
+    rho_l: float | None = None,
+    rho_v: float | None = None,
+    width: int | None = None,
 ):
     """Return a wetting-corrected Laplacian closure.
 
-    Closes over static config (w, pad_mode, bc_config).
-    The returned callable accepts the grid plus dynamic wetting
-    parameters and returns shape ``(nx, ny, 1, 1)``.
+    Closes over static config (w, pad_mode, bc_config, rho_l, rho_v, width).
+    The returned callable accepts only the grid and dynamic wetting parameters,
+    returning shape ``(nx, ny, 1, 1)``.
 
     Args:
         w:         Lattice weights ``(q,)``.
         pad_mode:  ``(right_y, left_y, bottom_x, top_x)``.
         bc_config: Boundary-condition edge map, e.g.
                    ``{"bottom": "wetting", "top": "bounce-back"}``.
+        rho_l:     Liquid density (baked into closure at build time).
+        rho_v:     Vapour density (baked into closure at build time).
+        width:     Interface width in lattice units (baked into closure at build time).
 
     Returns:
-        ``lap(grid, phi_l, phi_r, d_rho_l, d_rho_r, rho_l, rho_v, width) → (nx, ny, 1, 1)``
+        ``lap(grid, phi_l, phi_r, d_rho_l, d_rho_r) → (nx, ny, 1, 1)``
     """
     _pad_mode = tuple(pad_mode)
+    _apply_wetting = build_wetting_applicator(rho_l, rho_v, width, bc_config)
 
     def _lap(
         grid: jnp.ndarray,
@@ -45,9 +52,6 @@ def build_wetting_laplacian(
         phi_r: jnp.ndarray,
         d_rho_l: jnp.ndarray,
         d_rho_r: jnp.ndarray,
-        rho_l: jnp.ndarray,
-        rho_v: jnp.ndarray,
-        width: jnp.ndarray,
     ) -> jnp.ndarray:
         """Wetting-corrected Laplacian of a scalar field.
 
@@ -57,9 +61,6 @@ def build_wetting_laplacian(
             phi_r: Contact angle (right edge), scalar or 0-d array.
             d_rho_l: Density offset (left edge), scalar or 0-d array.
             d_rho_r: Density offset (right edge), scalar or 0-d array.
-            rho_l: Liquid density, scalar or 0-d array.
-            rho_v: Vapor density, scalar or 0-d array.
-            width: Ghost-cell layers per edge, int.
 
         Returns:
             Laplacian field, shape ``(nx, ny, 1, 1)``.
@@ -68,17 +69,8 @@ def build_wetting_laplacian(
         gp = apply_stencil_padding(grid_2d, _pad_mode)
 
         # Wetting ghost-cell correction on the padded array
-        gp = apply_wetting_to_all_edges(
-            gp,
-            rho_l,
-            rho_v,
-            phi_l,
-            phi_r,
-            d_rho_l,
-            d_rho_r,
-            width,
-            bc_config,
-        )
+        # (rho_l, rho_v, width now baked into the applicator)
+        gp = _apply_wetting(gp, phi_l, phi_r, d_rho_l, d_rho_r)
 
         # Pass FULL padded array to lap_core.
         return lap_core(gp, w)

@@ -54,39 +54,6 @@ OPERATOR_REGISTRY: dict[str, OperatorEntry] = {}
 # Maintained by register_operator; avoids O(n) scans of OPERATOR_REGISTRY.
 _KIND_INDEX: dict[str, dict[str, OperatorEntry]] = {}
 
-_REGISTRY_POPULATED: bool = False
-
-
-_OPERATOR_MODULES: list[str] = [
-    "operators.boundary",
-    "operators.collision",
-    "operators.differential",
-    "operators.equilibrium",
-    "operators.force",
-    "operators.initialise",
-    "operators.macroscopic",
-    "operators.streaming",
-    "operators.wetting",
-    "runner.step",
-    "setup.lattice",
-]
-
-
-def ensure_registry() -> None:
-    """Import all operator packages so the registry is fully populated.
-
-    Safe to call multiple times — subsequent calls are no-ops.
-    """
-    global _REGISTRY_POPULATED  # noqa: PLW0603
-    if _REGISTRY_POPULATED:
-        return
-
-    import importlib
-
-    for module in _OPERATOR_MODULES:
-        importlib.import_module(module)
-
-    _REGISTRY_POPULATED = True
 
 
 # ---------------------------------------------------------------------------

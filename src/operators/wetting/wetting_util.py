@@ -64,6 +64,113 @@ def resolve_wetting_fields(
     return phi_l, phi_r, d_rho_l, d_rho_r
 
 
+def build_wetting_applicator(
+    rho_l: float,
+    rho_v: float,
+    width: int,
+    bc_config: dict[str, Any] | None = None,
+):
+    """Build a wetting ghost-cell applicator closure with baked-in static parameters.
+
+    Creates a closure that applies wetting ghost-cell corrections to a padded density
+    array. Static parameters (rho_l, rho_v, width, bc_config) are baked in at build time,
+    so the returned closure only requires dynamic wetting parameters.
+
+    Args:
+        rho_l: Liquid density.
+        rho_v: Vapour density.
+        width: Interface width in lattice units.
+        bc_config: Boundary-condition config dict, e.g.
+            ``{"bottom": "wetting", "top": "bounce-back", ...}``.
+            ``None`` defaults to bottom-only injection.
+
+    Returns:
+        A closure ``(gp, phi_l, phi_r, d_rho_l, d_rho_r) -> gp`` that applies
+        wetting ghost-cell corrections to the padded density field.
+    """
+    _rho_l = float(rho_l)
+    _rho_v = float(rho_v)
+    _width = int(width)
+    _bc_config = bc_config
+
+    def apply(
+        gp: jnp.ndarray,
+        phi_l: Any,
+        phi_r: Any,
+        d_rho_l: Any,
+        d_rho_r: Any,
+    ) -> jnp.ndarray:
+        """Apply wetting ghost-cell correction to a padded density array.
+
+        The padded array *gp* has shape ``(nx + 2, ny + 2)`` (one ghost cell on
+        each side). This function overwrites the ghost rows for each edge
+        marked ``"wetting"`` in *bc_config* with a wetting density value
+        derived from the liquid/vapour densities and the per-side wetting
+        parameters.
+
+        The ghost-cell value at column *i* is:
+
+        .. code-block:: text
+
+            rho_ghost[i] = phi * rho_l + (1 - phi) * rho_v + d_rho * profile[i]
+
+        where *phi* is ``phi_l`` for the left half of the domain and ``phi_r``
+        for the right half, *d_rho* is the corresponding density offset, and
+        *profile* is a smooth step function of width *width*.
+
+        Args:
+            gp: Padded density field, shape ``(nx + 2, ny + 2)``.
+            phi_l: Wetting potential (left side).
+            phi_r: Wetting potential (right side).
+            d_rho_l: Density offset (left side).
+            d_rho_r: Density offset (right side).
+
+        Returns:
+            Updated padded field with ghost-cell rows set.
+        """
+        nx2, _ny2 = gp.shape  # nx+2, ny+2
+        nx = nx2 - 2
+        half = nx // 2
+
+        # Build per-column phi and d_rho arrays
+        phi_col = jnp.where(
+            jnp.arange(nx) < half,
+            jnp.full(nx, float(phi_l)),
+            jnp.full(nx, float(phi_r)),
+        )
+        d_rho_col = jnp.where(
+            jnp.arange(nx) < half,
+            jnp.full(nx, float(d_rho_l)),
+            jnp.full(nx, float(d_rho_r)),
+        )
+
+        # Smooth tanh profile along x (centred at the domain mid-point)
+        xs = jnp.arange(nx, dtype=jnp.float32)
+        profile = 0.5 * (1.0 + jnp.tanh((xs - nx / 2.0) / _width))
+
+        # Ghost-cell density
+        rho_ghost = phi_col * _rho_l + (1.0 - phi_col) * _rho_v + d_rho_col * profile
+
+        # Determine which edges to inject wetting ghost cells for.
+        if _bc_config is not None:
+            edges_to_process = [e for e in ("bottom", "top") if _bc_config.get(e) == "wetting"]
+        else:
+            edges_to_process = ["bottom"]  # legacy default
+
+        # Write into the ghost row(s) of the padded array.
+        # The interior columns in gp are indices 1 .. nx (padded by 1 on each side).
+        for edge in edges_to_process:
+            if edge == "bottom":
+                gp = gp.at[1:-1, 0].set(rho_ghost)
+            elif edge == "top":
+                gp = gp.at[1:-1, -1].set(rho_ghost)
+
+        return gp
+
+    return apply
+
+
+#TODO: this is legacy code which should be removed
 def apply_wetting_to_all_edges(
     gp: jnp.ndarray,
     rho_l: float,
@@ -76,6 +183,8 @@ def apply_wetting_to_all_edges(
     bc_config: dict[str, Any] | None = None,
 ) -> jnp.ndarray:
     """Write wetting ghost-cell rows into a padded density array.
+
+    DEPRECATED: Use build_wetting_applicator() instead to bake static parameters.
 
     The padded array *gp* has shape ``(nx + 2, ny + 2)`` (one ghost cell on
     each side).  This function overwrites the ghost rows for each edge

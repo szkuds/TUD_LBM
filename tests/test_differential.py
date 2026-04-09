@@ -168,28 +168,39 @@ class TestBuildWettingGradient:
         }
 
     def _call_wetting(self, fn, grid, params):
-        """Invoke the wetting closure with explicit params."""
+        """Invoke the wetting closure with only dynamic params (static ones baked in)."""
         return fn(
             grid,
             params["phi_l"],
             params["phi_r"],
             params["d_rho_l"],
             params["d_rho_r"],
-            params["rho_l"],
-            params["rho_v"],
-            params["width"],
         )
 
     def test_returns_callable(self, lattice, periodic_pad, wetting_params):
         from operators.differential._gradient_wetting import build_wetting_gradient
 
-        fn = build_wetting_gradient(lattice.w, lattice.c, periodic_pad)
+        fn = build_wetting_gradient(
+            lattice.w,
+            lattice.c,
+            periodic_pad,
+            rho_l=wetting_params["rho_l"],
+            rho_v=wetting_params["rho_v"],
+            width=wetting_params["width"],
+        )
         assert callable(fn)
 
     def test_output_shape(self, lattice, periodic_pad, wetting_params, const_field):
         from operators.differential._gradient_wetting import build_wetting_gradient
 
-        fn = build_wetting_gradient(lattice.w, lattice.c, periodic_pad)
+        fn = build_wetting_gradient(
+            lattice.w,
+            lattice.c,
+            periodic_pad,
+            rho_l=wetting_params["rho_l"],
+            rho_v=wetting_params["rho_v"],
+            width=wetting_params["width"],
+        )
         out = self._call_wetting(fn, const_field, wetting_params)
         assert out.shape == (NX, NY, 1, 2)
 
@@ -207,7 +218,14 @@ class TestBuildWettingGradient:
         rho = jnp.linspace(0.3, 1.0, NX)[:, None, None, None] * jnp.ones((NX, NY, 1, 1))
 
         plain = compute_gradient(rho, lattice.w, lattice.c, periodic_pad)
-        wetting_fn = build_wetting_gradient(lattice.w, lattice.c, periodic_pad)
+        wetting_fn = build_wetting_gradient(
+            lattice.w,
+            lattice.c,
+            periodic_pad,
+            rho_l=wetting_params["rho_l"],
+            rho_v=wetting_params["rho_v"],
+            width=wetting_params["width"],
+        )
         with_wetting = self._call_wetting(wetting_fn, rho, wetting_params)
 
         # They should not be identical (ghost cells differ)
@@ -216,7 +234,14 @@ class TestBuildWettingGradient:
     def test_deterministic_result(self, lattice, periodic_pad, wetting_params, const_field):
         from operators.differential._gradient_wetting import build_wetting_gradient
 
-        fn = build_wetting_gradient(lattice.w, lattice.c, periodic_pad)
+        fn = build_wetting_gradient(
+            lattice.w,
+            lattice.c,
+            periodic_pad,
+            rho_l=wetting_params["rho_l"],
+            rho_v=wetting_params["rho_v"],
+            width=wetting_params["width"],
+        )
         out = self._call_wetting(fn, const_field, wetting_params)
         out2 = self._call_wetting(fn, const_field, wetting_params)
         np.testing.assert_array_equal(np.array(out), np.array(out2))
@@ -232,16 +257,20 @@ class TestBuildWettingGradient:
         }
         phi_l, phi_r, d_rho_l, d_rho_r = resolve_wetting_fields(params_array, chemical_step=0)
 
-        fn = build_wetting_gradient(lattice.w, lattice.c, periodic_pad)
+        fn = build_wetting_gradient(
+            lattice.w,
+            lattice.c,
+            periodic_pad,
+            rho_l=1.0,
+            rho_v=0.1,
+            width=4,
+        )
         out = fn(
             const_field,
             phi_l,
             phi_r,
             d_rho_l,
             d_rho_r,
-            1.0,  # rho_l
-            0.1,  # rho_v
-            4,  # width
         )
         assert out.shape == (NX, NY, 1, 2)
 

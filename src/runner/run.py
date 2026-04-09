@@ -64,8 +64,8 @@ def init_state(
     """Create an initial :class:`State` for the given setup.
 
     If *f* is not supplied, the population distribution is initialised
-    using the ``init_type`` specified in ``setup`` (via the
-    :mod:`operators.initialise` factory).  For ``"standard"`` this is
+    using the ``init_type`` specified in ``setup`` (via
+    :func:`operators.initialise.build_f`).  For ``"standard"`` this is
     the rest equilibrium (``f_i = w_i``); for multiphase types it
     produces a tanh density profile at equilibrium.
 
@@ -84,51 +84,21 @@ def init_state(
     Returns:
         A :class:`State` ready to be passed to :func:`run`.
     """
-    from operators.initialise import build_initialise_fn
+    from operators.initialise import build_f
+    from state import build_optional_fields, build_extra_state
 
     lattice = setup.lattice
     nx, ny = setup.grid_shape[0], setup.grid_shape[1]
-    d = lattice.d
 
     if f is None:
-        init_type = setup.config.init_type
-        init_fn = build_initialise_fn(init_type)
+        f = build_f(setup, init_kwargs)
 
-        # Build kwargs from setup for multiphase initialisers
-        kw: dict = {}
-        mp = setup.multiphase_params
-        if mp is not None:
-            kw.update(
-                rho_l=mp.rho_l,
-                rho_v=mp.rho_v,
-                interface_width=mp.interface_width,
-            )
-        # Allow caller overrides
-        if init_kwargs:
-            kw.update(init_kwargs)
-
-        # For init_from_file, inject npz_path from init_dir
-        if init_type == "init_from_file" and "npz_path" not in kw:
-            init_dir = setup.config.init_dir
-            if init_dir is not None:
-                kw["npz_path"] = init_dir
-
-        f = init_fn(nx, ny, lattice, **kw)
-
-    rho = jnp.sum(f, axis=2, keepdims=True)  # (nx, ny, 1, 1)
-    u = jnp.zeros((nx, ny, 1, d))
+    rho = jnp.sum(f, axis=2, keepdims=True)
+    u = jnp.zeros((nx, ny, 1, lattice.d))
     t = jnp.array(0)
 
-    # Pre-populate optional fields that the step function will write.
-    # lax.scan requires carry pytree structure to be constant, so any
-    # field that transitions from None → array must start as zeros.
-    is_multiphase = setup.multiphase_params is not None
-    force = jnp.zeros((nx, ny, 1, d)) if is_multiphase else None
-    force_ext = jnp.zeros((nx, ny, 1, d)) if setup.force_enabled else None
-
-    extra_state: dict[str, jnp.ndarray] = {}
-    for spec in getattr(setup, "forces", ()):
-        extra_state.update(spec.init_fn(setup.grid_shape, lattice, spec.precomputed))
+    force, force_ext = build_optional_fields(setup, nx, ny, lattice.d)
+    extra_state = build_extra_state(setup)
 
     return State(
         f=f,
