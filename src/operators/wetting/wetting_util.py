@@ -135,13 +135,13 @@ def build_wetting_applicator(
         # Build per-column phi and d_rho arrays
         phi_col = jnp.where(
             jnp.arange(nx) < half,
-            jnp.full(nx, float(phi_l)),
-            jnp.full(nx, float(phi_r)),
+            jnp.full(nx, phi_l),
+            jnp.full(nx, phi_r),
         )
         d_rho_col = jnp.where(
             jnp.arange(nx) < half,
-            jnp.full(nx, float(d_rho_l)),
-            jnp.full(nx, float(d_rho_r)),
+            jnp.full(nx, d_rho_l),
+            jnp.full(nx, d_rho_r),
         )
 
         # Smooth tanh profile along x (centred at the domain mid-point)

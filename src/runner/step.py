@@ -97,7 +97,7 @@ def _apply_common_step(
     )
 
 
-def _make_wetting_differntial_ops(setup, wetting_state):
+def _make_wetting_differential_ops(setup, wetting_state):
     """Build grid-only gradient and laplacian shims from live wetting params.
 
     Extracts (phi_l, phi_r, d_rho_l, d_rho_r) from wetting_state,
@@ -193,7 +193,7 @@ def step_multiphase(setup, state: State) -> State:
     # 2. Resolve density operators (wetting shims if applicable)
     # Wetting shims should only be applied if BOTH the state has wetting AND setup was built with wetting config
     if state.wetting is not None and setup.config.wetting_config is not None:
-        gradient_density, laplacian_density = _make_wetting_differntial_ops(
+        gradient_density, laplacian_density = _make_wetting_differential_ops(
             setup, state.wetting
         )
     else:

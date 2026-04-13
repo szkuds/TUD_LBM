@@ -62,7 +62,6 @@ def _state_to_numpy(state, fields: tuple | None = None, t: int | None = None) ->
         # Raising here causes the jax.debug.callback to fail
         # and the lax.scan / run(...) to abort at this timestep.
         # TODO: when a NaN is triggered it still needs to plot id that is enabled.
-        # TODO: The error which this return is not yet clear since it is too long.
         raise FloatingPointError(f"NaNs detected at t={t} in fields: {bad}")
     return data
 

@@ -12,7 +12,7 @@ import pytest
 
 from config.simulation_config import SimulationConfig
 from runner.run import init_state
-from runner.step import step_multiphase, _make_wetting_differntial_ops
+from runner.step import step_multiphase, _make_wetting_differential_ops
 from setup.simulation_setup import build_setup
 from state.state import WettingState
 
@@ -96,7 +96,7 @@ class TestMakeWettingShims:
         """Gradient and laplacian shims should be callable."""
         setup = _wetting_setup()
         state = init_state(setup)
-        gradient, laplacian = _make_wetting_differntial_ops(setup, state.wetting)
+        gradient, laplacian = _make_wetting_differential_ops(setup, state.wetting)
         assert callable(gradient)
         assert callable(laplacian)
 
@@ -104,7 +104,7 @@ class TestMakeWettingShims:
         """Gradient shim should accept only grid argument."""
         setup = _wetting_setup()
         state = init_state(setup)
-        gradient, _ = _make_wetting_differntial_ops(setup, state.wetting)
+        gradient, _ = _make_wetting_differential_ops(setup, state.wetting)
 
         # Create a dummy grid
         grid = jnp.ones((NX, NY, 1, 1))
@@ -118,7 +118,7 @@ class TestMakeWettingShims:
         """Laplacian shim should accept only grid argument."""
         setup = _wetting_setup()
         state = init_state(setup)
-        _, laplacian = _make_wetting_differntial_ops(setup, state.wetting)
+        _, laplacian = _make_wetting_differential_ops(setup, state.wetting)
 
         # Create a dummy grid
         grid = jnp.ones((NX, NY, 1, 1))
