@@ -35,10 +35,10 @@ def _build_extra_state(setup: "SimulationSetup") -> dict[str, Any]:
 
         wetting_cfg = setup.config.wetting_config
         extra["wetting"] = WettingState(
-            d_rho_left=jnp.array(wetting_cfg.get("d_rho_l", 0.05)),
-            d_rho_right=jnp.array(wetting_cfg.get("d_rho_r", 0.05)),
-            phi_left=jnp.array(wetting_cfg.get("phi_l", 1.2)),
-            phi_right=jnp.array(wetting_cfg.get("phi_r", 1.2)),
+            d_rho_left=jnp.array(wetting_cfg.get("d_rho_left", 0.05)),
+            d_rho_right=jnp.array(wetting_cfg.get("d_rho_right", 0.05)),
+            phi_left=jnp.array(wetting_cfg.get("phi_left", 1.2)),
+            phi_right=jnp.array(wetting_cfg.get("phi_right", 1.2)),
             ca_left=jnp.array(0.0),  # Will be computed by hysteresis
             ca_right=jnp.array(0.0),
             cll_left=jnp.array(0.0),  # Will be computed by hysteresis

@@ -13,6 +13,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
+from operators.wetting import build_wetting_applicator
 from setup.lattice import build_lattice
 
 NX, NY = 16, 16
@@ -162,7 +164,7 @@ class TestBuildWettingGradient:
             "rho_v": 0.1,
             "width": 4,
             "phi_l": 1.2,
-            "phi_r": 1.3,
+            "phi_r": 1.2,
             "d_rho_l": 0.05,
             "d_rho_r": 0.05,
         }
@@ -316,18 +318,20 @@ class TestWettingUtil:
         assert phi_r == 1.2
 
     def test_apply_wetting_changes_bottom_row(self):
-        from operators.wetting.wetting_util import apply_wetting_to_all_edges
+        from operators.wetting.wetting_util import build_wetting_applicator
 
+        _apply_wetting = build_wetting_applicator(rho_l=1.0, rho_v=0.1, width=4,)
         gp = jnp.zeros((NX + 2, NY + 2))
-        gp_out = apply_wetting_to_all_edges(gp, 1.0, 0.1, 1.2, 1.3, 0.05, 0.05, 4)
+        gp_out = _apply_wetting(gp, 1.2, 1.3, 0.05, 0.05)
         # Bottom ghost row (index 0) interior columns should be nonzero
         bottom = np.array(gp_out[1:-1, 0])
         assert float(np.mean(np.abs(bottom))) > 0.0
 
     def test_apply_wetting_does_not_touch_top_row(self):
-        from operators.wetting.wetting_util import apply_wetting_to_all_edges
+        from operators.wetting.wetting_util import build_wetting_applicator
 
+        _apply_wetting = build_wetting_applicator(rho_l=1.0, rho_v=0.1, width=4,)
         gp = jnp.zeros((NX + 2, NY + 2))
-        gp_out = apply_wetting_to_all_edges(gp, 1.0, 0.1, 1.2, 1.3, 0.05, 0.05, 4)
+        gp_out = _apply_wetting(gp, 1.2, 1.3, 0.05, 0.05)
         # Top ghost row (index -1) should still be zero
         np.testing.assert_array_equal(np.array(gp_out[:, -1]), 0.0)

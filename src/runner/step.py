@@ -33,7 +33,6 @@ from operators.wetting.wetting_util import resolve_wetting_fields
 from registry import update_timestep_operator
 from state.state import State
 import jax.numpy as jnp
-from typing import Any, cast
 
 # ── Step functions ───────────────────────────────────────────────────
 
@@ -65,10 +64,10 @@ def _apply_common_step(
     """
     lattice = setup.lattice
 
-    # Equilibrium
+    # 3. Equilibrium
     feq = setup.equilibrium_fn(rho, u, lattice)
 
-    # Collision (with or without source term)
+    # 4. Collision (with or without source term)
     if force_tot is not None and setup.forces is not None:
         # Use provided gradient_density if available (for wetting), else use setup default
         grad = gradient_density if gradient_density is not None else setup.gradient_density
@@ -83,10 +82,10 @@ def _apply_common_step(
     else:
         f_col = setup.collision_fn(state.f, feq, setup.tau)
 
-    # Streaming
+    # 5. Streaming
     f_stream = setup.streaming_fn(f_col, lattice)
 
-    # Boundary conditions
+    # 6. Boundary conditions
     f_bc = setup.bc_fn(f_stream, f_col, setup.bc_masks)
 
     return state._replace(
@@ -190,7 +189,7 @@ def step_multiphase(setup, state: State) -> State:
         setup, state, setup.forces, setup.streaming_fn
     )
 
-    # 2. Resolve density operators (wetting shims if applicable)
+    # 1.1. Resolve density operators (wetting shims if applicable)
     # Wetting shims should only be applied if BOTH the state has wetting AND setup was built with wetting config
     if state.wetting is not None and setup.config.wetting_config is not None:
         gradient_density, laplacian_density = _make_wetting_differential_ops(
@@ -200,8 +199,8 @@ def step_multiphase(setup, state: State) -> State:
         gradient_density = setup.gradient_density
         laplacian_density = setup.laplacian_density
 
-    # 3. Multiphase macroscopic (chemical potential force, wetting-corrected operators)
-    rho, u, force_tot = cast(Any, setup.macroscopic_fn)(
+    # 2. Multiphase macroscopic (chemical potential force, wetting-corrected operators)
+    rho, u, force_tot = setup.macroscopic_fn(
         state.f,
         lattice,
         mp,
@@ -210,7 +209,7 @@ def step_multiphase(setup, state: State) -> State:
         laplacian_density=laplacian_density,
     )
 
-    # 4–6. Shared pipeline (equilibrium → collision (+source with grad_density) → streaming → BCs)
+    # 3–6. Shared pipeline (equilibrium → collision (+source with grad_density) → streaming → BCs)
     new_state = _apply_common_step(
         setup, state, rho, u, force_tot,
         gradient_density=gradient_density
