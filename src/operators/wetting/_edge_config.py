@@ -28,10 +28,11 @@ def _resolve_wetting_edges(
         if bc_config.get(edge) != "wetting":
             continue
         perp_start, perp_end = _PERPENDICULAR[edge]
-        edges.append((
-            edge,
-            bc_config.get(perp_start, "periodic") == "periodic",
-            bc_config.get(perp_end, "periodic") == "periodic",
-        ))
+        edges.append(
+            (
+                edge,
+                bc_config.get(perp_start, "periodic") == "periodic",
+                bc_config.get(perp_end, "periodic") == "periodic",
+            )
+        )
     return edges
-

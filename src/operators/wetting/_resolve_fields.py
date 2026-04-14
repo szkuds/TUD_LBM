@@ -38,4 +38,3 @@ def resolve_wetting_fields(
         d_rho_r = wetting_params["d_rho_r"]
 
     return phi_l, phi_r, d_rho_l, d_rho_r
-

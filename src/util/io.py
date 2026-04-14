@@ -114,4 +114,3 @@ class SimulationIO:
         adapter.save(config, str(dest))
 
         print(f"Configuration saved to {dest}")
-

@@ -75,4 +75,3 @@ def build_extra_state(setup):
         :func:`state._extra_state._build_extra_state`
     """
     return _build_extra_state(setup)
-

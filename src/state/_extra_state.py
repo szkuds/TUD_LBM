@@ -56,4 +56,3 @@ def _build_extra_state(setup: SimulationSetup) -> dict[str, Any]:
         extra.update(spec.init_fn(setup.grid_shape, setup.lattice, spec.precomputed))
 
     return extra
-

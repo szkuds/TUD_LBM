@@ -34,4 +34,3 @@ DESIGN PRINCIPLE:
     - Factories (build_collision_fn, etc) = public API
     - Users type-hint against protocols, not implementations
 """
-

@@ -48,4 +48,3 @@ def _build_init_kwargs(
             kw["npz_path"] = init_dir
 
     return kw
-

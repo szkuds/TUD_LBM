@@ -65,9 +65,7 @@ class TestGravityForce:
     def test_template_shape(self, lattice, sim_config):
         from operators.force._gravity import GravityForceModule
 
-        template = GravityForceModule.build(
-            {"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice
-        )
+        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice)
         assert template.shape == (NX, NY, 1, 2)
 
     def test_vertical_gravity(self, lattice, sim_config):
@@ -113,9 +111,7 @@ class TestGravityForce:
     def test_compute_gravity_force_shape(self, lattice, sim_config):
         from operators.force._gravity import GravityForceModule
 
-        template = GravityForceModule.build(
-            {"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice
-        )
+        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice)
         state = make_state(lattice, rho_value=1.0)
         force = GravityForceModule.compute(state, template)
         assert force.shape == (NX, NY, 1, 2)
@@ -123,9 +119,7 @@ class TestGravityForce:
     def test_compute_gravity_force_value(self, lattice, sim_config):
         from operators.force._gravity import GravityForceModule
 
-        template = GravityForceModule.build(
-            {"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice
-        )
+        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice)
         state = make_state(lattice, rho_value=2.0)
         force = GravityForceModule.compute(state, template)
         expected = -template * 2.0
@@ -138,9 +132,7 @@ class TestGravityForce:
     def test_jittable(self, lattice, sim_config):
         from operators.force._gravity import GravityForceModule
 
-        template = GravityForceModule.build(
-            {"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice
-        )
+        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice)
         state = make_state(lattice, rho_value=1.0)
         force = jax.jit(lambda s: GravityForceModule.compute(s, template))(state)
         assert force.shape == (NX, NY, 1, 2)

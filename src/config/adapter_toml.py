@@ -120,10 +120,7 @@ class TomlAdapter(ConfigAdapter):
         # ── Validate and process sim_type ────────────────────────────
         valid_types = ("single_phase", "multiphase")
         if sim_type not in valid_types:
-            raise ValueError(
-                f"Unknown simulation type '{sim_type}'. "
-                f"Expected one of: {', '.join(valid_types)}."
-            )
+            raise ValueError(f"Unknown simulation type '{sim_type}'. Expected one of: {', '.join(valid_types)}.")
 
         # ── Merge [multiphase] table (for multiphase simulations) ────
         if sim_type == "multiphase":

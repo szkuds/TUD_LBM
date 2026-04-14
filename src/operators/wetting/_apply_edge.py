@@ -11,8 +11,17 @@ from operators.wetting._wetting_modification import _apply_wetting_modification
 
 
 def _apply_wetting_edge(
-    gp, edge, perp_start_periodic, perp_end_periodic,
-    rho_l, rho_v, phi_l, phi_r, d_rho_l, d_rho_r, width,
+    gp,
+    edge,
+    perp_start_periodic,
+    perp_end_periodic,
+    rho_l,
+    rho_v,
+    phi_l,
+    phi_r,
+    d_rho_l,
+    d_rho_r,
+    width,
 ):
     """Apply wetting to a single edge of the padded array.
 
@@ -28,31 +37,58 @@ def _apply_wetting_edge(
     interior_offset = 1 if ghost_idx == 0 else -1
 
     arr = _reconstruct_and_modify(
-        arr, ghost_idx, interior_offset,
-        perp_start_periodic, perp_end_periodic,
-        rho_l, rho_v, phi_l, phi_r, d_rho_l, d_rho_r, width,
+        arr,
+        ghost_idx,
+        interior_offset,
+        perp_start_periodic,
+        perp_end_periodic,
+        rho_l,
+        rho_v,
+        phi_l,
+        phi_r,
+        d_rho_l,
+        d_rho_r,
+        width,
     )
 
     return arr.T if transposed else arr
 
 
 def _reconstruct_and_modify(
-    arr, ghost_idx, interior_offset,
-    perp_start_periodic, perp_end_periodic,
-    rho_l, rho_v, phi_l, phi_r, d_rho_l, d_rho_r, width,
+    arr,
+    ghost_idx,
+    interior_offset,
+    perp_start_periodic,
+    perp_end_periodic,
+    rho_l,
+    rho_v,
+    phi_l,
+    phi_r,
+    d_rho_l,
+    d_rho_r,
+    width,
 ):
     """Reconstruct ghost row from interior, then apply wetting modification."""
     arr = _reconstruct_ghost_row(
-        arr, ghost_idx, interior_offset,
-        perp_start_periodic, perp_end_periodic,
+        arr,
+        ghost_idx,
+        interior_offset,
+        perp_start_periodic,
+        perp_end_periodic,
     )
 
     # Extract the interior portion of the ghost row (exclude padding corners)
     edge_slice = arr[1:-1, ghost_idx]
 
     modified = _apply_wetting_modification(
-        edge_slice, rho_l, rho_v, phi_l, phi_r, d_rho_l, d_rho_r, width,
+        edge_slice,
+        rho_l,
+        rho_v,
+        phi_l,
+        phi_r,
+        d_rho_l,
+        d_rho_r,
+        width,
     )
 
     return arr.at[1:-1, ghost_idx].set(modified)
-

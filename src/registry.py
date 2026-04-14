@@ -55,7 +55,6 @@ OPERATOR_REGISTRY: dict[str, OperatorEntry] = {}
 _KIND_INDEX: dict[str, dict[str, OperatorEntry]] = {}
 
 
-
 # ---------------------------------------------------------------------------
 # Core registration decorator
 # ---------------------------------------------------------------------------

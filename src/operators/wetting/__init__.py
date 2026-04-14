@@ -47,6 +47,6 @@ def build_wetting_fn(scheme: str = "contact_angle"):
 
 
 __all__ = [
-    "WettingParams",           # Data class for optimisation params
+    "WettingParams",  # Data class for optimisation params
     "build_wetting_fn",
 ]

@@ -54,8 +54,7 @@ def _state_to_numpy(state, fields: tuple | None = None, t: int | None = None) ->
     data = {
         k: np.asarray(v)
         for k, v in state._asdict().items()
-        if v is not None and hasattr(v, "shape")
-        and (fields is None or k in fields)
+        if v is not None and hasattr(v, "shape") and (fields is None or k in fields)
     }
     bad = [k for k, v in data.items() if np.isnan(v).any()]
     if bad:
@@ -109,7 +108,8 @@ def make_save_callback(
             (t > skip_interval) & (t % save_interval == 0),
             lambda s, t: jax.debug.callback(_host_save, s, t, ordered=True),
             lambda s, t: None,
-            state, t,
+            state,
+            t,
         )
 
     return do_save

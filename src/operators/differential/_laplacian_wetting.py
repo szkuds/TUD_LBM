@@ -77,4 +77,3 @@ def build_wetting_laplacian(
         return lap_core(gp, w)
 
     return _lap
-

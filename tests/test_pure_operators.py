@@ -649,7 +649,6 @@ class TestApplyPeriodic:
         assert f_out.shape == f.shape
 
 
-
 # =====================================================================
 # End-to-end: full LBM step with pure functions (no class instances)
 # =====================================================================

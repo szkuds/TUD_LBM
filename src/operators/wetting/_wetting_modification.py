@@ -65,4 +65,3 @@ def _apply_wetting_modification(
 
     result = jnp.where(is_right_region, modified_right, edge_slice)
     return jnp.where(is_left_region, modified_left, result)
-

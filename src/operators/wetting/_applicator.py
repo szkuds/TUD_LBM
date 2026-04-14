@@ -62,8 +62,17 @@ def build_wetting_applicator(
         """
         for edge, perp_start_periodic, perp_end_periodic in _edges:
             gp = _apply_wetting_edge(
-                gp, edge, perp_start_periodic, perp_end_periodic,
-                _rho_l, _rho_v, phi_l, phi_r, d_rho_l, d_rho_r, _width,
+                gp,
+                edge,
+                perp_start_periodic,
+                perp_end_periodic,
+                _rho_l,
+                _rho_v,
+                phi_l,
+                phi_r,
+                d_rho_l,
+                d_rho_r,
+                _width,
             )
         return gp
 

@@ -131,7 +131,6 @@ class SimulationSetup(NamedTuple):
         return self.forces is not None and len(self.forces.specs) > 0
 
 
-
 # ── Main factory ─────────────────────────────────────────────────────
 
 
@@ -170,11 +169,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     bc_masks = build_bc_masks(tuple(config.grid_shape))
 
     # Build multiphase params if applicable (multiphase runs with optional wetting)
-    mp_params = (
-        build_multiphase_params(config)
-        if config.sim_type == "multiphase"
-        else None
-    )
+    mp_params = build_multiphase_params(config) if config.sim_type == "multiphase" else None
 
     # Build force specs
     force_setup = build_forces(config, tuple(config.grid_shape), lattice)

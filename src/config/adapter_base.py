@@ -36,8 +36,7 @@ class ConfigAdapter(ABC):
     def build_sections(cls, config: SimulationConfig) -> dict[str, Any]:
         """Build a format-agnostic nested dict from *config*, routed by CONFIG_SECTION metadata."""
         sections = {
-            f.name: f.metadata.get(CONFIG_SECTION, "simulation_type")
-            for f in dataclasses.fields(SimulationConfig)
+            f.name: f.metadata.get(CONFIG_SECTION, "simulation_type") for f in dataclasses.fields(SimulationConfig)
         }
         sim_type = config.sim_type
         skip = {"identity", "extra"}
@@ -55,8 +54,11 @@ class ConfigAdapter(ABC):
         for ek, ev in (config.extra or {}).items():
             buckets["simulation_type"][ek] = cls._serialize_safe(ev)
 
-        return {"simulation_type": buckets.pop("simulation_type", {}),
-                **{k: buckets[k] for k in sorted(buckets) if buckets[k]}}
+        return {
+            "simulation_type": buckets.pop("simulation_type", {}),
+            **{k: buckets[k] for k in sorted(buckets) if buckets[k]},
+        }
+
 
 _ADAPTER_MAP: dict[str, str] = {
     ".toml": "config.adapter_toml.TomlAdapter",
