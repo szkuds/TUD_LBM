@@ -27,11 +27,11 @@ Usage::
 """
 
 from __future__ import annotations
+import jax.numpy as jnp
 from operators.force import compute_total_force_ext
 from operators.wetting import build_wetting_fn
 from registry import update_timestep_operator
 from state.state import State
-import jax.numpy as jnp
 
 # ── Step functions ───────────────────────────────────────────────────
 
@@ -113,7 +113,7 @@ def _make_wetting_differential_ops(setup, wetting_state):
         each ``(grid) → result``.
     """
     # Extract live wetting parameters from the state
-    _resolve_wetting_fields = build_wetting_fn('resolve_wetting_fields')
+    _resolve_wetting_fields = build_wetting_fn("resolve_wetting_fields")
     phi_l, phi_r, d_rho_l, d_rho_r = _resolve_wetting_fields(
         {
             "phi_l": wetting_state.phi_left,
@@ -216,7 +216,7 @@ def step_multiphase(setup, state: State) -> State:
     )
 
     # 7. Hysteresis update (if applicable)
-    _update_wetting_state = build_wetting_fn('hysteresis')
+    _update_wetting_state = build_wetting_fn("hysteresis")
     new_wetting = new_state.wetting
     if (new_state.wetting is not None
             and setup.config.wetting_config is not None

@@ -6,7 +6,6 @@ average of the cardinal and two diagonal neighbours (D2Q9 weights).
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
 
 # Stencil weights for ghost-cell reconstruction (Lattice, D2Q9)
@@ -58,9 +57,8 @@ def _reconstruct_ghost_row(
 
     # End corner (index -1)
     end_wrap = arr[0, int_col] if wrap_end else arr[-2, int_col]
-    arr = arr.at[-1, ghost_idx].set(
+    return arr.at[-1, ghost_idx].set(
         (_W_CARDINAL * arr[-1, int_col] + _W_DIAGONAL * (arr[-2, int_col] + end_wrap)) / _W_TOTAL
     )
 
-    return arr
 

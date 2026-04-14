@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 
 def _build_init_kwargs(
-    setup: "SimulationSetup",
+    setup: SimulationSetup,
     init_type: str,
     caller_kwargs: dict | None,
 ) -> dict:

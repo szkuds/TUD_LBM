@@ -6,7 +6,6 @@ relationships.
 
 from __future__ import annotations
 
-
 # Maps each wetting edge to its two perpendicular edges (start, end along wall).
 _PERPENDICULAR = {
     "bottom": ("left", "right"),

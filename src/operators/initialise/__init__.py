@@ -21,8 +21,8 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from operators._loader import auto_load_operators
 from operators.factory import build_operator
-from operators.protocols import InitialiserOperator
 from operators.initialise._kwargs import _build_init_kwargs
+from operators.protocols import InitialiserOperator
 
 if TYPE_CHECKING:
     from config.simulation_config import SimulationSetup
@@ -59,7 +59,7 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
 
 
 def build_f(
-    setup: "SimulationSetup",
+    setup: SimulationSetup,
     init_kwargs: dict | None = None,
 ) -> jnp.ndarray:
     """Build the initial population distribution *f* for *setup*.
@@ -89,4 +89,4 @@ def build_f(
     return init_fn(nx, ny, setup.lattice, **kw)
 
 
-__all__ = ["build_initialise_fn", "build_f"]
+__all__ = ["build_f", "build_initialise_fn"]

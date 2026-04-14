@@ -1,14 +1,15 @@
 """Private helper: extra pytree leaves from registered force specs and wetting."""
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
+from typing import Any
 import jax.numpy as jnp
-from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from setup.simulation_setup import SimulationSetup
 
 
-def _build_extra_state(setup: "SimulationSetup") -> dict[str, Any]:
+def _build_extra_state(setup: SimulationSetup) -> dict[str, Any]:
     """Collect extra State fields initialised by registered force specs and wetting.
 
     Some force implementations define additional fields that must be

@@ -85,7 +85,8 @@ def init_state(
         A :class:`State` ready to be passed to :func:`run`.
     """
     from operators.initialise import build_f
-    from state import build_optional_fields, build_extra_state
+    from state import build_extra_state
+    from state import build_optional_fields
 
     lattice = setup.lattice
     nx, ny = setup.grid_shape[0], setup.grid_shape[1]

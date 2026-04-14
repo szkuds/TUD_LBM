@@ -139,11 +139,11 @@ class TestGetAdapter:
         assert isinstance(adapter, TomlAdapter)
 
     def test_unsupported_extension_raises(self):
-        with pytest.raises(ValueError, match="Unsupported extension '.yaml'. Supported: .toml"):
+        with pytest.raises(ValueError, match=r"Unsupported extension '\.yaml'\. Supported: .toml"):
             get_adapter("app_setup.yaml")
 
     def test_no_extension_raises(self):
-        with pytest.raises(ValueError, match="Unsupported extension ''. Supported: .toml"):
+        with pytest.raises(ValueError, match=r"Unsupported extension ''. Supported: .toml"):
             get_adapter("app_setup")
 
 

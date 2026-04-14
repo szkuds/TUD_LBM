@@ -4,9 +4,7 @@ Supports scalar and per-chemical-step layouts.
 """
 
 from __future__ import annotations
-
 from typing import Any
-
 from registry import wetting_operator
 
 

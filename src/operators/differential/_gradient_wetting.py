@@ -47,7 +47,7 @@ def build_wetting_gradient(
         ``grad(grid, phi_l, phi_r, d_rho_l, d_rho_r) → (nx,ny,1,2)``
     """
     _pad_mode = tuple(pad_mode)
-    _build_wetting_applicator = build_wetting_fn('applicator')
+    _build_wetting_applicator = build_wetting_fn("applicator")
     _apply_wetting = _build_wetting_applicator(rho_l, rho_v, width, bc_config)
 
     def _grad(

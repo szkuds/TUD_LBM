@@ -4,19 +4,14 @@ Tests for :func:`runner.step.step_multiphase` and the dynamic
 wetting parameter injection via :func:`_make_wetting_shims`.
 """
 
-from functools import partial
-import jax
 import jax.numpy as jnp
-import numpy as np
-import pytest
-
-from config.simulation_config import SimulationConfig
 from config.adapter_toml import TomlAdapter
+from config.simulation_config import SimulationConfig
 from runner.run import init_state
-from runner.step import step_multiphase, _make_wetting_differential_ops
+from runner.step import _make_wetting_differential_ops
+from runner.step import step_multiphase
 from setup.simulation_setup import build_setup
 from state.state import WettingState
-
 
 NX, NY = 16, 16
 
@@ -204,10 +199,6 @@ class TestStepWetting:
         """step_multiphase with hysteresis should update wetting parameters."""
         setup = _wetting_setup()
         state = init_state(setup)
-
-        # Initial wetting parameters
-        initial_phi_l = state.wetting.phi_left
-        initial_d_rho_l = state.wetting.d_rho_left
 
         # Run one step
         new_state = step_multiphase(setup, state)

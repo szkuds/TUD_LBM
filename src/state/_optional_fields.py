@@ -1,15 +1,15 @@
 """Private helper: optional force fields for the simulation State."""
 
 from __future__ import annotations
-import jax.numpy as jnp
 from typing import TYPE_CHECKING
+import jax.numpy as jnp
 
 if TYPE_CHECKING:
     from setup.simulation_setup import SimulationSetup
 
 
 def _build_optional_fields(
-    setup: "SimulationSetup",
+    setup: SimulationSetup,
     nx: int,
     ny: int,
     d: int,
