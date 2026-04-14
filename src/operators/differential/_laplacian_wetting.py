@@ -10,9 +10,9 @@ The base ``_laplacian`` module has zero knowledge of wetting.
 from __future__ import annotations
 import jax.numpy as jnp
 from operators.differential._laplacian import lap_core
-from operators.differential._pad_utils import apply_stencil_padding
+from operators.differential._pad_utils import _apply_stencil_padding
 from operators.differential._pad_utils import to_2d
-from operators.wetting.wetting_util import build_wetting_applicator
+from operators.wetting import build_wetting_fn
 from registry import register_operator
 
 
@@ -44,7 +44,8 @@ def build_wetting_laplacian(
         ``lap(grid, phi_l, phi_r, d_rho_l, d_rho_r) → (nx, ny, 1, 1)``
     """
     _pad_mode = tuple(pad_mode)
-    _apply_wetting = build_wetting_applicator(rho_l, rho_v, width, bc_config)
+    _build_wetting_applicator = build_wetting_fn('applicator')
+    _apply_wetting = _build_wetting_applicator(rho_l, rho_v, width, bc_config)
 
     def _lap(
         grid: jnp.ndarray,
@@ -66,7 +67,7 @@ def build_wetting_laplacian(
             Laplacian field, shape ``(nx, ny, 1, 1)``.
         """
         grid_2d = to_2d(grid)
-        gp = apply_stencil_padding(grid_2d, _pad_mode)
+        gp = _apply_stencil_padding(grid_2d, _pad_mode)
 
         # Wetting ghost-cell correction on the padded array
         # (rho_l, rho_v, width now baked into the applicator)

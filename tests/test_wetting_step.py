@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from config.simulation_config import SimulationConfig
+from config.adapter_toml import TomlAdapter
 from runner.run import init_state
 from runner.step import step_multiphase, _make_wetting_differential_ops
 from setup.simulation_setup import build_setup
@@ -270,4 +271,22 @@ class TestStepWetting:
         assert new_state_h.f.shape == state_h.f.shape
 
 
+class TestComplexConfig:
+    """Integration test for config_complex.toml workflow."""
 
+    def test_complex_config(self):
+        """Test complex config with wetting_hysteresis."""
+        adapter = TomlAdapter()
+        cfg = adapter.load("examples/config_complex.toml")
+        assert cfg.sim_type is not None
+
+        setup = build_setup(cfg)
+        assert callable(setup.step_fn)
+
+        state = init_state(setup)
+        assert state.f.shape is not None
+
+        for i in range(1, 4):
+            new_state = setup.step(state)
+            assert int(new_state.t) == i
+            state = new_state

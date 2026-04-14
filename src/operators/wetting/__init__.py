@@ -1,24 +1,52 @@
-"""Wetting and hysteresis operators — pure functions.
+"""Wetting and hysteresis operators — implementations of wetting protocols.
 
-Provides JAX-compatible pure-function equivalents of the legacy
-:class:`~simulation_operators.wetting.ContactAngle`,
-:class:`~simulation_operators.wetting.ContactLineLocation`, and
-the hysteresis optimisation from
-:class:`~update_timestep.UpdateMultiphaseHysteresis`.
+Public API: build_wetting_fn()
+
+Implementation modules (_contact_angle.py, _contact_line.py, hysteresis.py)
+are internal; use the factory to access.
+
+Utility helpers (build_wetting_applicator, resolve_wetting_fields) and the
+WettingParams data class are re-exported for convenience.
+
+Example:
+    from operators.wetting import build_wetting_fn
+
+    contact_angle_fn = build_wetting_fn("contact_angle")
+    ca_left, ca_right = contact_angle_fn(rho, rho_mean)
 """
 
-from operators.wetting.contact_angle import compute_contact_angle
-from operators.wetting.contact_line import compute_contact_line_location
+from __future__ import annotations
+from operators._loader import auto_load_operators
+from operators.factory import build_operator
 from operators.wetting.hysteresis import WettingParams
-from operators.wetting.hysteresis import update_wetting_state
-from operators.wetting.wetting_util import build_wetting_applicator
-from operators.wetting.wetting_util import resolve_wetting_fields
+
+# Auto-discover and import private operator modules for registry registration
+auto_load_operators("operators.wetting")
+
+
+def build_wetting_fn(scheme: str = "contact_angle"):
+    """Return a wetting operator looked up from the registry.
+
+    Args:
+        scheme: Wetting operator name ("contact_angle",
+                "contact_line_location", "hysteresis", or others).
+                Defaults to "contact_angle".
+
+    Returns:
+        A callable registered under the "wetting" kind.
+
+    Raises:
+        ValueError: If scheme is not registered.
+
+    Examples:
+        >>> from operators.wetting import build_wetting_fn
+        >>> ca_fn = build_wetting_fn("contact_angle")
+        >>> ca_left, ca_right = ca_fn(rho, rho_mean)
+    """
+    return build_operator("wetting", scheme)
+
 
 __all__ = [
-    "WettingParams",
-    "build_wetting_applicator",
-    "compute_contact_angle",
-    "compute_contact_line_location",
-    "resolve_wetting_fields",
-    "update_wetting_state",
+    "build_wetting_fn",
+    "WettingParams",           # Data class for optimisation params
 ]

@@ -16,7 +16,7 @@ import jax.numpy as jnp
 from registry import get_operators
 
 
-def apply_stencil_padding(
+def _apply_stencil_padding(
     grid_2d: jnp.ndarray,
     pad_mode: tuple[str, ...],
 ) -> jnp.ndarray:

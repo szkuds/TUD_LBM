@@ -30,8 +30,8 @@ from __future__ import annotations
 from typing import NamedTuple
 import jax
 import jax.numpy as jnp
-from operators.wetting.contact_angle import compute_contact_angle
-from operators.wetting.contact_line import compute_contact_line_location
+from operators.wetting._contact_angle import compute_contact_angle
+from operators.wetting._contact_line import compute_contact_line_location
 from registry import wetting_operator
 from state.state import WettingState
 

@@ -22,7 +22,7 @@ close over it to get a jittable closure.
 
 from __future__ import annotations
 import jax.numpy as jnp
-from operators.differential._pad_utils import apply_stencil_padding
+from operators.differential._pad_utils import _apply_stencil_padding
 from operators.differential._pad_utils import to_2d
 from registry import register_operator
 
@@ -52,7 +52,7 @@ def compute_gradient(
     Returns:
         Gradient field, shape ``(nx, ny, 1, 2)``.
     """
-    gp = apply_stencil_padding(to_2d(grid), tuple(pad_mode))
+    gp = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
     return grad_core(gp, w, c)
 
 

@@ -14,7 +14,7 @@ lattice (``c_s^2 = 1/3``).
 
 from __future__ import annotations
 import jax.numpy as jnp
-from operators.differential._pad_utils import apply_stencil_padding
+from operators.differential._pad_utils import _apply_stencil_padding
 from operators.differential._pad_utils import to_2d
 from registry import register_operator
 
@@ -42,7 +42,7 @@ def compute_laplacian(
     Returns:
         Laplacian field, shape ``(nx, ny, 1, 1)``.
     """
-    gp = apply_stencil_padding(to_2d(grid), tuple(pad_mode))
+    gp = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
     return lap_core(gp, w)
 
 
