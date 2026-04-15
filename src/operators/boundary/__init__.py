@@ -17,7 +17,6 @@ from collections.abc import Callable
 from typing import Any
 from typing import NamedTuple
 import jax.numpy as jnp
-
 # Ensure BC modules are imported so decorators fire
 from operators.boundary import _bounce_back as _bb  # noqa: F401
 from operators.boundary import _periodic as _per  # noqa: F401
