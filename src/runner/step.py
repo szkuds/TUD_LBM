@@ -15,89 +15,71 @@ Design
   compile-time constant.
 * ``state`` (:class:`~state.state.State`) is the scan carry — a pure
   pytree of JAX arrays.
-* All operators are resolved from the ``operators/`` package at
-  trace time — no legacy class instances are used.
+* All operators are prebuilt in :class:`~setup.simulation_setup.SimulationSetup`
+  at setup time, eliminating trace-time factory calls.
 
 Usage::
 
-    from runner.step import step_single_phase, get_step_fn
-    from runner.run import init_state
+    from runner.run import init_state, run
 
-    step_fn = get_step_fn(setup)
     state = init_state(setup)
-    new_state = step_fn(state)
+    final_state, trajectory = run(setup, state)
 """
 
 from __future__ import annotations
-from typing import Any
-from typing import cast
-from operators.boundary.composite import build_composite_bc
-from operators.collision import build_collision_fn
-from operators.equilibrium import build_equilibrium_fn
-from operators.force.source_term import source as compute_source
-from operators.macroscopic import build_macroscopic_fn
-from operators.streaming import build_streaming_fn
-from operators.wetting.hysteresis import update_wetting_state
+import jax.numpy as jnp
+from operators.force import compute_total_force_ext
+from operators.wetting import build_wetting_fn
+from registry import update_timestep_operator
 from state.state import State
 
 # ── Step functions ───────────────────────────────────────────────────
 
 
-def _compute_total_force_ext(setup, state: State, streaming_fn):
-    """Compute the summed external force contribution and update stateful hooks."""
-    total_force = state.force_ext
+def _apply_common_step(
+    setup,
+    state: State,
+    rho,
+    u,
+    force_tot,
+    gradient_density=None,
+) -> State:
+    """Apply equilibrium → collision (+source) → streaming → BCs.
 
-    if not getattr(setup, "forces", ()):
-        return total_force, state
-
-    for spec in setup.forces:
-        contribution = spec.compute_fn(state, spec.precomputed, diff_ops=setup.diff_ops)
-        total_force = contribution if total_force is None else total_force + contribution
-        state = spec.update_state_fn(state, spec.precomputed, setup.lattice, streaming_fn)
-
-    return total_force, state
-
-
-def step_single_phase(setup, state: State) -> State:
-    """Single-phase LBM step using pure-function operators.
+    Called by both step_single_phase and step_multiphase after macroscopic
+    fields have been computed. Returns the updated State with f, rho, u replaced.
 
     Args:
         setup: Closed-over :class:`~setup.simulation_setup.SimulationSetup`.
         state: Current :class:`~state.state.State`.
+        rho: Density field, shape ``(nx, ny, 1, 1)``.
+        u: Velocity field, shape ``(nx, ny, 1, 2)``.
+        force_tot: Total force or None.
+        gradient_density: Optional wetting-corrected density gradient closure.
+            If None, uses setup.gradient_density.
 
     Returns:
-        Updated :class:`~state.state.State` after one time step.
+        Updated :class:`~state.state.State` with f, rho, u, t updated.
     """
     lattice = setup.lattice
-    collision_fn = build_collision_fn(setup.collision_scheme)
-    equilibrium_fn = build_equilibrium_fn("wb")  # Default to weakly-compressible
-    streaming_fn = build_streaming_fn("standard")
-    macroscopic_fn = build_macroscopic_fn("standard")  # Single-phase
-    bc_fn = build_composite_bc(setup.bc_config, lattice)
 
-    # 1. External forces
-    force_ext, state = _compute_total_force_ext(setup, state, streaming_fn)
+    # 3. Equilibrium
+    feq = setup.equilibrium_fn(rho, u, lattice)
 
-    # 2. Macroscopic fields
-    if force_ext is not None:
-        rho, u, force_tot = macroscopic_fn(state.f, lattice, force=force_ext)
-        # 2. Equilibrium
-        feq = equilibrium_fn(rho, u, lattice)
-        # 3. Source term + collision
-        src = compute_source(rho, u, force_tot, lattice, diff_ops=setup.diff_ops)
-        f_col = collision_fn(state.f, feq, setup.tau, src)
+    # 4. Collision (with or without source term)
+    if force_tot is not None and setup.forces is not None:
+        # Use provided gradient_density if available (for wetting), else use setup default
+        grad = gradient_density if gradient_density is not None else setup.gradient_density
+        src = setup.forces.source_term(rho, u, force_tot, lattice, gradient=grad)
+        f_col = setup.collision_fn(state.f, feq, setup.tau, src)
     else:
-        rho, u = macroscopic_fn(state.f, lattice)
-        # 2. Equilibrium
-        feq = equilibrium_fn(rho, u, lattice)
-        # 3. Collision (no source)
-        f_col = collision_fn(state.f, feq, setup.tau)
+        f_col = setup.collision_fn(state.f, feq, setup.tau)
 
-    # 4. Streaming
-    f_stream = streaming_fn(f_col, lattice)
+    # 5. Streaming
+    f_stream = setup.streaming_fn(f_col, lattice)
 
-    # 5. Boundary conditions
-    f_bc = bc_fn(f_stream, f_col, setup.bc_masks)
+    # 6. Boundary conditions
+    f_bc = setup.bc_fn(f_stream, f_col, setup.bc_masks)
 
     return state._replace(
         f=f_bc,
@@ -107,12 +89,84 @@ def step_single_phase(setup, state: State) -> State:
     )
 
 
-def step_multiphase(setup, state: State) -> State:
-    """Multiphase LBM step using pure-function operators.
+def _make_wetting_differential_ops(setup, wetting_state):
+    """Build grid-only gradient and laplacian shims from live wetting params.
 
-    All differential-operator branching (wetting / no-wetting) is resolved
-    at setup time inside :class:`~operators.differential.operators.DifferentialOperators`.
-    This function contains **no** ``if wetting_enabled`` guards.
+    Extracts (phi_l, phi_r, d_rho_l, d_rho_r) from wetting_state,
+    closes over them together with setup.gradient_density / setup.laplacian_density
+    (the wetting-aware factory closures with baked static params), and returns
+    two callables each with the signature ``grid -> result`` expected by
+    :func:`~operators.macroscopic.compute_macroscopic_multiphase`.
+
+    Args:
+        setup: Closed-over :class:`~setup.simulation_setup.SimulationSetup`.
+        wetting_state: Current :class:`~state.state.WettingState`.
+
+    Returns:
+        ``(gradient_density_shim, laplacian_density_shim)`` — two callable wrappers,
+        each ``(grid) → result``.
+    """
+    # Extract live wetting parameters from the state
+    _resolve_wetting_fields = build_wetting_fn("resolve_wetting_fields")
+    phi_l, phi_r, d_rho_l, d_rho_r = _resolve_wetting_fields(
+        {
+            "phi_l": wetting_state.phi_left,
+            "phi_r": wetting_state.phi_right,
+            "d_rho_l": wetting_state.d_rho_left,
+            "d_rho_r": wetting_state.d_rho_right,
+        }
+    )
+
+    def gradient_density_shim(grid: jnp.ndarray) -> jnp.ndarray:
+        """Gradient shim that injects live wetting parameters."""
+        return setup.gradient_density(grid, phi_l, phi_r, d_rho_l, d_rho_r)
+
+    def laplacian_density_shim(grid: jnp.ndarray) -> jnp.ndarray:
+        """Laplacian shim that injects live wetting parameters."""
+        return setup.laplacian_density(grid, phi_l, phi_r, d_rho_l, d_rho_r)
+
+    return gradient_density_shim, laplacian_density_shim
+
+
+# ── Step functions ───────────────────────────────────────────────────
+
+
+@update_timestep_operator(name="single_phase")
+def step_single_phase(setup, state: State) -> State:
+    """Single-phase LBM step using prebuilt operator closures from setup.
+
+    Args:
+        setup: Closed-over :class:`~setup.simulation_setup.SimulationSetup`.
+        state: Current :class:`~state.state.State`.
+
+    Returns:
+        Updated :class:`~state.state.State` after one time step.
+    """
+    lattice = setup.lattice
+
+    # 1. External forces
+    force_ext, state = compute_total_force_ext(setup, state, setup.forces, setup.streaming_fn)
+
+    # 2. Macroscopic fields
+    if force_ext is not None:
+        rho, u, force_tot = setup.macroscopic_fn(state.f, lattice, force=force_ext)
+    else:
+        rho, u = setup.macroscopic_fn(state.f, lattice)
+        force_tot = None
+
+    # 3–6. Equilibrium → collision → streaming → BCs (shared)
+    return _apply_common_step(setup, state, rho, u, force_tot)
+
+
+@update_timestep_operator(name="multiphase")
+def step_multiphase(setup, state: State) -> State:
+    """Multiphase LBM step for both wetting and non-wetting simulations.
+
+    When wetting is not active (state.wetting is None), uses the prebuilt
+    gradient_density and laplacian_density closures from setup.
+
+    When wetting is active (state.wetting is not None), builds wetting shims
+    that inject live wetting parameters into the density operators at each step.
 
     Args:
         setup: Closed-over :class:`~setup.simulation_setup.SimulationSetup`.
@@ -123,75 +177,50 @@ def step_multiphase(setup, state: State) -> State:
     """
     lattice = setup.lattice
     mp = setup.multiphase_params
-    diff_ops = setup.diff_ops
-    collision_fn = build_collision_fn(setup.collision_scheme)
-    equilibrium_fn = build_equilibrium_fn()
-    streaming_fn = build_streaming_fn()
-    macroscopic_fn = build_macroscopic_fn(setup.multiphase_params.eos)  # Multiphase uses double-well
-    bc_fn = build_composite_bc(setup.bc_config, lattice)
 
-    # 1. Multiphase macroscopic (includes chemical potential, gradient, Laplacian)
-    force_ext, state = _compute_total_force_ext(setup, state, streaming_fn)
+    # 1. External forces
+    force_ext, state = compute_total_force_ext(setup, state, setup.forces, setup.streaming_fn)
 
-    rho, u, force_tot = cast("Any", macroscopic_fn)(
+    # 1.1. Resolve density operators (wetting shims if applicable)
+    # Wetting shims should only be applied if BOTH the state has wetting AND setup was built with wetting config
+    if state.wetting is not None and setup.config.wetting_config is not None:
+        gradient_density, laplacian_density = _make_wetting_differential_ops(setup, state.wetting)
+    else:
+        gradient_density = setup.gradient_density
+        laplacian_density = setup.laplacian_density
+
+    # 2. Multiphase macroscopic (chemical potential force, wetting-corrected operators)
+    rho, u, force_tot = setup.macroscopic_fn(
         state.f,
         lattice,
         mp,
         force_ext,
-        diff_ops=diff_ops,  # type: ignore[call-arg]
+        gradient_standard=setup.gradient_standard,
+        laplacian_density=laplacian_density,
     )
 
-    # 2. Equilibrium
-    feq = equilibrium_fn(rho, u, lattice)
+    # 3–6. Shared pipeline (equilibrium → collision (+source with grad_density) → streaming → BCs)
+    new_state = _apply_common_step(setup, state, rho, u, force_tot, gradient_density=gradient_density)
 
-    # 3. Source term + collision
-    src = compute_source(rho, u, force_tot, lattice, diff_ops=diff_ops)
-    f_col = collision_fn(state.f, feq, setup.tau, src)
-
-    # 4. Streaming
-    f_stream = streaming_fn(f_col, lattice)
-
-    # 5. Boundary conditions
-    f_bc = bc_fn(f_stream, f_col, setup.bc_masks)
-
-    # 6. Wetting / hysteresis state update (if enabled)
-    new_wetting = state.wetting
-    if state.wetting is not None and setup.hysteresis_config is not None:
-        new_wetting = update_wetting_state(
-            state.wetting,
+    # 7. Hysteresis update (if applicable)
+    _update_wetting_state = build_wetting_fn("hysteresis")
+    new_wetting = new_state.wetting
+    if (
+        new_state.wetting is not None
+        and setup.config.wetting_config is not None
+        and setup.config.hysteresis_config is not None
+    ):
+        new_wetting = _update_wetting_state(
+            new_state.wetting,
             rho,
             setup,
-            f_bc,
+            new_state.f,
             force_tot,
+            gradient_density=gradient_density,
+            laplacian_density=laplacian_density,
         )
 
-    return state._replace(
-        f=f_bc,
-        rho=rho,
-        u=u,
+    return new_state._replace(
         force=force_tot,
-        t=state.t + 1,
         wetting=new_wetting,
     )
-
-
-def get_step_fn(setup):
-    """Return the appropriate step function with *setup* closed over.
-
-    Args:
-        setup: :class:`~setup.simulation_setup.SimulationSetup`.
-
-    Returns:
-        A callable ``step_fn(state) → state``.
-    """
-    if setup.multiphase_params is not None:
-
-        def _step(state: State) -> State:
-            return step_multiphase(setup, state)
-
-    else:
-
-        def _step(state: State) -> State:
-            return step_single_phase(setup, state)
-
-    return _step

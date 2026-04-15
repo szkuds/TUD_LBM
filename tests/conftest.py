@@ -3,6 +3,17 @@ import sys
 import pytest
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _register_step_operators():
+    """Auto-register step operators for all tests.
+
+    This fixture ensures that the runner modules are imported
+    early, so their @update_timestep_operator decorators fire and
+    register the step operators.
+    """
+    from runner import step as _  # noqa: F401
+
+
 @pytest.fixture
 def mock_optax_missing(monkeypatch):
     """Fixture: Simulate optax package not being installed.

@@ -1,119 +1,125 @@
-"""Differential operators — gradient, Laplacian, and wetting-aware variants.
+"""Differential operators — composite builder and primitives.
 
-Public API:
-    build_differential_fn(scheme)           — single operator lookup
-    build_differential_operators(cfg)       — composite builder for simulation setup
+Public API: build_diff_ops()
 
-Implementation modules (_gradient.py, _laplacian.py, _gradient_wetting.py)
-are internal.  Auto-discovered by the loader; no hardcoded import list.
+Implementation modules are internal; use the factory to access.
 
 Example:
-    from operators.differential import build_differential_fn
+    from operators.differential import build_diff_ops
 
-    grad_fn = build_differential_fn("gradient")
-    result  = grad_fn(grid, w, c, pad_mode)
+    gradient_standard, gradient, laplacian = build_diff_ops(config, mp_params, lattice)
 """
 
 from __future__ import annotations
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+import jax.numpy as jnp
 from operators._loader import auto_load_operators
-from operators.differential.config import DifferentialConfig
-from operators.differential.operators import DifferentialOperators
 from operators.factory import build_operator
 from operators.protocols import DifferentialOperator
 
-# Auto-discover _gradient.py, _laplacian.py, _gradient_wetting.py
-# to trigger their @register_operator decorators.
+if TYPE_CHECKING:
+    from config.simulation_config import SimulationConfig
+    from operators.macroscopic import MultiphaseParams
+    from setup.lattice import Lattice
+
+# Auto-discover and import private operator modules for registry registration.
 auto_load_operators("operators.differential")
 
 
 def build_differential_fn(scheme: str) -> DifferentialOperator:
-    """Return a differential operator by scheme name.
-
-    Delegates to the central ``build_operator()`` factory.
+    """Return a differential operator satisfying DifferentialOperator protocol.
 
     Args:
-        scheme: ``"gradient"``, ``"laplacian"``, or ``"gradient_wetting"``.
+        scheme: Differential operator name.
 
     Returns:
-        The raw operator function / closure builder from the registry.
+        A callable satisfying the DifferentialOperator protocol.
 
     Raises:
         ValueError: If scheme is not registered.
-
-    Example:
-        >>> grad = build_differential_fn("gradient")
-        >>> result = grad(grid, w, c, pad_mode)
     """
     return build_operator("differential", scheme)
 
 
-def build_differential_operators(cfg: DifferentialConfig) -> DifferentialOperators:
-    """Build all pre-compiled differential operators from *cfg*.
+def build_diff_ops(
+    config: SimulationConfig,
+    mp_params: MultiphaseParams | None,
+    lattice: Lattice,
+) -> tuple[Callable, Callable, Callable]:
+    """Build gradient/laplacian closures, wetting-aware if applicable.
 
-    Called **once** at setup time.  Resolves base operators from the
-    registry via ``build_differential_fn``, binds config into closures so
-    every callable in the returned NamedTuple has signature
-    ``(grid) → array``, matching the ``DifferentialOperator`` protocol.
+    Ensures boundary-condition modules are imported so that their
+    ``@boundary_condition`` decorators have fired before we query
+    pad-edge-mode metadata.
 
-    ``grad_standard`` is always the pad-modes-only gradient, independent
-    of wetting.  ``grad_field`` is wetting-corrected when
-    ``cfg.wetting_enabled`` is ``True``, otherwise aliased to
-    ``grad_standard``.
+    The returned callables are **closures** that depend on how wetting is configured:
+
+    * **Non-wetting**: ``(gradient_standard, gradient_density, laplacian_density)``
+      each accept only ``(grid)`` and close over lattice/boundary data.
+    * **Wetting**: ``(gradient_standard, gradient_density, laplacian_density)`` are
+      all ``(grid) → result`` closures. For density operators, static parameters
+      (rho_l, rho_v, width) are baked in at build time, so the returned closures
+      accept only ``(grid, phi_l, phi_r, d_rho_l, d_rho_r)`` at runtime.
+      Live wetting parameters are injected at step time by :func:`step_multiphase`.
 
     Args:
-        cfg: A :class:`DifferentialConfig` with lattice weights,
-             velocities, pad modes, and optional wetting parameters.
+        config: Validated simulation configuration.
+        mp_params: Multiphase parameters (``None`` for single-phase).
+        lattice: The simulation :class:`Lattice` (weights, velocities).
 
     Returns:
-        :class:`DifferentialOperators` NamedTuple of
-        ``Callable[[jnp.ndarray], jnp.ndarray]``.
+        ``(gradient_standard, gradient_density, laplacian_density)`` — three
+        callable differential-operator closures.
     """
-    import jax
-    import jax.numpy as jnp
+    from operators.boundary import _bounce_back as _bb  # noqa: F401
+    from operators.boundary import _periodic as _per  # noqa: F401
+    from operators.boundary import _symmetry as _sym  # noqa: F401
+    from operators.differential._pad_utils import determine_pad_modes
 
-    pad = tuple(cfg.pad_modes)
+    # Standard gradient closure: (grid) → (nx, ny, 1, 2)
+    _gradient_raw = build_differential_fn("gradient")
 
-    # ── Base operators (always resolved from registry) ───────────
-    _gradient = build_differential_fn("gradient")
-    _laplacian = build_differential_fn("laplacian")
+    def gradient_standard(grid: jnp.ndarray) -> jnp.ndarray:
+        return _gradient_raw(grid, lattice.w, lattice.c, tuple(determine_pad_modes(config.bc_config)))
 
-    @jax.jit
-    def grad_standard(grid: jnp.ndarray) -> jnp.ndarray:
-        return _gradient(grid, cfg.w, cfg.c, pad)
-
-    @jax.jit
-    def laplacian(grid: jnp.ndarray) -> jnp.ndarray:
-        return _laplacian(grid, cfg.w, pad)
-
-    # ── Wetting branch ───────────────────────────────────────────
-    if cfg.wetting_enabled:
-        _wetting_builder = build_differential_fn("gradient_wetting")
-        _wetting_grad = _wetting_builder(cfg.w, cfg.c, pad, cfg.bc_config)
-
-        # Adapter: read dynamic wetting state from the mutable
-        # wetting_params dict so grad_field keeps the 1-arg contract.
-        ws = cfg.wetting_params
-
-        @jax.jit
-        def grad_field(grid: jnp.ndarray) -> jnp.ndarray:
-            return _wetting_grad(
-                grid,
-                ws["phi_l"],
-                ws["phi_r"],
-                ws["d_rho_l"],
-                ws["d_rho_r"],
-                ws["rho_l"],
-                ws["rho_v"],
-                ws["width"],
-            )
+    wetting_config = config.wetting_config
+    if wetting_config is not None and mp_params is not None:
+        # Wetting: build factories with rho_l, rho_v, width baked in.
+        # The returned closures have signature (grid, phi_l, phi_r, d_rho_l, d_rho_r) → result.
+        _gradient_wetting_factory = build_differential_fn("gradient_wetting")
+        _laplacian_wetting_factory = build_differential_fn("laplacian_wetting")
+        gradient_density = _gradient_wetting_factory(
+            lattice.w,
+            lattice.c,
+            tuple(determine_pad_modes(config.bc_config)),
+            config.bc_config,
+            rho_l=mp_params.rho_l,
+            rho_v=mp_params.rho_v,
+            width=config.interface_width,
+        )
+        laplacian_density = _laplacian_wetting_factory(
+            lattice.w,
+            tuple(determine_pad_modes(config.bc_config)),
+            config.bc_config,
+            rho_l=mp_params.rho_l,
+            rho_v=mp_params.rho_v,
+            width=config.interface_width,
+        )
     else:
-        grad_field = grad_standard  # same object, zero overhead
+        # Non-wetting: wrap the raw functions into single-argument grid→result closures
+        _laplacian_raw = build_differential_fn("laplacian")
 
-    return DifferentialOperators(
-        grad_standard=grad_standard,
-        grad_field=grad_field,
-        laplacian=laplacian,
-    )
+        def gradient_density(grid: jnp.ndarray) -> jnp.ndarray:
+            return _gradient_raw(grid, lattice.w, lattice.c, tuple(determine_pad_modes(config.bc_config)))
+
+        def laplacian_density(grid: jnp.ndarray) -> jnp.ndarray:
+            return _laplacian_raw(grid, lattice.w, tuple(determine_pad_modes(config.bc_config)))
+
+    return gradient_standard, gradient_density, laplacian_density
 
 
-__all__ = ["build_differential_fn", "build_differential_operators"]
+__all__ = [
+    "build_diff_ops",
+    "build_differential_fn",
+]

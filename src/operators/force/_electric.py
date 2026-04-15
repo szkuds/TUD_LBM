@@ -14,16 +14,16 @@ Usage::
     from operators.force import build_force_fn
 
     module = build_force_fn("electric_force")
-    params = module.build(config_dict, (64, 64))
-    force = module.compute(state, params, diff_ops=diff_ops)
+    params = module.build(config_dict, (64, 64), config, lattice)
+    force = module.compute(state, params)
     extra = module.init_state((64, 64), lattice, params)
     state = module.update_state(state, params, lattice, stream_fn)
 
     # Direct (internal / testing)
     from operators.force._electric import ElectricForceModule
 
-    params = ElectricForceModule.build(config_dict, (64, 64))
-    force = ElectricForceModule.compute(state, params, diff_ops=diff_ops)
+    params = ElectricForceModule.build(config_dict, (64, 64), config, lattice)
+    force = ElectricForceModule.compute(state, params)
 """
 
 from __future__ import annotations
@@ -41,8 +41,8 @@ from setup.lattice import Lattice
 class ElectricParams(NamedTuple):
     """Static parameters for the leaky-dielectric electric model.
 
-    All fields are Python scalars or pre-computed JAX arrays.  This
-    NamedTuple is a valid JAX pytree and can be stored inside
+    All fields are Python scalars, pre-computed JAX arrays, or callables.
+    This NamedTuple is a valid JAX pytree and can be stored inside
     :class:`~setup.simulation_setup.SimulationSetup`.
 
     Attributes:
@@ -53,6 +53,8 @@ class ElectricParams(NamedTuple):
         applied_voltage: Applied voltage across the domain (top - bottom).
         voltage_top: Potential at the top boundary.
         voltage_bottom: Potential at the bottom boundary.
+        gradient_standard: Closed-over gradient callable (grid) → (nx, ny, 1, 2),
+                          injected at build time from build_diff_ops.
     """
 
     permittivity_liquid: float
@@ -62,6 +64,7 @@ class ElectricParams(NamedTuple):
     applied_voltage: float = 0.0
     voltage_top: float = 0.0
     voltage_bottom: float = 0.0
+    gradient_standard: Callable | None = None
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -128,6 +131,8 @@ class ElectricForceModule:
     def build(
         params: dict,
         grid_shape: tuple[int, ...],
+        config,
+        lattice: Lattice,
     ) -> ElectricParams:
         """Build electric parameters (setup-time, non-jitted).
 
@@ -138,37 +143,38 @@ class ElectricForceModule:
                 Optional keys: ``applied_voltage``, ``voltage_top``,
                 ``voltage_bottom``.
             grid_shape: Spatial dimensions (unused, but required by protocol).
-            lattice: Simulation lattice (unused, but required by protocol).
+            config: Full simulation configuration (for pad-mode resolution).
+            lattice: Simulation lattice (weights and velocities for diff ops).
 
         Returns:
-            :class:`ElectricParams` NamedTuple (valid JAX pytree).
+            :class:`ElectricParams` NamedTuple with a closed-over gradient callable.
         """
-        return ElectricParams(**params)
+        from operators.differential import build_diff_ops
+
+        gradient_standard, _, _ = build_diff_ops(config, mp_params=None, lattice=lattice)
+        return ElectricParams(**params, gradient_standard=gradient_standard)
 
     @staticmethod
     def compute(
         state,
         precomputed: ElectricParams,
-        *,
-        diff_ops=None,
+        **kwargs,
     ) -> jnp.ndarray:
         """Compute electric force (step-time, jittable).
 
         Reads ``state.f`` for density and ``state.h`` for the current
-        electric potential distribution.  Uses the pre-built differential
-        operators from the differential package for spatial gradients.
+        electric potential distribution.  Uses the pre-built gradient
+        closure stored in ``precomputed.gradient_standard``.
 
         Args:
             state: Current simulation :class:`State`.
             precomputed: :class:`ElectricParams` from :meth:`build`.
-            diff_ops: Pre-built
-                :class:`~operators.differential.operators.DifferentialOperators`.
-                ``diff_ops.grad_standard`` is used for all gradient
-                computations.
 
         Returns:
             Electric force field, shape ``(nx, ny, 1, 2)``.
         """
+        grad = precomputed.gradient_standard
+
         rho_2d = jnp.sum(state.f, axis=2)[:, :, 0]
         epsilon_2d = _rho_to_phi(
             rho_2d,
@@ -178,23 +184,23 @@ class ElectricForceModule:
 
         potential_2d = jnp.sum(state.h, axis=2)[:, :, 0]
 
-        # Gradient of potential → electric field  (via differential package)
-        grad_potential = diff_ops.grad_standard(potential_2d[:, :, None, None])
+        # Gradient of potential → electric field
+        grad_potential = grad(potential_2d[:, :, None, None])
         du_dx = grad_potential[:, :, 0, 0]
         du_dy = grad_potential[:, :, 0, 1]
         ex = -du_dx
         ey = -du_dy
 
         # Gradient of permittivity
-        grad_eps = diff_ops.grad_standard(epsilon_2d[:, :, None, None])
+        grad_eps = grad(epsilon_2d[:, :, None, None])
         deps_dx = grad_eps[:, :, 0, 0]
         deps_dy = grad_eps[:, :, 0, 1]
 
         # Divergence of (epsilon * E):  d(eps*ex)/dx + d(eps*ey)/dy
         eps_ex = epsilon_2d * ex
         eps_ey = epsilon_2d * ey
-        grad_eps_ex = diff_ops.grad_standard(eps_ex[:, :, None, None])
-        grad_eps_ey = diff_ops.grad_standard(eps_ey[:, :, None, None])
+        grad_eps_ex = grad(eps_ex[:, :, None, None])
+        grad_eps_ey = grad(eps_ey[:, :, None, None])
         d_eps_ex_dx = grad_eps_ex[:, :, 0, 0]
         d_eps_ey_dy = grad_eps_ey[:, :, 0, 1]
         rho_e = -(d_eps_ex_dx + d_eps_ey_dy)

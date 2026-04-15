@@ -47,5 +47,5 @@ def build_collision_fn(scheme: str) -> CollisionOperator:
 
 
 __all__ = [
-    "build_collision_fn",  # ← Primary API (use this!)
+    "build_collision_fn",
 ]

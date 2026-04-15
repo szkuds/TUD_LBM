@@ -117,12 +117,15 @@ class TomlAdapter(ConfigAdapter):
         if "grid_shape" in sim_table:
             sim_table["grid_shape"] = tuple(sim_table["grid_shape"])
 
-        # ── Merge [multiphase] table ─────────────────────────────────
+        # ── Validate and process sim_type ────────────────────────────
+        valid_types = ("single_phase", "multiphase")
+        if sim_type not in valid_types:
+            raise ValueError(f"Unknown simulation type '{sim_type}'. Expected one of: {', '.join(valid_types)}.")
+
+        # ── Merge [multiphase] table (for multiphase simulations) ────
         if sim_type == "multiphase":
             multiphase_table = raw.get("multiphase", {})
             sim_table.update(multiphase_table)
-        elif sim_type != "single_phase":
-            raise ValueError(f"Unknown simulation type '{sim_type}'. Expected 'single_phase' or 'multiphase'.")
 
         # ── [boundary_conditions] (optional) ─────────────────────────
         bc_config = raw.get("boundary_conditions")

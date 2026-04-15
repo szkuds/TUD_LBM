@@ -11,7 +11,7 @@ Tests for:
     - ``operators.boundary.bounce_back.apply_bounce_back``
     - ``operators.boundary.symmetry.apply_symmetry``
     - ``operators.boundary.periodic.apply_periodic``
-    - ``operators.boundary.composite.build_composite_bc``
+    - ``operators.boundary.composite.build_bc``
 
 Each operator is verified to be jittable on an 8×8 (or 16×16) grid
 without any class instance.
@@ -393,7 +393,7 @@ class TestComputeMacroscopicMultiphase:
     """``compute_macroscopic_multiphase`` returns (rho, u_eq, force)."""
 
     def _mp_params(self):
-        from setup.simulation_setup import MultiphaseParams
+        from operators.macroscopic import MultiphaseParams
 
         return MultiphaseParams(
             eos="double-well",
@@ -403,29 +403,39 @@ class TestComputeMacroscopicMultiphase:
             interface_width=4,
         )
 
-    def _diff_ops(self, lattice):
-        from operators.differential import build_differential_operators
-        from operators.differential.config import DifferentialConfig
+    def _gradient_and_laplacian(self, lattice):
+        """Build gradient and laplacian_wetting callables."""
+        import jax
+        from operators.differential import build_differential_fn
 
-        cfg = DifferentialConfig(
-            w=lattice.w,
-            c=lattice.c,
-            pad_modes=["wrap", "wrap", "wrap", "wrap"],
-        )
-        return build_differential_operators(cfg)
+        pad_modes = ("wrap", "wrap", "wrap", "wrap")
+
+        _gradient = build_differential_fn("gradient")
+        _laplacian = build_differential_fn("laplacian")
+
+        @jax.jit
+        def gradient_standard(grid):
+            return _gradient(grid, lattice.w, lattice.c, pad_modes)
+
+        @jax.jit
+        def laplacian_field(grid):
+            return _laplacian(grid, lattice.w, pad_modes)
+
+        return gradient_standard, laplacian_field
 
     def test_returns_triple(self, lattice):
         from operators.macroscopic._multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
-        diff_ops = self._diff_ops(lattice)
+        gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
         f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
 
         rho, u_eq, force_total = compute_macroscopic_multiphase(
             f,
             lattice,
             mp,
-            diff_ops=diff_ops,
+            gradient_standard=gradient_standard,
+            laplacian_density=laplacian_field,
         )
 
         assert rho.shape == (16, 16, 1, 1)
@@ -437,7 +447,7 @@ class TestComputeMacroscopicMultiphase:
         from operators.macroscopic._multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
-        diff_ops = self._diff_ops(lattice)
+        gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
         # Uniform density = rho_l
         rho_0 = mp.rho_l
         f = jnp.ones((16, 16, 9, 1)) * (rho_0 / 9.0)
@@ -446,7 +456,8 @@ class TestComputeMacroscopicMultiphase:
             f,
             lattice,
             mp,
-            diff_ops=diff_ops,
+            gradient_standard=gradient_standard,
+            laplacian_density=laplacian_field,
         )
 
         # Interaction force should be ~0 for uniform field (gradients vanish)
@@ -456,7 +467,7 @@ class TestComputeMacroscopicMultiphase:
         from operators.macroscopic._multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
-        diff_ops = self._diff_ops(lattice)
+        gradient_standard, laplacian = self._gradient_and_laplacian(lattice)
         f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
 
         jitted_mp = jax.jit(
@@ -464,7 +475,8 @@ class TestComputeMacroscopicMultiphase:
                 compute_macroscopic_multiphase,
                 lattice=lattice,
                 mp=mp,
-                diff_ops=diff_ops,
+                gradient_standard=gradient_standard,
+                laplacian_density=laplacian,
             ),
         )
         rho, _u_eq, _force = jitted_mp(f)
@@ -474,7 +486,7 @@ class TestComputeMacroscopicMultiphase:
         from operators.macroscopic._multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
-        diff_ops = self._diff_ops(lattice)
+        gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
         f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
         force_ext = jnp.ones((16, 16, 1, 2)) * 0.001
 
@@ -483,7 +495,8 @@ class TestComputeMacroscopicMultiphase:
             lattice,
             mp,
             force_ext=force_ext,
-            diff_ops=diff_ops,
+            gradient_standard=gradient_standard,
+            laplacian_density=laplacian_field,
         )
 
         # Force total should include the external contribution
@@ -637,83 +650,6 @@ class TestApplyPeriodic:
 
 
 # =====================================================================
-# Boundary — composite
-# =====================================================================
-
-
-class TestBuildCompositeBC:
-    """``build_composite_bc`` chains per-edge BC functions."""
-
-    def test_all_periodic(self, lattice):
-        from operators.boundary.composite import build_composite_bc
-
-        bc_fn = build_composite_bc(None, lattice)
-
-        key = jax.random.PRNGKey(30)
-        f = jax.random.uniform(key, (NX, NY, 9, 1))
-
-        # All periodic → identity
-        f_out = bc_fn(f, f, None)
-        np.testing.assert_array_equal(np.array(f_out), np.array(f))
-
-    def test_bounce_back_bottom(self, lattice):
-        from operators.boundary.composite import build_composite_bc
-
-        bc_config = {
-            "top": "periodic",
-            "bottom": "bounce-back",
-            "left": "periodic",
-            "right": "periodic",
-        }
-        bc_fn = build_composite_bc(bc_config, lattice)
-
-        key = jax.random.PRNGKey(31)
-        f_s = jax.random.uniform(key, (NX, NY, 9, 1))
-        f_c = jax.random.uniform(key, (NX, NY, 9, 1)) * 2.0
-
-        f_out = bc_fn(f_s, f_c, None)
-
-        # Bottom row should have bounce-back applied
-        opp = np.array(lattice.opp_indices)
-        for idx in np.array(lattice.top_indices):
-            np.testing.assert_allclose(
-                np.array(f_out[:, 0, idx, 0]),
-                np.array(f_c[:, 0, opp[idx], 0]),
-            )
-
-    def test_mixed_bcs(self, lattice):
-        from operators.boundary.composite import build_composite_bc
-
-        bc_config = {
-            "top": "symmetry",
-            "bottom": "bounce-back",
-            "left": "periodic",
-            "right": "periodic",
-        }
-        bc_fn = build_composite_bc(bc_config, lattice)
-
-        f = jnp.ones((NX, NY, 9, 1))
-        f_out = bc_fn(f, f, None)
-        assert f_out.shape == f.shape
-
-    def test_composite_jittable(self, lattice):
-        """The composite BC closure is jittable."""
-        from operators.boundary.composite import build_composite_bc
-
-        bc_config = {
-            "top": "symmetry",
-            "bottom": "bounce-back",
-            "left": "periodic",
-            "right": "periodic",
-        }
-        bc_fn = build_composite_bc(bc_config, lattice)
-
-        f = jnp.ones((NX, NY, 9, 1))
-        f_out = jax.jit(bc_fn)(f, f, None)
-        assert f_out.shape == f.shape
-
-
-# =====================================================================
 # End-to-end: full LBM step with pure functions (no class instances)
 # =====================================================================
 
@@ -769,7 +705,7 @@ class TestEndToEndPureFunctions:
 
     def test_step_with_bounce_back(self, lattice):
         """Full step with bounce-back BCs compiles and runs."""
-        from operators.boundary.composite import build_composite_bc
+        from operators.boundary import build_bc
         from operators.collision._bgk import collide_bgk
         from operators.equilibrium._equilibrium import compute_equilibrium
         from operators.macroscopic._single_phase import compute_macroscopic
@@ -781,7 +717,113 @@ class TestEndToEndPureFunctions:
             "left": "periodic",
             "right": "periodic",
         }
-        bc_fn = build_composite_bc(bc_config, lattice)
+        bc_fn = build_bc(bc_config, lattice)
+
+        rho = jnp.ones((NX, NY, 1, 1))
+        u = jnp.zeros((NX, NY, 1, 2))
+        f = compute_equilibrium(rho, u, lattice)
+        tau = 0.8
+
+        rho_n, u_new = compute_macroscopic(f, lattice)
+        feq = compute_equilibrium(rho_n, u_new, lattice)
+        f_col = collide_bgk(f, feq, tau)
+        f_stream = stream(f_col, lattice)
+        f_bc = bc_fn(f_stream, f_col, None)
+
+        assert f_bc.shape == f.shape
+
+
+# =====================================================================
+# Boundary — composite (build_bc)
+# =====================================================================
+
+
+class TestBuildBC:
+    """``build_bc`` chains per-edge BC functions."""
+
+    def test_all_periodic(self, lattice):
+        from operators.boundary import build_bc
+
+        bc_fn = build_bc(None, lattice)
+
+        key = jax.random.PRNGKey(30)
+        f = jax.random.uniform(key, (NX, NY, 9, 1))
+
+        # All periodic → identity
+        f_out = bc_fn(f, f, None)
+        np.testing.assert_array_equal(np.array(f_out), np.array(f))
+
+    def test_bounce_back_bottom(self, lattice):
+        from operators.boundary import build_bc
+
+        bc_config = {
+            "top": "periodic",
+            "bottom": "bounce-back",
+            "left": "periodic",
+            "right": "periodic",
+        }
+        bc_fn = build_bc(bc_config, lattice)
+
+        key = jax.random.PRNGKey(31)
+        f_s = jax.random.uniform(key, (NX, NY, 9, 1))
+        f_c = jax.random.uniform(key, (NX, NY, 9, 1)) * 2.0
+
+        f_out = bc_fn(f_s, f_c, None)
+
+        # Bottom row should have bounce-back applied
+        opp = np.array(lattice.opp_indices)
+        for idx in np.array(lattice.top_indices):
+            np.testing.assert_allclose(
+                np.array(f_out[:, 0, idx, 0]),
+                np.array(f_c[:, 0, opp[idx], 0]),
+            )
+
+    def test_mixed_bcs(self, lattice):
+        from operators.boundary import build_bc
+
+        bc_config = {
+            "top": "symmetry",
+            "bottom": "bounce-back",
+            "left": "periodic",
+            "right": "periodic",
+        }
+        bc_fn = build_bc(bc_config, lattice)
+
+        f = jnp.ones((NX, NY, 9, 1))
+        f_out = bc_fn(f, f, None)
+        assert f_out.shape == f.shape
+
+    def test_composite_jittable(self, lattice):
+        """The composite BC closure is jittable."""
+        from operators.boundary import build_bc
+
+        bc_config = {
+            "top": "symmetry",
+            "bottom": "bounce-back",
+            "left": "periodic",
+            "right": "periodic",
+        }
+        bc_fn = build_bc(bc_config, lattice)
+
+        f = jnp.ones((NX, NY, 9, 1))
+        f_out = jax.jit(bc_fn)(f, f, None)
+        assert f_out.shape == f.shape
+
+    def test_step_with_bounce_back(self, lattice):
+        """Full step with bounce-back BCs compiles and runs."""
+        from operators.boundary import build_bc
+        from operators.collision._bgk import collide_bgk
+        from operators.equilibrium._equilibrium import compute_equilibrium
+        from operators.macroscopic._single_phase import compute_macroscopic
+        from operators.streaming._streaming import stream
+
+        bc_config = {
+            "top": "bounce-back",
+            "bottom": "bounce-back",
+            "left": "periodic",
+            "right": "periodic",
+        }
+        bc_fn = build_bc(bc_config, lattice)
 
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))

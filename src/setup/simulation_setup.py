@@ -26,347 +26,190 @@ Usage::
 """
 
 from __future__ import annotations
-import dataclasses
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
+
+if TYPE_CHECKING:
+    from operators.boundary import BCMasks
+    from operators.force import ForceSetup
+    from operators.macroscopic import MultiphaseParams
+    from state.state import State
 import jax.numpy as jnp
-from operators.differential import build_differential_operators
-from operators.differential.config import DifferentialConfig
-from operators.differential.operators import DifferentialOperators
-from operators.differential.pad_modes import determine_pad_modes
+from config.simulation_config import SimulationConfig
+from operators.differential import build_diff_ops
+from operators.force import build_forces
 from setup.lattice import Lattice
 from setup.lattice import build_lattice
 
 
-class BCMasks(NamedTuple):
-    """Pre-computed boundary-condition masks — valid JAX pytree.
-
-    Each mask is a boolean ``jax.Array`` of shape ``(nx, ny, 1, 1)``
-    that is ``True`` on the corresponding edge row/column.
-
-    Attributes:
-        top: Mask for the top boundary (y = ny-1).
-        bottom: Mask for the bottom boundary (y = 0).
-        left: Mask for the left boundary (x = 0).
-        right: Mask for the right boundary (x = nx-1).
-    """
-
-    top: jnp.ndarray
-    bottom: jnp.ndarray
-    left: jnp.ndarray
-    right: jnp.ndarray
-
-
-class MultiphaseParams(NamedTuple):
-    """Equation-of-state and surface-tension parameters.
-
-    All fields are Python scalars (compile-time constants).
-    """
-
-    eos: str
-    kappa: float
-    rho_l: float
-    rho_v: float
-    interface_width: int
-    g: float | None = None
-
-
-class ForceParams(NamedTuple):
-    """One pre-built force contribution.
-
-    Attributes:
-        name: Registry key, e.g. "gravity_force".
-        compute_fn: Pure function (state, precomputed, lattice) → jnp.ndarray of shape (nx, ny, 1, d).
-                    Returns the force contribution for this physics.
-        init_fn: (setup) → dict of extra State fields needed at t=0.
-                 Stateful forces may return values such as ``{"h": ...}``;
-                 stateless forces use a no-op default that returns ``{}``.
-        precomputed: Optional pre-computed data (e.g. gravity template array).
-    """
-
-    name: str
-    compute_fn: Any
-    init_fn: Any
-    update_state_fn: Any
-    precomputed: Any | None = None
-
-
-def _state_force_init(
-    grid_shape: tuple[int, ...],
-    lattice: Lattice,
-    precomputed: Any,
-) -> dict[str, jnp.ndarray]:
-    """Default initialiser for stateless forces."""
-    return {}
-
-
-def _state_force_update(
-    state: Any,
-    precomputed: Any,
-    lattice: Lattice,
-    stream_fn: Any,
-) -> Any:
-    """Default state update for stateless forces."""
-    return state
-
-
 class SimulationSetup(NamedTuple):
-    """Immutable, JAX-friendly simulation setup.
+    """Immutable operator container — only what the jitted step needs.
 
-    Passed as a static / closed-over argument to jitted functions.
-    All fields are either JAX arrays, Python scalars, tuples, or
-    nested :class:`NamedTuple` values.
+    ``SimulationSetup`` stores built artifacts (operators, masks, closures)
+    and physics scalars that the step function reads at JIT time.  IO and
+    initialisation metadata live on the original
+    :class:`~config.simulation_config.SimulationConfig`, accessible via
+    the :attr:`config` reference.
 
     Attributes:
+        config: The original :class:`SimulationConfig` — for IO, init,
+            and any metadata that does not enter the JIT boundary.
         lattice: The :class:`~setup.lattice.Lattice` pytree.
         grid_shape: Spatial dimensions, e.g. ``(64, 64)``.
         tau: Relaxation time (> 0.5).
-        nt: Number of time steps.
         collision_scheme: Name of the collision model (``"bgk"`` / ``"mrt"``).
         k_diag: MRT relaxation rates (``None`` for BGK).
-        bc_config: Boundary-condition mapping (edge → type string).
         bc_masks: Pre-computed boundary-condition masks (:class:`BCMasks`).
-        forces: Pre-built force specs.
-        init_type: Initialisation strategy identifier.
-        init_dir: Directory for ``init_from_file`` runs.
-        results_dir: Where to write output.
-        save_interval: How often to save snapshots.
-        skip_interval: Steps to skip before first save.
-        save_fields: Which fields to save (``None`` = all defaults).
+        forces: Pre-built force setup (:class:`~operators.force.ForceSetup`) containing
+            specs and source-term callable, or ``None`` if no forces are active.
         multiphase_params: ``None`` for single-phase runs.
-        wetting_config: Optional wetting configuration dict.
-        hysteresis_config: Optional hysteresis configuration dict.
-        extra: Catch-all for additional parameters.
+        gradient_standard: Standard gradient ``∇μ`` (chemical potential).
+            Always used for chemical-potential gradient. Never wetting-corrected.
+        gradient_density: Density gradient ``∇ρ`` used in source term.
+            Wetting-corrected when applicable.
+        laplacian_density: Laplacian of density ``∇²ρ`` in chemical-potential computation.
+            Wetting-corrected when applicable.
+        step_fn: The unbound step operator resolved from the registry,
+            ``Callable[[SimulationSetup, State], State]``.  Use the
+            :meth:`step` convenience method instead of calling this
+            directly.
+        collision_fn: Pre-built collision operator, resolved at setup time.
+        equilibrium_fn: Pre-built equilibrium operator, resolved at setup time.
+        macroscopic_fn: Pre-built macroscopic operator, resolved at setup time.
+        streaming_fn: Pre-built streaming operator, resolved at setup time.
+        bc_fn: Pre-built boundary-condition operator, resolved at setup time.
     """
 
-    # Lattice and grid
+    # ── Core references ──
+    config: SimulationConfig
     lattice: Lattice
+
+    # ── Physics scalars (read at runtime inside JIT) ──
     grid_shape: tuple[int, ...]
-
-    # Run time
-    nt: int
-
-    # Physics
-    collision_scheme: str
     tau: float
+    collision_scheme: str
     k_diag: tuple[float, ...] | None = None
 
-    # Boundary
-    bc_config: dict[str, Any] | None = None
+    # ── Pre-built operators ──
     bc_masks: BCMasks | None = None
-
-    # Forces — uniform interface, no per-force fields
-    forces: tuple[ForceParams, ...] = ()
-
-    # Initialisation
-    init_type: str = "standard"
-    init_dir: str | None = None
-
-    # IO
-    results_dir: str = ""
-    save_interval: int = 100
-    skip_interval: int = 0
-    save_fields: tuple | None = None  # tuple (immutable) instead of list
-
-    # Multiphase (None for single-phase)
+    forces: ForceSetup | None = None
     multiphase_params: MultiphaseParams | None = None
 
-    # Wetting / hysteresis
-    wetting_config: dict[str, Any] | None = None
-    hysteresis_config: dict[str, Any] | None = None
+    # ── Differential operator closures (pre-built) ──
+    gradient_standard: Callable[[jnp.ndarray], jnp.ndarray] | None = None
+    gradient_density: Callable[[jnp.ndarray], jnp.ndarray] | None = None
+    laplacian_density: Callable[[jnp.ndarray], jnp.ndarray] | None = None
 
-    # Differential operators (pre-built closures, or None)
-    diff_ops: DifferentialOperators | None = None
+    # ── Step function (unbound: (setup, state) -> State) ──
+    step_fn: Any = None
 
-    # Extra
-    extra: dict[str, Any] | None = None
+    # ── Pre-built operator closures (resolved at setup time) ──
+    collision_fn: Callable | None = None
+    equilibrium_fn: Callable | None = None
+    macroscopic_fn: Callable | None = None
+    streaming_fn: Callable | None = None
+    bc_fn: Callable | None = None
+
+    def step(self, state: State) -> State:
+        """Execute one time step.
+
+        Convenience wrapper that calls ``self.step_fn(self, state)``,
+        giving callers the clean ``setup.step(state)`` interface.
+
+        Raises:
+            TypeError: If no step function has been set.
+        """
+        if self.step_fn is None:
+            raise TypeError("step_fn has not been set on this SimulationSetup")
+        return self.step_fn(self, state)
 
     @property
     def force_enabled(self) -> bool:
         """True if any force is active."""
-        return len(self.forces) > 0
-
-
-# ── Helper factories ─────────────────────────────────────────────────
-
-
-def build_bc_masks(
-    grid_shape: tuple[int, ...],
-    bc_config: dict[str, Any] | None = None,
-) -> BCMasks:
-    """Construct pre-computed boundary-condition masks.
-
-    Each mask is a boolean array of shape ``(nx, ny, 1, 1)`` that is
-    ``True`` on the corresponding edge row/column.
-
-    Args:
-        grid_shape: Spatial dimensions ``(nx, ny, ...)``.
-        bc_config: Boundary-condition mapping (unused for now; reserved
-            for future edge-type encoding).
-
-    Returns:
-        A :class:`BCMasks` NamedTuple.
-    """
-    nx, ny = grid_shape[:2]
-    top = jnp.zeros((nx, ny, 1, 1), dtype=bool).at[:, -1].set(True)
-    bottom = jnp.zeros((nx, ny, 1, 1), dtype=bool).at[:, 0].set(True)
-    left = jnp.zeros((nx, ny, 1, 1), dtype=bool).at[0, :].set(True)
-    right = jnp.zeros((nx, ny, 1, 1), dtype=bool).at[-1, :].set(True)
-    return BCMasks(top=top, bottom=bottom, left=left, right=right)
-
-
-def build_multiphase_params(config) -> MultiphaseParams:
-    """Construct :class:`MultiphaseParams` from a configuration object.
-
-    Args:
-        config: An object with multiphase attributes (``eos``, ``kappa``,
-            ``rho_l``, ``rho_v``, ``interface_width``, …).
-
-    Returns:
-        A :class:`MultiphaseParams` NamedTuple.
-
-    Raises:
-        ValueError: If required multiphase fields are missing.
-    """
-    for name in ("eos", "kappa", "rho_l", "rho_v", "interface_width"):
-        if getattr(config, name, None) is None:
-            raise ValueError(f"'{name}' is required for multiphase simulations")
-
-    return MultiphaseParams(
-        eos=config.eos,
-        kappa=config.kappa,
-        rho_l=config.rho_l,
-        rho_v=config.rho_v,
-        interface_width=config.interface_width,
-        g=getattr(config, "g", None),
-    )
-
-
-def _build_forces(
-    config,
-    grid_shape: tuple[int, ...],
-    lattice: Lattice,
-) -> tuple[ForceParams, ...]:
-    """Discover *_force fields on config, build ForceSpec for each.
-
-    Each force operator in the registry must expose:
-      - build(params, grid_shape) → precomputed data (or None)
-      - compute(state, precomputed, *, diff_ops=None) → force array
-      - init_state(grid_shape, lattice, precomputed) → dict of extra State fields
-      - update_state(state, precomputed, lattice, stream_fn) → state
-
-    Stateless force modules may omit the state hooks; they are replaced
-    here with no-op defaults.
-    """
-    from typing import cast
-    from operators.force import build_force_fn
-    from operators.protocols import ForceOperator
-
-    specs = []
-    seen: set[str] = set()
-    for f in dataclasses.fields(config):
-        if not f.name.endswith("_force"):
-            continue
-        params = getattr(config, f.name)
-        if params is None:
-            continue
-        seen.add(f.name)
-
-        op = cast("ForceOperator", cast("object", build_force_fn(f.name)))
-        build_fn = op.build
-        compute_fn = op.compute
-        init_fn = getattr(op, "init_state", _state_force_init)
-        update_state_fn = getattr(op, "update_state", _state_force_update)
-
-        precomputed = build_fn(params, grid_shape)
-
-        specs.append(
-            ForceParams(
-                name=f.name,
-                compute_fn=compute_fn,
-                init_fn=init_fn,
-                precomputed=precomputed,
-                update_state_fn=update_state_fn,
-            )
-        )
-
-    return tuple(specs)
+        return self.forces is not None and len(self.forces.specs) > 0
 
 
 # ── Main factory ─────────────────────────────────────────────────────
 
 
-def build_setup(config) -> SimulationSetup:
+def build_setup(config: SimulationConfig) -> SimulationSetup:
     """Construct a JAX-friendly :class:`SimulationSetup` from a config.
 
-    *config* can be either a
-    :class:`~config.simulation_config.SimulationConfig` or the legacy
-    :class:`~app_setup.simulation_setup.SimulationSetup` dataclass — any
-    object whose attributes match the expected field names.
-
     Args:
-        config: A validated configuration object.
+        config: A validated :class:`SimulationConfig`.
 
     Returns:
         An immutable :class:`SimulationSetup` NamedTuple ready for the
         jitted step function.
+
+    Raises:
+        ValueError: If wetting configuration is present but sim_type is not "multiphase".
     """
+    # ── Validation: wetting config requires multiphase sim_type ──
+    if config.wetting_config is not None and config.sim_type != "multiphase":
+        raise ValueError(
+            f"Wetting configuration present but sim_type is '{config.sim_type}'. "
+            "Wetting requires sim_type = 'multiphase'. "
+            "Wetting is an addon to multiphase simulations, detected by the presence of [wetting] config."
+        )
+
+    # Import here to avoid circular import issues at module level
+    from operators.boundary import build_bc
+    from operators.boundary import build_bc_masks
+    from operators.collision import build_collision_fn
+    from operators.equilibrium import build_equilibrium_fn
+    from operators.factory import build_operator
+    from operators.macroscopic import build_macroscopic_fn
+    from operators.macroscopic import build_multiphase_params
+    from operators.streaming import build_streaming_fn
+
     lattice = build_lattice(config.lattice_type)
+    bc_masks = build_bc_masks(tuple(config.grid_shape))
 
-    # Build pre-computed boundary masks
-    bc_config = getattr(config, "bc_config", None)
-    bc_masks = build_bc_masks(tuple(config.grid_shape), bc_config)
+    # Build multiphase params if applicable (multiphase runs with optional wetting)
+    mp_params = build_multiphase_params(config) if config.sim_type == "multiphase" else None
 
-    # Build multiphase params if applicable
-    mp_params = None
-    if getattr(config, "sim_type", "single_phase") == "multiphase":
-        mp_params = build_multiphase_params(config)
+    # Build force specs
+    force_setup = build_forces(config, tuple(config.grid_shape), lattice)
+    # Convert to None if no forces are present
+    forces = force_setup if force_setup.specs else None
 
-    # Normalise save_fields to tuple (immutable) or None
-    sf = getattr(config, "save_fields", None)
-    save_fields_tuple = tuple(sf) if sf is not None else None
+    # Build differential operators
+    gradient_standard, gradient_density, laplacian_density = build_diff_ops(config, mp_params, lattice)
 
-    # Build force object
-    forces = _build_forces(config, tuple(config.grid_shape), lattice)
+    # Resolve step operator from registry
+    step_fn = build_operator("update_timestep", config.sim_type)
 
-    # ── Build differential operators ──────────────────────────────────
-    # Ensure BC modules are imported so their @boundary_condition decorators
-    # have fired before we query pad_edge_mode metadata.
-    from operators.boundary import _bounce_back as _bb  # noqa: F401
-    from operators.boundary import _periodic as _per  # noqa: F401
-    from operators.boundary import _symmetry as _sym  # noqa: F401
-
-    pad_modes = determine_pad_modes(bc_config)
-    diff_cfg = DifferentialConfig(
-        w=lattice.w,
-        c=lattice.c,
-        pad_modes=pad_modes,
-        wetting_params=getattr(config, "wetting_config", None),
-        chemical_step=getattr(config, "chemical_step", None),
-        bc_config=bc_config,
+    # Build operator closures (pre-resolved at setup time)
+    collision_fn = build_collision_fn(config.collision_scheme)
+    equilibrium_fn = build_equilibrium_fn("wb")  # weakly-compressible
+    streaming_fn = build_streaming_fn("standard")
+    macroscopic_fn = (
+        build_macroscopic_fn(mp_params.eos)  # EOS-aware for multiphase
+        if config.sim_type == "multiphase"
+        else build_macroscopic_fn("standard")  # single-phase
     )
-    diff_ops = build_differential_operators(diff_cfg)
-    # ──────────────────────────────────────────────────────────────────
+    bc_fn = build_bc(config.bc_config, lattice)
 
     return SimulationSetup(
+        config=config,
         lattice=lattice,
         grid_shape=tuple(config.grid_shape),
         tau=config.tau,
-        nt=config.nt,
         collision_scheme=config.collision_scheme,
         k_diag=config.k_diag,
-        bc_config=bc_config,
         bc_masks=bc_masks,
-        init_type=getattr(config, "init_type", "standard"),
-        init_dir=getattr(config, "init_dir", None),
-        results_dir=getattr(config, "results_dir", ""),
-        save_interval=getattr(config, "save_interval", 100),
-        skip_interval=getattr(config, "skip_interval", 0),
-        save_fields=save_fields_tuple,
-        multiphase_params=mp_params,
-        wetting_config=getattr(config, "wetting_config", None),
-        hysteresis_config=getattr(config, "hysteresis_config", None),
         forces=forces,
-        diff_ops=diff_ops,
-        extra=getattr(config, "extra", None),
+        multiphase_params=mp_params,
+        gradient_standard=gradient_standard,
+        gradient_density=gradient_density,
+        laplacian_density=laplacian_density,
+        step_fn=step_fn,
+        collision_fn=collision_fn,
+        equilibrium_fn=equilibrium_fn,
+        macroscopic_fn=macroscopic_fn,
+        streaming_fn=streaming_fn,
+        bc_fn=bc_fn,
     )

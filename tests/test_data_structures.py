@@ -448,16 +448,16 @@ class TestBuildSetup:
             np.array(setup.lattice.c),
         )
 
-    def test_save_fields_tuple(self):
-        """save_fields is converted to a tuple (immutable)."""
+    def test_save_fields_on_config(self):
+        """save_fields lives on the config, not the setup."""
         from config.simulation_config import SimulationConfig
         from setup.simulation_setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), save_fields=["f", "rho"])
         setup = build_setup(cfg)
 
-        assert isinstance(setup.save_fields, tuple)
-        assert setup.save_fields == ("f", "rho")
+        assert isinstance(setup.config.save_fields, list)
+        assert setup.config.save_fields == ["f", "rho"]
 
     def test_bc_config_preserved(self):
         from config.simulation_config import SimulationConfig
@@ -472,8 +472,8 @@ class TestBuildSetup:
         cfg = SimulationConfig(grid_shape=(8, 8), bc_config=bc)
         setup = build_setup(cfg)
 
-        assert setup.bc_config["top"] == "symmetry"
-        assert setup.bc_config["bottom"] == "bounce-back"
+        assert setup.config.bc_config["top"] == "symmetry"
+        assert setup.config.bc_config["bottom"] == "bounce-back"
 
     def test_bc_masks_present(self):
         """build_setup produces BCMasks on the setup."""
@@ -511,19 +511,75 @@ class TestBuildSetup:
         assert bool(setup.bc_masks.right[0, 3, 0, 0]) is False
 
     def test_bc_masks_are_jax_arrays(self):
-        from setup.simulation_setup import build_bc_masks
+        from operators.boundary import build_bc_masks
 
         masks = build_bc_masks((16, 16))
         for arr in (masks.top, masks.bottom, masks.left, masks.right):
             assert isinstance(arr, jax.Array)
 
     def test_bc_masks_pytree_round_trip(self):
-        from setup.simulation_setup import build_bc_masks
+        from operators.boundary import build_bc_masks
 
         masks = build_bc_masks((8, 8))
         leaves, treedef = jax.tree_util.tree_flatten(masks)
         masks2 = treedef.unflatten(leaves)
         np.testing.assert_array_equal(np.array(masks2.top), np.array(masks.top))
+
+    def test_operator_closures_present_single_phase(self):
+        """build_setup must attach all five operator closures for single-phase."""
+        from config.simulation_config import SimulationConfig
+        from setup.simulation_setup import build_setup
+
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8)
+        setup = build_setup(cfg)
+
+        assert callable(setup.collision_fn), "collision_fn must be callable"
+        assert callable(setup.equilibrium_fn), "equilibrium_fn must be callable"
+        assert callable(setup.macroscopic_fn), "macroscopic_fn must be callable"
+        assert callable(setup.streaming_fn), "streaming_fn must be callable"
+        assert callable(setup.bc_fn), "bc_fn must be callable"
+
+    def test_operator_closures_are_bgk_collision(self):
+        """The collision_fn should use the configured collision scheme."""
+        from config.simulation_config import SimulationConfig
+        from setup.simulation_setup import build_setup
+
+        cfg = SimulationConfig(
+            grid_shape=(8, 8),
+            tau=0.8,
+            collision_scheme="bgk",
+        )
+        setup = build_setup(cfg)
+
+        # BGK collision function should be present
+        assert callable(setup.collision_fn)
+        assert "bgk" in setup.collision_fn.__name__.lower()
+
+    def test_operator_closures_pytree_round_trip(self):
+        """Operator closures should pass through JAX pytree flatten/unflatten."""
+        from config.simulation_config import SimulationConfig
+        from setup.simulation_setup import build_setup
+
+        cfg = SimulationConfig(grid_shape=(8, 8))
+        setup = build_setup(cfg)
+
+        # Flatten and unflatten
+        leaves, treedef = jax.tree_util.tree_flatten(setup)
+        setup2 = treedef.unflatten(leaves)
+
+        # Operator closures should survive the round-trip
+        assert callable(setup2.collision_fn)
+        assert callable(setup2.equilibrium_fn)
+        assert callable(setup2.macroscopic_fn)
+        assert callable(setup2.streaming_fn)
+        assert callable(setup2.bc_fn)
+
+        # They should be the same objects (identity preserved)
+        assert setup2.collision_fn is setup.collision_fn
+        assert setup2.equilibrium_fn is setup.equilibrium_fn
+        assert setup2.macroscopic_fn is setup.macroscopic_fn
+        assert setup2.streaming_fn is setup.streaming_fn
+        assert setup2.bc_fn is setup.bc_fn
 
 
 # =====================================================================
@@ -535,7 +591,7 @@ class TestBuildBCMasks:
     """Standalone ``build_bc_masks`` factory."""
 
     def test_shapes(self):
-        from setup.simulation_setup import build_bc_masks
+        from operators.boundary import build_bc_masks
 
         masks = build_bc_masks((16, 32))
         assert masks.top.shape == (16, 32, 1, 1)
@@ -545,7 +601,7 @@ class TestBuildBCMasks:
 
     def test_mask_counts(self):
         """Each edge mask should have exactly one row/column of True."""
-        from setup.simulation_setup import build_bc_masks
+        from operators.boundary import build_bc_masks
 
         masks = build_bc_masks((10, 20))
         # top: entire row y=19 → 10 True cells
@@ -568,7 +624,7 @@ class TestBuildMultiphaseParams:
 
     def test_from_config(self):
         from config.simulation_config import SimulationConfig
-        from setup.simulation_setup import build_multiphase_params
+        from operators.macroscopic import build_multiphase_params
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -589,7 +645,7 @@ class TestBuildMultiphaseParams:
 
     def test_missing_field_raises(self):
         from dataclasses import dataclass
-        from setup.simulation_setup import build_multiphase_params
+        from operators.macroscopic import build_multiphase_params
 
         @dataclass
         class Incomplete:
@@ -603,7 +659,7 @@ class TestBuildMultiphaseParams:
             build_multiphase_params(Incomplete())
 
     def test_multiphase_params_is_pytree(self):
-        from setup.simulation_setup import MultiphaseParams
+        from operators.macroscopic import MultiphaseParams
 
         mp = MultiphaseParams(
             eos="double-well",

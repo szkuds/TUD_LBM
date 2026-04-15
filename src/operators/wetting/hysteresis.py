@@ -30,8 +30,8 @@ from __future__ import annotations
 from typing import NamedTuple
 import jax
 import jax.numpy as jnp
-from operators.wetting.contact_angle import compute_contact_angle
-from operators.wetting.contact_line import compute_contact_line_location
+from operators.wetting._contact_angle import compute_contact_angle
+from operators.wetting._contact_line import compute_contact_line_location
 from registry import wetting_operator
 from state.state import WettingState
 
@@ -289,6 +289,8 @@ def update_wetting_state(
     force: jnp.ndarray,
     *,
     evaluate_fn=None,
+    gradient_density=None,
+    laplacian_density=None,
 ) -> WettingState:
     """Pure JAX update of wetting / hysteresis parameters.
 
@@ -308,6 +310,10 @@ def update_wetting_state(
             ``(WettingParams) → (ca_l, ca_r, cll_l, cll_r)``
             used by the inner optimiser.  If ``None``, a default is
             built from the pure-function operators.
+        gradient_density: Optional wetting-corrected density gradient closure.
+            Passed to evaluate_fn if provided.
+        laplacian_density: Optional wetting-corrected density laplacian closure.
+            Passed to evaluate_fn if provided.
 
     Returns:
         Updated :class:`WettingState`.
@@ -325,7 +331,7 @@ def update_wetting_state(
     )
 
     # 2. Hysteresis window parameters
-    hc = setup.hysteresis_config
+    hc = setup.config.hysteresis_config
     ca_adv = hc["ca_advancing"]
     ca_rec = hc["ca_receding"]
     lr = hc.get("learning_rate", 0.01)
@@ -352,7 +358,14 @@ def update_wetting_state(
 
     # 4. Build evaluate_fn if not supplied
     if evaluate_fn is None:
-        evaluate_fn = _build_default_evaluate_fn(setup, f_bc, force, rho_mean)
+        evaluate_fn = _build_default_evaluate_fn(
+            setup,
+            f_bc,
+            force,
+            rho_mean,
+            gradient_density=gradient_density,
+            laplacian_density=laplacian_density,
+        )
 
     # 5. Left side
     ca_target_left = jax.lax.cond(
@@ -424,7 +437,14 @@ def update_wetting_state(
 # ── Default evaluate_fn builder ──────────────────────────────────────
 
 
-def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
+def _build_default_evaluate_fn(
+    setup,
+    f_t,
+    force,
+    rho_mean,
+    gradient_density=None,
+    laplacian_density=None,
+):
     """Build the ``evaluate_fn(params) → (ca_l, ca_r, cll_l, cll_r)`` closure.
 
     This runs a single LBM step with the trial wetting parameters,
@@ -433,18 +453,20 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
 
     The closure captures *setup*, *f_t*, *force*, and *rho_mean* from
     the enclosing scope so the inner optimiser sees only ``params``.
+
+    If gradient_density or laplacian_density are provided, they are used
+    instead of setup.gradient_density / setup.laplacian_density.
     """
-    from operators.boundary.composite import build_composite_bc
+    from operators.boundary import build_bc
     from operators.collision import build_collision_fn
     from operators.equilibrium import build_equilibrium_fn
-    from operators.force.source_term import source
+    from operators.force._source_term import source
     from operators.macroscopic import build_macroscopic_fn
     from operators.streaming import build_streaming_fn
 
     lattice = setup.lattice
-    diff_ops = setup.diff_ops
     collision_fn = build_collision_fn(setup.collision_scheme)
-    bc_fn = build_composite_bc(setup.bc_config, lattice)
+    bc_fn = build_bc(setup.config.bc_config, lattice)
 
     def evaluate_fn(params: WettingParams):
         # TODO: Thread wetting params through the macroscopic step
@@ -471,7 +493,16 @@ def _build_default_evaluate_fn(setup, f_t, force, rho_mean):
             force_tot = force if force is not None else jnp.zeros((f_t.shape[0], f_t.shape[1], 1, 2))
 
         feq = equilibrium_fn(rho_new, u_new, lattice)
-        src = source(rho_new, u_new, force_tot, lattice, diff_ops=diff_ops)
+
+        # Use provided gradient_density if available, else use setup default
+        grad = gradient_density if gradient_density is not None else setup.gradient_density
+        src = source(
+            rho_new,
+            u_new,
+            force_tot,
+            lattice,
+            gradient=grad,
+        )
         f_col = collision_fn(f_t, feq, setup.tau, src)
         f_str = streaming_fn(f_col, lattice)
         f_bc = bc_fn(f_str, f_col, setup.bc_masks)

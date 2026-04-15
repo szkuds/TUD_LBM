@@ -13,8 +13,8 @@ import pytest
 # Ensure src/ is importable
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from operators.boundary import build_bc_masks
 from setup.lattice import build_lattice
-from setup.simulation_setup import build_bc_masks
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -168,7 +168,7 @@ class TestBoundaryProtocol:
 
     def test_periodic_bc_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Periodic boundary should match protocol."""
-        from operators.boundary.composite import build_composite_bc
+        from operators.boundary import build_bc
 
         f_stream, f_col = test_state[0], test_state[0]
         bc_config = {
@@ -177,15 +177,16 @@ class TestBoundaryProtocol:
             "left": "periodic",
             "right": "periodic",
         }
-        bc_masks = build_bc_masks(grid_shape, bc_config)
+        bc_masks = build_bc_masks(grid_shape)
 
-        bc_fn = build_composite_bc(bc_config, lattice_d2q9)
+        bc_fn = build_bc(bc_config, lattice_d2q9)
         result = bc_fn(f_stream, f_col, bc_masks)
         assert result.shape == f_stream.shape
 
     def test_bounce_back_bc_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Bounce-back boundary should match protocol."""
-        from operators.boundary.composite import build_composite_bc
+        from operators.boundary import build_bc
+        from operators.boundary import build_bc_masks
 
         f_stream, f_col = test_state[0], test_state[0]
         bc_config = {
@@ -194,9 +195,9 @@ class TestBoundaryProtocol:
             "left": "periodic",
             "right": "periodic",
         }
-        bc_masks = build_bc_masks(grid_shape, bc_config)
+        bc_masks = build_bc_masks(grid_shape)
 
-        bc_fn = build_composite_bc(bc_config, lattice_d2q9)
+        bc_fn = build_bc(bc_config, lattice_d2q9)
         result = bc_fn(f_stream, f_col, bc_masks)
         assert result.shape == f_stream.shape
 

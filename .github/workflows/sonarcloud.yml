@@ -8,6 +8,7 @@ on:
     types: [opened, synchronize, reopened]
     branches:
       - main
+      - develop
 
 jobs:
   sonarcloud:
@@ -21,7 +22,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.14
+          python-version: ['3.11', '3.12', '3.13', '3.14']
 
       - name: Python info
         shell: bash -e {0}

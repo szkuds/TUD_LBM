@@ -3,7 +3,7 @@
 Tests for:
     - ``runner.step.step_single_phase``
     - ``runner.step.step_multiphase``
-    - ``runner.step.get_step_fn``
+    - ``setup.step`` convenience method
     - ``runner.run.init_state``
     - ``runner.run.run`` (trajectory mode)
     - ``runner.io_callbacks`` (callback plumbing)
@@ -188,31 +188,27 @@ class TestStepMultiphase:
 
 
 # =====================================================================
-# get_step_fn
+# setup.step convenience method
 # =====================================================================
 
 
-class TestGetStepFn:
-    """Step function dispatch."""
+class TestSetupStep:
+    """Step function dispatch via setup.step()."""
 
-    def test_single_phase_dispatch(self):
+    def test_single_phase_via_setup(self):
         from runner.run import init_state
-        from runner.step import get_step_fn
 
         setup = _single_phase_setup()
-        step_fn = get_step_fn(setup)
         state = init_state(setup)
-        new_state = step_fn(state)
+        new_state = setup.step(state)
         assert int(new_state.t) == 1
 
-    def test_multiphase_dispatch(self):
+    def test_multiphase_via_setup(self):
         from runner.run import init_state
-        from runner.step import get_step_fn
 
         setup = _multiphase_setup()
-        step_fn = get_step_fn(setup)
         state = init_state(setup)
-        new_state = step_fn(state)
+        new_state = setup.step(state)
         assert int(new_state.t) == 1
 
 
@@ -259,8 +255,8 @@ class TestFunctionalRun:
 
         setup = _single_phase_setup()
         state = init_state(setup)
-        final, _ = run(setup, state)  # nt defaults to setup.nt
-        assert int(final.t) == setup.nt
+        final, _ = run(setup, state)  # nt defaults to setup.config.nt
+        assert int(final.t) == setup.config.nt
 
 
 # =====================================================================

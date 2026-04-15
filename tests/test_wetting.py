@@ -57,7 +57,7 @@ class TestComputeContactAngle:
     """Pure-function contact angle computation."""
 
     def test_returns_two_scalars(self):
-        from operators.wetting.contact_angle import compute_contact_angle
+        from operators.wetting._contact_angle import compute_contact_angle
 
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -65,7 +65,7 @@ class TestComputeContactAngle:
         assert ca_r.shape == ()
 
     def test_angles_in_reasonable_range(self):
-        from operators.wetting.contact_angle import compute_contact_angle
+        from operators.wetting._contact_angle import compute_contact_angle
 
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -75,14 +75,14 @@ class TestComputeContactAngle:
 
     def test_symmetric_droplet_symmetric_angles(self):
         """A droplet centred on the grid should give equal left/right angles."""
-        from operators.wetting.contact_angle import compute_contact_angle
+        from operators.wetting._contact_angle import compute_contact_angle
 
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V, centre_x=NX / 2.0)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
         np.testing.assert_allclose(float(ca_l), float(ca_r), atol=2.0)
 
     def test_jittable(self):
-        from operators.wetting.contact_angle import compute_contact_angle
+        from operators.wetting._contact_angle import compute_contact_angle
 
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
         jitted = jax.jit(partial(compute_contact_angle, rho_mean=RHO_MEAN))
@@ -100,8 +100,8 @@ class TestComputeContactLineLocation:
     """Pure-function contact-line-location computation."""
 
     def test_returns_two_scalars(self):
-        from operators.wetting.contact_angle import compute_contact_angle
-        from operators.wetting.contact_line import compute_contact_line_location
+        from operators.wetting._contact_angle import compute_contact_angle
+        from operators.wetting._contact_line import compute_contact_line_location
 
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -110,8 +110,8 @@ class TestComputeContactLineLocation:
         assert cll_r.shape == ()
 
     def test_left_less_than_right(self):
-        from operators.wetting.contact_angle import compute_contact_angle
-        from operators.wetting.contact_line import compute_contact_line_location
+        from operators.wetting._contact_angle import compute_contact_angle
+        from operators.wetting._contact_line import compute_contact_line_location
 
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -119,8 +119,8 @@ class TestComputeContactLineLocation:
         assert float(cll_l) < float(cll_r)
 
     def test_jittable(self):
-        from operators.wetting.contact_angle import compute_contact_angle
-        from operators.wetting.contact_line import compute_contact_line_location
+        from operators.wetting._contact_angle import compute_contact_angle
+        from operators.wetting._contact_line import compute_contact_line_location
 
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -311,7 +311,7 @@ class TestUpdateWettingState:
         assert isinstance(new_wetting, WettingState)
 
     def test_ca_fields_updated(self):
-        from operators.wetting.contact_angle import compute_contact_angle
+        from operators.wetting._contact_angle import compute_contact_angle
         from operators.wetting.hysteresis import update_wetting_state
 
         setup = self._make_setup()
@@ -504,10 +504,10 @@ class TestStepMultiphaseWithWetting:
 # =====================================================================
 
 
-class TestLegacyPhase3Unbroken:
+class TestFunctionalStep:
     """Phase 3 functional API should still pass."""
 
-    def test_phase3_functional_step(self):
+    def test_functional_step(self):
         from config.simulation_config import SimulationConfig
         from runner.run import init_state
         from runner.step import step_single_phase

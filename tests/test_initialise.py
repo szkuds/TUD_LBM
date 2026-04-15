@@ -10,7 +10,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from operators.initialise.factory import get_init_fn
+from operators.initialise import build_initialise_fn
 from registry import get_operators
 from setup.lattice import build_lattice
 
@@ -28,15 +28,15 @@ def lattice():
 
 
 class TestInitFactory:
-    """``get_init_fn`` returns the correct callable."""
+    """``build_initialise_fn`` returns the correct callable."""
 
     def test_known_type(self):
-        fn = get_init_fn("standard")
+        fn = build_initialise_fn("standard")
         assert callable(fn)
 
     def test_unknown_type_raises(self):
-        with pytest.raises(ValueError, match="Unknown init_type"):
-            get_init_fn("nonexistent_type")
+        with pytest.raises(ValueError, match="Unknown initialise scheme"):
+            build_initialise_fn("nonexistent_type")
 
     def test_all_registry_entries_callable(self):
         init_ops = get_operators("initialise")
@@ -53,23 +53,23 @@ class TestInitStandard:
     """``init_standard`` produces correct shapes and densities."""
 
     def test_shape(self, lattice):
-        f = get_init_fn("standard")(NX, NY, lattice)
+        f = build_initialise_fn("standard")(NX, NY, lattice)
         assert f.shape == (NX, NY, 9, 1)
 
     def test_density_default(self, lattice):
-        f = get_init_fn("standard")(NX, NY, lattice, density=1.0)
+        f = build_initialise_fn("standard")(NX, NY, lattice, density=1.0)
         rho = jnp.sum(f, axis=2, keepdims=True)
         np.testing.assert_allclose(np.array(rho), 1.0, atol=1e-12)
 
     def test_density_custom(self, lattice):
-        f = get_init_fn("standard")(NX, NY, lattice, density=2.5)
+        f = build_initialise_fn("standard")(NX, NY, lattice, density=2.5)
         rho = jnp.sum(f, axis=2, keepdims=True)
         np.testing.assert_allclose(np.array(rho), 2.5, atol=1e-12)
 
     def test_jittable(self, lattice):
         from functools import partial
 
-        fn = get_init_fn("standard")
+        fn = build_initialise_fn("standard")
         # lattice contains string (name) — close over it; nx, ny are static
         jitted = jax.jit(partial(fn, lattice=lattice), static_argnums=(0, 1))
         f = jitted(NX, NY)
@@ -97,14 +97,14 @@ class TestMultiphaseInitShape:
 
     @pytest.mark.parametrize("init_type", _MULTIPHASE_TYPES)
     def test_shape(self, lattice, init_type):
-        fn = get_init_fn(init_type)
+        fn = build_initialise_fn(init_type)
         f = fn(NX, NY, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
         assert f.shape == (NX, NY, 9, 1)
 
     @pytest.mark.parametrize("init_type", _MULTIPHASE_TYPES)
     def test_density_range(self, lattice, init_type):
         """Density should be between rho_v and rho_l everywhere."""
-        fn = get_init_fn(init_type)
+        fn = build_initialise_fn(init_type)
         f = fn(NX, NY, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
         rho = jnp.sum(f, axis=2, keepdims=True)
         assert float(jnp.min(rho)) >= 0.33 - 0.01
@@ -124,7 +124,7 @@ class TestWettingInitShape:
 
     @pytest.mark.parametrize("init_type", _WETTING_TYPES)
     def test_shape(self, lattice, init_type):
-        fn = get_init_fn(init_type)
+        fn = build_initialise_fn(init_type)
         f = fn(NX, NY, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
         assert f.shape == (NX, NY, 9, 1)
 
@@ -138,7 +138,7 @@ class TestMassConservation:
     """Total mass is conserved (equals sum of rho over the domain)."""
 
     def test_bubble_mass_positive(self, lattice):
-        fn = get_init_fn("multiphase_bubble")
+        fn = build_initialise_fn("multiphase_bubble")
         f = fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
         rho = jnp.sum(f, axis=2, keepdims=True)
         total_mass = float(jnp.sum(rho))
@@ -147,7 +147,7 @@ class TestMassConservation:
         assert total_mass < 1.0 * 32 * 32
 
     def test_droplet_mass_positive(self, lattice):
-        fn = get_init_fn("multiphase_droplet")
+        fn = build_initialise_fn("multiphase_droplet")
         f = fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
         rho = jnp.sum(f, axis=2, keepdims=True)
         total_mass = float(jnp.sum(rho))
@@ -164,11 +164,11 @@ class TestVariableRadius:
     """``init_multiphase_droplet_variable_radius`` respects custom radius."""
 
     def test_custom_radius(self, lattice):
-        fn = get_init_fn("multiphase_droplet_variable_radius")
+        fn = build_initialise_fn("multiphase_droplet_variable_radius")
         f = fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4, radius=5.0)
         assert f.shape == (32, 32, 9, 1)
 
     def test_default_radius(self, lattice):
-        fn = get_init_fn("multiphase_droplet_variable_radius")
+        fn = build_initialise_fn("multiphase_droplet_variable_radius")
         f = fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
         assert f.shape == (32, 32, 9, 1)

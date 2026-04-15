@@ -57,30 +57,37 @@ def get_fields_for_section(section: str) -> frozenset[str]:
 
 
 def _valid_collision_schemes() -> set:
-    """Return valid collision schemes from the registry."""
-    from registry import ensure_registry
+    """Return valid collision scheme names from the registry.
+
+    Imports operators.collision to ensure all collision models are registered.
+    """
+    import operators.collision  # noqa: F401 – side-effect: registers all collision operators
     from registry import get_operator_names
 
-    ensure_registry()
     return get_operator_names("collision_models")
 
 
 def _valid_eos() -> set:
-    """Return valid EOS names from the registry."""
-    from registry import ensure_registry
+    """Return valid EOS names from the macroscopic operator registry.
+
+    Imports operators.macroscopic to ensure all macroscopic models (including
+    multiphase EOS) are registered.
+    """
+    import operators.macroscopic  # noqa: F401 – side-effect: registers all macroscopic operators
     from registry import get_operator_names
 
-    ensure_registry()
     names = get_operator_names("macroscopic")
     return names - {"standard"}
 
 
 def _valid_lattices() -> set:
-    """Return valid lattice types from the registry."""
-    from registry import ensure_registry
+    """Return valid lattice type names from the registry.
+
+    Imports setup.lattice to ensure all lattice models are registered.
+    """
+    import setup.lattice  # noqa: F401 – side-effect: registers all lattice operators
     from registry import get_operator_names
 
-    ensure_registry()
     return get_operator_names("lattice")
 
 
@@ -156,9 +163,7 @@ class SimulationConfig:
     # ── Extra / extensible ───────────────────────────────────────
     extra: dict[str, Any] = field(default_factory=dict, metadata={CONFIG_SECTION: "extra"})
 
-    # ══════════════════════════════════════════════════════════════════
     # Validation
-    # ══════════════════════════════════════════════════════════════════
 
     def __post_init__(self) -> None:
         # frozen=True forbids normal assignment; use object.__setattr__
@@ -293,9 +298,7 @@ class SimulationConfig:
                 f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'",
             )
 
-    # ══════════════════════════════════════════════════════════════════
     # Properties
-    # ══════════════════════════════════════════════════════════════════
 
     @property
     def is_single_phase(self) -> bool:
@@ -312,9 +315,7 @@ class SimulationConfig:
         """True if any ``*_force`` field is populated."""
         return any(getattr(self, f.name) is not None for f in dataclasses.fields(self) if f.name.endswith("_force"))
 
-    # ══════════════════════════════════════════════════════════════════
     # Serialisation
-    # ══════════════════════════════════════════════════════════════════
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a plain dict for logging / saving.

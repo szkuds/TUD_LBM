@@ -43,7 +43,7 @@ def wetting_hysteresis_simulation():
     # Create the I/O handler — makes the timestamped run directory.
     io = SimulationIO(
         base_dir=config.results_dir,
-        config=config.to_dict(),
+        config=config,
         simulation_name=config.simulation_name,
     )
     print(f"  Run directory      : {io.run_dir}")

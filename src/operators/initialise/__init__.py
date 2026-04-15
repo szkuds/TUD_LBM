@@ -1,41 +1,34 @@
 """Initialisation operators — implementations of InitialiserOperator protocol.
 
-Public API: build_initialise_fn()
+Public API: build_f(), build_initialise_fn()
 
-Implementation modules are internal; use the factory to access.
+Implementation modules (_standard.py, _multiphase_bubble.py) are internal; use the factory to access.
 
 Example:
-    from operators.initialise import build_initialise_fn
+    from operators.initialise import build_f
 
+    # High-level: builds f with all setup parameters
+    f = build_f(setup, init_kwargs={"density": 1.0})
+
+    # Low-level: direct initialiser access
+    from operators.initialise import build_initialise_fn
     init_fn = build_initialise_fn("standard")
     f = init_fn(64, 64, lattice, density=1.0)
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
+import jax.numpy as jnp
 from operators._loader import auto_load_operators
 from operators.factory import build_operator
+from operators.initialise._kwargs import _build_init_kwargs
 from operators.protocols import InitialiserOperator
+
+if TYPE_CHECKING:
+    from config.simulation_config import SimulationSetup
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("operators.initialise")
-
-
-def _import_initialise_modules() -> None:
-    """Import concrete initialiser modules so decorators register them."""
-    from operators.initialise import from_file as _ff_impl  # noqa: F401
-    from operators.initialise import multiphase_bubble as _mb_impl  # noqa: F401
-    from operators.initialise import multiphase_bubble_bot as _mbb_impl  # noqa: F401
-    from operators.initialise import multiphase_bubble_bubble as _mbbb_impl  # noqa: F401
-    from operators.initialise import multiphase_droplet as _md_impl  # noqa: F401
-    from operators.initialise import multiphase_droplet_top as _mdt_impl  # noqa: F401
-    from operators.initialise import multiphase_droplet_variable_radius as _mdvr_impl  # noqa: F401
-    from operators.initialise import multiphase_lateral_bubble as _mlb_impl  # noqa: F401
-    from operators.initialise import standard as _std_impl  # noqa: F401
-    from operators.initialise import wetting as _wet_impl  # noqa: F401
-    from operators.initialise import wetting_chemical_step as _wcs_impl  # noqa: F401
-
-
-_import_initialise_modules()
 
 
 def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
@@ -47,7 +40,10 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
 
     Returns:
         A callable satisfying the InitialiserOperator protocol.
-        Can be called as: operator(nx, ny, lattice, **kwargs) → f
+
+        Can be called as::
+
+            operator(nx, ny, lattice, **kwargs) → f
 
         Type-checkers see this as an InitialiserOperator.
 
@@ -59,9 +55,38 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
         >>> init = build_initialise_fn("standard")
         >>> f = init(64, 64, lattice, density=1.0)
     """
-    _import_initialise_modules()
-
     return build_operator("initialise", scheme)
 
 
-__all__ = ["build_initialise_fn"]
+def build_f(
+    setup: SimulationSetup,
+    init_kwargs: dict | None = None,
+) -> jnp.ndarray:
+    """Build the initial population distribution *f* for *setup*.
+
+    Selects the initialiser indicated by ``setup.config.init_type``,
+    resolves all required keyword arguments (including multiphase
+    parameters and file paths), and returns ``f`` with shape
+    ``(nx, ny, q, 1)``.
+
+    Args:
+        setup: :class:`~setup.simulation_setup.SimulationSetup`.
+        init_kwargs: Optional caller overrides forwarded to the
+            initialiser (e.g. ``density``, ``rho_l``, ``npz_path``).
+
+    Returns:
+        ``jnp.ndarray`` of shape ``(nx, ny, q, 1)``.
+
+    Examples:
+        >>> from operators.initialise import build_f
+        >>> f = build_f(setup)
+        >>> f = build_f(setup, init_kwargs={"density": 0.9})
+    """
+    init_type = setup.config.init_type
+    kw = _build_init_kwargs(setup, init_type, init_kwargs)
+    init_fn = build_initialise_fn(init_type)
+    nx, ny = setup.grid_shape[0], setup.grid_shape[1]
+    return init_fn(nx, ny, setup.lattice, **kw)
+
+
+__all__ = ["build_f", "build_initialise_fn"]

@@ -64,8 +64,8 @@ def init_state(
     """Create an initial :class:`State` for the given setup.
 
     If *f* is not supplied, the population distribution is initialised
-    using the ``init_type`` specified in ``setup`` (via the
-    :mod:`operators.initialise` factory).  For ``"standard"`` this is
+    using the ``init_type`` specified in ``setup`` (via
+    :func:`operators.initialise.build_f`).  For ``"standard"`` this is
     the rest equilibrium (``f_i = w_i``); for multiphase types it
     produces a tanh density profile at equilibrium.
 
@@ -84,51 +84,22 @@ def init_state(
     Returns:
         A :class:`State` ready to be passed to :func:`run`.
     """
-    from operators.initialise import build_initialise_fn
+    from operators.initialise import build_f
+    from state import build_extra_state
+    from state import build_optional_fields
 
     lattice = setup.lattice
     nx, ny = setup.grid_shape[0], setup.grid_shape[1]
-    d = lattice.d
 
     if f is None:
-        init_type = getattr(setup, "init_type", "standard")
-        init_fn = build_initialise_fn(init_type)
+        f = build_f(setup, init_kwargs)
 
-        # Build kwargs from setup for multiphase initialisers
-        kw: dict = {}
-        mp = setup.multiphase_params
-        if mp is not None:
-            kw.update(
-                rho_l=mp.rho_l,
-                rho_v=mp.rho_v,
-                interface_width=mp.interface_width,
-            )
-        # Allow caller overrides
-        if init_kwargs:
-            kw.update(init_kwargs)
-
-        # For init_from_file, inject npz_path from init_dir
-        if init_type == "init_from_file" and "npz_path" not in kw:
-            init_dir = getattr(setup, "init_dir", None)
-            if init_dir is not None:
-                kw["npz_path"] = init_dir
-
-        f = init_fn(nx, ny, lattice, **kw)
-
-    rho = jnp.sum(f, axis=2, keepdims=True)  # (nx, ny, 1, 1)
-    u = jnp.zeros((nx, ny, 1, d))
+    rho = jnp.sum(f, axis=2, keepdims=True)
+    u = jnp.zeros((nx, ny, 1, lattice.d))
     t = jnp.array(0)
 
-    # Pre-populate optional fields that the step function will write.
-    # lax.scan requires carry pytree structure to be constant, so any
-    # field that transitions from None → array must start as zeros.
-    is_multiphase = setup.multiphase_params is not None
-    force = jnp.zeros((nx, ny, 1, d)) if is_multiphase else None
-    force_ext = jnp.zeros((nx, ny, 1, d)) if setup.force_enabled else None
-
-    extra_state: dict[str, jnp.ndarray] = {}
-    for spec in getattr(setup, "forces", ()):
-        extra_state.update(spec.init_fn(setup.grid_shape, lattice, spec.precomputed))
+    force, force_ext = build_optional_fields(setup, nx, ny, lattice.d)
+    extra_state = build_extra_state(setup)
 
     return State(
         f=f,
@@ -158,7 +129,7 @@ def run(
     Args:
         setup: :class:`~setup.simulation_setup.SimulationSetup`.
         initial_state: Starting :class:`~state.state.State`.
-        nt: Number of time steps.  Defaults to ``setup.nt``.
+        nt: Number of time steps.  Defaults to ``setup.config.nt``.
         save_interval: Snapshot frequency (default: 1 = every step).
         io_handler: Optional :class:`~util.io.SimulationIO`.  When
             supplied, snapshots are streamed to disk via host callbacks
@@ -177,12 +148,8 @@ def run(
         * **With io_handler** — *trajectory* is ``None``; data has been
           written to ``io_handler.data_dir``.
     """
-    from runner.step import get_step_fn
-
     if nt is None:
-        nt = setup.nt
-
-    step_fn = get_step_fn(setup)
+        nt = setup.config.nt
 
     # ── Streaming I/O mode ───────────────────────────────────────
     if io_handler is not None:
@@ -197,7 +164,7 @@ def run(
 
         @jax.jit
         def scan_body_io(state, t):
-            new_state = step_fn(state)
+            new_state = setup.step(state)
             do_save(new_state, t)
             return new_state, None
 
@@ -211,7 +178,7 @@ def run(
     # ── In-memory trajectory mode ────────────────────────────────
     @jax.jit
     def scan_body(state, t):
-        new_state = step_fn(state)
+        new_state = setup.step(state)
         return new_state, new_state
 
     final_state, trajectory = jax.lax.scan(

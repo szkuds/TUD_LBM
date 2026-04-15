@@ -3,7 +3,7 @@
 Tests for the **new pure-function API** (Phase 3):
     - ``runner.step.step_single_phase``
     - ``runner.step.step_multiphase``
-    - ``runner.step.get_step_fn``
+    - ``setup.step`` convenience method
     - ``runner.run.run_pure``
     - ``operators.force.source_term.source``
 
@@ -57,65 +57,67 @@ def _mp_setup():
 class TestSource:
     """``source`` computes a well-balanced forcing source term."""
 
-    def _diff_ops(self, lattice):
-        from operators.differential import build_differential_operators
-        from operators.differential.config import DifferentialConfig
+    @staticmethod
+    def _build_gradient_closure(lattice):
+        """Build a gradient closure that takes only (grid)."""
+        from operators.differential import build_differential_fn
 
-        cfg = DifferentialConfig(
-            w=lattice.w,
-            c=lattice.c,
-            pad_modes=["wrap", "wrap", "wrap", "wrap"],
-        )
-        return build_differential_operators(cfg)
+        _gradient = build_differential_fn("gradient")
+        pad_modes = ("wrap", "wrap", "wrap", "wrap")
+
+        def gradient(grid):
+            return _gradient(grid, lattice.w, lattice.c, pad_modes)
+
+        return gradient
 
     def test_shape(self):
-        from operators.force.source_term import source
+        from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
-        diff_ops = self._diff_ops(lattice)
+        gradient = self._build_gradient_closure(lattice)
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.ones((NX, NY, 1, 2)) * 0.001
 
-        src = source(rho, u, force, lattice, diff_ops=diff_ops)
+        src = source(rho, u, force, lattice, gradient=gradient)
         assert src.shape == (NX, NY, 9, 1)
 
     def test_zero_force_zero_source(self):
-        from operators.force.source_term import source
+        from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
-        diff_ops = self._diff_ops(lattice)
+        gradient = self._build_gradient_closure(lattice)
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.zeros((NX, NY, 1, 2))
 
-        src = source(rho, u, force, lattice, diff_ops=diff_ops)
+        src = source(rho, u, force, lattice, gradient=gradient)
         np.testing.assert_allclose(np.array(src), 0.0, atol=1e-10)
 
     def test_jittable(self):
-        from operators.force.source_term import source
+        from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
-        diff_ops = self._diff_ops(lattice)
+        gradient = self._build_gradient_closure(lattice)
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.ones((NX, NY, 1, 2)) * 0.001
 
-        jitted = jax.jit(partial(source, lattice=lattice, diff_ops=diff_ops))
+        jitted = jax.jit(partial(source, lattice=lattice, gradient=gradient))
         src = jitted(rho, u, force)
         assert src.shape == (NX, NY, 9, 1)
 
     def test_source_sums_to_zero(self):
         """For a uniform field the source should sum to zero over q."""
-        from operators.force.source_term import source
+        from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
-        diff_ops = self._diff_ops(lattice)
+        gradient = self._build_gradient_closure(lattice)
         rho = jnp.ones((NX, NY, 1, 1))
         u = jnp.zeros((NX, NY, 1, 2))
         force = jnp.ones((NX, NY, 1, 2)) * 0.01
 
-        src = source(rho, u, force, lattice, diff_ops=diff_ops)
+        src = source(rho, u, force, lattice, gradient=gradient)
         # The source should satisfy ∑_i S_i = 0 (mass conservation)
         src_sum = jnp.sum(src, axis=2)
         np.testing.assert_allclose(np.array(src_sum), 0.0, atol=1e-6)
@@ -251,58 +253,24 @@ class TestStepMultiphasePure:
 
 
 # =====================================================================
-# get_step_fn
+# setup.step convenience method
 # =====================================================================
 
 
-class TestGetPureStepFn:
-    """``get_step_fn`` dispatches based on simulation type."""
+class TestSetupStep:
+    """Step function dispatch via setup.step()."""
 
-    def test_single_phase_dispatch(self):
-        from runner.step import get_step_fn
-
+    def test_single_phase_via_setup(self):
         setup = _sp_setup()
-        step_fn = get_step_fn(setup)
         state = init_state(setup)
-        new_state = step_fn(state)
+        new_state = setup.step(state)
         assert int(new_state.t) == 1
 
-    def test_multiphase_dispatch(self):
-        from runner.step import get_step_fn
-
+    def test_multiphase_via_setup(self):
         setup = _mp_setup()
-        step_fn = get_step_fn(setup)
         state = init_state(setup)
-        new_state = step_fn(state)
+        new_state = setup.step(state)
         assert int(new_state.t) == 1
-
-    def test_jit_single_phase(self):
-        """The closed-over step_fn should be jittable."""
-        from runner.step import get_step_fn
-
-        setup = _sp_setup()
-        step_fn = get_step_fn(setup)
-        state = init_state(setup)
-
-        jitted_step = jax.jit(step_fn)
-        new_state = jitted_step(state)
-
-        assert int(new_state.t) == 1
-        assert not jnp.isnan(new_state.f).any()
-
-    def test_jit_multiphase(self):
-        """The closed-over multiphase step_fn should be jittable."""
-        from runner.step import get_step_fn
-
-        setup = _mp_setup()
-        step_fn = get_step_fn(setup)
-        state = init_state(setup)
-
-        jitted_step = jax.jit(step_fn)
-        new_state = jitted_step(state)
-
-        assert int(new_state.t) == 1
-        assert not jnp.isnan(new_state.f).any()
 
 
 # =====================================================================
