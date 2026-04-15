@@ -43,6 +43,7 @@ release = version
 # extensions coming with Sphinx (named "sphinx.ext.*") or your custom
 # ones.
 extensions = [
+    "sphinx.ext.autodoc",
     "sphinx.ext.coverage",
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
@@ -67,23 +68,7 @@ todo_include_todos = False
 
 # -- Use autoapi.extension to generate API docs -----------------
 
-autoapi_type = "python"
 autoapi_dirs = ["../src"]
-autoapi_root = "autoapi"
-autoapi_keep_files = False  # Don't keep generated .rst files after build
-autoapi_add_objects_to_toctree = False  # Don't auto-inject into toctree to avoid dangling references
-autoapi_add_toctree_entry = False
-
-autoapi_member_order = "bysource"
-autoapi_python_class_content = "both"  # combine class docstring and __init__ docstring
-
-autoapi_options = [
-    "members",
-    "undoc-members",
-    "show-module-summary",
-    "show-inheritance",
-    "special-members",
-]
 
 # -- Options for HTML output ----------------------------------------------
 
