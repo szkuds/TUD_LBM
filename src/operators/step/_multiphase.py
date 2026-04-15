@@ -71,8 +71,7 @@ def step_multiphase(setup, state: State) -> State:
             setup,
             new_state.f,
             force_tot,
-            gradient_density=gradient_density,
-            laplacian_density=laplacian_density,
+            force_ext=force_ext,
         )
 
     return new_state._replace(

@@ -53,7 +53,13 @@ class WettingParams(NamedTuple):
 
 
 def _clamp_params(params: WettingParams) -> WettingParams:
-    """Clamp wetting parameters to physically reasonable ranges."""
+    """Clamp wetting parameters to physically reasonable ranges.
+
+    Note: ``jnp.clip`` has zero gradient at the boundaries, so a
+    parameter sitting at a clamp limit receives no further gradient
+    signal in that direction.  The ranges below cover physically
+    realistic wetting conditions.
+    """
     return WettingParams(
         d_rho_left=jnp.clip(params.d_rho_left, 0.0, 0.2),
         d_rho_right=jnp.clip(params.d_rho_right, 0.0, 0.2),
@@ -63,11 +69,13 @@ def _clamp_params(params: WettingParams) -> WettingParams:
 
 
 def _cost_cll(cll_target: jnp.ndarray, cll_current: jnp.ndarray) -> jnp.ndarray:
-    return jnp.abs(cll_target - cll_current)
+    """Squared error for CLL pinning — smooth gradient everywhere."""
+    return (cll_target - cll_current) ** 2
 
 
 def _cost_ca(ca_target: jnp.ndarray, ca_current: jnp.ndarray) -> jnp.ndarray:
-    return jnp.abs(ca_target - ca_current)
+    """Squared error for CA targeting — smooth gradient everywhere."""
+    return (ca_target - ca_current) ** 2
 
 
 # ── Generic optimisation routines ────────────────────────────────────
@@ -94,13 +102,13 @@ def _optimise_single_param(
         ``(final_params, final_loss)``.
     """
     opt_state = optimiser.init(initial_params)
+    import optax  # lazy import — optional dependency
 
     def step(carry, _):
         params, opt_state = carry
         loss, grads = jax.value_and_grad(objective_fn)(params)
         grads = grad_mask_fn(grads)
         updates, new_opt_state = optimiser.update(grads, opt_state, params)
-        import optax  # lazy import — optional dependency
 
         new_params = optax.apply_updates(params, updates)
         new_params = _clamp_params(new_params)
@@ -289,8 +297,7 @@ def update_wetting_state(
     force: jnp.ndarray,
     *,
     evaluate_fn=None,
-    gradient_density=None,
-    laplacian_density=None,
+    force_ext=None,
 ) -> WettingState:
     """Pure JAX update of wetting / hysteresis parameters.
 
@@ -310,10 +317,10 @@ def update_wetting_state(
             ``(WettingParams) → (ca_l, ca_r, cll_l, cll_r)``
             used by the inner optimiser.  If ``None``, a default is
             built from the pure-function operators.
-        gradient_density: Optional wetting-corrected density gradient closure.
-            Passed to evaluate_fn if provided.
-        laplacian_density: Optional wetting-corrected density laplacian closure.
-            Passed to evaluate_fn if provided.
+        force_ext: External force field, shape ``(nx, ny, 1, 2)``
+            or ``None``.  Passed to the multiphase macroscopic function
+            inside the default evaluate_fn so that interparticle forces
+            are not double-counted.
 
     Returns:
         Updated :class:`WettingState`.
@@ -361,10 +368,8 @@ def update_wetting_state(
         evaluate_fn = _build_default_evaluate_fn(
             setup,
             f_bc,
-            force,
+            force_ext,
             rho_mean,
-            gradient_density=gradient_density,
-            laplacian_density=laplacian_density,
         )
 
     # 5. Left side
@@ -440,74 +445,97 @@ def update_wetting_state(
 def _build_default_evaluate_fn(
     setup,
     f_t,
-    force,
+    force_ext,
     rho_mean,
-    gradient_density=None,
-    laplacian_density=None,
 ):
     """Build the ``evaluate_fn(params) → (ca_l, ca_r, cll_l, cll_r)`` closure.
 
-    This runs a single LBM step with the trial wetting parameters,
-    then measures the resulting contact angles and line locations.
-    ``jax.value_and_grad`` can differentiate through the entire chain.
+    Runs a single LBM trial step with the candidate wetting parameters
+    and measures the resulting contact angles and contact-line locations.
+    ``jax.value_and_grad`` can differentiate through the entire chain
+    because ``params`` flows into the wetting differential-operator
+    shims, creating a differentiable path:
 
-    The closure captures *setup*, *f_t*, *force*, and *rho_mean* from
-    the enclosing scope so the inner optimiser sees only ``params``.
+        params → WettingState → shims (gradient / laplacian)
+        → macroscopic (chemical-potential force) → collision (+source)
+        → streaming → BCs → rho_out → CA / CLL → loss
 
-    If gradient_density or laplacian_density are provided, they are used
-    instead of setup.gradient_density / setup.laplacian_density.
+    The closure captures *setup*, *f_t*, *force_ext*, and *rho_mean*
+    from the enclosing scope so the inner optimiser sees only ``params``.
+
+    All operators are the pre-built closures on *setup* — no operator
+    rebuilding occurs inside the closure.
+
+    Args:
+        setup: :class:`~setup.simulation_setup.SimulationSetup`.
+        f_t: Current populations, shape ``(nx, ny, q, 1)``.
+        force_ext: External force, shape ``(nx, ny, 1, 2)`` or ``None``.
+            Passed to the multiphase macroscopic function so that
+            interparticle forces are not double-counted.
+        rho_mean: Mean density ``(rho_l + rho_v) / 2``.
     """
-    from operators.boundary import build_bc
-    from operators.collision import build_collision_fn
-    from operators.equilibrium import build_equilibrium_fn
-    from operators.force._source_term import source
-    from operators.macroscopic import build_macroscopic_fn
-    from operators.streaming import build_streaming_fn
+    from operators.step._wetting_shims import _make_wetting_differential_ops
 
     lattice = setup.lattice
-    collision_fn = build_collision_fn(setup.collision_scheme)
-    bc_fn = build_bc(setup.config.bc_config, lattice)
+    mp = setup.multiphase_params
 
     def evaluate_fn(params: WettingParams):
-        # TODO: Thread wetting params through the macroscopic step
-        # once a wetting-aware macroscopic operator is available.
-        # For now, run a standard LBM step (the wetting params affect
-        # the boundary condition, which is handled externally).
-
-        # Standard multiphase step
-        macroscopic_fn = build_macroscopic_fn("standard")
-        equilibrium_fn = build_equilibrium_fn("wb")
-        streaming_fn = build_streaming_fn("standard")
-
-        if setup.force_enabled and force is not None:
-            rho_new, u_new, force_tot = macroscopic_fn(
-                f_t,
-                lattice,
-                force=force,
+        # Build a temporary WettingState from the trial params so that
+        # _make_wetting_differential_ops can create shims that close
+        # over the *traced* param values — this is the key differentiable
+        # connection that was previously missing.
+        #
+        # Guard: wetting shims are only valid when the setup was built
+        # with a wetting_config (i.e. the density differential ops
+        # accept (grid, phi_l, phi_r, d_rho_l, d_rho_r)).  Without it,
+        # fall back to the plain (grid → result) closures on setup.
+        if setup.config.wetting_config is not None:
+            temp_wetting = WettingState(
+                d_rho_left=params.d_rho_left,
+                d_rho_right=params.d_rho_right,
+                phi_left=params.phi_left,
+                phi_right=params.phi_right,
+                ca_left=jnp.zeros(()),
+                ca_right=jnp.zeros(()),
+                cll_left=jnp.zeros(()),
+                cll_right=jnp.zeros(()),
+            )
+            gradient_density, laplacian_density = _make_wetting_differential_ops(
+                setup, temp_wetting,
             )
         else:
-            rho_new, u_new = macroscopic_fn(
-                f_t,
-                lattice,
-            )
-            force_tot = force if force is not None else jnp.zeros((f_t.shape[0], f_t.shape[1], 1, 2))
+            gradient_density = setup.gradient_density
+            laplacian_density = setup.laplacian_density
 
-        feq = equilibrium_fn(rho_new, u_new, lattice)
-
-        # Use provided gradient_density if available, else use setup default
-        grad = gradient_density if gradient_density is not None else setup.gradient_density
-        src = source(
-            rho_new,
-            u_new,
-            force_tot,
+        # 1. Multiphase macroscopic (chemical-potential force, wetting-corrected laplacian)
+        rho, u, force_tot = setup.macroscopic_fn(
+            f_t,
             lattice,
-            gradient=grad,
+            mp,
+            force_ext,
+            gradient_standard=setup.gradient_standard,
+            laplacian_density=laplacian_density,
         )
-        f_col = collision_fn(f_t, feq, setup.tau, src)
-        f_str = streaming_fn(f_col, lattice)
-        f_bc = bc_fn(f_str, f_col, setup.bc_masks)
 
-        # Measure CA and CLL from the output
+        # 2. Equilibrium
+        feq = setup.equilibrium_fn(rho, u, lattice)
+
+        # 3. Collision (with source using wetting-corrected gradient)
+        if force_tot is not None and setup.forces is not None:
+            src = setup.forces.source_term(
+                rho, u, force_tot, lattice, gradient=gradient_density,
+            )
+            f_col = setup.collision_fn(f_t, feq, setup.tau, src)
+        else:
+            f_col = setup.collision_fn(f_t, feq, setup.tau)
+
+        # 4. Streaming
+        f_str = setup.streaming_fn(f_col, lattice)
+
+        # 5. Boundary conditions
+        f_bc = setup.bc_fn(f_str, f_col, setup.bc_masks)
+
+        # 6. Measure CA and CLL from the output density
         rho_out = jnp.sum(f_bc, axis=2, keepdims=True)
         ca_l, ca_r = compute_contact_angle(rho_out, rho_mean)
         cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, rho_mean)

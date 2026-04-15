@@ -172,12 +172,14 @@ class TestWettingParamsHelpers:
     def test_cost_cll(self):
         from operators.wetting.hysteresis import _cost_cll
 
-        assert float(_cost_cll(jnp.array(5.0), jnp.array(3.0))) == 2.0
+        # squared error: (5 - 3)^2 = 4
+        assert float(_cost_cll(jnp.array(5.0), jnp.array(3.0))) == 4.0
 
     def test_cost_ca(self):
         from operators.wetting.hysteresis import _cost_ca
 
-        assert float(_cost_ca(jnp.array(90.0), jnp.array(85.0))) == 5.0
+        # squared error: (90 - 85)^2 = 25
+        assert float(_cost_ca(jnp.array(90.0), jnp.array(85.0))) == 25.0
 
 
 # =====================================================================
