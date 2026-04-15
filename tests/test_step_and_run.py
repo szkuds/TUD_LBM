@@ -1,8 +1,8 @@
 """Phase 3 tests — jitted step functions and lax.scan runner.
 
 Tests for:
-    - ``runner.step.step_single_phase``
-    - ``runner.step.step_multiphase``
+    - ``operators.step.step_single_phase``
+    - ``operators.step.step_multiphase``
     - ``setup.step`` convenience method
     - ``runner.run.init_state``
     - ``runner.run.run`` (trajectory mode)
@@ -82,7 +82,7 @@ class TestStepSinglePhase:
 
     def test_step_increments_t(self):
         from runner.run import init_state
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -91,7 +91,7 @@ class TestStepSinglePhase:
 
     def test_step_preserves_shape(self):
         from runner.run import init_state
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -102,7 +102,7 @@ class TestStepSinglePhase:
 
     def test_step_no_nan(self):
         from runner.run import init_state
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -111,7 +111,7 @@ class TestStepSinglePhase:
 
     def test_step_output_is_state(self):
         from runner.run import init_state
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
         from state.state import State
 
         setup = _single_phase_setup()
@@ -123,7 +123,7 @@ class TestStepSinglePhase:
         """At rest equilibrium, one step should not change f."""
         from operators.equilibrium._equilibrium import compute_equilibrium
         from runner.run import init_state
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         setup = _single_phase_setup()
         lattice = setup.lattice
@@ -151,7 +151,7 @@ class TestStepMultiphase:
 
     def test_step_increments_t(self):
         from runner.run import init_state
-        from runner.step import step_multiphase
+        from operators.step import step_multiphase
 
         setup = _multiphase_setup()
         state = init_state(setup)
@@ -160,7 +160,7 @@ class TestStepMultiphase:
 
     def test_step_preserves_shape(self):
         from runner.run import init_state
-        from runner.step import step_multiphase
+        from operators.step import step_multiphase
 
         setup = _multiphase_setup()
         state = init_state(setup)
@@ -169,7 +169,7 @@ class TestStepMultiphase:
 
     def test_step_no_nan(self):
         from runner.run import init_state
-        from runner.step import step_multiphase
+        from operators.step import step_multiphase
 
         setup = _multiphase_setup()
         state = init_state(setup)
@@ -178,7 +178,7 @@ class TestStepMultiphase:
 
     def test_step_produces_force(self):
         from runner.run import init_state
-        from runner.step import step_multiphase
+        from operators.step import step_multiphase
 
         setup = _multiphase_setup()
         state = init_state(setup)

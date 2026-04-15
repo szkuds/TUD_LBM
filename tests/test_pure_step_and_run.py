@@ -1,8 +1,8 @@
 """Tests — pure-function jitted step functions and lax.scan runner.
 
 Tests for the **new pure-function API** (Phase 3):
-    - ``runner.step.step_single_phase``
-    - ``runner.step.step_multiphase``
+    - ``operators.step.step_single_phase``
+    - ``operators.step.step_multiphase``
     - ``setup.step`` convenience method
     - ``runner.run.run_pure``
     - ``operators.force.source_term.source``
@@ -132,7 +132,7 @@ class TestStepSinglePhasePure:
     """``step_single_phase`` advances the state using pure functions."""
 
     def test_increments_t(self):
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -140,7 +140,7 @@ class TestStepSinglePhasePure:
         assert int(new_state.t) == 1
 
     def test_preserves_shape(self):
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -151,7 +151,7 @@ class TestStepSinglePhasePure:
         assert new_state.u.shape == state.u.shape
 
     def test_no_nan(self):
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -161,7 +161,7 @@ class TestStepSinglePhasePure:
         assert not jnp.isnan(new_state.rho).any()
 
     def test_output_is_state(self):
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
         from state.state import State
 
         setup = _sp_setup()
@@ -171,7 +171,7 @@ class TestStepSinglePhasePure:
 
     def test_rest_equilibrium_unchanged(self):
         """At rest equilibrium with periodic BCs, density should be ~1.0."""
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -181,7 +181,7 @@ class TestStepSinglePhasePure:
 
     def test_mass_conservation(self):
         """Total mass should be conserved through one step."""
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -193,7 +193,7 @@ class TestStepSinglePhasePure:
 
     def test_multiple_steps_stable(self):
         """5 steps should remain NaN-free and mass-conserving."""
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -214,7 +214,7 @@ class TestStepMultiphasePure:
     """``step_multiphase`` advances multiphase state using pure functions."""
 
     def test_increments_t(self):
-        from runner.step import step_multiphase
+        from operators.step import step_multiphase
 
         setup = _mp_setup()
         state = init_state(setup)
@@ -222,7 +222,7 @@ class TestStepMultiphasePure:
         assert int(new_state.t) == 1
 
     def test_preserves_shape(self):
-        from runner.step import step_multiphase
+        from operators.step import step_multiphase
 
         setup = _mp_setup()
         state = init_state(setup)
@@ -232,7 +232,7 @@ class TestStepMultiphasePure:
         assert new_state.rho.shape == state.rho.shape
 
     def test_no_nan(self):
-        from runner.step import step_multiphase
+        from operators.step import step_multiphase
 
         setup = _mp_setup()
         state = init_state(setup)
@@ -242,7 +242,7 @@ class TestStepMultiphasePure:
 
     def test_produces_force(self):
         """Multiphase step should produce an interaction force field."""
-        from runner.step import step_multiphase
+        from operators.step import step_multiphase
 
         setup = _mp_setup()
         state = init_state(setup)
@@ -379,7 +379,7 @@ class TestStepWithBounceBack:
 
     def test_bounce_back_step(self):
         """Step with bounce-back top/bottom runs without error."""
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         cfg = SimulationConfig(
             grid_shape=(NX, NY),
@@ -433,7 +433,7 @@ class TestLegacyAPIUnchanged:
     """The ``step_single_phase(setup, state)`` functional API works."""
 
     def test_legacy_step_still_works(self):
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         cfg = SimulationConfig(grid_shape=(NX, NY), tau=0.8, nt=10)
         setup = build_setup(cfg)

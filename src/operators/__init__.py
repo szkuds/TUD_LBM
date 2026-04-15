@@ -26,6 +26,8 @@ SUBPACKAGES:
     boundary: BoundaryConditionOperator implementations + factory
     initialise: InitialiserOperator implementations + factory
 
+    step: update_timestep implementations + build_step_fn factory
+
     (Additional: force, differential, wetting for advanced use)
 
 DESIGN PRINCIPLE:

@@ -1,6 +1,6 @@
 """Verifies that:
 - The new functional API is the only public surface.
-- ``runner.step`` exports pure functions (no ``Operators`` bundle).
+- ``operators.step`` exports pure functions (no ``Operators`` bundle).
 - ``runner.run`` works without legacy classes.
 - ``config.from_dict`` and ``config.DictAdapter`` work end-to-end.
 - Top-level ``src/__init__`` re-exports the correct symbols.
@@ -91,7 +91,7 @@ class TestStepSignatures:
     """Step functions accept (setup, state), not (setup, ops, state)."""
 
     def test_step_single_phase_params(self):
-        from runner.step import step_single_phase
+        from operators.step import step_single_phase
 
         sig = inspect.signature(step_single_phase)
         params = list(sig.parameters.keys())
@@ -101,7 +101,7 @@ class TestStepSignatures:
         ], f"Expected ['setup', 'state'], got {params}"
 
     def test_step_multiphase_params(self):
-        from runner.step import step_multiphase
+        from operators.step import step_multiphase
 
         sig = inspect.signature(step_multiphase)
         params = list(sig.parameters.keys())
@@ -279,10 +279,10 @@ class TestEndToEnd:
 class TestNoBannedPatterns:
     """New code does not import legacy modules."""
 
-    def test_runner_step_no_app_setup(self):
-        import runner.step
+    def test_step_operators_no_app_setup(self):
+        import operators.step
 
-        source = inspect.getsource(runner.step)
+        source = inspect.getsource(operators.step)
         assert "app_setup" not in source
         assert "simulation_operators" not in source
         assert "SimulationRunner" not in source
