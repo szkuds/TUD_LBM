@@ -3,8 +3,10 @@
 from __future__ import annotations
 from abc import ABC
 from abc import abstractmethod
+from pathlib import Path
 import matplotlib.axes
 import numpy as np
+from config import SimulationConfig
 
 
 class PlotOperator(ABC):
@@ -12,8 +14,9 @@ class PlotOperator(ABC):
 
     name: str
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:
         self.config = config
+        self.data_dir = Path(data_dir) if data_dir is not None else None
 
     @abstractmethod
     def __call__(

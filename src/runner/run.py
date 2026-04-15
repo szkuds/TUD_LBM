@@ -192,3 +192,5 @@ def run(
         trajectory = jax.tree.map(lambda x: x[idx], trajectory)
 
     return final_state, trajectory
+
+

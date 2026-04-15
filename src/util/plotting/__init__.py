@@ -21,17 +21,24 @@ from .base import PlotOperator
 from .figure_builder import FigureBuilder
 
 
-def visualise(run_dir, title: str = "LBM Simulation Results", skip: int = 0) -> None:
+def visualise(run_dir, title: str = "LBM Simulation Results", skip: int = 0) -> None:  # noqa: ARG001
     """Plotting entry point.
 
     Accepts a run-directory
     path. In both cases, figures are rendered by :class:`FigureBuilder`.
+
+    Note:
+        The *title* parameter is retained for backward compatibility but
+        is no longer used.  The figure title is sourced from
+        ``SimulationConfig.simulation_name`` instead.
     """
     # TODO: Need make this function with adapters
+    from config import from_dict
+
     with Path(run_dir + "/config.json").open() as _fh:
-        config = json.load(_fh)
-    if title and "plot_title" not in config:
-        config["plot_title"] = title
+        raw = json.load(_fh)
+
+    config = from_dict(raw)
 
     builder = FigureBuilder(config=config, run_dir=run_dir)
     builder.build_all(skip=skip)

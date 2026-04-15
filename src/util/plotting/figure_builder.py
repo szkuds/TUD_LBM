@@ -7,6 +7,8 @@ import warnings
 from pathlib import Path
 import matplotlib as mpl
 
+from config import SimulationConfig
+
 mpl.use("Agg")
 
 import matplotlib.pyplot as plt
@@ -19,8 +21,8 @@ _DEFAULT_FIELD_ORDER = ["density", "velocity", "force", "force_ext", "analysis"]
 class FigureBuilder:
     """Build and save composite figures for saved simulation snapshots."""
 
-    def __init__(self, config: dict, run_dir: str | os.PathLike, dpi: int = 150) -> None:
-        self.config = dict(config or {})
+    def __init__(self, config: SimulationConfig, run_dir: str | os.PathLike, dpi: int = 150) -> None:
+        self.config = config
         self.run_dir = Path(run_dir)
         self.dpi = dpi
 
@@ -28,9 +30,9 @@ class FigureBuilder:
         self._plot_dir = self.run_dir / "plots"
         self._plot_dir.mkdir(parents=True, exist_ok=True)
 
-        self.config["data_dir"] = str(self._data_dir)
-        requested = self.config.get("plot_fields")
-        requested = requested or get_operators("plotting")
+        requested = self.config.plot_fields
+        if not requested:
+            requested = list(get_operators("plotting"))
 
         all_ops = get_operators("plotting")
         self._operators = []
@@ -42,7 +44,7 @@ class FigureBuilder:
                     stacklevel=2,
                 )
                 continue
-            self._operators.append(entry.target(self.config))
+            self._operators.append(entry.target(self.config, data_dir=self._data_dir))
 
     def build(
         self,
@@ -88,7 +90,7 @@ class FigureBuilder:
             row, col = divmod(idx, ncols)
             axes[row][col].set_visible(False)
 
-        title = self.config.get("plot_title") or self.config.get("simulation_name") or "simulation"
+        title = self.config.simulation_name or "simulation"
         fig.suptitle(f"{title} - Timestep {timestep}", fontsize=12)
         plt.tight_layout(rect=(0, 0.03, 1, 0.95))
 
