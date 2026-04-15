@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
-from src import SimulationConfig
+from config import SimulationConfig
 from .output_data import output_writers
 
 
