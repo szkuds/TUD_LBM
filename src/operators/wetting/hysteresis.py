@@ -8,8 +8,8 @@ bloat.  This module replaces it with pure functions that operate on
 the :class:`~state.state.WettingState` NamedTuple carried through
 ``jax.lax.scan``.
 
-All inner optimisation loops use ``optax`` + ``jax.lax.scan`` and
-are fully jittable.
+All inner optimisation loops use ``optax`` + ``jax.lax.while_loop``
+with early convergence exit and are fully jittable.
 
 Design
 ~~~~~~
@@ -17,9 +17,11 @@ Design
 
 1. Measures contact angles and contact-line locations from ``rho``.
 2. Checks whether each side is inside the hysteresis window.
-3. Via ``jax.lax.cond``, either **pins the CLL** (inside window) or
-   **optimises toward the target CA** (outside window).
-4. Returns an updated :class:`WettingState` — no mutation.
+3. Builds a **combined objective** that sums the per-side losses
+   (CLL-pin or CA-target, selected via ``jnp.where``).
+4. Runs a **single** ``jax.lax.while_loop`` optimisation that
+   updates all four wetting parameters simultaneously.
+5. Returns an updated :class:`WettingState` — no mutation.
 
 The inner ``_evaluate_with_params`` closure performs a single LBM
 step with trial wetting parameters so that ``jax.value_and_grad``
@@ -78,7 +80,7 @@ def _cost_ca(ca_target: jnp.ndarray, ca_current: jnp.ndarray) -> jnp.ndarray:
     return (ca_target - ca_current) ** 2
 
 
-# ── Generic optimisation routines ────────────────────────────────────
+# ── Generic optimisation routine ─────────────────────────────────────
 
 
 def _optimise_single_param(
@@ -87,202 +89,52 @@ def _optimise_single_param(
     grad_mask_fn,
     optimiser,
     max_iterations: int,
+    loss_tol: float = 1e-6,
 ) -> tuple[WettingParams, jnp.ndarray]:
     """Run an ``optax`` optimisation loop with masked gradients.
+
+    Uses ``jax.lax.while_loop`` with early exit: the loop terminates
+    when **either** ``max_iterations`` is reached **or** the loss drops
+    below ``loss_tol``, whichever comes first.
 
     Args:
         objective_fn: ``params → scalar_loss``.
         initial_params: Starting :class:`WettingParams`.
         grad_mask_fn: ``grads → grads`` that zeros out all but the
-            target parameter.
+            target parameter(s).
         optimiser: An ``optax`` optimiser instance.
-        max_iterations: Number of inner steps.
+        max_iterations: Maximum number of inner steps.
+        loss_tol: Convergence tolerance — loop exits early when
+            ``loss <= loss_tol``.
 
     Returns:
         ``(final_params, final_loss)``.
     """
-    opt_state = optimiser.init(initial_params)
     import optax  # lazy import — optional dependency
 
-    def step(carry, _):
-        params, opt_state = carry
+    opt_state = optimiser.init(initial_params)
+    initial_loss = objective_fn(initial_params)
+
+    def cond_fn(carry):
+        _params, _opt_state, loss, iteration = carry
+        return (iteration < max_iterations) & (loss > loss_tol)
+
+    def body_fn(carry):
+        params, opt_state, _loss, iteration = carry
         loss, grads = jax.value_and_grad(objective_fn)(params)
         grads = grad_mask_fn(grads)
         updates, new_opt_state = optimiser.update(grads, opt_state, params)
-
         new_params = optax.apply_updates(params, updates)
         new_params = _clamp_params(new_params)
-        return (new_params, new_opt_state), loss
+        return (new_params, new_opt_state, loss, iteration + 1)
 
-    (final_params, _), losses = jax.lax.scan(
-        step,
-        (initial_params, opt_state),
-        jnp.arange(max_iterations),
+    init_carry = (initial_params, opt_state, initial_loss, jnp.array(0))
+    final_params, _opt_state, final_loss, _iters = jax.lax.while_loop(
+        cond_fn,
+        body_fn,
+        init_carry,
     )
-    return final_params, losses[-1]
-
-
-def _optimise_side_cll(
-    evaluate_fn,
-    initial_params: WettingParams,
-    cll_target: jnp.ndarray,
-    side: str,
-    optimiser,
-    max_iterations: int,
-) -> WettingParams:
-    """Optimise wetting params to pin CLL on one side.
-
-    Tries both the ``d_rho`` and ``phi`` parameter for the given side,
-    and returns whichever achieves the lower final loss.
-    """
-    # --- d_rho objective --------------------------------------------------
-    if side == "left":
-
-        def obj_d_rho(p):
-            _, _, cll_l, _ = evaluate_fn(p)
-            return _cost_cll(cll_target, cll_l)
-
-        def mask_d_rho(g):
-            return WettingParams(
-                g.d_rho_left,
-                jnp.zeros_like(g.d_rho_right),
-                jnp.zeros_like(g.phi_left),
-                jnp.zeros_like(g.phi_right),
-            )
-
-        def obj_phi(p):
-            _, _, cll_l, _ = evaluate_fn(p)
-            return _cost_cll(cll_target, cll_l)
-
-        def mask_phi(g):
-            return WettingParams(
-                jnp.zeros_like(g.d_rho_left),
-                jnp.zeros_like(g.d_rho_right),
-                g.phi_left,
-                jnp.zeros_like(g.phi_right),
-            )
-
-    else:
-
-        def obj_d_rho(p):
-            _, _, _, cll_r = evaluate_fn(p)
-            return _cost_cll(cll_target, cll_r)
-
-        def mask_d_rho(g):
-            return WettingParams(
-                jnp.zeros_like(g.d_rho_left),
-                g.d_rho_right,
-                jnp.zeros_like(g.phi_left),
-                jnp.zeros_like(g.phi_right),
-            )
-
-        def obj_phi(p):
-            _, _, _, cll_r = evaluate_fn(p)
-            return _cost_cll(cll_target, cll_r)
-
-        def mask_phi(g):
-            return WettingParams(
-                jnp.zeros_like(g.d_rho_left),
-                jnp.zeros_like(g.d_rho_right),
-                jnp.zeros_like(g.phi_left),
-                g.phi_right,
-            )
-
-    p_drho, loss_drho = _optimise_single_param(
-        obj_d_rho,
-        initial_params,
-        mask_d_rho,
-        optimiser,
-        max_iterations,
-    )
-    p_phi, loss_phi = _optimise_single_param(
-        obj_phi,
-        initial_params,
-        mask_phi,
-        optimiser,
-        max_iterations,
-    )
-
-    return jax.lax.cond(loss_drho < loss_phi, lambda: p_drho, lambda: p_phi)
-
-
-def _optimise_side_ca(
-    evaluate_fn,
-    initial_params: WettingParams,
-    ca_target: jnp.ndarray,
-    side: str,
-    optimiser,
-    max_iterations: int,
-) -> WettingParams:
-    """Optimise wetting params to reach target CA on one side."""
-    if side == "left":
-
-        def obj_d_rho(p):
-            ca_l, _ca_r, _cll_l, _cll_r = evaluate_fn(p)
-            return _cost_ca(ca_target, ca_l)
-
-        def mask_d_rho(g):
-            return WettingParams(
-                g.d_rho_left,
-                jnp.zeros_like(g.d_rho_right),
-                jnp.zeros_like(g.phi_left),
-                jnp.zeros_like(g.phi_right),
-            )
-
-        def obj_phi(p):
-            ca_l, _ca_r, _cll_l, _cll_r = evaluate_fn(p)
-            return _cost_ca(ca_target, ca_l)
-
-        def mask_phi(g):
-            return WettingParams(
-                jnp.zeros_like(g.d_rho_left),
-                jnp.zeros_like(g.d_rho_right),
-                g.phi_left,
-                jnp.zeros_like(g.phi_right),
-            )
-
-    else:
-
-        def obj_d_rho(p):
-            _ca_l, ca_r, _cll_l, _cll_r = evaluate_fn(p)
-            return _cost_ca(ca_target, ca_r)
-
-        def mask_d_rho(g):
-            return WettingParams(
-                jnp.zeros_like(g.d_rho_left),
-                g.d_rho_right,
-                jnp.zeros_like(g.phi_left),
-                jnp.zeros_like(g.phi_right),
-            )
-
-        def obj_phi(p):
-            _ca_l, ca_r, _cll_l, _cll_r = evaluate_fn(p)
-            return _cost_ca(ca_target, ca_r)
-
-        def mask_phi(g):
-            return WettingParams(
-                jnp.zeros_like(g.d_rho_left),
-                jnp.zeros_like(g.d_rho_right),
-                jnp.zeros_like(g.phi_left),
-                g.phi_right,
-            )
-
-    p_drho, loss_drho = _optimise_single_param(
-        obj_d_rho,
-        initial_params,
-        mask_d_rho,
-        optimiser,
-        max_iterations,
-    )
-    p_phi, loss_phi = _optimise_single_param(
-        obj_phi,
-        initial_params,
-        mask_phi,
-        optimiser,
-        max_iterations,
-    )
-
-    return jax.lax.cond(loss_drho < loss_phi, lambda: p_drho, lambda: p_phi)
+    return final_params, final_loss
 
 
 # ── Top-level entry point ────────────────────────────────────────────
@@ -305,6 +157,11 @@ def update_wetting_state(
     :class:`~update_timestep.UpdateMultiphaseHysteresis.__call__`
     method.  It operates entirely on the :class:`WettingState`
     NamedTuple and returns a new instance — no side-effects.
+
+    Both sides (left and right) are optimised **simultaneously** in a
+    single ``jax.lax.while_loop``.  Each iteration calls ``evaluate_fn``
+    once and computes a combined loss that sums the per-side objectives
+    (CLL-pin or CA-target, selected via ``jnp.where``).
 
     Args:
         wetting: Current :class:`WettingState`.
@@ -343,6 +200,7 @@ def update_wetting_state(
     ca_rec = hc["ca_receding"]
     lr = hc.get("learning_rate", 0.01)
     max_iter = hc.get("max_iterations", 20)
+    loss_tol = hc.get("loss_tolerance", 1e-6)
 
     in_window_left = (ca_left >= ca_rec) & (ca_left <= ca_adv)
     in_window_right = (ca_right >= ca_rec) & (ca_right <= ca_adv)
@@ -372,66 +230,45 @@ def update_wetting_state(
             rho_mean,
         )
 
-    # 5. Left side
-    ca_target_left = jax.lax.cond(
-        ca_left < ca_rec,
-        lambda: jnp.array(ca_rec),
-        lambda: jnp.array(ca_adv),
-    )
-    new_params_left = jax.lax.cond(
-        in_window_left,
-        lambda p: _optimise_side_cll(
-            evaluate_fn,
-            p,
-            cll_left,
-            "left",
-            optimiser,
-            max_iter,
-        ),
-        lambda p: _optimise_side_ca(
-            evaluate_fn,
-            p,
-            ca_target_left,
-            "left",
-            optimiser,
-            max_iter,
-        ),
+    # 5. Combined objective — both sides in a single loop.
+    #    Each iteration calls evaluate_fn once and selects the
+    #    per-side loss (CLL-pin or CA-target) via jnp.where.
+    ca_target_left = jnp.where(ca_left < ca_rec, ca_rec, ca_adv)
+    ca_target_right = jnp.where(ca_right < ca_rec, ca_rec, ca_adv)
+
+    def combined_objective(p):
+        ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+
+        loss_left = jnp.where(
+            in_window_left,
+            _cost_cll(cll_left, cll_l),
+            _cost_ca(ca_target_left, ca_l),
+        )
+        loss_right = jnp.where(
+            in_window_right,
+            _cost_cll(cll_right, cll_r),
+            _cost_ca(ca_target_right, ca_r),
+        )
+        return loss_left + loss_right
+
+    def identity_mask(g):
+        return g
+
+    new_params, _loss = _optimise_single_param(
+        combined_objective,
         params,
+        identity_mask,
+        optimiser,
+        max_iter,
+        loss_tol,
     )
 
-    # 6. Right side
-    ca_target_right = jax.lax.cond(
-        ca_right < ca_rec,
-        lambda: jnp.array(ca_rec),
-        lambda: jnp.array(ca_adv),
-    )
-    new_params_right = jax.lax.cond(
-        in_window_right,
-        lambda p: _optimise_side_cll(
-            evaluate_fn,
-            p,
-            cll_right,
-            "right",
-            optimiser,
-            max_iter,
-        ),
-        lambda p: _optimise_side_ca(
-            evaluate_fn,
-            p,
-            ca_target_right,
-            "right",
-            optimiser,
-            max_iter,
-        ),
-        params,
-    )
-
-    # 7. Merge (left from left optimisation, right from right optimisation)
+    # 6. Return updated wetting state
     return wetting._replace(
-        d_rho_left=new_params_left.d_rho_left,
-        d_rho_right=new_params_right.d_rho_right,
-        phi_left=new_params_left.phi_left,
-        phi_right=new_params_right.phi_right,
+        d_rho_left=new_params.d_rho_left,
+        d_rho_right=new_params.d_rho_right,
+        phi_left=new_params.phi_left,
+        phi_right=new_params.phi_right,
         ca_left=ca_left,
         ca_right=ca_right,
         cll_left=cll_left,
@@ -501,7 +338,8 @@ def _build_default_evaluate_fn(
                 cll_right=jnp.zeros(()),
             )
             gradient_density, laplacian_density = _make_wetting_differential_ops(
-                setup, temp_wetting,
+                setup,
+                temp_wetting,
             )
         else:
             gradient_density = setup.gradient_density
@@ -523,7 +361,11 @@ def _build_default_evaluate_fn(
         # 3. Collision (with source using wetting-corrected gradient)
         if force_tot is not None and setup.forces is not None:
             src = setup.forces.source_term(
-                rho, u, force_tot, lattice, gradient=gradient_density,
+                rho,
+                u,
+                force_tot,
+                lattice,
+                gradient=gradient_density,
             )
             f_col = setup.collision_fn(f_t, feq, setup.tau, src)
         else:
