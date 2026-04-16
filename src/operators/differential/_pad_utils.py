@@ -48,9 +48,8 @@ def determine_pad_modes(bc_config: dict[str, Any] | None) -> list[str]:
     metadata is missing, ``"edge"`` is used as a safe fallback.
 
     Args:
-        bc_config: Mapping ``{edge: bc_type, ...}``, e.g.
-            ``{"top": "symmetry", "bottom": "bounce-back",
-              "left": "periodic", "right": "periodic"}``.
+        bc_config: Mapping of edge names to BC types, e.g.
+            ``{"top": "symmetry", "bottom": "bounce-back", "left": "periodic", "right": "periodic"}``.
             ``None`` means all-periodic (→ all ``"wrap"``).
 
     Returns:

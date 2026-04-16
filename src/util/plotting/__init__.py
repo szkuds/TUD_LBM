@@ -1,11 +1,11 @@
 """Plotting utilities for TUD-LBM.
 
-Public surface
---------------
-FigureBuilder  — assembles per-timestep composite figures from config.
-PlotOperator   — abstract base class for individual panel operators.
-visualise      — backward-compatible entry point for simulation objects
-                 or run directories.
+Public surface:
+
+- ``FigureBuilder`` -- assembles per-timestep composite figures from config.
+- ``PlotOperator`` -- abstract base class for individual panel operators.
+- ``visualise`` -- backward-compatible entry point for simulation objects
+  or run directories.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from .base import PlotOperator
 from .figure_builder import FigureBuilder
 
 
-def visualise(run_dir, title: str = "LBM Simulation Results", skip: int = 0) -> None:  # noqa: ARG001
+def visualise(run_dir, title: str = "LBM Simulation Results", skip: int = 0) -> None:
     """Plotting entry point.
 
     Accepts a run-directory

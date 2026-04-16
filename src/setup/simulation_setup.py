@@ -29,7 +29,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 from typing import NamedTuple
-
 import jax.numpy as jnp
 from config.simulation_config import SimulationConfig
 from operators.boundary import BCMasks

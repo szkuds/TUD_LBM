@@ -9,10 +9,10 @@ Public API::
     from runner import step_single_phase, step_multiphase
 """
 
-from .run import init_state
-from .run import run
 from operators.step import step_multiphase
 from operators.step import step_single_phase
+from .run import init_state
+from .run import run
 
 __all__ = [
     "init_state",

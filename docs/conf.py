@@ -17,9 +17,6 @@ import sys
 # Project root and src/ layout
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
-
-# Make the project importable
-sys.path.insert(0, PROJECT_ROOT)          # so `import tud_lbm` (or your real package) works
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))  # so `import src...` works if still used
 
 # -- Project information -----------------------------------------------------
@@ -61,7 +58,9 @@ templates_path = ["_templates"]
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This patterns also effect to html_static_path and html_extra_path
+doctest_test_doctest_blocks = ""
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
@@ -69,6 +68,20 @@ todo_include_todos = False
 # -- Use autoapi.extension to generate API docs -----------------
 
 autoapi_dirs = ["../src"]
+autoapi_options = [
+    "members",
+    "undoc-members",
+    "show-inheritance",
+    "show-module-summary",
+    "special-members",
+    # NOT "imported-members" — that's what causes the duplicates
+]
+
+# AutoAPI renders NamedTuple / dataclass fields both in the class summary
+# table *and* as individual attribute entries, producing harmless
+# "duplicate object description" warnings.  Suppress them.
+suppress_warnings = ["autoapi.python_import_resolution", "duplicate_object"]
+
 
 # -- Options for HTML output ----------------------------------------------
 

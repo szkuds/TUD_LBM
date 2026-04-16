@@ -79,4 +79,3 @@ def step_multiphase(setup, state: State) -> State:
         force=force_tot,
         wetting=new_wetting,
     )
-

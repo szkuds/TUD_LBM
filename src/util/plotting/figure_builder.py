@@ -6,7 +6,6 @@ import os
 import warnings
 from pathlib import Path
 import matplotlib as mpl
-
 from config import SimulationConfig
 
 mpl.use("Agg")

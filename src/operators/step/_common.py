@@ -59,5 +59,3 @@ def _apply_common_step(
         u=u,
         t=state.t + 1,
     )
-
-

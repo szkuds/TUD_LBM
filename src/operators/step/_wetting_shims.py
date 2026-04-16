@@ -48,4 +48,3 @@ def _make_wetting_differential_ops(setup, wetting_state):
         return setup.laplacian_density(grid, phi_l, phi_r, d_rho_l, d_rho_r)
 
     return gradient_density_shim, laplacian_density_shim
-

@@ -475,8 +475,8 @@ class TestStepMultiphaseWithWetting:
     def test_without_wetting_state_unchanged(self):
         """When wetting is None, step should not fail."""
         from config.simulation_config import SimulationConfig
-        from runner.run import init_state
         from operators.step import step_multiphase
+        from runner.run import init_state
         from setup.simulation_setup import build_setup
 
         cfg = SimulationConfig(
@@ -509,8 +509,8 @@ class TestFunctionalStep:
 
     def test_functional_step(self):
         from config.simulation_config import SimulationConfig
-        from runner.run import init_state
         from operators.step import step_single_phase
+        from runner.run import init_state
         from setup.simulation_setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
