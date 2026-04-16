@@ -1,11 +1,11 @@
 """Plotting utilities for TUD-LBM.
 
-Public surface
---------------
-FigureBuilder  — assembles per-timestep composite figures from config.
-PlotOperator   — abstract base class for individual panel operators.
-visualise      — backward-compatible entry point for simulation objects
-                 or run directories.
+Public surface:
+
+- ``FigureBuilder`` -- assembles per-timestep composite figures from config.
+- ``PlotOperator`` -- abstract base class for individual panel operators.
+- ``visualise`` -- backward-compatible entry point for simulation objects
+  or run directories.
 """
 
 from __future__ import annotations

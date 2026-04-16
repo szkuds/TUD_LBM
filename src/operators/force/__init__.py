@@ -31,12 +31,13 @@ class ForceParams(NamedTuple):
     """One pre-built force contribution.
 
     Attributes:
-        name: Registry key, e.g. "gravity_force".
-        compute_fn: Pure function (state, precomputed, lattice) → jnp.ndarray of shape (nx, ny, 1, d).
-                    Returns the force contribution for this physics.
-        init_fn: (setup) → dict of extra State fields needed at t=0.
-                 Stateful forces may return values such as ``{"h": ...}``;
-                 stateless forces use a no-op default that returns ``{}``.
+        name: Registry key, e.g. ``"gravity_force"``.
+        compute_fn: Pure function ``(state, precomputed, lattice) → jnp.ndarray``
+            of shape ``(nx, ny, 1, d)``.
+            Returns the force contribution for this physics.
+        init_fn: ``(setup) → dict`` of extra State fields needed at t=0.
+            Stateful forces may return values such as ``{"h": ...}``;
+            stateless forces use a no-op default that returns ``{}``.
         precomputed: Optional pre-computed data (e.g. gravity template array).
     """
 
@@ -106,13 +107,14 @@ def build_forces(
     grid_shape: tuple[int, ...],
     lattice: Any,
 ) -> ForceSetup:
-    """Discover *_force fields on config, build ForceSetup with specs and source term.
+    """Discover ``*_force`` fields on config, build ForceSetup with specs and source term.
 
     Each force operator in the registry must expose:
-      - build(params, grid_shape, config, lattice) → precomputed data (or None)
-      - compute(state, precomputed, **kwargs) → force array
-      - init_state(grid_shape, lattice, precomputed) → dict of extra State fields
-      - update_state(state, precomputed, lattice, stream_fn) → state
+
+    - ``build(params, grid_shape, config, lattice)`` → precomputed data (or None)
+    - ``compute(state, precomputed, **kwargs)`` → force array
+    - ``init_state(grid_shape, lattice, precomputed)`` → dict of extra State fields
+    - ``update_state(state, precomputed, lattice, stream_fn)`` → state
 
     Stateless force modules may omit the state hooks; they are replaced
     here with no-op defaults.

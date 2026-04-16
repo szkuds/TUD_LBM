@@ -34,18 +34,23 @@ def collide_bgk(
 ) -> jnp.ndarray:
     """BGK collision — implementation of CollisionOperator protocol.
 
-    Satisfies the CollisionOperator protocol:
-        Input: (f, feq, tau, source) + **kwargs
+    Satisfies the ``CollisionOperator`` protocol::
+
+        Input:  (f, feq, tau, source) + **kwargs
         Output: f_col (same shape as f)
 
-    Use via factory: from operators.collision import build_collision_fn
-    bgk = build_collision_fn("bgk")
+    Use via factory::
 
-    Or via protocol type hint:
+        from operators.collision import build_collision_fn
+        bgk = build_collision_fn("bgk")
+
+    Or via protocol type hint::
+
         from operators.protocols import CollisionOperator
         op: CollisionOperator = build_collision_fn("bgk")
 
-    Physics formula:
+    Physics formula::
+
         f_col = (1 − 1/τ) f + (1/τ) feq [+ (1 − 1/(2τ)) source]
 
     Args:

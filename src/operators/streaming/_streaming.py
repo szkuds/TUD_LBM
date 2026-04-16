@@ -46,8 +46,7 @@ def stream(
         f: Population distributions, shape ``(nx, ny, q, 1)``.
         lattice: :class:`~setup.lattice.Lattice` with velocity vectors ``c``.
         bc_config: Boundary-condition config dict, e.g.
-            ``{"top": "bounce-back", "bottom": "bounce-back",
-              "left": "periodic", "right": "periodic"}``.
+            ``{"top": "bounce-back", "bottom": "bounce-back", "left": "periodic", "right": "periodic"}``.
             ``None`` (default) means fully periodic — no zero-fill.
 
     Returns:

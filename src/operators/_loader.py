@@ -21,7 +21,6 @@ def auto_load_operators(package_name: str) -> None:
         package_name: Full package name, e.g. 'operators.collision'
 
     Example:
-        # In src/operators/collision/__init__.py:
         from operators._loader import auto_load_operators
         auto_load_operators('operators.collision')
     """
