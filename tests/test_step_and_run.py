@@ -81,8 +81,8 @@ class TestStepSinglePhase:
     """Single-phase step function."""
 
     def test_step_increments_t(self):
-        from runner.run import init_state
         from operators.step import step_single_phase
+        from runner.run import init_state
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -90,8 +90,8 @@ class TestStepSinglePhase:
         assert int(new_state.t) == 1
 
     def test_step_preserves_shape(self):
-        from runner.run import init_state
         from operators.step import step_single_phase
+        from runner.run import init_state
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -101,8 +101,8 @@ class TestStepSinglePhase:
         assert new_state.u.shape == (8, 8, 1, 2)
 
     def test_step_no_nan(self):
-        from runner.run import init_state
         from operators.step import step_single_phase
+        from runner.run import init_state
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -110,8 +110,8 @@ class TestStepSinglePhase:
         assert not jnp.isnan(new_state.f).any()
 
     def test_step_output_is_state(self):
-        from runner.run import init_state
         from operators.step import step_single_phase
+        from runner.run import init_state
         from state.state import State
 
         setup = _single_phase_setup()
@@ -122,8 +122,8 @@ class TestStepSinglePhase:
     def test_rest_equilibrium_unchanged(self):
         """At rest equilibrium, one step should not change f."""
         from operators.equilibrium._equilibrium import compute_equilibrium
-        from runner.run import init_state
         from operators.step import step_single_phase
+        from runner.run import init_state
 
         setup = _single_phase_setup()
         lattice = setup.lattice
@@ -150,8 +150,8 @@ class TestStepMultiphase:
     """Multiphase step function."""
 
     def test_step_increments_t(self):
-        from runner.run import init_state
         from operators.step import step_multiphase
+        from runner.run import init_state
 
         setup = _multiphase_setup()
         state = init_state(setup)
@@ -159,8 +159,8 @@ class TestStepMultiphase:
         assert int(new_state.t) == 1
 
     def test_step_preserves_shape(self):
-        from runner.run import init_state
         from operators.step import step_multiphase
+        from runner.run import init_state
 
         setup = _multiphase_setup()
         state = init_state(setup)
@@ -168,8 +168,8 @@ class TestStepMultiphase:
         assert new_state.f.shape == (16, 16, 9, 1)
 
     def test_step_no_nan(self):
-        from runner.run import init_state
         from operators.step import step_multiphase
+        from runner.run import init_state
 
         setup = _multiphase_setup()
         state = init_state(setup)
@@ -177,8 +177,8 @@ class TestStepMultiphase:
         assert not jnp.isnan(new_state.f).any()
 
     def test_step_produces_force(self):
-        from runner.run import init_state
         from operators.step import step_multiphase
+        from runner.run import init_state
 
         setup = _multiphase_setup()
         state = init_state(setup)

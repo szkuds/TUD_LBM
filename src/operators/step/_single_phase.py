@@ -35,4 +35,3 @@ def step_single_phase(setup, state: State) -> State:
 
     # 3–6. Equilibrium → collision → streaming → BCs (shared)
     return _apply_common_step(setup, state, rho, u, force_tot)
-

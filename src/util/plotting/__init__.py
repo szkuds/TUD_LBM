@@ -21,7 +21,7 @@ from .base import PlotOperator
 from .figure_builder import FigureBuilder
 
 
-def visualise(run_dir, title: str = "LBM Simulation Results", skip: int = 0) -> None:  # noqa: ARG001
+def visualise(run_dir, title: str = "LBM Simulation Results", skip: int = 0) -> None:
     """Plotting entry point.
 
     Accepts a run-directory
