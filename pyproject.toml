@@ -46,7 +46,7 @@ docs = [
     "sphinx",
     "sphinx-rtd-theme",
     "myst-parser",
-    "sphinx-autoapi,
+    "sphinx-autoapi",
 ]
 
 [project.urls]
