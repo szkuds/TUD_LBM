@@ -437,7 +437,7 @@ class TestStepMultiphaseWithWetting:
         return setup, state
 
     def test_wetting_state_propagated(self):
-        from runner.step import step_multiphase
+        from operators.step import step_multiphase
         from state.state import WettingState
 
         setup, state = self._setup_and_state()
@@ -447,14 +447,14 @@ class TestStepMultiphaseWithWetting:
         assert isinstance(new_state.wetting, WettingState)
 
     def test_step_increments_t(self):
-        from runner.step import step_multiphase
+        from operators.step import step_multiphase
 
         setup, state = self._setup_and_state()
         new_state = step_multiphase(setup, state)
         assert int(new_state.t) == 1
 
     def test_wetting_fields_no_nan(self):
-        from runner.step import step_multiphase
+        from operators.step import step_multiphase
 
         setup, state = self._setup_and_state()
         new_state = step_multiphase(setup, state)
@@ -475,8 +475,8 @@ class TestStepMultiphaseWithWetting:
     def test_without_wetting_state_unchanged(self):
         """When wetting is None, step should not fail."""
         from config.simulation_config import SimulationConfig
+        from operators.step import step_multiphase
         from runner.run import init_state
-        from runner.step import step_multiphase
         from setup.simulation_setup import build_setup
 
         cfg = SimulationConfig(
@@ -509,8 +509,8 @@ class TestFunctionalStep:
 
     def test_functional_step(self):
         from config.simulation_config import SimulationConfig
+        from operators.step import step_single_phase
         from runner.run import init_state
-        from runner.step import step_single_phase
         from setup.simulation_setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)

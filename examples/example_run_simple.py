@@ -43,7 +43,7 @@ def run_and_save():
     # Create the I/O handler — this makes the timestamped run directory.
     io = SimulationIO(
         base_dir=config.results_dir,
-        config=config.to_dict(),
+        config=config,
         simulation_name=config.simulation_name,
         output_format=config.output_format,
     )
@@ -63,7 +63,7 @@ def run_and_save():
     print(f"  Snapshots saved to : {io.data_dir}")
 
     # Generate one PNG per saved snapshot.
-    builder = FigureBuilder(config=config.to_dict(), run_dir=io.run_dir)
+    builder = FigureBuilder(config=config, run_dir=io.run_dir)
     saved_plots = builder.build_all()
     print(f"  Plots saved        : {len(saved_plots)} PNG(s) in {io.run_dir}/plots/")
 

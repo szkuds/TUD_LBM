@@ -25,9 +25,9 @@ class DensityPlotOperator(PlotOperator):
     ) -> None:
         rho = np.asarray(data["rho"])[..., 0, 0].T
         use_log_scale = False
-        if self.config.get("simulation_type") == "multiphase":
-            rho_l = self.config.get("rho_l")
-            rho_v = self.config.get("rho_v")
+        if self.config.sim_type == "multiphase":
+            rho_l = self.config.rho_l
+            rho_v = self.config.rho_v
             if rho_l and rho_v and rho_v != 0:
                 use_log_scale = (rho_l / rho_v) > 100
 

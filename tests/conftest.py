@@ -11,7 +11,7 @@ def _register_step_operators():
     early, so their @update_timestep_operator decorators fire and
     register the step operators.
     """
-    from runner import step as _  # noqa: F401
+    from operators import step as _  # noqa: F401
 
 
 @pytest.fixture
@@ -91,8 +91,8 @@ def cleanup_imports():
         "state.state",
         "runner",
         "runner.run",
-        "runner.step",
         "operators",
+        "operators.step",
     ]
 
     for module_name in modules_to_clean:

@@ -17,9 +17,6 @@ import sys
 # Project root and src/ layout
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
-
-# Make the project importable
-sys.path.insert(0, PROJECT_ROOT)          # so `import tud_lbm` (or your real package) works
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))  # so `import src...` works if still used
 
 # -- Project information -----------------------------------------------------
@@ -43,6 +40,7 @@ release = version
 # extensions coming with Sphinx (named "sphinx.ext.*") or your custom
 # ones.
 extensions = [
+    "sphinx.ext.autodoc",
     "sphinx.ext.coverage",
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
@@ -60,30 +58,30 @@ templates_path = ["_templates"]
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This patterns also effect to html_static_path and html_extra_path
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "autoapi"]
+doctest_test_doctest_blocks = ""
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
 
 # -- Use autoapi.extension to generate API docs -----------------
 
-autoapi_type = "python"
 autoapi_dirs = ["../src"]
-autoapi_root = "autoapi"
-autoapi_keep_files = False  # Don't keep generated .rst files after build
-autoapi_add_objects_to_toctree = False  # Don't auto-inject into toctree to avoid dangling references
-autoapi_add_toctree_entry = False
-
-autoapi_member_order = "bysource"
-autoapi_python_class_content = "both"  # combine class docstring and __init__ docstring
-
 autoapi_options = [
     "members",
     "undoc-members",
-    "show-module-summary",
     "show-inheritance",
+    "show-module-summary",
     "special-members",
+    # NOT "imported-members" — that's what causes the duplicates
 ]
+
+# AutoAPI renders NamedTuple / dataclass fields both in the class summary
+# table *and* as individual attribute entries, producing harmless
+# "duplicate object description" warnings.  Suppress them.
+suppress_warnings = ["autoapi.python_import_resolution", "duplicate_object"]
+
 
 # -- Options for HTML output ----------------------------------------------
 

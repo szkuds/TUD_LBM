@@ -26,6 +26,8 @@ SUBPACKAGES:
     boundary: BoundaryConditionOperator implementations + factory
     initialise: InitialiserOperator implementations + factory
 
+    step: update_timestep implementations + build_step_fn factory
+
     (Additional: force, differential, wetting for advanced use)
 
 DESIGN PRINCIPLE:
@@ -34,3 +36,14 @@ DESIGN PRINCIPLE:
     - Factories (build_collision_fn, etc) = public API
     - Users type-hint against protocols, not implementations
 """
+
+from __future__ import annotations
+import pkgutil
+from operators._loader import auto_load_operators
+
+
+def load_all() -> None:
+    """Import every operator subpackage to trigger registry registration."""
+    for _, subpkg_name, is_pkg in pkgutil.iter_modules(__path__):
+        if is_pkg:
+            auto_load_operators(f"operators.{subpkg_name}")

@@ -21,7 +21,7 @@ class AnalysisPlotOperator(PlotOperator):
         timestep: int,
     ) -> None:
         del data
-        data_dir = Path(self.config.get("data_dir", "."))
+        data_dir = self.data_dir or Path()
         files = sorted(data_dir.glob("*.npz"))
 
         iters: list[int] = []

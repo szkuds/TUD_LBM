@@ -27,12 +27,12 @@ console = Console()
 
 def _display_operators() -> None:
     """Display all registered operators grouped by kind in Rich tables."""
+    from operators import load_all
     from registry import OPERATOR_REGISTRY
-    from registry import ensure_registry
     from registry import get_operator_category
     from registry import get_operators
 
-    ensure_registry()
+    load_all()
 
     categories = sorted(get_operator_category())
 
@@ -132,13 +132,13 @@ def _run_simulation(config: Any):
     from setup import build_setup
     from util.io import SimulationIO
 
-    setup = build_setup(config)
-    state = init_state(setup)
+    simulation_setup = build_setup(config)
+    state = init_state(simulation_setup)
 
     # Build the IO handler for streaming snapshots to disk.
     io = SimulationIO(
         base_dir=config.results_dir,
-        config=config.to_dict(),
+        config=config,
         simulation_name=config.simulation_name,
     )
 
@@ -147,7 +147,7 @@ def _run_simulation(config: Any):
     console.print()
 
     final_state, _ = run(
-        setup,
+        simulation_setup,
         state,
         save_interval=config.save_interval,
         io_handler=io,
@@ -156,12 +156,14 @@ def _run_simulation(config: Any):
     )
 
     console.print("[bold green]Simulation completed![/bold green]")
+    console.print(f"  Final timestep     : {int(final_state.t)}")
+    console.print(f"  Snapshots saved to : {io.data_dir}")
 
     if config.plot_fields:
         from util.plotting import FigureBuilder
 
         console.print("[dim]Generating plots...[/dim]")
-        builder = FigureBuilder(config.to_dict(), io.run_dir)
+        builder = FigureBuilder(config, io.run_dir)
         builder.build_all()
         console.print(
             "[bold green]Plotting complete![/bold green]",

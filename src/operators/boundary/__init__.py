@@ -85,8 +85,7 @@ def build_bc(
 
     Args:
         bc_config: Mapping ``{edge: bc_type, ...}``, e.g.
-            ``{"top": "symmetry", "bottom": "bounce-back",
-              "left": "periodic", "right": "periodic"}``.
+            ``{"top": "symmetry", "bottom": "bounce-back", "left": "periodic", "right": "periodic"}``.
             ``None`` means all-periodic.
         lattice: :class:`~setup.lattice.Lattice`.
 

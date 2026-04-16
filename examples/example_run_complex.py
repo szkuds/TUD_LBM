@@ -62,7 +62,7 @@ def wetting_hysteresis_simulation():
     print(f"  Snapshots saved to : {io.data_dir}")
 
     # Render one composite PNG per saved snapshot.
-    builder = FigureBuilder(config=config.to_dict(), run_dir=io.run_dir)
+    builder = FigureBuilder(config=config, run_dir=io.run_dir)
     saved_plots = builder.build_all()
     print(f"  Plots saved        : {len(saved_plots)} PNG(s) in {io.run_dir}/plots/")
 

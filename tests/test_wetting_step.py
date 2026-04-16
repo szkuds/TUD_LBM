@@ -1,15 +1,15 @@
 """Tests for wetting-aware multiphase LBM step.
 
-Tests for :func:`runner.step.step_multiphase` and the dynamic
+Tests for :func:`operators.step.step_multiphase` and the dynamic
 wetting parameter injection via :func:`_make_wetting_shims`.
 """
 
 import jax.numpy as jnp
 from config.adapter_toml import TomlAdapter
 from config.simulation_config import SimulationConfig
+from operators.step import step_multiphase
+from operators.step._wetting_shims import _make_wetting_differential_ops
 from runner.run import init_state
-from runner.step import _make_wetting_differential_ops
-from runner.step import step_multiphase
 from setup.simulation_setup import build_setup
 from state.state import WettingState
 

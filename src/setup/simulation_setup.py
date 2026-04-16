@@ -27,21 +27,23 @@ Usage::
 
 from __future__ import annotations
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
-
-if TYPE_CHECKING:
-    from operators.boundary import BCMasks
-    from operators.force import ForceSetup
-    from operators.macroscopic import MultiphaseParams
-    from state.state import State
 import jax.numpy as jnp
 from config.simulation_config import SimulationConfig
+from operators.boundary import BCMasks
 from operators.differential import build_diff_ops
+from operators.force import ForceSetup
 from operators.force import build_forces
+from operators.macroscopic import MultiphaseParams
+from operators.protocols import BoundaryOperator
+from operators.protocols import CollisionOperator
+from operators.protocols import DifferentialOperator
+from operators.protocols import EquilibriumOperator
+from operators.protocols import StreamingOperator
 from setup.lattice import Lattice
 from setup.lattice import build_lattice
+from state.state import State
 
 
 class SimulationSetup(NamedTuple):
@@ -98,19 +100,19 @@ class SimulationSetup(NamedTuple):
     multiphase_params: MultiphaseParams | None = None
 
     # ── Differential operator closures (pre-built) ──
-    gradient_standard: Callable[[jnp.ndarray], jnp.ndarray] | None = None
-    gradient_density: Callable[[jnp.ndarray], jnp.ndarray] | None = None
-    laplacian_density: Callable[[jnp.ndarray], jnp.ndarray] | None = None
+    gradient_standard: DifferentialOperator | None = None
+    gradient_density: DifferentialOperator | None = None
+    laplacian_density: DifferentialOperator | None = None
 
     # ── Step function (unbound: (setup, state) -> State) ──
     step_fn: Any = None
 
     # ── Pre-built operator closures (resolved at setup time) ──
-    collision_fn: Callable | None = None
-    equilibrium_fn: Callable | None = None
-    macroscopic_fn: Callable | None = None
-    streaming_fn: Callable | None = None
-    bc_fn: Callable | None = None
+    collision_fn: CollisionOperator | None = None
+    equilibrium_fn: EquilibriumOperator | None = None
+    macroscopic_fn: Callable[..., tuple[jnp.ndarray, ...]] | None = None
+    streaming_fn: StreamingOperator | None = None
+    bc_fn: BoundaryOperator | None = None
 
     def step(self, state: State) -> State:
         """Execute one time step.
@@ -184,7 +186,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
 
     # Build operator closures (pre-resolved at setup time)
     collision_fn = build_collision_fn(config.collision_scheme)
-    equilibrium_fn = build_equilibrium_fn("wb")  # weakly-compressible
+    equilibrium_fn = build_equilibrium_fn("wb")
     streaming_fn = build_streaming_fn("standard")
     macroscopic_fn = (
         build_macroscopic_fn(mp_params.eos)  # EOS-aware for multiphase

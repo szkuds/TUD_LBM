@@ -8,6 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from config import SimulationConfig
 from registry import get_operator_names
 from util.plotting import visualise
 from util.plotting.figure_builder import FigureBuilder
@@ -23,7 +24,10 @@ def plotting_run_dir(tmp_path):
 
 @pytest.fixture
 def simple_config():
-    return {"plot_fields": ["density", "velocity"], "simulation_name": "test"}
+    return SimulationConfig(
+        plot_fields=["density", "velocity"],
+        simulation_name="test",
+    )
 
 
 def test_layout_1():
@@ -51,7 +55,8 @@ def test_build_calls_savefig(plotting_run_dir, simple_config):
 
 
 def test_build_skips_unavailable_operators(plotting_run_dir):
-    builder = FigureBuilder({"plot_fields": ["density", "force"]}, plotting_run_dir)
+    config = SimulationConfig(plot_fields=["density", "force"])
+    builder = FigureBuilder(config, plotting_run_dir)
     data = {"rho": np.ones((8, 8, 1, 1))}
     path = builder.build(data, timestep=5)
     assert path is not None
@@ -59,8 +64,9 @@ def test_build_skips_unavailable_operators(plotting_run_dir):
 
 
 def test_unknown_plotfield_warns(plotting_run_dir):
+    config = SimulationConfig(plot_fields=["nonexistent"])
     with pytest.warns(UserWarning, match="No plot operator registered"):
-        FigureBuilder({"plot_fields": ["nonexistent"]}, plotting_run_dir)
+        FigureBuilder(config, plotting_run_dir)
 
 
 def test_density_operator_registered():

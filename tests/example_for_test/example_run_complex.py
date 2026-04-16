@@ -44,7 +44,7 @@ def wetting_hysteresis_simulation():
     # Create the I/O handler — makes the timestamped run directory.
     io = SimulationIO(
         base_dir=config.results_dir,
-        config=config.to_dict(),
+        config=config,
         simulation_name=config.simulation_name,
     )
     print(f"  Run directory      : {io.run_dir}")
@@ -63,7 +63,7 @@ def wetting_hysteresis_simulation():
     print(f"  Snapshots saved to : {io.data_dir}")
 
     # Render one composite PNG per saved snapshot.
-    builder = FigureBuilder(config=config.to_dict(), run_dir=io.run_dir)
+    builder = FigureBuilder(config=config, run_dir=io.run_dir)
     saved_plots = builder.build_all()
     print(f"  Plots saved        : {len(saved_plots)} PNG(s) in {io.run_dir}/plots/")
 
