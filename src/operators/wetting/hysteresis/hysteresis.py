@@ -163,6 +163,12 @@ def update_wetting_state(
     state at the cost of two trial-step evaluations per outer
     iteration instead of one.
 
+    Per-side advancing/receding direction is inferred from the sign of
+    the contact-line displacement between the previous and current
+    timestep: the left side is advancing when ``cll_left`` decreases
+    (moves in −x), and the right side is advancing when ``cll_right``
+    increases (moves in +x).
+
     Args:
         wetting: Current :class:`WettingState`.
         rho: Density field, shape ``(nx, ny, 1, 1)``.
@@ -229,9 +235,15 @@ def update_wetting_state(
             rho_mean,
         )
 
-    # 5. Combined objective — both sides in a single loop.
-    ca_target_left = jnp.where(ca_left < ca_rec, ca_rec, ca_adv)
-    ca_target_right = jnp.where(ca_right < ca_rec, ca_rec, ca_adv)
+    # 5. Infer advancing/receding direction from contact-line displacement
+    dcll_left = cll_left - wetting.cll_left
+    dcll_right = cll_right - wetting.cll_right
+
+    advancing_left = dcll_left < 0.0
+    advancing_right = dcll_right > 0.0
+
+    ca_target_left = jnp.where(advancing_left, ca_adv, ca_rec)
+    ca_target_right = jnp.where(advancing_right, ca_adv, ca_rec)
 
     # --- 5.1: per-side objectives ---
 
