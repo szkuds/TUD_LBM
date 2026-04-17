@@ -148,7 +148,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     from operators.boundary import build_bc_masks
     from operators.collision import build_collision_fn
     from operators.equilibrium import build_equilibrium_fn
-    from operators.factory import build_operator
+    from operators.step import build_step_fn
     from operators.macroscopic import build_macroscopic_fn
     from operators.macroscopic import build_multiphase_params
     from operators.streaming import build_streaming_fn
@@ -169,7 +169,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     gradient_standard, gradient_density, laplacian_density = build_diff_ops(config, mp_params, lattice)
 
     # Resolve step operator from registry
-    step_fn = build_operator("update_timestep", config.sim_type)
+    step_fn = build_step_fn(config.sim_type)
 
     # Build operator closures (pre-resolved at setup time)
     collision_fn = build_collision_fn(config.collision_scheme)

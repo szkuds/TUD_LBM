@@ -17,10 +17,10 @@ Design
 
 1. Measures contact angles and contact-line locations from ``rho``.
 2. Checks whether each side is inside the hysteresis window.
-3. Builds a **combined objective** that sums the per-side losses
-   (CLL-pin or CA-target, selected via ``jnp.where``).
-4. Runs a **single** ``jax.lax.while_loop`` optimisation that
-   updates all four wetting parameters simultaneously.
+3. Builds per-side objectives (CLL-pin or CA-target, selected via
+   ``jnp.where``).
+4. Runs **two** sequential ``jax.lax.while_loop`` optimisations —
+   one for each side — masking the other side's parameters.
 5. Returns an updated :class:`WettingState` — no mutation.
 
 The inner ``_evaluate_with_params`` closure performs a single LBM
@@ -157,10 +157,11 @@ def update_wetting_state(
     method.  It operates entirely on the :class:`WettingState`
     NamedTuple and returns a new instance — no side-effects.
 
-    Both sides (left and right) are optimised **simultaneously** in a
-    single ``jax.lax.while_loop``.  Each iteration calls ``evaluate_fn``
-    once and computes a combined loss that sums the per-side objectives
-    (CLL-pin or CA-target, selected via ``jnp.where``).
+    Each side (left and right) is optimised **independently** in its
+    own ``jax.lax.while_loop``, masking out the other side's
+    parameters.  This gives each side clean gradients and clean Adam
+    state at the cost of two trial-step evaluations per outer
+    iteration instead of one.
 
     Args:
         wetting: Current :class:`WettingState`.
@@ -232,49 +233,35 @@ def update_wetting_state(
     ca_target_left = jnp.where(ca_left < ca_rec, ca_rec, ca_adv)
     ca_target_right = jnp.where(ca_right < ca_rec, ca_rec, ca_adv)
 
-    def combined_objective(p):
-        ca_l, ca_r, cll_l, cll_r = evaluate_fn(p)
+    # --- 5.1: per-side objectives ---
 
-        loss_left = jnp.where(
-            in_window_left,
-            _cost_cll(cll_left, cll_l),
-            _cost_ca(ca_target_left, ca_l),
+    def left_objective(p):
+        ca_l, _, cll_l, _ = evaluate_fn(p)
+        return jnp.where(in_window_left,
+                         _cost_cll(cll_left, cll_l),
+                         _cost_ca(ca_target_left, ca_l))
+
+    def right_objective(p):
+        _, ca_r, _, cll_r = evaluate_fn(p)
+        return jnp.where(in_window_right,
+                         _cost_cll(cll_right, cll_r),
+                         _cost_ca(ca_target_right, ca_r))
+
+    def left_mask(g):
+        return g._replace(
+            phi_right=jnp.zeros_like(g.phi_right),
+            d_rho_right=jnp.zeros_like(g.d_rho_right),
         )
-        loss_right = jnp.where(
-            in_window_right,
-            _cost_cll(cll_right, cll_r),
-            _cost_ca(ca_target_right, ca_r),
+
+    def right_mask(g):
+        return g._replace(
+            phi_left=jnp.zeros_like(g.phi_left),
+            d_rho_left=jnp.zeros_like(g.d_rho_left),
         )
-        return loss_left + loss_right
 
-        # --- 5.1: optimise d_rho first (phi frozen) ---
-
-    def d_rho_mask(g):
-        return g._replace(phi_left=jnp.zeros_like(g.phi_left), phi_right=jnp.zeros_like(g.phi_right))
-
-    params_after_drho, _ = _optimise_single_param(
-        combined_objective,
-        params,
-        d_rho_mask,
-        optimiser,
-        max_iter,
-        loss_tol,
-    )
-
-    # --- 5.2: optimise phi from the d_rho result (d_rho frozen) ---
-    # If d_rho already converged, the while_loop exits on the first
-    # loss check (1 fwd eval, 0 iterations).
-    def phi_mask(g):
-        return g._replace(d_rho_left=jnp.zeros_like(g.d_rho_left), d_rho_right=jnp.zeros_like(g.d_rho_right))
-
-    new_params, _ = _optimise_single_param(
-        combined_objective,
-        params_after_drho,
-        phi_mask,
-        optimiser,
-        max_iter,
-        loss_tol,
-    )
+    # --- 5.2: optimise left side, then right side ---
+    p1, _ = _optimise_single_param(left_objective, params, left_mask, optimiser, max_iter, loss_tol)
+    new_params, _ = _optimise_single_param(right_objective, p1, right_mask, optimiser, max_iter, loss_tol)
 
     # 6. Return updated wetting state
     return wetting._replace(
