@@ -53,16 +53,6 @@ class TestRunnerExports:
 
         assert hasattr(runner, "init_state")
 
-    def test_exports_step_single_phase(self):
-        import runner
-
-        assert hasattr(runner, "step_single_phase")
-
-    def test_exports_step_multiphase(self):
-        import runner
-
-        assert hasattr(runner, "step_multiphase")
-
     def test_no_legacy_exports(self):
         import runner
 
@@ -91,8 +81,9 @@ class TestStepSignatures:
     """Step functions accept (setup, state), not (setup, ops, state)."""
 
     def test_step_single_phase_params(self):
-        from operators.step import step_single_phase
+        from operators.step import build_step_fn
 
+        step_single_phase = build_step_fn("single_phase")
         sig = inspect.signature(step_single_phase)
         params = list(sig.parameters.keys())
         assert params == [
@@ -101,8 +92,9 @@ class TestStepSignatures:
         ], f"Expected ['setup', 'state'], got {params}"
 
     def test_step_multiphase_params(self):
-        from operators.step import step_multiphase
+        from operators.step import build_step_fn
 
+        step_multiphase = build_step_fn("multiphase")
         sig = inspect.signature(step_multiphase)
         params = list(sig.parameters.keys())
         assert params == [
@@ -244,13 +236,12 @@ class TestEndToEnd:
     def test_step_single_phase_direct(self):
         from config import SimulationConfig
         from runner import init_state
-        from runner import step_single_phase
         from setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=5)
         setup = build_setup(cfg)
         state = init_state(setup)
-        new_state = step_single_phase(setup, state)
+        new_state = setup.step_fn(setup, state)
 
         assert int(new_state.t) == 1
         assert not jnp.isnan(new_state.f).any()

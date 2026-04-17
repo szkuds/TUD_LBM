@@ -24,15 +24,20 @@ Usage::
 """
 
 from __future__ import annotations
+from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Protocol
 from typing import runtime_checkable
 import jax.numpy as jnp
+import matplotlib.axes
+import numpy as np
 
 if TYPE_CHECKING:
+    from config.simulation_config import SimulationConfig
     from setup.lattice import Lattice
     from state.state import State
+    from state.state import WettingState
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -238,6 +243,71 @@ class InitialiserOperator(Protocol):
         ...
 
 
+class StepOperator(Protocol):
+    """Step operator — executes one full LBM time step.
+
+    The step operator orchestrates the complete LBM algorithm:
+    collision, streaming, boundary conditions, and any
+    physics-specific updates (e.g., hysteresis in multiphase wetting).
+
+    Signature::
+
+        def step(setup, state) -> state_next
+    """
+
+    def __call__(
+        self,
+        setup: Any,  # setup.simulation_setup.SimulationSetup (Any avoids circular import)
+        state: State,
+    ) -> State:
+        """Execute one LBM time step.
+
+        Args:
+            setup: :class:`~setup.simulation_setup.SimulationSetup` containing
+                all pre-built operators and parameters.
+            state: Current :class:`~state.state.State`.
+
+        Returns:
+            Updated :class:`~state.state.State` after one time step.
+        """
+        ...
+
+
+class HysteresisOperator(Protocol):
+    """Hysteresis operator — updates wetting state via contact angle hysteresis.
+
+    The hysteresis operator applies dynamic contact angle adjustment based on
+    velocity direction (advancing/receding). It is only called when both wetting
+    and hysteresis configurations are present.
+
+    Signature::
+
+        def update_wetting_state(wetting, rho, setup, f_t, **kwargs) -> wetting_next
+    """
+
+    def __call__(
+        self,
+        wetting: Any,  # state.state.WettingState (Any avoids circular import)
+        rho: jnp.ndarray,
+        setup: Any,  # setup.simulation_setup.SimulationSetup (Any avoids circular import)
+        f_t: jnp.ndarray,
+        **kwargs: Any,
+    ) -> WettingState:  # state.state.WettingState
+        """Update wetting state with hysteresis.
+
+        Args:
+            wetting: Current :class:`~state.state.WettingState`.
+            rho: Density field, shape ``(nx, ny, 1, 1)``.
+            setup: :class:`~setup.simulation_setup.SimulationSetup`.
+            f_t: Pre-step populations, shape ``(nx, ny, q, 1)``.
+            **kwargs: Operator-specific parameters (e.g., ``force_ext``).
+
+        Returns:
+            Updated :class:`~state.state.WettingState`.
+        """
+        ...
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Supporting Operators
 # ══════════════════════════════════════════════════════════════════════════════
@@ -385,6 +455,63 @@ class ConfigReader(Protocol):
         ...
 
 
+class PlotOperator(Protocol):
+    """Structural contract for Matplotlib plot operators.
+
+    Plot operators render simulation snapshots onto matplotlib axes,
+    enabling flexible visualization strategies for different fields
+    and use cases.
+
+    Signature::
+
+        class MyPlotter(PlotOperatorProtocol):
+            def __call__(self, ax, data, timestep):
+                # render to axes
+    """
+
+    name: str
+    config: SimulationConfig
+
+    def __init__(
+        self,
+        config: SimulationConfig,
+        data_dir: str | Path | None = None,
+    ) -> None:
+        """Initialise the plot operator.
+
+        Args:
+            config: :class:`~config.simulation_config.SimulationConfig`.
+            data_dir: Optional directory path for data-dependent visualisations.
+        """
+        ...
+
+    def is_available(self, data: dict[str, np.ndarray]) -> bool:
+        """Return whether this operator can render the provided snapshot.
+
+        Args:
+            data: Snapshot dictionary with field names as keys (e.g., ``"rho"``, ``"u"``).
+
+        Returns:
+            ``True`` if all required fields are present; ``False`` otherwise.
+        """
+        ...
+
+    def __call__(
+        self,
+        ax: matplotlib.axes.Axes,
+        data: dict[str, np.ndarray],
+        timestep: int,
+    ) -> None:
+        """Render one panel onto the provided axes.
+
+        Args:
+            ax: Matplotlib axes object to draw onto.
+            data: Snapshot dictionary with computed fields.
+            timestep: Current iteration number (for annotations).
+        """
+        ...
+
+
 __all__ = [
     # Core operators
     "BoundaryOperator",
@@ -393,8 +520,11 @@ __all__ = [
     "DifferentialOperator",
     "EquilibriumOperator",
     "ForceOperator",
+    "HysteresisOperator",
     "InitialiserOperator",
     "MacroscopicOperator",
+    "PlotOperator",
     "SimulationRepository",
+    "StepOperator",
     "StreamingOperator",
 ]

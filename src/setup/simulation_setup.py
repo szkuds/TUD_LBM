@@ -27,7 +27,6 @@ Usage::
 
 from __future__ import annotations
 from collections.abc import Callable
-from typing import Any
 from typing import NamedTuple
 import jax.numpy as jnp
 from config.simulation_config import SimulationConfig
@@ -40,10 +39,11 @@ from operators.protocols import BoundaryOperator
 from operators.protocols import CollisionOperator
 from operators.protocols import DifferentialOperator
 from operators.protocols import EquilibriumOperator
+from operators.protocols import HysteresisOperator
+from operators.protocols import StepOperator
 from operators.protocols import StreamingOperator
 from setup.lattice import Lattice
 from setup.lattice import build_lattice
-from state.state import State
 
 
 class SimulationSetup(NamedTuple):
@@ -74,9 +74,12 @@ class SimulationSetup(NamedTuple):
         laplacian_density: Laplacian of density ``∇²ρ`` in chemical-potential computation.
             Wetting-corrected when applicable.
         step_fn: The unbound step operator resolved from the registry,
-            ``Callable[[SimulationSetup, State], State]``.  Use the
-            :meth:`step` convenience method instead of calling this
-            directly.
+            implementing :class:`~operators.protocols.StepOperator`.
+            Signature: ``(setup, state) → state_next``.
+        wetting_fn: The hysteresis operator for updating wetting state,
+            implementing :class:`~operators.protocols.HysteresisOperator`.
+            Built only when both ``wetting_config`` and ``hysteresis_config`` are present;
+            ``None`` otherwise.
         collision_fn: Pre-built collision operator, resolved at setup time.
         equilibrium_fn: Pre-built equilibrium operator, resolved at setup time.
         macroscopic_fn: Pre-built macroscopic operator, resolved at setup time.
@@ -105,7 +108,8 @@ class SimulationSetup(NamedTuple):
     laplacian_density: DifferentialOperator | None = None
 
     # ── Step function (unbound: (setup, state) -> State) ──
-    step_fn: Any = None
+    step_fn: StepOperator | None = None
+    wetting_fn: HysteresisOperator | None = None
 
     # ── Pre-built operator closures (resolved at setup time) ──
     collision_fn: CollisionOperator | None = None
@@ -113,24 +117,6 @@ class SimulationSetup(NamedTuple):
     macroscopic_fn: Callable[..., tuple[jnp.ndarray, ...]] | None = None
     streaming_fn: StreamingOperator | None = None
     bc_fn: BoundaryOperator | None = None
-
-    def step(self, state: State) -> State:
-        """Execute one time step.
-
-        Convenience wrapper that calls ``self.step_fn(self, state)``,
-        giving callers the clean ``setup.step(state)`` interface.
-
-        Raises:
-            TypeError: If no step function has been set.
-        """
-        if self.step_fn is None:
-            raise TypeError("step_fn has not been set on this SimulationSetup")
-        return self.step_fn(self, state)
-
-    @property
-    def force_enabled(self) -> bool:
-        """True if any force is active."""
-        return self.forces is not None and len(self.forces.specs) > 0
 
 
 # ── Main factory ─────────────────────────────────────────────────────
@@ -166,6 +152,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     from operators.macroscopic import build_macroscopic_fn
     from operators.macroscopic import build_multiphase_params
     from operators.streaming import build_streaming_fn
+    from operators.wetting import build_wetting_fn
 
     lattice = build_lattice(config.lattice_type)
     bc_masks = build_bc_masks(tuple(config.grid_shape))
@@ -195,6 +182,11 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     )
     bc_fn = build_bc(config.bc_config, lattice)
 
+    # Build wetting function if both wetting and hysteresis configs are present
+    wetting_fn = None
+    if config.wetting_config is not None and config.hysteresis_config is not None:
+        wetting_fn = build_wetting_fn("hysteresis")
+
     return SimulationSetup(
         config=config,
         lattice=lattice,
@@ -209,6 +201,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         gradient_density=gradient_density,
         laplacian_density=laplacian_density,
         step_fn=step_fn,
+        wetting_fn=wetting_fn,
         collision_fn=collision_fn,
         equilibrium_fn=equilibrium_fn,
         macroscopic_fn=macroscopic_fn,

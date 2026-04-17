@@ -132,16 +132,18 @@ class TestStepSinglePhasePure:
     """``step_single_phase`` advances the state using pure functions."""
 
     def test_increments_t(self):
-        from operators.step import step_single_phase
+        from operators.step import build_step_fn
 
+        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
         new_state = step_single_phase(setup, state)
         assert int(new_state.t) == 1
 
     def test_preserves_shape(self):
-        from operators.step import step_single_phase
+        from operators.step import build_step_fn
 
+        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
         new_state = step_single_phase(setup, state)
@@ -151,8 +153,9 @@ class TestStepSinglePhasePure:
         assert new_state.u.shape == state.u.shape
 
     def test_no_nan(self):
-        from operators.step import step_single_phase
+        from operators.step import build_step_fn
 
+        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
         new_state = step_single_phase(setup, state)
@@ -161,9 +164,10 @@ class TestStepSinglePhasePure:
         assert not jnp.isnan(new_state.rho).any()
 
     def test_output_is_state(self):
-        from operators.step import step_single_phase
+        from operators.step import build_step_fn
         from state.state import State
 
+        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
         new_state = step_single_phase(setup, state)
@@ -171,8 +175,9 @@ class TestStepSinglePhasePure:
 
     def test_rest_equilibrium_unchanged(self):
         """At rest equilibrium with periodic BCs, density should be ~1.0."""
-        from operators.step import step_single_phase
+        from operators.step import build_step_fn
 
+        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
         new_state = step_single_phase(setup, state)
@@ -181,8 +186,9 @@ class TestStepSinglePhasePure:
 
     def test_mass_conservation(self):
         """Total mass should be conserved through one step."""
-        from operators.step import step_single_phase
+        from operators.step import build_step_fn
 
+        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
         new_state = step_single_phase(setup, state)
@@ -193,8 +199,9 @@ class TestStepSinglePhasePure:
 
     def test_multiple_steps_stable(self):
         """5 steps should remain NaN-free and mass-conserving."""
-        from operators.step import step_single_phase
+        from operators.step import build_step_fn
 
+        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
 
@@ -214,16 +221,18 @@ class TestStepMultiphasePure:
     """``step_multiphase`` advances multiphase state using pure functions."""
 
     def test_increments_t(self):
-        from operators.step import step_multiphase
+        from operators.step import build_step_fn
 
+        step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
         state = init_state(setup)
         new_state = step_multiphase(setup, state)
         assert int(new_state.t) == 1
 
     def test_preserves_shape(self):
-        from operators.step import step_multiphase
+        from operators.step import build_step_fn
 
+        step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
         state = init_state(setup)
         new_state = step_multiphase(setup, state)
@@ -232,8 +241,9 @@ class TestStepMultiphasePure:
         assert new_state.rho.shape == state.rho.shape
 
     def test_no_nan(self):
-        from operators.step import step_multiphase
+        from operators.step import build_step_fn
 
+        step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
         state = init_state(setup)
         new_state = step_multiphase(setup, state)
@@ -242,8 +252,9 @@ class TestStepMultiphasePure:
 
     def test_produces_force(self):
         """Multiphase step should produce an interaction force field."""
-        from operators.step import step_multiphase
+        from operators.step import build_step_fn
 
+        step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
         state = init_state(setup)
         new_state = step_multiphase(setup, state)
@@ -263,13 +274,13 @@ class TestSetupStep:
     def test_single_phase_via_setup(self):
         setup = _sp_setup()
         state = init_state(setup)
-        new_state = setup.step(state)
+        new_state = setup.step_fn(setup, state)
         assert int(new_state.t) == 1
 
     def test_multiphase_via_setup(self):
         setup = _mp_setup()
         state = init_state(setup)
-        new_state = setup.step(state)
+        new_state = setup.step_fn(setup, state)
         assert int(new_state.t) == 1
 
 
@@ -379,8 +390,9 @@ class TestStepWithBounceBack:
 
     def test_bounce_back_step(self):
         """Step with bounce-back top/bottom runs without error."""
-        from operators.step import step_single_phase
+        from operators.step import build_step_fn
 
+        step_single_phase = build_step_fn("single_phase")
         cfg = SimulationConfig(
             grid_shape=(NX, NY),
             tau=0.8,
@@ -433,8 +445,9 @@ class TestLegacyAPIUnchanged:
     """The ``step_single_phase(setup, state)`` functional API works."""
 
     def test_legacy_step_still_works(self):
-        from operators.step import step_single_phase
+        from operators.step import build_step_fn
 
+        step_single_phase = build_step_fn("single_phase")
         cfg = SimulationConfig(grid_shape=(NX, NY), tau=0.8, nt=10)
         setup = build_setup(cfg)
         state = init_state(setup)

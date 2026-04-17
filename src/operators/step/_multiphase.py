@@ -8,13 +8,13 @@ from __future__ import annotations
 from operators.force import compute_total_force_ext
 from operators.step._common import _apply_common_step
 from operators.step._wetting_shims import _make_wetting_differential_ops
-from operators.wetting import build_wetting_fn
 from registry import update_timestep_operator
+from setup import SimulationSetup
 from state.state import State
 
 
 @update_timestep_operator(name="multiphase")
-def step_multiphase(setup, state: State) -> State:
+def step_multiphase(setup: SimulationSetup, state: State) -> State:
     """Multiphase LBM step for both wetting and non-wetting simulations.
 
     When wetting is not active (state.wetting is None), uses the prebuilt
@@ -30,9 +30,6 @@ def step_multiphase(setup, state: State) -> State:
     Returns:
         Updated :class:`~state.state.State` after one time step.
     """
-    lattice = setup.lattice
-    mp = setup.multiphase_params
-
     # 1. External forces
     force_ext, state = compute_total_force_ext(setup, state, setup.forces, setup.streaming_fn)
 
@@ -47,8 +44,8 @@ def step_multiphase(setup, state: State) -> State:
     # 2. Multiphase macroscopic (chemical potential force, wetting-corrected operators)
     rho, u, force_tot = setup.macroscopic_fn(
         state.f,
-        lattice,
-        mp,
+        setup.lattice,
+        setup.multiphase_params,
         force_ext,
         gradient_standard=setup.gradient_standard,
         laplacian_density=laplacian_density,
@@ -58,19 +55,13 @@ def step_multiphase(setup, state: State) -> State:
     new_state = _apply_common_step(setup, state, rho, u, force_tot, gradient_density=gradient_density)
 
     # 7. Hysteresis update (if applicable)
-    _update_wetting_state = build_wetting_fn("hysteresis")
     new_wetting = new_state.wetting
-    if (
-        new_state.wetting is not None
-        and setup.config.wetting_config is not None
-        and setup.config.hysteresis_config is not None
-    ):
-        new_wetting = _update_wetting_state(
-            new_state.wetting,
+    if new_state.wetting is not None and setup.wetting_fn is not None:
+        new_wetting = setup.wetting_fn(
+            state.wetting,
             rho,
             setup,
-            new_state.f,
-            force_tot,
+            state.f,
             force_ext=force_ext,
         )
 

@@ -33,5 +33,5 @@ def _build_optional_fields(
         a zero-filled array of shape ``(nx, ny, 1, d)`` or ``None``.
     """
     force = jnp.zeros((nx, ny, 1, d)) if setup.multiphase_params is not None else None
-    force_ext = jnp.zeros((nx, ny, 1, d)) if setup.force_enabled else None
+    force_ext = jnp.zeros((nx, ny, 1, d)) if setup.config.force_enabled else None
     return force, force_ext

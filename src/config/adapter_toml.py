@@ -99,11 +99,11 @@ class TomlAdapter(ConfigAdapter):
             FileNotFoundError: If *path* does not exist.
             ValueError: If required sections/keys are missing or invalid.
         """
-        path = Path(path).expanduser()
-        if not path.is_file():
-            raise FileNotFoundError(f"Config file not found: {path}")
+        path_obj: Path = Path(path).expanduser()
+        if not path_obj.is_file():
+            raise FileNotFoundError(f"Config file not found: {path_obj}")
 
-        with path.open("rb") as fh:
+        with path_obj.open("rb") as fh:
             raw = tomllib.load(fh)
 
         # ── [simulation_type] (required) ──────────────────────────────────
@@ -174,10 +174,10 @@ class TomlAdapter(ConfigAdapter):
         Raises:
             OSError: If the file cannot be written.
         """
-        path = Path(path).expanduser()
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path_obj: Path = Path(path).expanduser()
+        path_obj.parent.mkdir(parents=True, exist_ok=True)
 
         doc = self.build_sections(config)
 
-        with path.open("wb") as fh:
+        with path_obj.open("wb") as fh:
             tomli_w.dump(doc, fh)

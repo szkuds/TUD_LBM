@@ -145,8 +145,7 @@ def update_wetting_state(
     wetting: WettingState,
     rho: jnp.ndarray,
     setup,
-    f_bc: jnp.ndarray,
-    force: jnp.ndarray,
+    f_t: jnp.ndarray,
     *,
     evaluate_fn=None,
     force_ext=None,
@@ -168,8 +167,7 @@ def update_wetting_state(
         rho: Density field, shape ``(nx, ny, 1, 1)``.
         setup: :class:`~setup.simulation_setup.SimulationSetup`
             (closed-over, not traced).
-        f_bc: Post-BC populations, shape ``(nx, ny, q, 1)``.
-        force: Total force field, shape ``(nx, ny, 1, 2)``.
+        f_t: Pre-step populations, shape ``(nx, ny, q, 1)``.
         evaluate_fn: Optional callable
             ``(WettingParams) → (ca_l, ca_r, cll_l, cll_r)``
             used by the inner optimiser.  If ``None``, a default is
@@ -225,14 +223,12 @@ def update_wetting_state(
     if evaluate_fn is None:
         evaluate_fn = _build_default_evaluate_fn(
             setup,
-            f_bc,
+            f_t,
             force_ext,
             rho_mean,
         )
 
     # 5. Combined objective — both sides in a single loop.
-    #    Each iteration calls evaluate_fn once and selects the
-    #    per-side loss (CLL-pin or CA-target) via jnp.where.
     ca_target_left = jnp.where(ca_left < ca_rec, ca_rec, ca_adv)
     ca_target_right = jnp.where(ca_right < ca_rec, ca_rec, ca_adv)
 
@@ -251,13 +247,30 @@ def update_wetting_state(
         )
         return loss_left + loss_right
 
-    def identity_mask(g):
-        return g
+        # --- 5.1: optimise d_rho first (phi frozen) ---
 
-    new_params, _loss = _optimise_single_param(
+    def d_rho_mask(g):
+        return g._replace(phi_left=jnp.zeros_like(g.phi_left), phi_right=jnp.zeros_like(g.phi_right))
+
+    params_after_drho, _ = _optimise_single_param(
         combined_objective,
         params,
-        identity_mask,
+        d_rho_mask,
+        optimiser,
+        max_iter,
+        loss_tol,
+    )
+
+    # --- 5.2: optimise phi from the d_rho result (d_rho frozen) ---
+    # If d_rho already converged, the while_loop exits on the first
+    # loss check (1 fwd eval, 0 iterations).
+    def phi_mask(g):
+        return g._replace(d_rho_left=jnp.zeros_like(g.d_rho_left), d_rho_right=jnp.zeros_like(g.d_rho_right))
+
+    new_params, _ = _optimise_single_param(
+        combined_objective,
+        params_after_drho,
+        phi_mask,
         optimiser,
         max_iter,
         loss_tol,

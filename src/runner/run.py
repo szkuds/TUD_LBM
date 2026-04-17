@@ -55,6 +55,30 @@ if TYPE_CHECKING:
 # ── State initialisation ─────────────────────────────────────────────
 
 
+def _init_f(setup, init_kwargs: dict | None) -> jnp.ndarray:
+    """Build the initial population distribution *f* for *setup*.
+
+    Selects the initialiser indicated by ``setup.config.init_type``,
+    assembles its keyword arguments from multiphase params and caller
+    overrides, and invokes it.
+    """
+    from operators.initialise import build_initialise_fn
+
+    init_type = setup.config.init_type
+
+    kw: dict = {}
+    mp = setup.multiphase_params
+    if mp is not None:
+        kw.update(rho_l=mp.rho_l, rho_v=mp.rho_v, interface_width=mp.interface_width)
+    if init_kwargs:
+        kw.update(init_kwargs)
+    if init_type == "init_from_file" and "npz_path" not in kw and setup.config.init_dir is not None:
+        kw["npz_path"] = setup.config.init_dir
+
+    nx, ny = setup.grid_shape[0], setup.grid_shape[1]
+    return build_initialise_fn(init_type)(nx, ny, setup.lattice, **kw)
+
+
 def init_state(
     setup,
     *,
@@ -64,10 +88,9 @@ def init_state(
     """Create an initial :class:`State` for the given setup.
 
     If *f* is not supplied, the population distribution is initialised
-    using the ``init_type`` specified in ``setup`` (via
-    :func:`operators.initialise.build_f`).  For ``"standard"`` this is
-    the rest equilibrium (``f_i = w_i``); for multiphase types it
-    produces a tanh density profile at equilibrium.
+    using the ``init_type`` specified in ``setup``.  For ``"standard"``
+    this is the rest equilibrium (``f_i = w_i``); for multiphase types
+    it produces a tanh density profile at equilibrium.
 
     For multiphase simulations the ``force`` field is pre-populated
     with zeros so that the pytree structure stays constant across
@@ -84,7 +107,6 @@ def init_state(
     Returns:
         A :class:`State` ready to be passed to :func:`run`.
     """
-    from operators.initialise import build_f
     from state import build_extra_state
     from state import build_optional_fields
 
@@ -92,7 +114,7 @@ def init_state(
     nx, ny = setup.grid_shape[0], setup.grid_shape[1]
 
     if f is None:
-        f = build_f(setup, init_kwargs)
+        f = _init_f(setup, init_kwargs)
 
     rho = jnp.sum(f, axis=2, keepdims=True)
     u = jnp.zeros((nx, ny, 1, lattice.d))
@@ -164,7 +186,7 @@ def run(
 
         @jax.jit
         def scan_body_io(state, t):
-            new_state = setup.step(state)
+            new_state = setup.step_fn(setup, state)
             do_save(new_state, t)
             return new_state, None
 
@@ -178,7 +200,7 @@ def run(
     # ── In-memory trajectory mode ────────────────────────────────
     @jax.jit
     def scan_body(state, t):
-        new_state = setup.step(state)
+        new_state = setup.step_fn(setup, state)
         return new_state, new_state
 
     final_state, trajectory = jax.lax.scan(

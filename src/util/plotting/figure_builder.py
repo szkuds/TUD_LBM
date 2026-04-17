@@ -7,6 +7,7 @@ import warnings
 from pathlib import Path
 import matplotlib as mpl
 from config import SimulationConfig
+from operators.protocols import PlotOperator
 
 mpl.use("Agg")
 
@@ -15,6 +16,16 @@ import numpy as np
 from registry import get_operators
 
 _DEFAULT_FIELD_ORDER = ["density", "velocity", "force", "force_ext", "analysis"]
+
+
+def get_plot_operators() -> dict[str, type[PlotOperator]]:
+    """Typed view of the plotting registry.
+
+    Returns:
+        Mapping of plot operator names to PlotOperator class/callable factories.
+    """
+    ops = get_operators("plotting")
+    return {name: entry.target for name, entry in ops.items()}
 
 
 class FigureBuilder:
@@ -31,19 +42,19 @@ class FigureBuilder:
 
         requested = self.config.plot_fields
         if not requested:
-            requested = list(get_operators("plotting"))
+            requested = list(get_plot_operators())
 
-        all_ops = get_operators("plotting")
-        self._operators = []
+        all_ops = get_plot_operators()
+        self._operators: list[PlotOperator] = []
         for name in requested:
-            entry = all_ops.get(name)
-            if entry is None:
+            op_class = all_ops.get(name)
+            if op_class is None:
                 warnings.warn(
                     f"No plot operator registered for '{name}'. Available: {list(all_ops.keys())}",
                     stacklevel=2,
                 )
                 continue
-            self._operators.append(entry.target(self.config, data_dir=self._data_dir))
+            self._operators.append(op_class(self.config, data_dir=self._data_dir))
 
     def build(
         self,
@@ -104,10 +115,14 @@ class FigureBuilder:
         if not self._data_dir.exists():
             return []
 
-        files = sorted(
-            self._data_dir.glob("*.npz"),
-            key=lambda path: self._extract_timestep(path.stem),
-        )
+        timed_files: list[tuple[int, Path]] = []
+        for fp in self._data_dir.glob("*.npz"):
+            timestep = self._extract_timestep(fp.stem)
+            if timestep is not None:
+                timed_files.append((timestep, fp))
+
+        timed_files.sort(key=lambda item: item[0])
+        files = [fp for _, fp in timed_files]
         saved: list[Path] = []
         for fp in files[skip:]:
             timestep = self._extract_timestep(fp.stem)

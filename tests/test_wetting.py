@@ -306,10 +306,9 @@ class TestUpdateWettingState:
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
         f_bc = jnp.ones((NX, NY, 9, 1)) * (1.0 / 9.0)
-        force = jnp.zeros((NX, NY, 1, 2))
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, f_bc, force)
+        new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
         assert isinstance(new_wetting, WettingState)
 
     def test_ca_fields_updated(self):
@@ -319,10 +318,9 @@ class TestUpdateWettingState:
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
         f_bc = jnp.ones((NX, NY, 9, 1)) * (1.0 / 9.0)
-        force = jnp.zeros((NX, NY, 1, 2))
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, f_bc, force)
+        new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
         # ca_left and ca_right should reflect the actual droplet angles
         # measured by compute_contact_angle (not the initial placeholder)
         expected_ca_l, expected_ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -343,10 +341,9 @@ class TestUpdateWettingState:
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
         f_bc = jnp.ones((NX, NY, 9, 1)) * (1.0 / 9.0)
-        force = jnp.zeros((NX, NY, 1, 2))
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, f_bc, force)
+        new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
         # CLL should reflect actual droplet footprint
         assert float(new_wetting.cll_left) < float(new_wetting.cll_right)
 
@@ -356,10 +353,9 @@ class TestUpdateWettingState:
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
         f_bc = jnp.ones((NX, NY, 9, 1)) * (1.0 / 9.0)
-        force = jnp.zeros((NX, NY, 1, 2))
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, f_bc, force)
+        new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
         assert 0.0 <= float(new_wetting.d_rho_left) <= 0.2
         assert 0.0 <= float(new_wetting.d_rho_right) <= 0.2
         assert 1.0 <= float(new_wetting.phi_left) <= 1.5
@@ -372,10 +368,9 @@ class TestUpdateWettingState:
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
         f_bc = jnp.ones((NX, NY, 9, 1)) * (1.0 / 9.0)
-        force = jnp.zeros((NX, NY, 1, 2))
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, f_bc, force)
+        new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
         for field_name in WettingState._fields[:8]:  # skip opt_state
             val = getattr(new_wetting, field_name)
             if val is not None:
@@ -439,9 +434,10 @@ class TestStepMultiphaseWithWetting:
         return setup, state
 
     def test_wetting_state_propagated(self):
-        from operators.step import step_multiphase
+        from operators.step import build_step_fn
         from state.state import WettingState
 
+        step_multiphase = build_step_fn("multiphase")
         setup, state = self._setup_and_state()
         new_state = step_multiphase(setup, state)
 
@@ -449,15 +445,17 @@ class TestStepMultiphaseWithWetting:
         assert isinstance(new_state.wetting, WettingState)
 
     def test_step_increments_t(self):
-        from operators.step import step_multiphase
+        from operators.step import build_step_fn
 
+        step_multiphase = build_step_fn("multiphase")
         setup, state = self._setup_and_state()
         new_state = step_multiphase(setup, state)
         assert int(new_state.t) == 1
 
     def test_wetting_fields_no_nan(self):
-        from operators.step import step_multiphase
+        from operators.step import build_step_fn
 
+        step_multiphase = build_step_fn("multiphase")
         setup, state = self._setup_and_state()
         new_state = step_multiphase(setup, state)
 
@@ -477,7 +475,7 @@ class TestStepMultiphaseWithWetting:
     def test_without_wetting_state_unchanged(self):
         """When wetting is None, step should not fail."""
         from config.simulation_config import SimulationConfig
-        from operators.step import step_multiphase
+        from operators.step import build_step_fn
         from runner.run import init_state
         from setup.simulation_setup import build_setup
 
@@ -496,6 +494,7 @@ class TestStepMultiphaseWithWetting:
         state = init_state(setup)
         assert state.wetting is None
 
+        step_multiphase = build_step_fn("multiphase")
         new_state = step_multiphase(setup, state)
         assert new_state.wetting is None
         assert int(new_state.t) == 1
@@ -511,7 +510,7 @@ class TestFunctionalStep:
 
     def test_functional_step(self):
         from config.simulation_config import SimulationConfig
-        from operators.step import step_single_phase
+        from operators.step import build_step_fn
         from runner.run import init_state
         from setup.simulation_setup import build_setup
 
@@ -519,5 +518,6 @@ class TestFunctionalStep:
         setup = build_setup(cfg)
         state = init_state(setup)
 
+        step_single_phase = build_step_fn("single_phase")
         new_state = step_single_phase(setup, state)
         assert int(new_state.t) == 1
