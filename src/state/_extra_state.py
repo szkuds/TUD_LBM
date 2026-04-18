@@ -51,7 +51,7 @@ def _build_extra_state(setup: SimulationSetup) -> dict[str, Any]:
         nx, ny = setup.grid_shape[0], setup.grid_shape[1]
         f_init = build_initialise_fn(init_type)(nx, ny, setup.lattice, **kw)
         rho_init = jnp.sum(f_init, axis=2, keepdims=True)
-        rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
+        rho_mean = 0.5 * (mp.rho_l + mp.rho_v) if mp is not None else 1.0
 
         # Measure initial contact angles and contact-line locations
         ca_left, ca_right = compute_contact_angle(rho_init, rho_mean)
