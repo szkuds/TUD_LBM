@@ -7,25 +7,12 @@ import warnings
 from pathlib import Path
 import matplotlib as mpl
 from config import SimulationConfig
-from operators.protocols import PlotOperator
 
 mpl.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
 from registry import get_operators
-
-_DEFAULT_FIELD_ORDER = ["density", "velocity", "force", "force_ext", "analysis"]
-
-
-def get_plot_operators() -> dict[str, type[PlotOperator]]:
-    """Typed view of the plotting registry.
-
-    Returns:
-        Mapping of plot operator names to PlotOperator class/callable factories.
-    """
-    ops = get_operators("plotting")
-    return {name: entry.target for name, entry in ops.items()}
 
 
 class FigureBuilder:
@@ -42,19 +29,19 @@ class FigureBuilder:
 
         requested = self.config.plot_fields
         if not requested:
-            requested = list(get_plot_operators())
+            requested = list(get_operators("plotting").keys())
 
-        all_ops = get_plot_operators()
-        self._operators: list[PlotOperator] = []
+        all_ops = get_operators("plotting")
+        self._operators: list = []
         for name in requested:
-            op_class = all_ops.get(name)
-            if op_class is None:
+            entry = all_ops.get(name)
+            if entry is None:
                 warnings.warn(
                     f"No plot operator registered for '{name}'. Available: {list(all_ops.keys())}",
                     stacklevel=2,
                 )
                 continue
-            self._operators.append(op_class(self.config, data_dir=self._data_dir))
+            self._operators.append(entry.target(self.config, data_dir=self._data_dir))
 
     def build(
         self,
