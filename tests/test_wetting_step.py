@@ -271,7 +271,7 @@ class TestComplexConfig:
     def test_complex_config(self):
         """Test complex config with wetting_hysteresis."""
         adapter = TomlAdapter()
-        cfg = adapter.load("~/PycharmProjects/TUD_LBM/examples/config_complex.toml")
+        cfg = adapter.load("examples/config_complex.toml")
         assert cfg.sim_type is not None
 
         setup = build_setup(cfg)
