@@ -276,17 +276,17 @@ class SimulationConfig:
             if getattr(self, name) is None:
                 raise ValueError(f"'{name}' is required for multiphase simulations")
 
-        if self.rho_l <= 0:
+        if self.rho_l is not None and self.rho_l <= 0:
             raise ValueError(f"rho_l must be positive, got {self.rho_l}")
-        if self.rho_v <= 0:
+        if self.rho_v is not None and self.rho_v <= 0:
             raise ValueError(f"rho_v must be positive, got {self.rho_v}")
-        if self.rho_l <= self.rho_v:
+        if self.rho_l is not None and self.rho_v is not None and self.rho_l <= self.rho_v:
             raise ValueError(
                 f"rho_l ({self.rho_l}) must be greater than rho_v ({self.rho_v})",
             )
-        if self.kappa <= 0:
+        if self.kappa is not None and self.kappa <= 0:
             raise ValueError(f"kappa must be positive, got {self.kappa}")
-        if self.interface_width <= 0:
+        if self.interface_width is not None and self.interface_width <= 0:
             raise ValueError(
                 f"interface_width must be positive, got {self.interface_width}",
             )

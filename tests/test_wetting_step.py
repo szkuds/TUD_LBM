@@ -7,13 +7,16 @@ wetting parameter injection via :func:`_make_wetting_shims`.
 import jax.numpy as jnp
 from config.adapter_toml import TomlAdapter
 from config.simulation_config import SimulationConfig
-from operators.step import step_multiphase
+from operators.step import build_step_fn
 from operators.step._wetting_shims import _make_wetting_differential_ops
 from runner.run import init_state
 from setup.simulation_setup import build_setup
 from state.state import WettingState
 
 NX, NY = 16, 16
+
+# Build the step function
+step_multiphase = build_step_fn("multiphase")
 
 
 def _wetting_setup():
@@ -278,6 +281,6 @@ class TestComplexConfig:
         assert state.f.shape is not None
 
         for i in range(1, 4):
-            new_state = setup.step(state)
+            new_state = setup.step_fn(setup, state)
             assert int(new_state.t) == i
             state = new_state

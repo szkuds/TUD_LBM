@@ -20,6 +20,7 @@ import jax.numpy as jnp
 from operators.boundary import _bounce_back as _bb  # noqa: F401
 from operators.boundary import _periodic as _per  # noqa: F401
 from operators.boundary import _symmetry as _sym  # noqa: F401
+from operators.protocols import BoundaryOperator
 from registry import get_operators
 from setup.lattice import Lattice
 
@@ -76,7 +77,7 @@ def _get_bc_dispatch() -> dict[str, Callable]:
 def build_bc(
     bc_config: dict[str, Any] | None,
     lattice: Lattice,
-) -> Callable:
+) -> BoundaryOperator:
     """Build a composite BC closure from a bc_config dict.
 
     The returned function applies boundary conditions in order:
@@ -84,12 +85,13 @@ def build_bc(
     or mapped to ``"periodic"`` are no-ops.
 
     Args:
-        bc_config: Mapping ``{edge: bc_type, ...}``, e.g.
+        bc_config: Mapping ``{_edge: bc_type, ...}``, e.g.
             ``{"top": "symmetry", "bottom": "bounce-back", "left": "periodic", "right": "periodic"}``.
             ``None`` means all-periodic.
         lattice: :class:`~setup.lattice.Lattice`.
 
     Returns:
+        A callable satisfying the BoundaryOperator protocol,
         ``bc_fn(f_stream, f_col, bc_masks) → f``.
     """
     if bc_config is None:
@@ -97,7 +99,7 @@ def build_bc(
 
     bc_dispatch = _get_bc_dispatch()
 
-    # Pre-compute the list of (edge, bc_fn) pairs at build time.
+    # Pre-compute the list of (_edge, bc_fn) pairs at build time.
     # Only include edges that need an operation (skip periodic / unknown).
     _edge_order = ("bottom", "top", "left", "right")
     ops = []
@@ -118,15 +120,15 @@ def build_bc(
             f_streamed: Post-streaming populations.
             f_collision: Post-collision populations.
             bc_masks: :class:`~setup.simulation_setup.BCMasks` (currently
-                unused — the per-edge functions slice by index; masks are
+                unused — the per-_edge functions slice by index; masks are
                 reserved for a future vectorised implementation).
 
         Returns:
             Populations with boundary conditions applied.
         """
         f = f_streamed
-        for edge, fn in ops:
-            f = fn(f, f_collision, lattice, edge)
+        for _edge, _fn in ops:
+            f = _fn(f, f_collision, lattice, _edge)
         return f
 
     return bc_fn

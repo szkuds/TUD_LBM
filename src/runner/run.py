@@ -64,12 +64,10 @@ def init_state(
     """Create an initial :class:`State` for the given setup.
 
     If *f* is not supplied, the population distribution is initialised
-    using the ``init_type`` specified in ``setup`` (via
-    :func:`operators.initialise.build_f`).  For ``"standard"`` this is
-    the rest equilibrium (``f_i = w_i``); for multiphase types it
-    produces a tanh density profile at equilibrium.
-
-    For multiphase simulations the ``force`` field is pre-populated
+    using ``setup.initial_f_fn``, which is built at setup time from
+    ``init_type``.  For ``"standard"`` this is the rest equilibrium
+    (``f_i = w_i``); for multiphase types it produces a tanh density
+    profile at equilibrium.  Remaining state arrays are initialised
     with zeros so that the pytree structure stays constant across
     ``lax.scan`` iterations (JAX requires identical carry structure).
 
@@ -84,7 +82,6 @@ def init_state(
     Returns:
         A :class:`State` ready to be passed to :func:`run`.
     """
-    from operators.initialise import build_f
     from state import build_extra_state
     from state import build_optional_fields
 
@@ -92,7 +89,7 @@ def init_state(
     nx, ny = setup.grid_shape[0], setup.grid_shape[1]
 
     if f is None:
-        f = build_f(setup, init_kwargs)
+        f = setup.initial_f_fn(init_kwargs)
 
     rho = jnp.sum(f, axis=2, keepdims=True)
     u = jnp.zeros((nx, ny, 1, lattice.d))
@@ -164,7 +161,7 @@ def run(
 
         @jax.jit
         def scan_body_io(state, t):
-            new_state = setup.step(state)
+            new_state = setup.step_fn(setup, state)
             do_save(new_state, t)
             return new_state, None
 
@@ -178,7 +175,7 @@ def run(
     # ── In-memory trajectory mode ────────────────────────────────
     @jax.jit
     def scan_body(state, t):
-        new_state = setup.step(state)
+        new_state = setup.step_fn(setup, state)
         return new_state, new_state
 
     final_state, trajectory = jax.lax.scan(

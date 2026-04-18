@@ -21,16 +21,14 @@ def step_single_phase(setup, state: State) -> State:
     Returns:
         Updated :class:`~state.state.State` after one time step.
     """
-    lattice = setup.lattice
-
     # 1. External forces
     force_ext, state = compute_total_force_ext(setup, state, setup.forces, setup.streaming_fn)
 
     # 2. Macroscopic fields
     if force_ext is not None:
-        rho, u, force_tot = setup.macroscopic_fn(state.f, lattice, force=force_ext)
+        rho, u, force_tot = setup.macroscopic_fn(state.f, setup.lattice, force=force_ext)
     else:
-        rho, u = setup.macroscopic_fn(state.f, lattice)
+        rho, u = setup.macroscopic_fn(state.f, setup.lattice)
         force_tot = None
 
     # 3–6. Equilibrium → collision → streaming → BCs (shared)

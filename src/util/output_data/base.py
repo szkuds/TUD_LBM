@@ -6,6 +6,7 @@ import numpy as np
 
 class OutputWriter(ABC):
     registry: ClassVar[dict[str, type["OutputWriter"]]] = {}
+    data_dir: str
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
