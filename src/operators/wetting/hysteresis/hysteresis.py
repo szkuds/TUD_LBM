@@ -236,11 +236,11 @@ def update_wetting_state(
         )
 
     # 5. Infer advancing/receding direction from contact-line displacement
-    dcll_left = cll_left - wetting.cll_left
-    dcll_right = cll_right - wetting.cll_right
+    delta_cll_left = cll_left - wetting.cll_left
+    delta_cll_right = cll_right - wetting.cll_right
 
-    advancing_left = dcll_left < 0.0
-    advancing_right = dcll_right > 0.0
+    advancing_left = delta_cll_left < 0.0
+    advancing_right = delta_cll_right > 0.0
 
     ca_target_left = jnp.where(advancing_left, ca_adv, ca_rec)
     ca_target_right = jnp.where(advancing_right, ca_adv, ca_rec)
