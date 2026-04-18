@@ -55,30 +55,6 @@ if TYPE_CHECKING:
 # ── State initialisation ─────────────────────────────────────────────
 
 
-def _init_f(setup, init_kwargs: dict | None) -> jnp.ndarray:
-    """Build the initial population distribution *f* for *setup*.
-
-    Selects the initialiser indicated by ``setup.config.init_type``,
-    assembles its keyword arguments from multiphase params and caller
-    overrides, and invokes it.
-    """
-    from operators.initialise import build_initialise_fn
-
-    init_type = setup.config.init_type
-
-    kw: dict = {}
-    mp = setup.multiphase_params
-    if mp is not None:
-        kw.update(rho_l=mp.rho_l, rho_v=mp.rho_v, interface_width=mp.interface_width)
-    if init_kwargs:
-        kw.update(init_kwargs)
-    if init_type == "init_from_file" and "npz_path" not in kw and setup.config.init_dir is not None:
-        kw["npz_path"] = setup.config.init_dir
-
-    nx, ny = setup.grid_shape[0], setup.grid_shape[1]
-    return build_initialise_fn(init_type)(nx, ny, setup.lattice, **kw)
-
-
 def init_state(
     setup,
     *,
@@ -88,11 +64,10 @@ def init_state(
     """Create an initial :class:`State` for the given setup.
 
     If *f* is not supplied, the population distribution is initialised
-    using the ``init_type`` specified in ``setup``.  For ``"standard"``
-    this is the rest equilibrium (``f_i = w_i``); for multiphase types
-    it produces a tanh density profile at equilibrium.
-
-    For multiphase simulations the ``force`` field is pre-populated
+    using ``setup.initial_f_fn``, which is built at setup time from
+    ``init_type``.  For ``"standard"`` this is the rest equilibrium
+    (``f_i = w_i``); for multiphase types it produces a tanh density
+    profile at equilibrium.  Remaining state arrays are initialised
     with zeros so that the pytree structure stays constant across
     ``lax.scan`` iterations (JAX requires identical carry structure).
 
@@ -114,7 +89,7 @@ def init_state(
     nx, ny = setup.grid_shape[0], setup.grid_shape[1]
 
     if f is None:
-        f = _init_f(setup, init_kwargs)
+        f = setup.initial_f_fn(init_kwargs)
 
     rho = jnp.sum(f, axis=2, keepdims=True)
     u = jnp.zeros((nx, ny, 1, lattice.d))

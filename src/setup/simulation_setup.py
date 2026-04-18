@@ -117,6 +117,7 @@ class SimulationSetup(NamedTuple):
     macroscopic_fn: Callable[..., tuple[jnp.ndarray, ...]] | None = None
     streaming_fn: StreamingOperator | None = None
     bc_fn: BoundaryOperator | None = None
+    initial_f_fn: Callable[..., jnp.ndarray] | None = None
 
 
 # ── Main factory ─────────────────────────────────────────────────────
@@ -148,6 +149,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     from operators.boundary import build_bc_masks
     from operators.collision import build_collision_fn
     from operators.equilibrium import build_equilibrium_fn
+    from operators.initialise import build_initialise_fn
     from operators.macroscopic import build_macroscopic_fn
     from operators.macroscopic import build_multiphase_params
     from operators.step import build_step_fn
@@ -187,6 +189,16 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     if config.wetting_config is not None and config.hysteresis_config is not None:
         wetting_fn = build_wetting_fn("hysteresis")
 
+    def _initial_f_fn(init_kwargs: dict | None = None) -> jnp.ndarray:
+        kw: dict = {}
+        if mp_params is not None:
+            kw.update(rho_l=mp_params.rho_l, rho_v=mp_params.rho_v, interface_width=mp_params.interface_width)
+        if init_kwargs:
+            kw.update(init_kwargs)
+        if config.init_type == "init_from_file" and "npz_path" not in kw and config.init_dir is not None:
+            kw["npz_path"] = config.init_dir
+        return build_initialise_fn(config.init_type)(config.grid_shape[0], config.grid_shape[1], lattice, **kw)
+
     return SimulationSetup(
         config=config,
         lattice=lattice,
@@ -207,4 +219,5 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         macroscopic_fn=macroscopic_fn,
         streaming_fn=streaming_fn,
         bc_fn=bc_fn,
+        initial_f_fn=_initial_f_fn,
     )
