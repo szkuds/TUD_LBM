@@ -249,15 +249,11 @@ def update_wetting_state(
 
     def left_objective(p):
         ca_l, _, cll_l, _ = evaluate_fn(p)
-        return jnp.where(in_window_left,
-                         _cost_cll(cll_left, cll_l),
-                         _cost_ca(ca_target_left, ca_l))
+        return jnp.where(in_window_left, _cost_cll(cll_left, cll_l), _cost_ca(ca_target_left, ca_l))
 
     def right_objective(p):
         _, ca_r, _, cll_r = evaluate_fn(p)
-        return jnp.where(in_window_right,
-                         _cost_cll(cll_right, cll_r),
-                         _cost_ca(ca_target_right, ca_r))
+        return jnp.where(in_window_right, _cost_cll(cll_right, cll_r), _cost_ca(ca_target_right, ca_r))
 
     def left_mask(g):
         return g._replace(

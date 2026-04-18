@@ -148,9 +148,9 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     from operators.boundary import build_bc_masks
     from operators.collision import build_collision_fn
     from operators.equilibrium import build_equilibrium_fn
-    from operators.step import build_step_fn
     from operators.macroscopic import build_macroscopic_fn
     from operators.macroscopic import build_multiphase_params
+    from operators.step import build_step_fn
     from operators.streaming import build_streaming_fn
     from operators.wetting import build_wetting_fn
 

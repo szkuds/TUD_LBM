@@ -32,10 +32,10 @@ def _build_extra_state(setup: SimulationSetup) -> dict[str, Any]:
 
     # Initialize wetting state if applicable
     if setup.config.wetting_config is not None:
-        from state.state import WettingState
         from operators.initialise import build_initialise_fn
         from operators.wetting._contact_angle import compute_contact_angle
         from operators.wetting._contact_line import compute_contact_line_location
+        from state.state import WettingState
 
         wetting_cfg = setup.config.wetting_config
 
