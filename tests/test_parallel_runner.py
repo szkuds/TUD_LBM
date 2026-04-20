@@ -702,7 +702,7 @@ class TestRunParallelSimulations:
                 run_parallel_simulations(configs, setup_fn=custom_setup_fn)
 
         assert len(submit_calls) > 0
-        call_kwargs = submit_calls[0][1] if submit_calls[0][1] else {}
+        call_kwargs = submit_calls[0][1] or {}
         assert "setup_fn" in call_kwargs or len(submit_calls[0][0]) > 3
 
     def test_custom_run_fn_forwarded(self, simple_config, temp_results_dir):
