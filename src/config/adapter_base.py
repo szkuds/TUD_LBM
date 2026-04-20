@@ -73,7 +73,10 @@ class ConfigAdapter(ABC):
                 continue
             if section == "multiphase" and sim_type != "multiphase":
                 continue
-            buckets[section][key] = cls._serialize_safe(value)
+            if isinstance(value, dict):
+                buckets[section].update(cls._serialize_safe(value))
+            else:
+                buckets[section][key] = cls._serialize_safe(value)
 
         buckets["simulation_type"]["type"] = sim_type
         for ek, ev in (config.extra or {}).items():
