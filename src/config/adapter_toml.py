@@ -86,18 +86,23 @@ class TomlAdapter(ConfigAdapter):
                 raise TypeError(f"Force section '[{key}]' must be a table, got {type(value).__name__}.")
             sim_table[key] = dict(value)
 
-    def load(self, path: str) -> SimulationConfig:
-        """Parse *path* and return a :class:`SimulationConfig`.
+    def load_raw(self, path: str) -> dict[str, Any]:
+        """Parse *path* and return raw configuration dict.
+
+        Unlike :meth:`load`, this returns the raw config dict without
+        instantiating :class:`SimulationConfig`.  Useful for detecting
+        array fields before expansion.
 
         Args:
             path: Filesystem path to a ``.toml`` file.
 
         Returns:
-            A validated :class:`SimulationConfig`.
+            Raw config dictionary (may contain array values for physics
+            parameters, plus output overrides from ``[output]``).
 
         Raises:
             FileNotFoundError: If *path* does not exist.
-            ValueError: If required sections/keys are missing or invalid.
+            ValueError: If required sections/keys are missing.
         """
         path_obj: Path = Path(path).expanduser()
         if not path_obj.is_file():
@@ -113,11 +118,11 @@ class TomlAdapter(ConfigAdapter):
 
         sim_type: str = sim_table.pop("type", "single_phase")
 
-        # ── Convert grid_shape from TOML array to tuple ──────────────
-        if "grid_shape" in sim_table:
+        # ── Convert grid_shape from TOML array to tuple only if scalar ─
+        if "grid_shape" in sim_table and not isinstance(sim_table["grid_shape"], list):
             sim_table["grid_shape"] = tuple(sim_table["grid_shape"])
 
-        # ── Validate and process sim_type ────────────────────────────
+        # ── Validate sim_type ────────────────────────────────────────
         valid_types = ("single_phase", "multiphase")
         if sim_type not in valid_types:
             raise ValueError(f"Unknown simulation type '{sim_type}'. Expected one of: {', '.join(valid_types)}.")
@@ -141,11 +146,35 @@ class TomlAdapter(ConfigAdapter):
         # ── Force sections ──────────────────────────────────────────
         self._validate_and_process_forces(raw, sim_table)
 
-        # ── [output] overrides ───────────────────────────────────────
+        # ── Add output overrides (from [output] section) ──────────────
         self._apply_output_overrides(sim_table, raw.get("output", {}))
 
-        # ── Build SimulationConfig ───────────────────────────────────
+        # ── Build sim_type field ────────────────────────────────────
         sim_table["sim_type"] = sim_type
+
+        return sim_table
+
+    def load(self, path: str) -> SimulationConfig:
+        """Parse *path* and return a :class:`SimulationConfig`.
+
+        Supports both scalar and array-valued parameters. For array
+        parameters, use :meth:`load_raw` followed by
+        :func:`~config.array_expansion.expand_config` to generate
+        multiple configs.
+
+        Args:
+            path: Filesystem path to a ``.toml`` file.
+
+        Returns:
+            A validated :class:`SimulationConfig`.
+
+        Raises:
+            FileNotFoundError: If *path* does not exist.
+            ValueError: If required sections/keys are missing or invalid.
+        """
+        sim_table = self.load_raw(path)
+
+        # ── Build SimulationConfig ───────────────────────────────────
 
         # Separate known fields from extra
         known_fields = {f.name for f in dataclasses.fields(SimulationConfig)}

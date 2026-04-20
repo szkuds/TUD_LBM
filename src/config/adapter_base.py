@@ -16,7 +16,32 @@ class ConfigAdapter(ABC):
     """Converts a config file into a SimulationConfig and back."""
 
     @abstractmethod
-    def load(self, path: str) -> SimulationConfig: ...
+    def load_raw(self, path: str) -> dict[str, Any]:
+        """Parse *path* and return raw configuration dict.
+
+        Unlike :meth:`load`, this returns the raw config dict without
+        instantiating :class:`SimulationConfig`. Useful for detecting
+        array fields before expansion.
+
+        Args:
+            path: Filesystem path to a configuration file.
+
+        Returns:
+            Raw config dictionary.
+        """
+        ...
+
+    @abstractmethod
+    def load(self, path: str) -> SimulationConfig:
+        """Parse *path* and return a :class:`SimulationConfig`.
+
+        Args:
+            path: Filesystem path to a configuration file.
+
+        Returns:
+            A validated :class:`SimulationConfig`.
+        """
+        ...
 
     @abstractmethod
     def save(self, config: SimulationConfig, path: str) -> None: ...

@@ -1,0 +1,60 @@
+# TUD-LBM Parallel Parameter Sweep Configuration
+#
+# This configuration demonstrates array parameters for parallel simulations.
+# Any field in ARRAY_ELIGIBLE_FIELDS can be specified as an array to trigger
+# automatic expansion into multiple SimulationConfig objects.
+#
+# Example usage:
+#
+#   from config.adapter_toml import TomlAdapter
+#   from config.array_expansion import expand_config, enumerate_configs
+#   from runner.parallel_runner import run_parallel_simulations, save_sweep_manifest
+#
+#   adapter = TomlAdapter()
+#   config_dict = adapter.load_raw("config_parallel.toml")
+#   configs, metadata = expand_config(config_dict)
+#
+#   print(f"Expanding to {len(configs)} configurations...")
+#   results = run_parallel_simulations(configs, max_workers=4, verbose=True)
+#   save_sweep_manifest(results, "sweep_results")
+
+[simulation_type]
+simulation_name = 'Tau parameter sweep'
+type = "single_phase"
+grid_shape = [100, 100]
+lattice_type = "D2Q9"
+
+# ── Array parameters ────────────────────────────────────────────────
+# Specify values as arrays (TOML syntax: [val1, val2, val3])
+# This creates the Cartesian product of all array values.
+# Example: tau=[0.6, 0.8, 1.0] creates 3 simulations
+tau = [0.6, 0.7, 0.8]
+
+# Time steps (optional array)
+# nt = [1000, 5000, 10000]
+
+# ── Scalar parameters (same for all simulations) ────────────────────
+nt = 10000
+save_interval = 1000
+init_type = "standard"
+
+[output]
+results_dir = "~/TUD_LBM_data/sweep_results"
+save_fields = ["rho", "u"]
+plot_fields = ["density"]
+
+# ── Example: Multiphase parameter sweep ────────────────────────────
+# Uncomment to switch to multiphase. Valid EOS: "double-well"
+#
+# [simulation_type]
+# type = "multiphase"
+# eos = "double-well"
+#
+# [multiphase]
+# rho_l = 1.0
+# rho_v = 0.1
+# kappa = [0.0001, 0.0005, 0.001]  # Surface tension sweep
+# interface_width = 4
+# g = 0.0
+
+
