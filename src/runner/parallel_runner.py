@@ -336,6 +336,6 @@ def save_sweep_manifest(
         ],
     }
 
-    manifest_path = output_dir / "sweep_manifest.json"
+    manifest_path = output_dir / f"sweep_manifest_{manifest['sweep_id']}.json"
     with manifest_path.open("w") as f:
         json.dump(manifest, f, indent=2)
