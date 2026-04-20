@@ -95,7 +95,7 @@ def _run_single_simulation(
     # Configure JAX in this worker process
     configure_jax()
 
-    start = time.time()
+    start = time.perf_counter()
 
     try:
         # Use provided functions or defaults
@@ -139,7 +139,7 @@ def _run_single_simulation(
         # Store the resolved output directory in the config
         config = replace(config, output_dir=str(io.run_dir))
 
-        duration = time.time() - start
+        duration = time.perf_counter() - start
 
         return SimulationResult(
             index=index,
@@ -151,7 +151,7 @@ def _run_single_simulation(
         )
 
     except Exception as e:
-        duration = time.time() - start
+        duration = time.perf_counter() - start
         error_msg = f"{type(e).__name__}: {e!s}\n{traceback.format_exc()}"
         return SimulationResult(
             index=index,
