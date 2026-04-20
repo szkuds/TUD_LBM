@@ -7,14 +7,9 @@ Tests validate that:
 4. The get_adapter factory dispatches correctly
 """
 
-import sys
 import textwrap
 from pathlib import Path
 import pytest
-
-# Ensure src/ is on the path so imports work from the tests/ directory
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-
 from config.adapter_base import ConfigAdapter
 from config.adapter_base import get_adapter
 from config.adapter_toml import TomlAdapter
@@ -388,7 +383,7 @@ class TestExampleFiles:
 
     @pytest.fixture
     def example_dir(self):
-        return Path(__file__).parent / "example_for_test"
+        return Path(__file__).resolve().parents[1] / "example_for_test"
 
     def test_config_simple_loads(self, example_dir):
         path = example_dir / "config_simple.toml"

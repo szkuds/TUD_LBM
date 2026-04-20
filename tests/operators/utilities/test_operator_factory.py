@@ -28,13 +28,7 @@ Tests are organized by what they explain:
   4. All existing operator types still work
 """
 
-# Ensure src/ is importable
-import sys
-from pathlib import Path
 import pytest
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 from registry import get_operators
 from registry import register_operator
 from registry import unregister_operator

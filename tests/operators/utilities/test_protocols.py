@@ -5,14 +5,8 @@ compatible with the formal protocol contracts.  If an operator is
 registered, it must satisfy its protocol's structural requirements.
 """
 
-import sys
-from pathlib import Path
 import jax.numpy as jnp
 import pytest
-
-# Ensure src/ is importable
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 from operators.boundary import build_bc_masks
 from setup.lattice import build_lattice
 

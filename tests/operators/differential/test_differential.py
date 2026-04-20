@@ -315,7 +315,6 @@ class TestWettingUtil:
     # --- resolve_wetting_fields -------------------------------------------
 
     def test_resolve_scalar_layout(self):
-
         p = {"phi_l": 1.2, "phi_r": 1.4, "d_rho_l": 0.05, "d_rho_r": 0.06}
         _resolve_wetting_fields = build_wetting_fn("resolve_wetting_fields")
         phi_l, phi_r, drho_l, drho_r = _resolve_wetting_fields(p)
@@ -325,7 +324,6 @@ class TestWettingUtil:
         assert drho_r == 0.06
 
     def test_resolve_array_layout_step0(self):
-
         p = {"phi": [1.2, 1.4], "d_rho": [0.03, 0.07]}
         _resolve_wetting_fields = build_wetting_fn("resolve_wetting_fields")
         phi_l, phi_r, _d_rho_l, _d_rho_r = _resolve_wetting_fields(p, chemical_step=0)
@@ -333,7 +331,6 @@ class TestWettingUtil:
         assert phi_r == 1.4
 
     def test_resolve_array_layout_step1(self):
-
         p = {"phi": [1.2, 1.4], "d_rho": [0.03, 0.07]}
         _resolve_wetting_fields = build_wetting_fn("resolve_wetting_fields")
         phi_l, phi_r, _d_rho_l, _d_rho_r = _resolve_wetting_fields(p, chemical_step=1)

@@ -8,13 +8,8 @@ Covers:
 - ``get_adapter()`` rejects unsupported extensions
 """
 
-import sys
 from pathlib import Path
 import pytest
-
-# Ensure src/ is on the path so imports work from the tests/ directory
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-
 from config.adapter_base import ConfigAdapter
 from config.adapter_base import get_adapter
 from config.adapter_toml import TomlAdapter
