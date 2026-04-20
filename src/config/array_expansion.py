@@ -119,7 +119,7 @@ def expand_config(
     array_fields: dict[str, tuple[Any, ...]] = {}
 
     eligible = get_array_eligible_fields()
-    for key, value in list(config_dict.items()):
+    for key, value in config_dict.items():
         if key not in eligible:
             continue
         if _is_array_value(value, field_name=key):
