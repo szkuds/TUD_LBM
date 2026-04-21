@@ -222,7 +222,9 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
             kw.update(init_kwargs)
         if config.init_type == "init_from_file" and "npz_path" not in kw and config.init_dir is not None:
             kw["npz_path"] = config.init_dir
-        return build_initialise_fn(config.init_type)(config.grid_shape[0], config.grid_shape[1], lattice, **kw)
+        return build_initialise_fn(config.init_type)(
+            config.grid_shape[0], config.grid_shape[1], config.grid_shape[2], lattice, **kw
+        )
 
     setup = SimulationSetup(
         config=config,

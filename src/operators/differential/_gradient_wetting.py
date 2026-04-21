@@ -34,11 +34,11 @@ def build_wetting_gradient(
 
     Closes over static config (w, c, pad_mode, bc_config, rho_l, rho_v, width).
     The returned callable accepts only the grid and dynamic wetting parameters,
-    returning shape ``(nx, ny, 1, 2)``.
+    returning shape ``(nx, ny, nz, 1, 2)``.
 
     Args:
-        w:         Lattice weights ``(q,)``.
-        c:         Lattice velocities ``(2, q)``.
+        w:         Lattice weights ``(1, 1, 1, q, 1)``.
+        c:         Lattice velocities ``(1, 1, 1, q, 2)``.
         pad_mode:  ``(right_y, left_y, bottom_x, top_x)``.
         bc_config: Boundary-condition edge map, e.g.
                    ``{"bottom": "wetting", "top": "bounce-back"}``.
@@ -47,7 +47,7 @@ def build_wetting_gradient(
         width:     Interface width in lattice units (baked into closure at build time).
 
     Returns:
-        ``grad(grid, phi_l, phi_r, d_rho_l, d_rho_r) → (nx,ny,1,2)``
+        ``grad(grid, phi_l, phi_r, d_rho_l, d_rho_r) → (nx,ny,nz,1,2)``
     """
     _pad_mode = tuple(pad_mode)
     _build_wetting_applicator = build_wetting_fn("applicator")

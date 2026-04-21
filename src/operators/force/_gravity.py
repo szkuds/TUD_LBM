@@ -50,20 +50,20 @@ class GravityForceModule:
             params: Config dict from ``[gravity_force]`` TOML section.
                 Required key: ``force_g``.
                 Optional key: ``inclination_angle_deg`` (default 0).
-            grid_shape: Spatial dimensions ``(nx, ny, ...)``.
+            grid_shape: Spatial dimensions ``(nx, ny, nz, ...)``.
             **kwargs: Additional arguments (config, lattice) ignored for stateless forces.
 
         Returns:
-            Gravity template array, shape ``(nx, ny, 1, 2)``.
+            Gravity template array, shape ``(nx, ny, nz, 1, d)``.
         """
-        nx, ny = grid_shape[:2]
+        nx, ny, nz = grid_shape[:3]
         angle_rad = jnp.deg2rad(params.get("inclination_angle_deg", 0.0))
         force_x = params["force_g"] * (-jnp.sin(angle_rad))
         force_y = params["force_g"] * jnp.cos(angle_rad)
 
-        template = jnp.zeros((nx, ny, 1, 2))
-        template = template.at[:, :, 0, 0].set(force_x)
-        return template.at[:, :, 0, 1].set(force_y)
+        template = jnp.zeros((nx, ny, nz, 1, 2))
+        template = template.at[:, :, :, 0, 0].set(force_x)
+        return template.at[:, :, :, 0, 1].set(force_y)
 
     @staticmethod
     def compute(
@@ -80,7 +80,7 @@ class GravityForceModule:
             **kwargs: Additional arguments (ignored).
 
         Returns:
-            Gravity force field, shape ``(nx, ny, 1, 2)``.
+            Gravity force field, shape ``(nx, ny, nz, 1, d)``.
         """
-        rho = jnp.sum(state.f, axis=2, keepdims=True)
+        rho = jnp.sum(state.f, axis=-2, keepdims=True)
         return -precomputed * rho

@@ -8,7 +8,7 @@ Usage::
     from config.simulation_config import SimulationConfig
 
     cfg = SimulationConfig(
-        grid_shape=(128, 128),
+        grid_shape=(128, 128, 1),
         tau=0.8,
         nt=5000,
         collision_scheme="bgk",
@@ -186,6 +186,8 @@ class SimulationConfig:
         """Validate and normalize configuration after initialization."""
         self._normalize()
         self._apply_defaults()
+        self._make_grid_shape_3d()
+        self._set_all_bcs()
         self._validate_common()
         if self.sim_type == "multiphase":
             self._validate_multiphase()
@@ -208,8 +210,22 @@ class SimulationConfig:
                     "bottom": "periodic",
                     "left": "periodic",
                     "right": "periodic",
+                    "front": "periodic",
+                    "back": "periodic",
                 },
             )
+
+    def _make_grid_shape_3d(self) -> None:
+        """Promote grid_shape to 3D by adding a singleton z-dimension."""
+        _target_dims = 3
+        if len(self.grid_shape) < _target_dims:
+            object.__setattr__(self, "grid_shape", self.grid_shape + (1,) * (_target_dims - len(self.grid_shape)))
+
+    def _set_all_bcs(self) -> None:
+        """Set missing BCs in bc_config to 'periodic'."""
+        for edge in ("top", "bottom", "left", "right", "front", "back"):
+            if edge not in self.bc_config:
+                self.bc_config[edge] = "periodic"
 
     def _validate_common(self) -> None:
         """Validate common simulation configuration parameters."""

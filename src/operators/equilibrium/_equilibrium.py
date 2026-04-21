@@ -36,37 +36,16 @@ def compute_equilibrium(
     """Compute the well-balanced equilibrium distribution.
 
     Args:
-        rho: Density field, shape ``(nx, ny, 1, 1)``.
-        u: Velocity field, shape ``(nx, ny, 1, 2)``.
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
+        u: Velocity field, shape ``(nx, ny, nz, 1, 2)``.
         lattice: :class:`~setup.lattice.Lattice` with weights ``w``
             and velocity vectors ``c``.
 
     Returns:
-        Equilibrium populations ``feq``, shape ``(nx, ny, q, 1)``.
+        Equilibrium populations ``feq``, shape ``(nx, ny, nz, q, 1)``.
     """
-    w = lattice.w  # (q,)
-    cx = lattice.c[0]  # (q,)
-    cy = lattice.c[1]  # (q,)
-    q = lattice.q
+    u2 = jnp.sum(u**2, axis=-1, keepdims=True)  # (nx, ny, nz, 1, 1)
 
-    # Extract 2D fields ─ shape (nx, ny)
-    ux = u[:, :, 0, 0]
-    uy = u[:, :, 0, 1]
-    rho_2d = rho[:, :, 0, 0]
+    cu = jnp.sum(u * lattice.c, axis=-1, keepdims=True)  # (nx, ny, nz, 1, D)
 
-    u2 = ux * ux + uy * uy
-
-    nx, ny = rho_2d.shape
-    feq = jnp.zeros((nx, ny, q, 1))
-
-    # Directions 1 … q-1 (standard formula)
-    for i in range(1, q):
-        cu = cx[i] * ux + cy[i] * uy
-        feq = feq.at[:, :, i, 0].set(
-            w[i] * rho_2d * (3.0 * cu + 4.5 * cu * cu - 1.5 * u2),
-        )
-
-    # Rest direction via mass conservation
-    f_sum = jnp.sum(feq[:, :, 1:, 0], axis=2)
-
-    return feq.at[:, :, 0, 0].set(rho_2d - f_sum)
+    return lattice.w * rho * (1.0 + 3.0 * cu + 4.5 * cu**2 - 1.5 * u2)  # (nx, ny, nz, q, 1)

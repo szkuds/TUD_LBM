@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 def init_wetting_top(
     nx: int,
     ny: int,
+    nz: int,
     lattice: Lattice,
     *,
     rho_l: float = 1.0,
@@ -32,6 +33,7 @@ def init_wetting_top(
     Args:
         nx: Grid size in x.
         ny: Grid size in y.
+        nz: Grid size in z (must be 1).
         lattice: :class:`~setup.lattice.Lattice`.
         rho_l: Liquid density.
         rho_v: Vapour density.
@@ -47,8 +49,12 @@ def init_wetting_top(
         interface_width: Diffuse-interface thickness.
 
     Returns:
-        Initial distribution ``f``, shape ``(nx, ny, q, 1)``.
+        Initial distribution ``f``, shape ``(nx, ny, nz, q, 1)``.
     """
+    if nz != 1:
+        msg = "Wetting initialisation only supports 2D (nz=1)."
+        raise ValueError(msg)
+
     r = ny / 3.33
     x, y = jnp.meshgrid(jnp.arange(nx), jnp.arange(ny), indexing="ij")
     xc = nx // 2
@@ -57,6 +63,6 @@ def init_wetting_top(
     rho_2d = (rho_l + rho_v) / 2.0 + (rho_l - rho_v) / 2.0 * jnp.tanh(
         2.0 * (r - distance) / interface_width,
     )
-    rho = jnp.zeros((nx, ny, 1, 1)).at[:, :, 0, 0].set(rho_2d)
-    u = jnp.zeros((nx, ny, 1, 2))
+    rho = jnp.zeros((nx, ny, nz, 1, 1)).at[:, :, 0, 0, 0].set(rho_2d)
+    u = jnp.zeros((nx, ny, nz, 1, lattice.d))
     return compute_equilibrium(rho, u, lattice)

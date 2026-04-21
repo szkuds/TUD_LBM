@@ -56,28 +56,30 @@ def lap_core(
 
     Args:
         padded: Shape ``(nx + 2, ny + 2)``.
-        w: Lattice weights, shape ``(q,)``.
+        w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
 
     Returns:
-        Laplacian field, shape ``(nx, ny, 1, 1)``.
+        Laplacian field, shape ``(nx, ny, nz, 1, 1)``.
     """
     i0 = padded[1:-1, 1:-1]  # centre values
+
+    w_flat = w[0, 0, 0, :, 0]
 
     lap = (
         6.0
         * (
-            w[1] * (padded[2:, 1:-1] - i0)  # (i+1, j)
-            + w[2] * (padded[1:-1, 2:] - i0)  # (i, j+1)
-            + w[3] * (padded[:-2, 1:-1] - i0)  # (i-1, j)
-            + w[4] * (padded[1:-1, :-2] - i0)  # (i, j-1)
-            + w[5] * (padded[2:, 2:] - i0)  # (i+1, j+1)
-            + w[6] * (padded[:-2, 2:] - i0)  # (i-1, j+1)
-            + w[7] * (padded[:-2, :-2] - i0)  # (i-1, j-1)
-            + w[8] * (padded[2:, :-2] - i0)  # (i+1, j-1)
+            w_flat[1] * (padded[2:, 1:-1] - i0)  # (i+1, j)
+            + w_flat[2] * (padded[1:-1, 2:] - i0)  # (i, j+1)
+            + w_flat[3] * (padded[:-2, 1:-1] - i0)  # (i-1, j)
+            + w_flat[4] * (padded[1:-1, :-2] - i0)  # (i, j-1)
+            + w_flat[5] * (padded[2:, 2:] - i0)  # (i+1, j+1)
+            + w_flat[6] * (padded[:-2, 2:] - i0)  # (i-1, j+1)
+            + w_flat[7] * (padded[:-2, :-2] - i0)  # (i-1, j-1)
+            + w_flat[8] * (padded[2:, :-2] - i0)  # (i+1, j-1)
         )
     )
 
     nx = padded.shape[0] - 2
     ny = padded.shape[1] - 2
-    out = jnp.zeros((nx, ny, 1, 1))
-    return out.at[:, :, 0, 0].set(lap)
+    out = jnp.zeros((nx, ny, 1, 1, 1))
+    return out.at[:, :, 0, 0, 0].set(lap)

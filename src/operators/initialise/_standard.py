@@ -18,10 +18,11 @@ if TYPE_CHECKING:
 def init_standard(
     nx: int,
     ny: int,
+    nz: int,
     lattice: Lattice,
     *,
     density: float = 1.0,
-    velocity: tuple[float, float] = (0.0, 0.0),
+    velocity: tuple[float, ...] = (0.0, 0.0, 0.0),
     **_kwargs: object,
 ) -> jnp.ndarray:
     """Initialise uniform density and velocity at equilibrium.
@@ -29,15 +30,16 @@ def init_standard(
     Args:
         nx: Grid size in x.
         ny: Grid size in y.
+        nz: Grid size in z.
         lattice: :class:`~setup.lattice.Lattice`.
         density: Uniform density value.
-        velocity: Uniform velocity ``(ux, uy)``.
+        velocity: Uniform velocity ``(ux, uy, uz)``.
         **kwargs: Additional arguments (ignored).
 
     Returns:
-        Initial distribution ``f``, shape ``(nx, ny, q, 1)``.
+        Initial distribution ``f``, shape ``(nx, ny, nz, q, 1)``.
     """
     equilibrium_fn = build_equilibrium_fn("wb")
-    rho = jnp.full((nx, ny, 1, 1), density)
-    u = jnp.broadcast_to(jnp.array(velocity).reshape(1, 1, 1, 2), (nx, ny, 1, 2))
+    rho = jnp.full((nx, ny, nz, 1, 1), density)
+    u = jnp.broadcast_to(jnp.array(velocity[: lattice.d]).reshape(1, 1, 1, 1, lattice.d), (nx, ny, nz, 1, lattice.d))
     return equilibrium_fn(rho, u, lattice)

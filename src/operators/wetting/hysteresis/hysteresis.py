@@ -162,15 +162,15 @@ def update_wetting_state(
 
     Args:
         wetting: Current :class:`WettingState`.
-        rho: Density field, shape ``(nx, ny, 1, 1)``.
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
         setup: :class:`~setup.simulation_setup.SimulationSetup`
             (closed-over, not traced).
-        f_t: Pre-step populations, shape ``(nx, ny, q, 1)``.
+        f_t: Pre-step populations, shape ``(nx, ny, nz, q, 1)``.
         evaluate_fn: Optional callable
             ``(WettingParams) → (ca_l, ca_r, cll_l, cll_r)``
             used by the inner optimiser.  If ``None``, a default is
             built from the pure-function operators.
-        force_ext: External force field, shape ``(nx, ny, 1, 2)``
+        force_ext: External force field, shape ``(nx, ny, nz, 1, 2)``
             or ``None``.  Passed to the multiphase macroscopic function
             inside the default evaluate_fn so that interparticle forces
             are not double-counted.
@@ -325,7 +325,7 @@ def _build_default_evaluate_fn(
             laplacian_density=laplacian_density,
         )
 
-        rho_out = jnp.sum(f_out, axis=2, keepdims=True)
+        rho_out = jnp.sum(f_out, axis=-2, keepdims=True)
         ca_l, ca_r = compute_contact_angle(rho_out, rho_mean)
         cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, rho_mean)
         return ca_l, ca_r, cll_l, cll_r

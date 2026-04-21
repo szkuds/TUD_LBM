@@ -75,7 +75,7 @@ def init_state(
     Args:
         setup: :class:`~setup.simulation_setup.SimulationSetup`.
         f: Optional pre-computed initial distribution function,
-           shape ``(nx, ny, q, 1)``.
+           shape ``(nx, ny, nz, q, 1)``.
         init_kwargs: Extra keyword arguments forwarded to the
            initialisation function (e.g. ``density``, ``rho_l``,
            ``rho_v``, ``interface_width``, ``npz_path``).
@@ -87,16 +87,16 @@ def init_state(
     from state import build_optional_fields
 
     lattice = setup.lattice
-    nx, ny = setup.grid_shape[0], setup.grid_shape[1]
+    nx, ny, nz = setup.grid_shape[0], setup.grid_shape[1], setup.grid_shape[2]
 
     if f is None:
         f = setup.initial_f_fn(init_kwargs)
 
-    rho = jnp.sum(f, axis=2, keepdims=True)
-    u = jnp.zeros((nx, ny, 1, lattice.d))
+    rho = jnp.sum(f, axis=-2, keepdims=True)
+    u = jnp.zeros((nx, ny, nz, 1, lattice.d))
     t = jnp.array(0)
 
-    force, force_ext = build_optional_fields(setup, nx, ny, lattice.d)
+    force, force_ext = build_optional_fields(setup, nx, ny, nz, lattice.d)
     extra_state = build_extra_state(setup)
 
     return State(
