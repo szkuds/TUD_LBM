@@ -14,6 +14,7 @@ from setup.lattice import Lattice
 def init_multiphase_bubble_top(
     nx: int,
     ny: int,
+    nz: int,
     lattice: Lattice,
     *,
     rho_l: float = 1.0,
@@ -28,6 +29,7 @@ def init_multiphase_bubble_top(
     Args:
         nx: Grid size in x.
         ny: Grid size in y.
+        nz: Grid size in z (must be 1).
         lattice: :class:`~setup.lattice.Lattice`.
         rho_l: Liquid density.
         rho_v: Vapour density.
@@ -36,6 +38,9 @@ def init_multiphase_bubble_top(
     Returns:
         Initial distribution ``f``, shape ``(nx, ny, q, 1)``.
     """
+
+    assert nz == 1, "Multiphase bubble initialisation only supports 2D (nz=1)."
+
     x, y = jnp.meshgrid(jnp.arange(nx), jnp.arange(ny), indexing="ij")
     cx, _ = nx // 2, ny // 6
     radius = min(nx, ny) // 4
@@ -44,6 +49,6 @@ def init_multiphase_bubble_top(
     rho_2d = (rho_l + rho_v) / 2.0 + (rho_l - rho_v) / 2.0 * jnp.tanh(
         (distance - radius) / interface_width,
     )
-    rho = rho_2d.reshape(nx, ny, 1, 1)
-    u = jnp.zeros((nx, ny, 1, 2))
+    rho = rho_2d.reshape(nx, ny, nz, 1, 1)
+    u = jnp.zeros((nx, ny, nz, 1, lattice.d))
     return compute_equilibrium(rho, u, lattice)
