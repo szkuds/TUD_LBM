@@ -26,7 +26,7 @@ def compute_contact_line_location(
     down to the solid using the measured contact angle.
 
     Args:
-        rho: Density field, shape ``(nx, ny, 1, 1)``.
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
         ca_left: Left contact angle in degrees (scalar).
         ca_right: Right contact angle in degrees (scalar).
         rho_mean: Mean density ``(rho_l + rho_v) / 2``.
@@ -35,7 +35,10 @@ def compute_contact_line_location(
         ``(cll_left, cll_right)`` — contact-line x-positions
         (scalar ``jnp.ndarray``).
     """
-    rho_2d = rho[:, :, 0, 0]  # (nx, ny)
+
+    assert rho.shape[2] == 1, "Contact line location computation only implemented in 2D (nz=1)"
+
+    rho_2d = rho[:, :, 0, 0, 0]  # (nx, ny)
     array_j0 = rho_2d[:, 0]
 
     mask_j0 = jnp.array(array_j0 < rho_mean, dtype=jnp.int32)

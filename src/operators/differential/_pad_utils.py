@@ -36,8 +36,10 @@ def _apply_stencil_padding(
 
 
 def to_2d(grid: jnp.ndarray) -> jnp.ndarray:
-    """Squeeze ``(nx, ny, 1, 1)`` → ``(nx, ny)``; no-op if already 2-D."""
-    return grid[:, :, 0, 0] if grid.ndim == 4 else grid
+    """Squeeze ``(nx, ny, nz, 1, 1)`` → ``(nx, ny)``; no-op if already 2-D."""
+    assert grid.ndim in (2, 5), f"Expected 2-D or 5-D grid, got shape {grid.shape}"
+    assert grid.shape[2] == 1, f"Expected singleton nz dimension, got shape {grid.shape}"
+    return grid[:, :, 0, 0, 0] if grid.ndim == 5 else grid
 
 
 def determine_pad_modes(bc_config: dict[str, Any] | None) -> list[str]:

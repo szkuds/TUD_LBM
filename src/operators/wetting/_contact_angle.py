@@ -25,14 +25,17 @@ def compute_contact_angle(
     and derives the contact angle from the slope.
 
     Args:
-        rho: Density field, shape ``(nx, ny, 1, 1)``.
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
         rho_mean: Mean density ``(rho_l + rho_v) / 2``.
 
     Returns:
         ``(ca_left, ca_right)`` — contact angles in **degrees**
         (scalar ``jnp.ndarray``).
     """
-    rho_2d = rho[:, :, 0, 0]  # (nx, ny)
+
+    assert rho.shape[2] == 1, "Contact angle computation only implemented in 2D (nz=1)"
+
+    rho_2d = rho[:, :, 0, 0, 0]  # (nx, ny)
 
     array_j0 = rho_2d[:, 1]
     array_j1 = rho_2d[:, 2]
