@@ -52,7 +52,7 @@ def stream(
     Returns:
         Post-streaming populations, same shape.
     """
-    axes: tuple[int, ...] = tuple(range(f.ndim - 2))  # grid axes (0, 1)
+    axes: tuple[int, ...] = tuple(range(lattice.d))  # grid axes (0, 1)
 
     # Pre-extract velocity vectors as plain Python ints so they are
     # compile-time constants under JAX tracing.
@@ -65,7 +65,7 @@ def stream(
     wall_top = _has_wall_bc(bc_config, "top")
 
     for i in range(lattice.q):
-        shift = tuple(int(c_np[d, i]) for d in range(c_np.shape[0]))
+        shift = tuple(c_np[..., i, :].flatten())
         f = f.at[..., i, :].set(jnp.roll(f[..., i, :], shift=shift, axis=axes))
 
         # Zero-fill the boundary row where jnp.roll deposited a

@@ -26,7 +26,7 @@ __all__ = [
 ]
 
 
-def build_optional_fields(setup, nx: int, ny: int, d: int):
+def build_optional_fields(setup, nx: int, ny: int, nz: int, d: int):
     """Build the optional ``force`` and ``force_ext`` fields.
 
     Returns zero-filled arrays for fields that will be written by the
@@ -39,20 +39,21 @@ def build_optional_fields(setup, nx: int, ny: int, d: int):
         setup: :class:`~setup.simulation_setup.SimulationSetup`.
         nx: Grid size in x.
         ny: Grid size in y.
+        nz: Grid size in z.
         d: Lattice dimension (e.g. 2 for D2Q9).
 
     Returns:
         A tuple ``(force, force_ext)``:
 
-        * ``force``: Zeros ``(nx, ny, 1, d)`` for multiphase runs,
+        * ``force``: Zeros ``(nx, ny, nz, 1, d)`` for multiphase runs,
           ``None`` otherwise.
-        * ``force_ext``: Zeros ``(nx, ny, 1, d)`` when forces are active,
+        * ``force_ext``: Zeros ``(nx, ny, nz, 1, d)`` when forces are active,
           ``None`` otherwise.
 
     See Also:
         :func:`state._optional_fields._build_optional_fields`
     """
-    return _build_optional_fields(setup, nx, ny, d)
+    return _build_optional_fields(setup, nx, ny, nz, d)
 
 
 def build_extra_state(setup):

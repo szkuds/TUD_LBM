@@ -8,7 +8,7 @@ Usage::
     from config.simulation_config import SimulationConfig
 
     cfg = SimulationConfig(
-        grid_shape=(128, 128),
+        grid_shape=(128, 128, 1),
         tau=0.8,
         nt=5000,
         collision_scheme="bgk",
@@ -163,6 +163,7 @@ class SimulationConfig:
     def __post_init__(self) -> None:
         self._normalize()
         self._apply_defaults()
+        self._make_grid_shape_3D()
         self._validate_common()
         if self.sim_type == "multiphase":
             self._validate_multiphase()
@@ -187,6 +188,11 @@ class SimulationConfig:
                     "right": "periodic",
                 },
             )
+    
+    def _make_grid_shape_3D(self) -> None:
+        """Promote grid_shape to 3D by adding a singleton z-dimension."""
+        if len(self.grid_shape) < 3:
+            object.__setattr__(self, "grid_shape", self.grid_shape + (1,) * (3 - len(self.grid_shape)))
 
     def _validate_common(self) -> None:
         if len(self.grid_shape) < 2:
