@@ -320,9 +320,9 @@ class TestTomlAdapterInitialisation:
 
         bundle = TomlAdapter().load(str(p))
 
-        assert bundle.extra["centres"] == [[0.5, 0.5], [0.25, 0.5]]
-        assert bundle.extra["radii"] == [0.15, 0.10]
-        assert bundle.extra["dispersed"] == "vapour"
+        assert bundle.initialisation["centres"] == [[0.5, 0.5], [0.25, 0.5]]
+        assert bundle.initialisation["radii"] == [0.15, 0.10]
+        assert bundle.initialisation["dispersed"] == "vapour"
 
 
 # ── Error handling ───────────────────────────────────────────────────

@@ -133,6 +133,10 @@ class SimulationConfig:
     # ── Initialisation ───────────────────────────────────────────
     init_type: str = "standard"
     init_dir: str | None = None
+    initialisation: dict[str, Any] = field(
+        default_factory=dict,
+        metadata={CONFIG_SECTION: "initialisation"},
+    )
 
     # ── Output / IO ──────────────────────────────────────────────
     results_dir: str = field(default=BASE_RESULTS_DIR, metadata={CONFIG_SECTION: "output"})

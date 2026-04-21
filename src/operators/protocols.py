@@ -330,7 +330,7 @@ class ForceOperator(Protocol):
         ...
 
 
-class InitialFOperator(Protocol):
+class InitialPopulationOperator(Protocol):
     """Bound initialiser — builds the initial ``f`` for a fixed setup.
 
     This is the setup-bound closure stored on ``SimulationSetup.initial_f_fn``.
@@ -592,7 +592,7 @@ __all__ = [
     "ExtraStatePlugin",
     "ForceOperator",
     "HysteresisOperator",
-    "InitialFOperator",
+    "InitialPopulationOperator",
     "InitialiserOperator",
     "MacroscopicOperator",
     "MultiphaseStepOperator",

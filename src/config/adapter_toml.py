@@ -144,7 +144,7 @@ class TomlAdapter(ConfigAdapter):
             sim_table["hysteresis_config"] = dict(raw["hysteresis"])
 
         if "initialisation" in raw:
-            sim_table.setdefault("extra", {}).update(raw["initialisation"])
+            sim_table["initialisation"] = dict(raw["initialisation"])
 
         # ── Force sections ──────────────────────────────────────────
         self._validate_and_process_forces(raw, sim_table)

@@ -1,4 +1,24 @@
-git
+# ─── Core simulation parameters ─────────────────────────────────────
+[simulation_type]
+simulation_name = "Test_multiphase_bubble_simulation"
+type            = "multiphase"
+grid_shape      = [401, 201]
+lattice_type    = "D2Q9"
+tau             = 0.99
+nt              = 2000
+init_type       = "multiphase_bubbles"
+
+[multiphase]
+kappa           = 0.017
+rho_l           = 1.0
+rho_v           = 0.33
+interface_width = 5
+eos             = "double-well"
+
+[initialisation]
+centres  = [[0.5, 0.5], [0.25, 0.5]]
+radii    = [0.15, 0.10]
+dispersed = "vapour"
 
 #[boundary_conditions]
 #left   = "periodic"
@@ -11,7 +31,7 @@ git
 #phi_right   = 1.2
 #d_rho_left  = 0.0
 #d_rho_right = 0.0
-#
+
 #[hysteresis]
 #ca_advancing    = 90.0
 #ca_receding     = 80.0
@@ -24,9 +44,9 @@ git
 # constructed via the operator registry, and summed into the total
 # external force. No [[force]] array-of-tables, no "type" key needed.
 
-#[gravity_force]
-#force_g               = 5e-7
-#inclination_angle_deg = 50
+[gravity_force]
+force_g               = 5e-7
+inclination_angle_deg = 90
 
 # To add a second force, just add another section:
 #

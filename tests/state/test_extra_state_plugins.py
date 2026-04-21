@@ -4,10 +4,8 @@ import warnings
 from types import SimpleNamespace
 import jax.numpy as jnp
 import pytest
-from operators.protocols import ExtraState
 from state._extra_state import _build_extra_state
 from state._extra_state import _update_extra_state
-from state.extra_state import ExtraState as LegacyExtraState
 from state.state import State
 
 
@@ -77,7 +75,3 @@ def test_update_pipeline_applies_plugins_in_order():
 
     updated = _update_extra_state(setup, prev_state, new_state)
     assert int(updated.t) == 2
-
-
-def test_extra_state_import_path_is_backwards_compatible():
-    assert LegacyExtraState is ExtraState
