@@ -82,13 +82,7 @@ class TestInitStandard:
 
 
 _MULTIPHASE_TYPES = [
-    "multiphase_bubble",
-    "multiphase_bubble_bot",
-    "multiphase_bubble_bubble",
-    "multiphase_droplet",
-    "multiphase_droplet_top",
-    "multiphase_droplet_variable_radius",
-    "multiphase_lateral_bubble",
+    "multiphase_bubbles",
 ]
 
 
@@ -98,14 +92,14 @@ class TestMultiphaseInitShape:
     @pytest.mark.parametrize("init_type", _MULTIPHASE_TYPES)
     def test_shape(self, lattice, init_type):
         fn = build_initialise_fn(init_type)
-        f = fn(NX, NY, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
+        f = fn(NX, NY, lattice, rho_l=1.0, rho_v=0.33, interface_width=4, centres=[[0.5, 0.5]], radii=[0.2])
         assert f.shape == (NX, NY, 9, 1)
 
     @pytest.mark.parametrize("init_type", _MULTIPHASE_TYPES)
     def test_density_range(self, lattice, init_type):
         """Density should be between rho_v and rho_l everywhere."""
         fn = build_initialise_fn(init_type)
-        f = fn(NX, NY, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
+        f = fn(NX, NY, lattice, rho_l=1.0, rho_v=0.33, interface_width=4, centres=[[0.5, 0.5]], radii=[0.2])
         rho = jnp.sum(f, axis=2, keepdims=True)
         assert float(jnp.min(rho)) >= 0.33 - 0.01
         assert float(jnp.max(rho)) <= 1.0 + 0.01
@@ -138,8 +132,8 @@ class TestMassConservation:
     """Total mass is conserved (equals sum of rho over the domain)."""
 
     def test_bubble_mass_positive(self, lattice):
-        fn = build_initialise_fn("multiphase_bubble")
-        f = fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
+        fn = build_initialise_fn("multiphase_bubbles")
+        f = fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4, centres=[[0.5, 0.5]], radii=[0.2])
         rho = jnp.sum(f, axis=2, keepdims=True)
         total_mass = float(jnp.sum(rho))
         # Mass must be positive and between rho_v * N and rho_l * N
@@ -147,8 +141,18 @@ class TestMassConservation:
         assert total_mass < 1.0 * 32 * 32
 
     def test_droplet_mass_positive(self, lattice):
-        fn = build_initialise_fn("multiphase_droplet")
-        f = fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
+        fn = build_initialise_fn("multiphase_bubbles")
+        f = fn(
+            32,
+            32,
+            lattice,
+            rho_l=1.0,
+            rho_v=0.33,
+            interface_width=4,
+            centres=[[0.5, 0.5]],
+            radii=[0.2],
+            dispersed="liquid",
+        )
         rho = jnp.sum(f, axis=2, keepdims=True)
         total_mass = float(jnp.sum(rho))
         assert total_mass > 0.33 * 32 * 32
@@ -156,19 +160,63 @@ class TestMassConservation:
 
 
 # =====================================================================
-# Variable radius droplet
+# General multiphase bubbles
 # =====================================================================
 
 
-class TestVariableRadius:
-    """``init_multiphase_droplet_variable_radius`` respects custom radius."""
+class TestMultiphaseBubbles:
+    """``init_multiphase_bubbles`` accepts multiple centres/radii."""
 
-    def test_custom_radius(self, lattice):
-        fn = build_initialise_fn("multiphase_droplet_variable_radius")
-        f = fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4, radius=5.0)
+    def test_multiple_inclusions(self, lattice):
+        fn = build_initialise_fn("multiphase_bubbles")
+        f = fn(
+            32,
+            32,
+            lattice,
+            rho_l=1.0,
+            rho_v=0.33,
+            interface_width=4,
+            centres=[[0.25, 0.5], [0.75, 0.5]],
+            radii=[0.12, 0.12],
+        )
         assert f.shape == (32, 32, 9, 1)
 
-    def test_default_radius(self, lattice):
-        fn = build_initialise_fn("multiphase_droplet_variable_radius")
-        f = fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
+    def test_invalid_dispersed_raises(self, lattice):
+        fn = build_initialise_fn("multiphase_bubbles")
+        with pytest.raises(ValueError, match="dispersed"):
+            fn(
+                32,
+                32,
+                lattice,
+                rho_l=1.0,
+                rho_v=0.33,
+                interface_width=4,
+                centres=[[0.5, 0.5]],
+                radii=[0.2],
+                dispersed="invalid",
+            )
+
+    def test_mismatched_centres_and_radii_raises(self, lattice):
+        fn = build_initialise_fn("multiphase_bubbles")
+        with pytest.raises(ValueError, match="same length"):
+            fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4, centres=[[0.5, 0.5]], radii=[0.2, 0.1])
+
+    def test_empty_centres_raises(self, lattice):
+        fn = build_initialise_fn("multiphase_bubbles")
+        with pytest.raises(ValueError, match="non-empty"):
+            fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4, centres=[], radii=[])
+
+    def test_liquid_dispersed_mode(self, lattice):
+        fn = build_initialise_fn("multiphase_bubbles")
+        f = fn(
+            32,
+            32,
+            lattice,
+            rho_l=1.0,
+            rho_v=0.33,
+            interface_width=4,
+            centres=[[0.5, 0.5]],
+            radii=[0.2],
+            dispersed="liquid",
+        )
         assert f.shape == (32, 32, 9, 1)

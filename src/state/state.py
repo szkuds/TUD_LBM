@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 from typing import NamedTuple
 import jax.numpy as jnp
-from state.extra_state import ExtraState
+from operators.protocols import ExtraState
 
 
 class WettingState(NamedTuple):

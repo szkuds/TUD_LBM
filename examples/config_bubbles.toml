@@ -1,0 +1,41 @@
+git
+
+#[boundary_conditions]
+#left   = "periodic"
+#right  = "periodic"
+#top    = "bounce-back"
+#bottom = "wetting"
+
+#[wetting]
+#phi_left    = 1.2
+#phi_right   = 1.2
+#d_rho_left  = 0.0
+#d_rho_right = 0.0
+#
+#[hysteresis]
+#ca_advancing    = 90.0
+#ca_receding     = 80.0
+#learning_rate   = 0.05
+#max_iterations  = 10
+
+# ─── Forces (each force is its own section, named by physics) ───────
+#
+# Any section whose name ends in "_force" is automatically discovered,
+# constructed via the operator registry, and summed into the total
+# external force. No [[force]] array-of-tables, no "type" key needed.
+
+#[gravity_force]
+#force_g               = 5e-7
+#inclination_angle_deg = 50
+
+# To add a second force, just add another section:
+#
+# [electric_force]
+# voltage_top    = 1.0
+# voltage_bottom = 0.0
+
+# ─── Output / IO ────────────────────────────────────────────────────
+[output]
+results_dir = "~/TUD_LBM_data/results"
+save_fields = ["rho", "u"]
+plot_fields = ["density", "velocity", "analysis"]

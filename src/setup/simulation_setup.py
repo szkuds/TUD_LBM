@@ -26,7 +26,6 @@ Usage::
 """
 
 from __future__ import annotations
-from collections.abc import Callable
 from typing import NamedTuple
 from typing import cast
 import jax.numpy as jnp
@@ -42,6 +41,8 @@ from operators.protocols import DifferentialOperator
 from operators.protocols import EquilibriumOperator
 from operators.protocols import ExtraStatePlugin
 from operators.protocols import HysteresisOperator
+from operators.protocols import InitialFOperator
+from operators.protocols import MacroscopicOperator
 from operators.protocols import StepOperator
 from operators.protocols import StreamingOperator
 from setup.lattice import Lattice
@@ -122,11 +123,11 @@ class SimulationSetup(NamedTuple):
     # ── Pre-built operator closures (resolved at setup time) ──
     collision_fn: CollisionOperator | None = None
     equilibrium_fn: EquilibriumOperator | None = None
-    macroscopic_fn: Callable[..., tuple[jnp.ndarray, ...]] | None = None
+    macroscopic_fn: MacroscopicOperator[..., tuple[jnp.ndarray, ...]] | None = None
     streaming_fn: StreamingOperator | None = None
     bc_fn: BoundaryOperator | None = None
-    initial_f_fn: Callable[..., jnp.ndarray] | None = None
-    multiphase_step: Callable[..., jnp.ndarray] | None = None
+    initial_f_fn: InitialFOperator[..., jnp.ndarray] | None = None
+    multiphase_step: MultiphaseParams[..., jnp.ndarray] | None = None
 
 
 # ── Main factory ─────────────────────────────────────────────────────
@@ -209,6 +210,9 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         kw: dict = {}
         if mp_params is not None:
             kw.update(rho_l=mp_params.rho_l, rho_v=mp_params.rho_v, interface_width=mp_params.interface_width)
+        for key in ("centres", "radii", "dispersed"):
+            if key in config.extra:
+                kw[key] = config.extra[key]
         if init_kwargs:
             kw.update(init_kwargs)
         if config.init_type == "init_from_file" and "npz_path" not in kw and config.init_dir is not None:

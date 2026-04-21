@@ -143,6 +143,9 @@ class TomlAdapter(ConfigAdapter):
         if "hysteresis" in raw:
             sim_table["hysteresis_config"] = dict(raw["hysteresis"])
 
+        if "initialisation" in raw:
+            sim_table.setdefault("extra", {}).update(raw["initialisation"])
+
         # ── Force sections ──────────────────────────────────────────
         self._validate_and_process_forces(raw, sim_table)
 
@@ -179,8 +182,10 @@ class TomlAdapter(ConfigAdapter):
         # Separate known fields from extra
         known_fields = {f.name for f in dataclasses.fields(SimulationConfig)}
         config_kwargs: dict[str, Any] = {}
-        extra: dict[str, Any] = {}
+        extra: dict[str, Any] = dict(sim_table.get("extra", {}))
         for k, v in sim_table.items():
+            if k == "extra":
+                continue
             if k in known_fields:
                 config_kwargs[k] = v
             else:
