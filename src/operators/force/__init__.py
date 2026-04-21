@@ -35,16 +35,11 @@ class ForceParams(NamedTuple):
         compute_fn: Pure function ``(state, precomputed, lattice) → jnp.ndarray``
             of shape ``(nx, ny, 1, d)``.
             Returns the force contribution for this physics.
-        init_fn: ``(setup) → dict`` of extra State fields needed at t=0.
-            Stateful forces may return values such as ``{"h": ...}``;
-            stateless forces use a no-op default that returns ``{}``.
         precomputed: Optional pre-computed data (e.g. gravity template array).
     """
 
     name: str
     compute_fn: Any
-    init_fn: Any
-    update_state_fn: Any
     precomputed: Any | None = None
 
 
@@ -62,25 +57,6 @@ class ForceSetup(NamedTuple):
 
     specs: tuple[ForceParams, ...]
     source_term: Callable[[Any, Any, Any, Any], Any]
-
-
-def _state_force_init(
-    grid_shape: tuple[int, ...],
-    lattice: Any,
-    precomputed: Any,
-) -> dict[str, jnp.ndarray]:
-    """Default initialiser for stateless forces."""
-    return {}
-
-
-def _state_force_update(
-    state: Any,
-    precomputed: Any,
-    lattice: Any,
-    stream_fn: Any,
-) -> Any:
-    """Default state update for stateless forces."""
-    return state
 
 
 def _build_force_fn(scheme: str) -> Callable[..., object] | type:
@@ -113,12 +89,6 @@ def build_forces(
 
     - ``build(params, grid_shape, config, lattice)`` → precomputed data (or None)
     - ``compute(state, precomputed, **kwargs)`` → force array
-    - ``init_state(grid_shape, lattice, precomputed)`` → dict of extra State fields
-    - ``update_state(state, precomputed, lattice, stream_fn)`` → state
-
-    Stateless force modules may omit the state hooks; they are replaced
-    here with no-op defaults.
-
     Args:
         config: A validated configuration object with ``*_force`` fields.
         grid_shape: Spatial dimensions, e.g. ``(64, 64)``.
@@ -131,20 +101,15 @@ def build_forces(
     from operators.force._source_term import source as compute_source
 
     specs: list[ForceParams] = []
-    seen: set[str] = set()
     for f in dataclasses.fields(config):
         if not f.name.endswith("_force"):
             continue
         params = getattr(config, f.name)
         if params is None:
             continue
-        seen.add(f.name)
-
         op = cast("ForceOperator", cast("object", _build_force_fn(f.name)))
         build_fn = op.build
         compute_fn = op.compute
-        init_fn = getattr(op, "init_state", _state_force_init)
-        update_state_fn = getattr(op, "update_state", _state_force_update)
 
         precomputed = build_fn(params, grid_shape, config=config, lattice=lattice)
 
@@ -152,9 +117,7 @@ def build_forces(
             ForceParams(
                 name=f.name,
                 compute_fn=compute_fn,
-                init_fn=init_fn,
                 precomputed=precomputed,
-                update_state_fn=update_state_fn,
             )
         )
 
@@ -165,23 +128,21 @@ def compute_total_force_ext(
     setup: Any,
     state: Any,
     force_setup: ForceSetup | None,
-    streaming_fn: Any,
 ) -> tuple[jnp.ndarray | None, Any]:
-    """Compute the summed external force contribution and update stateful hooks.
+    """Compute the summed external force contribution.
 
     Iterates over all force specs in the setup, calls each force's `compute_fn`,
-    accumulates contributions, and applies state updates when present.
+    and accumulates contributions.
 
     Args:
         setup: The :class:`~setup.simulation_setup.SimulationSetup`.
         state: Current :class:`~state.state.State`.
         force_setup: The :class:`ForceSetup` containing force specs, or None if no forces.
-        streaming_fn: The streaming operator (passed to state update hooks).
 
     Returns:
         Tuple of ``(total_force, updated_state)`` where:
         - *total_force* is the summed force array, or None if no forces are active.
-        - *updated_state* has stateful force fields updated (e.g., wetting height).
+        - *updated_state* is the unchanged state (extra-state plugins handle updates).
     """
     total_force = state.force_ext
 
@@ -197,7 +158,6 @@ def compute_total_force_ext(
             laplacian_density=setup.laplacian_density,
         )
         total_force = contribution if total_force is None else total_force + contribution
-        state = spec.update_state_fn(state, spec.precomputed, setup.lattice, streaming_fn)
 
     return total_force, state
 

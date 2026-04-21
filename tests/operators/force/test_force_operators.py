@@ -1,10 +1,13 @@
 """Tests for force operators — gravity and electric."""
 
+from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 from config.simulation_config import SimulationConfig
+from operators.force import ForceParams
+from operators.force import ForceSetup
 from setup.lattice import build_lattice
 from state.state import State
 
@@ -51,6 +54,24 @@ def make_state(lattice, rho_value=1.0, h=None):
         u=jnp.zeros((NX, NY, 1, lattice.d)),
         t=jnp.array(0),
         h=h,
+    )
+
+
+def make_electric_setup(lattice, electric_params):
+    from operators.streaming._streaming import stream
+
+    specs = (
+        ForceParams(
+            name="electric_force",
+            compute_fn=None,
+            precomputed=electric_params,
+        ),
+    )
+    return SimpleNamespace(
+        grid_shape=(NX, NY),
+        lattice=lattice,
+        streaming_fn=stream,
+        forces=ForceSetup(specs=specs, source_term=lambda *args, **kwargs: None),
     )
 
 
@@ -181,23 +202,31 @@ class TestElectricParams:
         ep2 = treedef.unflatten(leaves)
         assert ep2.permittivity_liquid == ep.permittivity_liquid
 
+    def test_legacy_state_hooks_removed(self):
+        from operators.force._electric import ElectricForceModule
+
+        assert not hasattr(ElectricForceModule, "init_state")
+        assert not hasattr(ElectricForceModule, "update_state")
+
 
 # =====================================================================
 # Electric init_hi
 # =====================================================================
 
 
-class TestInitState:
-    """ElectricForceModule.init_state produces a valid initial distribution."""
+class TestElectricExtraStateInit:
+    """ElectricExtraStatePlugin.init_state produces a valid initial distribution."""
 
     def test_shape(self, lattice, electric_params):
-        from operators.force._electric import ElectricForceModule
+        from operators.force._extra_state import ElectricExtraStatePlugin
 
-        hi = ElectricForceModule.init_state((NX, NY), lattice, electric_params)["h"]
+        setup = make_electric_setup(lattice, electric_params)
+        hi = ElectricExtraStatePlugin.init_state(setup)["h"]
         assert hi.shape == (NX, NY, 9, 1)
 
     def test_linear_profile(self, lattice, sim_config):
         from operators.force._electric import ElectricForceModule
+        from operators.force._extra_state import ElectricExtraStatePlugin
 
         params = ElectricForceModule.build(
             {
@@ -212,7 +241,8 @@ class TestInitState:
             config=sim_config,
             lattice=lattice,
         )
-        hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
+        setup = make_electric_setup(lattice, params)
+        hi = ElectricExtraStatePlugin.init_state(setup)["h"]
         potential = jnp.sum(hi, axis=2, keepdims=True)
         np.testing.assert_allclose(
             float(potential[0, 0, 0, 0]),
@@ -236,8 +266,10 @@ class TestComputeElectricForce:
 
     def test_shape(self, lattice, electric_params):
         from operators.force._electric import ElectricForceModule
+        from operators.force._extra_state import ElectricExtraStatePlugin
 
-        hi = ElectricForceModule.init_state((NX, NY), lattice, electric_params)["h"]
+        setup = make_electric_setup(lattice, electric_params)
+        hi = ElectricExtraStatePlugin.init_state(setup)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
         force = ElectricForceModule.compute(state, electric_params)
@@ -245,6 +277,7 @@ class TestComputeElectricForce:
 
     def test_zero_voltage_zero_force(self, lattice, sim_config):
         from operators.force._electric import ElectricForceModule
+        from operators.force._extra_state import ElectricExtraStatePlugin
 
         params = ElectricForceModule.build(
             {
@@ -259,7 +292,8 @@ class TestComputeElectricForce:
             config=sim_config,
             lattice=lattice,
         )
-        hi = ElectricForceModule.init_state((NX, NY), lattice, params)["h"]
+        setup = make_electric_setup(lattice, params)
+        hi = ElectricExtraStatePlugin.init_state(setup)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
         force = ElectricForceModule.compute(state, params)
@@ -267,8 +301,10 @@ class TestComputeElectricForce:
 
     def test_jittable(self, lattice, electric_params):
         from operators.force._electric import ElectricForceModule
+        from operators.force._extra_state import ElectricExtraStatePlugin
 
-        hi = ElectricForceModule.init_state((NX, NY), lattice, electric_params)["h"]
+        setup = make_electric_setup(lattice, electric_params)
+        hi = ElectricExtraStatePlugin.init_state(setup)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
         jitted = jax.jit(lambda s: ElectricForceModule.compute(s, electric_params))
@@ -281,15 +317,15 @@ class TestComputeElectricForce:
 # =====================================================================
 
 
-class TestUpdateState:
-    """ElectricForceModule.update_state advances the electric distribution."""
+class TestElectricExtraStateUpdate:
+    """ElectricExtraStatePlugin.update_state advances the electric distribution."""
 
     def test_shape(self, lattice, electric_params):
-        from operators.force._electric import ElectricForceModule
-        from operators.streaming._streaming import stream
+        from operators.force._extra_state import ElectricExtraStatePlugin
 
-        hi = ElectricForceModule.init_state((NX, NY), lattice, electric_params)["h"]
+        setup = make_electric_setup(lattice, electric_params)
+        hi = ElectricExtraStatePlugin.init_state(setup)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
-        state_new = ElectricForceModule.update_state(state, electric_params, lattice, stream)
+        state_new = ElectricExtraStatePlugin.update_state(setup, state, state)
         assert state_new.h.shape == hi.shape

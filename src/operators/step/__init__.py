@@ -3,7 +3,7 @@
 Public API: build_step_fn()
 
 Implementation modules (_single_phase.py, _multiphase.py) are internal;
-use the factory to access. Helper modules (_common.py, _wetting_shims.py)
+use the factory to access. Helper modules (_common.py, _wetting_differential_operators.py)
 provide shared logic.
 
 Example:

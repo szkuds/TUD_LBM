@@ -155,13 +155,7 @@ class TestRegistryPopulated:
         names = get_operator_names("initialise")
         expected = {
             "standard",
-            "multiphase_bubble",
-            "multiphase_bubble_bot",
-            "multiphase_bubble_bubble",
-            "multiphase_droplet",
-            "multiphase_droplet_top",
-            "multiphase_droplet_variable_radius",
-            "multiphase_lateral_bubble",
+            "multiphase_bubbles",
             "wetting",
             "wetting_chem_step",
             "init_from_file",
@@ -179,6 +173,10 @@ class TestRegistryPopulated:
     def test_lattice_registered(self):
         names = get_operator_names("lattice")
         assert "D2Q9" in names
+
+    def test_extra_state_registered(self):
+        names = get_operator_names("extra_state")
+        assert names >= {"electric", "wetting"}
 
 
 # =====================================================================

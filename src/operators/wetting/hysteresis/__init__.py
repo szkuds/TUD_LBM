@@ -19,7 +19,7 @@ from __future__ import annotations
 from operators._loader import auto_load_operators
 from operators.factory import build_operator
 from operators.protocols import HysteresisOperator
-from .hysteresis import WettingParams
+from operators.wetting._params import WettingParams
 from .hysteresis import _clamp_params
 from .hysteresis import _cost_ca
 from .hysteresis import _cost_cll

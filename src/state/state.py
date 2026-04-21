@@ -25,6 +25,7 @@ from __future__ import annotations
 from typing import Any
 from typing import NamedTuple
 import jax.numpy as jnp
+from operators.protocols import ExtraState
 
 
 class WettingState(NamedTuple):
@@ -79,4 +80,4 @@ class State(NamedTuple):
     force: jnp.ndarray | None = None
     force_ext: jnp.ndarray | None = None
     h: jnp.ndarray | None = None
-    wetting: WettingState | None = None
+    wetting: ExtraState | None = None

@@ -11,18 +11,25 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from setup.lattice import Lattice
 from setup.lattice import build_lattice
-from setup.simulation_setup import SimulationSetup
-from setup.simulation_setup import build_setup
 
 # Re-export from their canonical locations; avoid circular imports
 # by using TYPE_CHECKING for type hints and lazy imports for runtime
 if TYPE_CHECKING:
     from operators.boundary import BCMasks
     from operators.macroscopic import MultiphaseParams
+    from setup.simulation_setup import SimulationSetup
 
 
 def __getattr__(name: str):
     """Lazy import to avoid circular dependencies."""
+    if name == "SimulationSetup":
+        from setup.simulation_setup import SimulationSetup
+
+        return SimulationSetup
+    if name == "build_setup":
+        from setup.simulation_setup import build_setup
+
+        return build_setup
     if name == "BCMasks":
         from operators.boundary import BCMasks
 

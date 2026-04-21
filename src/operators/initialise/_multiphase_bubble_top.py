@@ -1,6 +1,6 @@
-"""Multiphase droplet-at-top initialisation — pure function.
+"""Multiphase bubble-at-bottom initialisation — pure function.
 
-Places a liquid droplet near the top of the domain.
+Places a vapour bubble near the bottom of the domain.
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ from registry import initialise_operator
 from setup.lattice import Lattice
 
 
-@initialise_operator(name="multiphase_droplet_top")
-def init_multiphase_droplet_top(
+@initialise_operator(name="multiphase_bubble_top")
+def init_multiphase_bubble_top(
     nx: int,
     ny: int,
     lattice: Lattice,
@@ -21,9 +21,9 @@ def init_multiphase_droplet_top(
     interface_width: int = 4,
     **kwargs,
 ) -> jnp.ndarray:
-    """Initialise a liquid droplet centred near the top of the domain.
+    """Initialise a vapour bubble centred near the bottom of the domain.
 
-    Centre: ``(nx/2, 5*ny/6)``, radius: ``min(nx, ny) / 4``.
+    Centre: ``(nx/2, ny/6)``, radius: ``min(nx, ny) / 4``.
 
     Args:
         nx: Grid size in x.
@@ -37,11 +37,11 @@ def init_multiphase_droplet_top(
         Initial distribution ``f``, shape ``(nx, ny, q, 1)``.
     """
     x, y = jnp.meshgrid(jnp.arange(nx), jnp.arange(ny), indexing="ij")
-    cx, cy = nx // 2, 5 * ny // 6
+    cx, _ = nx // 2, ny // 6
     radius = min(nx, ny) // 4
-    distance = jnp.sqrt((x - cx) ** 2 + (y - cy) ** 2)
+    distance = jnp.sqrt((x - cx) ** 2 + (ny - 1 - y) ** 2)
 
-    rho_2d = (rho_l + rho_v) / 2.0 - (rho_l - rho_v) / 2.0 * jnp.tanh(
+    rho_2d = (rho_l + rho_v) / 2.0 + (rho_l - rho_v) / 2.0 * jnp.tanh(
         (distance - radius) / interface_width,
     )
     rho = rho_2d.reshape(nx, ny, 1, 1)

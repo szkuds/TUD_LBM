@@ -19,7 +19,7 @@ from config.array_expansion import enumerate_configs
 from config.array_expansion import expand_config
 from config.jax_config import configure_jax
 from runner.parallel_runner import run_parallel_simulations
-from runner.parallel_runner import save_sweep_manifest
+from runner.parallel_runner import save_sweep_log
 
 # Configure JAX (64-bit precision, JIT enabled).
 configure_jax()
@@ -72,7 +72,7 @@ def run_parallel_sweep():
 
     # Save results manifest
     results_dir = Path(configs[0].results_dir).expanduser() / "sweep_manifest"
-    save_sweep_manifest(results, results_dir)
+    save_sweep_log(results, results_dir)
     print(f"✓ Manifest saved to: {results_dir / 'sweep_manifest.json'}")
 
     # Summary

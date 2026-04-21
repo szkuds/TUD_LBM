@@ -5,8 +5,7 @@ forces in multiphase flows.  The electric potential is solved via
 a secondary lattice Boltzmann sub-step (distribution ``hi``).
 
 The registry-backed :class:`ElectricForceModule` exposes setup-time
-``build`` and step-time ``compute`` / ``init_state`` / ``update_state``
-methods directly.
+``build`` and step-time ``compute`` methods directly.
 
 Usage::
 
@@ -16,8 +15,6 @@ Usage::
     module = build_force_fn("electric_force")
     params = module.build(config_dict, (64, 64), config, lattice)
     force = module.compute(state, params)
-    extra = module.init_state((64, 64), lattice, params)
-    state = module.update_state(state, params, lattice, stream_fn)
 
     # Direct (internal / testing)
     from operators.force._electric import ElectricForceModule
@@ -209,74 +206,3 @@ class ElectricForceModule:
         fx = rho_e * ex - 0.5 * e2 * deps_dx
         fy = rho_e * ey - 0.5 * e2 * deps_dy
         return jnp.concatenate([fx[:, :, None, None], fy[:, :, None, None]], axis=-1)
-
-    @staticmethod
-    def init_state(
-        grid_shape: tuple[int, ...],
-        lattice: Lattice,
-        precomputed: ElectricParams,
-    ) -> dict[str, jnp.ndarray]:
-        """Create initial electric potential distribution ``h``.
-
-        Sets up a linear voltage profile from bottom to top using the
-        voltages stored in *precomputed*.
-
-        Args:
-            grid_shape: Spatial dimensions ``(nx, ny, ...)``.
-            lattice: Simulation lattice (weights for equilibrium ``h``).
-            precomputed: :class:`ElectricParams` from :meth:`build`.
-
-        Returns:
-            ``{"h": array}`` — initial potential distribution,
-            shape ``(nx, ny, q, 1)``.  Merged into the initial
-            :class:`State` by ``init_state()``.
-        """
-        nx, ny = grid_shape[:2]
-        y_vals = jnp.linspace(precomputed.voltage_bottom, precomputed.voltage_top, ny)
-        potential = jnp.broadcast_to(y_vals[None, :], (nx, ny))[:, :, None, None]
-        return {
-            "h": _equilibrium_h(potential, lattice.w),
-        }
-
-    @staticmethod
-    def update_state(
-        state,
-        precomputed: ElectricParams,
-        lattice: Lattice,
-        stream_fn: Callable,
-    ):
-        """Evolve electric potential distribution by one LBM sub-step.
-
-        Called every time step after :meth:`compute`, inside
-        ``_compute_total_force_ext``.
-
-        Args:
-            state: Current simulation :class:`State` (reads ``state.f``
-                and ``state.h``).
-            precomputed: :class:`ElectricParams` from :meth:`build`.
-            lattice: Simulation lattice.
-            stream_fn: Streaming function ``stream(f, lattice) -> f``.
-
-        Returns:
-            Updated :class:`State` with ``h`` replaced.
-        """
-        rho_2d = jnp.sum(state.f, axis=2)[:, :, 0]
-        conductivity = _rho_to_phi(
-            rho_2d,
-            precomputed.conductivity_liquid,
-            precomputed.conductivity_vapour,
-        )
-
-        potential = jnp.sum(state.h, axis=2, keepdims=True)
-        h_eq = _equilibrium_h(potential, lattice.w)
-
-        tau_e = 3.0 * conductivity[:, :, None, None] + 0.5
-        omega_e = 1.0 / tau_e
-        h_col = (1.0 - omega_e) * state.h + omega_e * h_eq
-
-        top_potential = jnp.full((state.h.shape[0], 1, 1, 1), precomputed.voltage_top)
-        h_col = h_col.at[:, -1:, :, :].set(_equilibrium_h(top_potential, lattice.w))
-        bottom_potential = jnp.full((state.h.shape[0], 1, 1, 1), precomputed.voltage_bottom)
-        h_col = h_col.at[:, :1, :, :].set(_equilibrium_h(bottom_potential, lattice.w))
-
-        return state._replace(h=stream_fn(h_col, lattice))

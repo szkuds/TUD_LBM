@@ -304,7 +304,7 @@ def _generate_plots(results: list[SimulationResult], *, verbose: bool) -> None:
             print(f"[Plot] Failed to generate plots for {result.output_dir}: {e}")
 
 
-def save_sweep_manifest(
+def save_sweep_log(
     results: list[SimulationResult],
     output_dir: str | Path,
 ) -> None:
@@ -336,6 +336,6 @@ def save_sweep_manifest(
         ],
     }
 
-    manifest_path = output_dir / f"sweep_manifest_{manifest['sweep_id']}.json"
+    manifest_path = output_dir / f"sweep_log_{manifest['sweep_id']}.json"
     with manifest_path.open("w") as f:
         json.dump(manifest, f, indent=2)

@@ -291,6 +291,40 @@ class TestTomlAdapterForces:
         assert bundle.gravity_force["inclination_angle_deg"] == 60
 
 
+class TestTomlAdapterInitialisation:
+    """Tests for parsing the optional [initialisation] TOML section."""
+
+    def test_initialisation_table_loaded_into_extra(self, tmp_path):
+        content = textwrap.dedent("""\
+            [simulation_type]
+            type = "multiphase"
+            grid_shape = [32, 32]
+            tau = 0.8
+            nt = 100
+            init_type = "multiphase_bubbles"
+
+            [multiphase]
+            kappa = 0.017
+            rho_l = 1.0
+            rho_v = 0.33
+            interface_width = 4
+            eos = "double-well"
+
+            [initialisation]
+            centres = [[0.5, 0.5], [0.25, 0.5]]
+            radii = [0.15, 0.10]
+            dispersed = "vapour"
+        """)
+        p = Path(tmp_path) / "init_params.toml"
+        p.write_text(content)
+
+        bundle = TomlAdapter().load(str(p))
+
+        assert bundle.initialisation["centres"] == [[0.5, 0.5], [0.25, 0.5]]
+        assert bundle.initialisation["radii"] == [0.15, 0.10]
+        assert bundle.initialisation["dispersed"] == "vapour"
+
+
 # ── Error handling ───────────────────────────────────────────────────
 
 

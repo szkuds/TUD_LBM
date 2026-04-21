@@ -318,9 +318,7 @@ class ForceOperator(Protocol):
     """Unified protocol for force operator modules.
 
     Every force module exposes setup-time ``build`` and step-time
-    ``compute`` methods. Forces with auxiliary carry fields may also
-    implement ``init_state`` and ``update_state``; stateless forces can
-    rely on the default no-op behaviour documented here.
+    ``compute`` methods.
     """
 
     def build(self, params: Any, grid_shape: tuple[int, ...]) -> Any:
@@ -331,23 +329,94 @@ class ForceOperator(Protocol):
         """Compute the force contribution for the current state."""
         ...
 
-    def init_state(
-        self,
-        grid_shape: tuple[int, ...],
-        lattice: Lattice,
-        precomputed: Any,
-    ) -> dict[str, jnp.ndarray]:
-        """Create additional state fields required at t=0.
 
-        Stateless forces may use the default empty mapping.
+class InitialPopulationOperator(Protocol):
+    """Bound initialiser — builds the initial ``f`` for a fixed setup.
+
+    This is the setup-bound closure stored on ``SimulationSetup.initial_f_fn``.
+    Unlike ``InitialiserOperator``, the grid shape and lattice are already
+    captured; callers only supply optional overrides.
+
+    Signature::
+
+        def initial_f_fn(init_kwargs=None) -> f
+    """
+
+    def __call__(self, init_kwargs: dict | None = None) -> jnp.ndarray:
+        """Build the initial population distribution.
+
+        Args:
+            init_kwargs: Optional keyword overrides (e.g. ``density``,
+                ``rho_l``, ``npz_path``).
+
+        Returns:
+            Initial populations, shape ``(nx, ny, q, 1)``.
         """
         ...
 
-    def update_state(self, state: Any, precomputed: Any, lattice: Lattice, stream_fn: Any) -> Any:
-        """Update auxiliary state fields by one step.
 
-        Stateless forces may use the default identity update.
+class MultiphaseStepOperator(Protocol):
+    """Bound multiphase trial-step — advances ``f_t`` by one step.
+
+    This is the setup-bound closure stored on ``SimulationSetup.multiphase_step``.
+    The setup is already captured; callers pass the current populations and
+    optional physics fields.
+
+    Signature::
+
+        def multiphase_step(f_t, *, force_ext=None, wetting=None, ...) -> f_out
+    """
+
+    def __call__(
+        self,
+        f_t: jnp.ndarray,
+        *,
+        force_ext: jnp.ndarray | None = None,
+        wetting: Any = None,
+        gradient_density: Any = None,
+        laplacian_density: Any = None,
+    ) -> jnp.ndarray:
+        """Run one multiphase trial step.
+
+        Args:
+            f_t: Pre-step populations, shape ``(nx, ny, q, 1)``.
+            force_ext: Optional external force, shape ``(nx, ny, 1, d)``.
+            wetting: Optional :class:`~state.state.WettingState`.
+            gradient_density: Optional pre-built density gradient operator.
+            laplacian_density: Optional pre-built density Laplacian operator.
+
+        Returns:
+            Post-BC populations, shape ``(nx, ny, q, 1)``.
         """
+        ...
+
+
+@runtime_checkable
+class ExtraState(Protocol):
+    """Marker protocol for JAX-pytree-compatible extra state containers.
+
+    Implementations are intentionally unconstrained to support both
+    parameter-style containers (e.g. wetting scalars) and distribution-style
+    containers (e.g. electric potential populations).
+    """
+
+
+@runtime_checkable
+class ExtraStatePlugin(Protocol):
+    """Plugin contract for initialising and updating extra ``State`` fields."""
+
+    name: str
+
+    def is_active(self, config: Any) -> bool:
+        """Return whether this plugin should be enabled for the given config."""
+        ...
+
+    def init_state(self, setup: Any) -> dict[str, Any]:
+        """Create initial extra fields merged into :class:`state.state.State`."""
+        ...
+
+    def update_state(self, setup: Any, prev_state: Any, new_state: Any, **context: Any) -> Any:
+        """Apply per-step extra-state updates and return the updated state."""
         ...
 
 
@@ -519,10 +588,14 @@ __all__ = [
     "ConfigReader",
     "DifferentialOperator",
     "EquilibriumOperator",
+    "ExtraState",
+    "ExtraStatePlugin",
     "ForceOperator",
     "HysteresisOperator",
+    "InitialPopulationOperator",
     "InitialiserOperator",
     "MacroscopicOperator",
+    "MultiphaseStepOperator",
     "PlotOperator",
     "SimulationRepository",
     "StepOperator",

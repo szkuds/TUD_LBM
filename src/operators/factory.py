@@ -42,6 +42,5 @@ def build_operator(kind: str, scheme: str) -> OperatorTarget:
     try:
         return ops[scheme].target
     except KeyError as exc:
-        # Include available schemes in error message for better UX
         valid_schemes = ", ".join(sorted(ops.keys()))
         raise ValueError(f"Unknown {kind} scheme '{scheme}'. Valid schemes: {valid_schemes}") from exc

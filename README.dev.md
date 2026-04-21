@@ -4,51 +4,47 @@ If you're looking for user documentation, go [here](README.md).
 
 ## Development install
 
-### Recommended: Using Conda (preferred for scientific computing)
+TUD-LBM requires Python 3.10 or newer.
 
-We recommend using **conda** for development, as it handles complex dependencies (JAX, scipy) efficiently:
+We recommend using **uv** for development because it provides a fast, reproducible, and cross-platform workflow for editable installs and dependency management. For most contributors, uv is the simplest way to create an isolated development environment and install the project with extras.
+
+If you already work in a conda-based scientific Python environment, on an HPC system, or need non-Python/system-level dependencies managed outside the project, conda remains a good optional alternative.
+
+### Install uv
+
+Install `uv` by following the official instructions for your platform:
+
+- https://docs.astral.sh/uv/getting-started/installation/
+
+### Linux and macOS
 
 ```shell
-# Clone the repository
-git clone https://git@github.com:szkuds/tud_lbm.git
+git clone git@github.com:szkuds/tud_lbm.git
 cd tud_lbm
-
-# Create conda environment from environment.yml
-conda env create -f environment.yml
-
-# Activate environment
-conda activate tud-lbm
-
-# Install the package in editable mode with development dependencies
-pip install --no-cache-dir --editable .[dev]
-
-# Or install documentation dependencies only
-pip install --no-cache-dir --editable .[docs]
+uv venv --python 3.10
+source .venv/bin/activate
+uv pip install -e .[dev]
 ```
 
-### Alternative: Using pip with a virtual environment
+### Windows
 
 ```shell
-# Create a virtual environment
-python -m venv env
-
-# Activate virtual environment
-source env/bin/activate
-
-# Make sure to have a recent version of pip and setuptools
-python -m pip install --upgrade pip setuptools
-
-# (from the project root directory)
-# Install tud_lbm as an editable package with development dependencies
-python -m pip install --no-cache-dir --editable .[dev]
-
-# Or install documentation dependencies only
-python -m pip install --no-cache-dir --editable .[docs]
+git clone git@github.com:szkuds/tud_lbm.git
+cd tud_lbm
+uv venv --python 3.10
+.venv\Scripts\activate
+uv pip install -e .[dev]
 ```
 
-> **Note:** The pip path may take longer as complex packages like JAX are compiled from source. For scientific computing, conda is strongly recommended.
+### Documentation dependencies only
 
-Afterwards check that the install directory is present in the `PATH` environment variable.
+```shell
+uv pip install -e .[docs]
+```
+
+### Optional: conda
+
+If you prefer conda for scientific Python environments, keep using the conda-based workflow in `environment.yml` and install the package in editable mode afterwards.
 
 ## Running the tests
 
@@ -60,7 +56,7 @@ The first way requires an activated virtual environment with the development too
 pytest -v
 ```
 
-The second is to use `tox`, which can be installed separately (e.g. with `pip install tox`), i.e. not necessarily inside the virtual environment you use for installing `tud_lbm`, but then builds the necessary virtual environments itself by simply running:
+The second is to use `tox`, which can be installed separately and can build the necessary virtual environments itself by simply running:
 
 ```shell
 tox
@@ -85,20 +81,21 @@ To see the results on the command line, run
 coverage report
 ```
 
-`coverage` can also generate output in HTML and other formats; see `coverage help` for more information.## Running linters locally
+`coverage` can also generate output in HTML and other formats; see `coverage help` for more information.
+
+## Running linters locally
 
 For linting and sorting imports we will use [ruff](https://beta.ruff.rs/docs/). Running the linters requires an
 activated virtual environment with the development tools installed.
 
 ```shell
-# linter
 ruff check .
-
-# linter with automatic fixing
 ruff check . --fix
 ```
 
-To fix readability of your code style you can use [yapf](https://github.com/google/yapf).## Generating the API docs
+To fix readability of your code style you can use [yapf](https://github.com/google/yapf).
+
+## Generating the API docs
 
 ```shell
 cd docs

@@ -8,7 +8,7 @@ import jax.numpy as jnp
 from config.adapter_toml import TomlAdapter
 from config.simulation_config import SimulationConfig
 from operators.step import build_step_fn
-from operators.step._wetting_shims import _make_wetting_differential_ops
+from operators.step._wetting_differential_operators import _make_wetting_differential_ops
 from runner.run import init_state
 from setup.simulation_setup import build_setup
 from state.state import WettingState

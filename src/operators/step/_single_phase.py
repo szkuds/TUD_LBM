@@ -7,6 +7,7 @@ from __future__ import annotations
 from operators.force import compute_total_force_ext
 from operators.step._common import _apply_common_step
 from registry import update_timestep_operator
+from state import update_extra_state
 from state.state import State
 
 
@@ -22,7 +23,7 @@ def step_single_phase(setup, state: State) -> State:
         Updated :class:`~state.state.State` after one time step.
     """
     # 1. External forces
-    force_ext, state = compute_total_force_ext(setup, state, setup.forces, setup.streaming_fn)
+    force_ext, state = compute_total_force_ext(setup, state, setup.forces)
 
     # 2. Macroscopic fields
     if force_ext is not None:
@@ -32,4 +33,5 @@ def step_single_phase(setup, state: State) -> State:
         force_tot = None
 
     # 3–6. Equilibrium → collision → streaming → BCs (shared)
-    return _apply_common_step(setup, state, rho, u, force_tot)
+    new_state = _apply_common_step(setup, state, rho, u, force_tot)
+    return update_extra_state(setup, state, new_state, force_ext=force_ext)

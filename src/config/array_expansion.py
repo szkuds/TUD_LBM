@@ -27,6 +27,7 @@ from itertools import product
 from typing import Any
 from config.simulation_config import SimulationConfig
 from config.simulation_config import get_array_eligible_fields
+from config.simulation_config import get_nested_sweepable_fields
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,62 @@ def _is_array_value(value: Any, field_name: str = "") -> bool:
     return isinstance(value, (list, tuple)) and not isinstance(value, (str, bytes))
 
 
+def _extract_nested_array_axes(config_dict: dict[str, Any]) -> dict[str, tuple[Any, ...]]:
+    """Return dotted-path → values for array sub-keys inside nested sweepable fields.
+
+    For example, if ``config_dict["gravity_force"] = {"force_g": 5e-7,
+    "inclination_angle_deg": [50, 60]}``, this returns
+    ``{"gravity_force.inclination_angle_deg": (50, 60)}``.
+
+    Args:
+        config_dict: Raw configuration dict.
+
+    Returns:
+        Mapping of ``"field.sub_key"`` to tuple of values for every list-valued
+        sub-key found in the NESTED_SWEEPABLE_FIELDS entries.
+    """
+    axes: dict[str, tuple[Any, ...]] = {}
+    for field_name in get_nested_sweepable_fields():
+        nested = config_dict.get(field_name)
+        if not isinstance(nested, dict):
+            continue
+        for sub_key, sub_val in nested.items():
+            if isinstance(sub_val, list) and sub_val:
+                axes[f"{field_name}.{sub_key}"] = tuple(sub_val)
+    return axes
+
+
+def _apply_combo_to_dict(
+    base_dict: dict[str, Any],
+    combo_params: dict[str, Any],
+) -> dict[str, Any]:
+    """Return a copy of *base_dict* with *combo_params* applied.
+
+    Top-level keys are set directly.  Dotted-path keys
+    (``"field.sub_key"``) are applied into the nested dict stored at
+    ``base_dict["field"]``.
+
+    Args:
+        base_dict: Base scalar config dict (no list values).
+        combo_params: Mapping of key (plain or dotted) → value for this
+            combination.
+
+    Returns:
+        New dict suitable for ``SimulationConfig(**...)``.
+    """
+    result = dict(base_dict)
+    for key, value in combo_params.items():
+        if "." in key:
+            parent, sub_key = key.split(".", 1)
+            # Copy the nested dict so we don't mutate shared state
+            nested = dict(result.get(parent) or {})
+            nested[sub_key] = value
+            result[parent] = nested
+        else:
+            result[key] = value
+    return result
+
+
 def expand_config(
     config_dict: dict[str, Any],
     *,
@@ -95,8 +152,12 @@ def expand_config(
 ) -> tuple[list[SimulationConfig], ArrayParameterSet | None]:
     """Expand a config dict with array fields into multiple configs.
 
-    Performs Cartesian product expansion over all array-valued fields
-    that are in :const:`ARRAY_ELIGIBLE_FIELDS`.
+    Performs Cartesian product expansion over:
+
+    * Top-level ``ARRAY_ELIGIBLE_FIELDS`` that carry a list value.
+    * Sub-keys inside ``NESTED_SWEEPABLE_FIELDS`` dicts
+      (``gravity_force``, ``electric_force``, ``wetting_config``,
+      ``hysteresis_config``) that carry a list value.
 
     Args:
         config_dict: Raw configuration dict (typically from TomlAdapter
@@ -111,13 +172,11 @@ def expand_config(
           else None.
 
     Raises:
-        ValueError: If arrays are found but *allow_arrays* is False,
-            or if array field is not in :const:`ARRAY_ELIGIBLE_FIELDS`.
+        ValueError: If arrays are found but *allow_arrays* is False.
         TypeError: If array values contain incompatible types.
     """
-    # Identify array fields
-    array_fields: dict[str, tuple[Any, ...]] = {}
-
+    # ── 1. Top-level array axes ───────────────────────────────────────────
+    top_level_axes: dict[str, tuple[Any, ...]] = {}
     eligible = get_array_eligible_fields()
     for key, value in config_dict.items():
         if key not in eligible:
@@ -128,29 +187,48 @@ def expand_config(
                     f"Array values found for field '{key}' but allow_arrays=False. "
                     f"Use allow_arrays=True or flatten config.",
                 )
+            top_level_axes[key] = tuple(value)
 
-            # Convert to tuple for consistent iteration
-            array_fields[key] = tuple(value)
+    # ── 2. Nested array axes (dotted paths) ───────────────────────────────
+    nested_axes = _extract_nested_array_axes(config_dict)
+    if nested_axes and not allow_arrays:
+        first = next(iter(nested_axes))
+        raise ValueError(
+            f"Array values found for nested field '{first}' but allow_arrays=False.",
+        )
 
-    # If no arrays, return single config
-    if not array_fields:
+    # ── 3. Combine all axes ───────────────────────────────────────────────
+    all_axes: dict[str, tuple[Any, ...]] = {**top_level_axes, **nested_axes}
+
+    if not all_axes:
         config = SimulationConfig(**config_dict)
         return [config], None
 
-    # Extract scalar values and array fields
-    scalar_dict = {k: v for k, v in config_dict.items() if k not in array_fields}
-    array_keys = list(array_fields.keys())
-    array_lists = [array_fields[k] for k in array_keys]
+    # Build a scalar base dict (strip top-level arrays; nested dicts keep
+    # their scalar sub-keys but list sub-keys are removed)
+    scalar_dict: dict[str, Any] = {}
+    for k, v in config_dict.items():
+        if k in top_level_axes:
+            continue
+        if k in get_nested_sweepable_fields() and isinstance(v, dict):
+            # Remove sub-keys that are being swept
+            stripped = {sk: sv for sk, sv in v.items() if f"{k}.{sk}" not in nested_axes}
+            scalar_dict[k] = stripped
+        else:
+            scalar_dict[k] = v
 
-    # Generate all combinations
-    combinations = list(product(*array_lists))
+    axis_keys = list(all_axes.keys())
+    axis_lists = [all_axes[k] for k in axis_keys]
+
+    combinations = list(product(*axis_lists))
     configs: list[SimulationConfig] = [
-        SimulationConfig(**{**scalar_dict, **dict(zip(array_keys, combo, strict=False))}) for combo in combinations
+        SimulationConfig(**_apply_combo_to_dict(scalar_dict, dict(zip(axis_keys, combo, strict=False))))
+        for combo in combinations
     ]
 
     metadata = ArrayParameterSet(
-        field_names=frozenset(array_keys),
-        array_values=array_fields,
+        field_names=frozenset(axis_keys),
+        array_values=all_axes,
         total_combinations=len(combinations),
     )
 
@@ -164,8 +242,8 @@ def enumerate_configs(
 ) -> Iterator[tuple[int, dict[str, Any], SimulationConfig]]:
     """Yield (index, parameters, config) tuples for each expansion.
 
-    Useful for logging which parameter combination corresponds to each
-    simulation.
+    *parameters* uses dotted-path keys for nested fields
+    (e.g. ``"gravity_force.inclination_angle_deg"``).
 
     Args:
         config_dict: Raw configuration dict.
@@ -180,19 +258,29 @@ def enumerate_configs(
     configs, metadata = expand_config(config_dict, allow_arrays=allow_arrays)
 
     if metadata is None:
-        # No arrays; single config
         yield 0, {}, configs[0]
         return
 
-    # Generate combinations again for traceability
-    array_fields = metadata.array_values
-    scalar_dict = {k: v for k, v in config_dict.items() if k not in array_fields}
-    array_keys = list(array_fields.keys())
-    array_lists = [array_fields[k] for k in array_keys]
+    all_axes = metadata.array_values
+    top_level_keys = {k for k in all_axes if "." not in k}
+    nested_keys = {k for k in all_axes if "." in k}
 
-    for idx, combo in enumerate(product(*array_lists)):
-        parameters = dict(zip(array_keys, combo, strict=False))
-        combo_dict = dict(scalar_dict)
-        combo_dict.update(parameters)
+    # Rebuild scalar base dict the same way expand_config does
+    scalar_dict: dict[str, Any] = {}
+    for k, v in config_dict.items():
+        if k in top_level_keys:
+            continue
+        if k in get_nested_sweepable_fields() and isinstance(v, dict):
+            stripped = {sk: sv for sk, sv in v.items() if f"{k}.{sk}" not in nested_keys}
+            scalar_dict[k] = stripped
+        else:
+            scalar_dict[k] = v
+
+    axis_keys = list(all_axes.keys())
+    axis_lists = [all_axes[k] for k in axis_keys]
+
+    for idx, combo in enumerate(product(*axis_lists)):
+        parameters = dict(zip(axis_keys, combo, strict=False))
+        combo_dict = _apply_combo_to_dict(scalar_dict, parameters)
         config = SimulationConfig(**combo_dict)
         yield idx, parameters, config

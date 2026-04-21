@@ -7,7 +7,7 @@ Tests cover:
   - _collect_results function
   - _print_result_line function
   - _generate_plots function
-  - save_sweep_manifest function
+  - save_sweep_log function
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from runner.parallel_runner import _generate_plots
 from runner.parallel_runner import _print_result_line
 from runner.parallel_runner import _run_single_simulation
 from runner.parallel_runner import run_parallel_simulations
-from runner.parallel_runner import save_sweep_manifest
+from runner.parallel_runner import save_sweep_log
 
 # =========================================================================
 # Fixtures
@@ -901,12 +901,12 @@ class TestGeneratePlots:
 
 
 # =========================================================================
-# save_sweep_manifest Tests
+# save_sweep_log Tests
 # =========================================================================
 
 
-class TestSaveSweepManifest:
-    """Tests for save_sweep_manifest function."""
+class TestSaveSweepLog:
+    """Tests for save_sweep_log function."""
 
     def test_creates_output_dir_if_not_exists(self, simple_config):
         """Verify output_dir is created if it doesn't exist."""
@@ -920,7 +920,7 @@ class TestSaveSweepManifest:
                     output_dir="/output_0",
                 )
             ]
-            save_sweep_manifest(results, output_dir)
+            save_sweep_log(results, output_dir)
             assert output_dir.exists()
 
     def test_output_json_contains_correct_counts(self, simple_config):
@@ -946,19 +946,19 @@ class TestSaveSweepManifest:
                     output_dir="/output_2",
                 ),
             ]
-            save_sweep_manifest(results, tmpdir)
+            save_sweep_log(results, tmpdir)
 
-            # Find the manifest file (it has the sweep_id in the filename)
-            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
-            assert len(manifest_files) == 1
-            manifest_path = manifest_files[0]
+            # Find the log file (it has the sweep_id in the filename)
+            log_files = list(Path(tmpdir).glob("sweep_log_*.json"))
+            assert len(log_files) == 1
+            log_path = log_files[0]
 
-            with manifest_path.open() as f:
-                manifest = json.load(f)
+            with log_path.open() as f:
+                log = json.load(f)
 
-            assert manifest["total_simulations"] == 3
-            assert manifest["successful"] == 2
-            assert manifest["failed"] == 1
+            assert log["total_simulations"] == 3
+            assert log["successful"] == 2
+            assert log["failed"] == 1
 
     def test_simulation_entry_has_required_fields(self, simple_config):
         """Verify each simulation entry has index, status, output_dir, parameters, duration_sec, error."""
@@ -971,17 +971,17 @@ class TestSaveSweepManifest:
                 parameters={"param1": "value1"},
                 duration=2.5,
             )
-            save_sweep_manifest([result], tmpdir)
+            save_sweep_log([result], tmpdir)
 
-            # Find the manifest file (it has the sweep_id in the filename)
-            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
-            assert len(manifest_files) == 1
-            manifest_path = manifest_files[0]
+            # Find the log file (it has the sweep_id in the filename)
+            log_files = list(Path(tmpdir).glob("sweep_log_*.json"))
+            assert len(log_files) == 1
+            log_path = log_files[0]
 
-            with manifest_path.open() as f:
-                manifest = json.load(f)
+            with log_path.open() as f:
+                log = json.load(f)
 
-            entry = manifest["simulations"][0]
+            entry = log["simulations"][0]
             assert "index" in entry
             assert "status" in entry
             assert "output_dir" in entry
@@ -999,17 +999,17 @@ class TestSaveSweepManifest:
                     status="success",
                 )
             ]
-            save_sweep_manifest(results, tmpdir)
+            save_sweep_log(results, tmpdir)
 
-            # Find the manifest file (it has the sweep_id in the filename)
-            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
-            assert len(manifest_files) == 1
-            manifest_path = manifest_files[0]
+            # Find the log file (it has the sweep_id in the filename)
+            log_files = list(Path(tmpdir).glob("sweep_log_*.json"))
+            assert len(log_files) == 1
+            log_path = log_files[0]
 
-            with manifest_path.open() as f:
-                manifest = json.load(f)
+            with log_path.open() as f:
+                log = json.load(f)
 
-            sweep_id = UUID(manifest["sweep_id"])
+            sweep_id = UUID(log["sweep_id"])
             assert sweep_id is not None
 
     def test_timestamp_is_valid_iso8601_utc(self, simple_config):
@@ -1022,22 +1022,22 @@ class TestSaveSweepManifest:
                     status="success",
                 )
             ]
-            save_sweep_manifest(results, tmpdir)
+            save_sweep_log(results, tmpdir)
 
-            # Find the manifest file (it has the sweep_id in the filename)
-            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
-            assert len(manifest_files) == 1
-            manifest_path = manifest_files[0]
+            # Find the log file (it has the sweep_id in the filename)
+            log_files = list(Path(tmpdir).glob("sweep_log_*.json"))
+            assert len(log_files) == 1
+            log_path = log_files[0]
 
-            with manifest_path.open() as f:
-                manifest = json.load(f)
+            with log_path.open() as f:
+                log = json.load(f)
 
-            timestamp = manifest["timestamp"]
+            timestamp = log["timestamp"]
             assert "T" in timestamp
             assert "+" in timestamp or "Z" in timestamp or timestamp.endswith("+00:00")
 
-    def test_manifest_path_is_correct(self, simple_config):
-        """Verify manifest is saved with sweep_id in filename in output_dir."""
+    def test_log_path_is_correct(self, simple_config):
+        """Verify log is saved with sweep_id in filename in output_dir."""
         with tempfile.TemporaryDirectory() as tmpdir:
             results = [
                 SimulationResult(
@@ -1046,8 +1046,8 @@ class TestSaveSweepManifest:
                     status="success",
                 )
             ]
-            save_sweep_manifest(results, tmpdir)
+            save_sweep_log(results, tmpdir)
 
-            # Find the manifest file (it has the sweep_id in the filename)
-            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
-            assert len(manifest_files) == 1
+            # Find the log file (it has the sweep_id in the filename)
+            log_files = list(Path(tmpdir).glob("sweep_log_*.json"))
+            assert len(log_files) == 1
