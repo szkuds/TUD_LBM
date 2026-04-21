@@ -17,12 +17,12 @@ if TYPE_CHECKING:
     import os
     from config import SimulationConfig
 
-    _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
-        1: (1, 1),
-        2: (2, 1),
-        3: (2, 2),
-        4: (2, 2),
-    }
+_SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
+    1: (1, 1),
+    2: (2, 1),
+    3: (2, 2),
+    4: (2, 2),
+}
 
 
 class FigureBuilder:

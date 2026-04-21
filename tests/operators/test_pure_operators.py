@@ -641,8 +641,8 @@ class TestApplyPeriodic:
         jitted_per = jax.jit(
             partial(
                 apply_periodic,
-                lattice=lattice,
-                edge="top",
+                _lattice=lattice,
+                _edge="top",
             ),
         )
         f_out = jitted_per(f, f)

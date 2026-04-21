@@ -295,10 +295,8 @@ def _generate_plots(results: list[SimulationResult], *, verbose: bool) -> None:
             FigureBuilder(result.config, result.output_dir).build_all()
             if verbose:
                 pass
-        except Exception as e:  # noqa: BLE001
-            import logging
-
-            logging.debug(f"Failed to generate plots for {result.output_dir}: {e}")
+        except Exception:  # noqa: BLE001, S110
+            pass
 
 
 def save_sweep_log(
