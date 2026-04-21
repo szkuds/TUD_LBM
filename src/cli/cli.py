@@ -37,7 +37,37 @@ _SECTION_ALIAS_MAP = {
 
 
 def _parse_override_argument(raw_override: str) -> tuple[str, Any]:
-    """Parse one --override expression and return (path, typed_value)."""
+    """Parse one --override expression and return (path, typed_value).
+
+    Supports two formats:
+    1. Direct: path=value (e.g., tau=0.7, simulation_name="test")
+    2. Legacy: (path, value) or override(path, value)
+
+    Values are parsed as TOML literals, supporting:
+    - Numbers: 0.7, 123, 1e-5
+    - Strings: "text" (with quotes)
+    - Booleans: true, false
+    - Arrays: [1, 2, 3], [0.6, 0.7, 0.8]
+
+    Args:
+        raw_override: Override expression string.
+
+    Returns:
+        Tuple of (dotted_path, typed_value).
+
+    Raises:
+        ValueError: If format is invalid or value cannot be parsed as TOML.
+
+    Examples:
+        _parse_override_argument('tau=0.7')
+        # ('tau', 0.7)
+
+        _parse_override_argument('simulation_type.simulation_name="test"')
+        # ('simulation_type.simulation_name', 'test')
+
+        _parse_override_argument('tau=[0.6, 0.7, 0.8]')
+        # ('tau', [0.6, 0.7, 0.8])
+    """
     value_expr: str
 
     text = raw_override.strip()
@@ -78,7 +108,35 @@ def _parse_override_argument(raw_override: str) -> tuple[str, Any]:
 
 
 def _normalize_override_path(path: str) -> list[str]:
-    """Map TOML table paths to raw-config keys and split into segments."""
+    """Map TOML table paths to raw-config keys and split into segments.
+
+    Normalizes TOML section aliases to their field names:
+    - simulation_type.* → * (direct field)
+    - boundary_conditions.* → bc_config.*
+    - wetting.* → wetting_config.*
+    - hysteresis.* → hysteresis_config.*
+    - electric_force.* → electric_force.*
+    - gravity_force.* → gravity_force.*
+
+    Args:
+        path: Dotted-path string (e.g., "simulation_type.tau" or "gravity_force.force_g").
+
+    Returns:
+        List of path segments (e.g., ["tau"] or ["gravity_force", "force_g"]).
+
+    Raises:
+        ValueError: If path is empty or becomes empty after normalization.
+
+    Examples:
+        _normalize_override_path('simulation_type.tau')
+        # ['tau']
+
+        _normalize_override_path('gravity_force.force_g')
+        # ['gravity_force', 'force_g']
+
+        _normalize_override_path('boundary_conditions.top')
+        # ['bc_config', 'top']
+    """
     parts = [segment.strip() for segment in path.split(".") if segment.strip()]
     if not parts:
         raise ValueError("override path cannot be empty")
@@ -95,7 +153,29 @@ def _normalize_override_path(path: str) -> list[str]:
 
 
 def _set_nested_override(raw_config: dict[str, Any], path: str, value: Any) -> None:
-    """Apply a typed override value to raw config using dotted-path syntax."""
+    """Apply a typed override value to raw config using dotted-path syntax.
+
+    Automatically creates nested dicts as needed. For example, to set
+    gravity_force.force_g=5e-7, this will create raw_config['gravity_force']
+    if it doesn't exist, then set its 'force_g' sub-key.
+
+    Args:
+        raw_config: The raw configuration dict to mutate.
+        path: Dotted-path string (normalized or already valid).
+        value: The typed value to assign.
+
+    Raises:
+        TypeError: If an intermediate key exists but is not a dict.
+
+    Examples:
+        raw = {}
+        _set_nested_override(raw, 'tau', 0.7)
+        # raw == {'tau': 0.7}
+
+        raw = {}
+        _set_nested_override(raw, 'gravity_force.force_g', 5e-7)
+        # raw == {'gravity_force': {'force_g': 5e-7}}
+    """
     parts = _normalize_override_path(path)
 
     if len(parts) == 1:
@@ -117,7 +197,26 @@ def _set_nested_override(raw_config: dict[str, Any], path: str, value: Any) -> N
 
 
 def _apply_overrides(raw_config: dict[str, Any], overrides: tuple[str, ...]) -> None:
-    """Parse and apply all --override expressions in order."""
+    """Parse and apply all --override expressions in order.
+
+    Each override is parsed, type-checked, and applied to raw_config before
+    config expansion. This allows CLI users to override or create config
+    fields without editing the file.
+
+    Overrides are applied in the order provided, so later values override
+    earlier ones for the same path.
+
+    Args:
+        raw_config: The configuration dict to mutate (in-place).
+        overrides: Tuple of override expressions (e.g., ("tau=0.7", "nt=500")).
+
+    Prints:
+        Console output listing each override applied.
+
+    Raises:
+        ValueError: If any override has invalid format or TOML syntax.
+        TypeError: If any override path conflicts with existing non-dict values.
+    """
     if not overrides:
         return
 
@@ -491,11 +590,44 @@ def main(
     CONFIG_PATH is an optional path to a configuration file (.toml).
     If omitted, an interactive prompt collects parameters.
 
+    Configuration files can include array parameters (list values) to
+    automatically expand into parallel parameter sweeps. The --override
+    flag allows replacing or creating config values from the command line
+    before expansion.
+
     Examples:
+        # Single simulation
         tud_lbm example_for_test/config_simple.toml
-        tud_lbm example_for_test/config_complex.toml --dry-run
+
+        # Parameter sweep (if config has array fields)
+        tud_lbm example_for_test/config_parallel.toml
+
+        # Override scalar field
+        tud_lbm config.toml --override tau=0.7
+
+        # Override with quotes (field name may contain underscores)
+        tud_lbm config.toml --override 'simulation_type.simulation_name="new name"'
+
+        # Create nested fields
+        tud_lbm config.toml --override 'gravity_force.force_g=5e-7'
+
+        # Multiple overrides (applied in order)
+        tud_lbm config.toml --override tau=0.7 --override nt=500
+
+        # Override array field to trigger sweep
+        tud_lbm config.toml --override 'tau=[0.6, 0.7, 0.8]' --max-workers 4
+
+        # Dry run with preview (no execution)
+        tud_lbm config.toml --dry-run
+
+        # Stop sweep on first failure
+        tud_lbm config.toml --fail-fast
+
+        # Interactive mode
+        tud_lbm
+
+        # List all registered operators
         tud_lbm --list-simulation-operators
-        tud_lbm                              # interactive mode
     """
     console.print()
     console.print(
