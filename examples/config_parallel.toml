@@ -34,9 +34,37 @@ tau = [0.6, 0.7, 0.8]
 # nt = [1000, 5000, 10000]
 
 # ── Scalar parameters (same for all simulations) ────────────────────
-nt = 10000
-save_interval = 1000
+nt = 1000
 init_type = "standard"
+
+[gravity_force]
+force_g               = 5e-7
+inclination_angle_deg = [50, 60]
+
+# ── Example: Electric force sweep ──────────────────────────────────
+# Uncomment to sweep electric force parameters alongside gravity.
+#
+# [electric_force]
+# charge_density = 1.0
+# field_strength = [0.01, 0.05, 0.1]   # sweeps 3 values
+
+# ── Example: Wetting parameter sweep ───────────────────────────────
+# Uncomment for a multiphase wetting run sweeping wetting sub-params.
+#
+# [wetting]
+# phi_left  = [1.0, 1.1, 1.2]          # sweeps contact potential
+# phi_right = 1.0
+# d_rho_left  = 0.0
+# d_rho_right = 0.0
+
+# ── Example: Hysteresis parameter sweep ────────────────────────────
+# Uncomment to sweep hysteresis window alongside tau or other axes.
+#
+# [hysteresis]
+# ca_advancing  = [100.0, 120.0]        # sweeps advancing angle
+# ca_receding   = 60.0
+# learning_rate = 0.01
+# max_iterations = 20
 
 [output]
 results_dir = "~/TUD_LBM_data/sweep_results"

@@ -948,7 +948,10 @@ class TestSaveSweepManifest:
             ]
             save_sweep_manifest(results, tmpdir)
 
-            manifest_path = Path(tmpdir) / "sweep_manifest.json"
+            # Find the manifest file (includes unique ID in filename)
+            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
+            assert len(manifest_files) == 1
+            manifest_path = manifest_files[0]
             with manifest_path.open() as f:
                 manifest = json.load(f)
 
@@ -969,7 +972,10 @@ class TestSaveSweepManifest:
             )
             save_sweep_manifest([result], tmpdir)
 
-            manifest_path = Path(tmpdir) / "sweep_manifest.json"
+            # Find the manifest file (includes unique ID in filename)
+            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
+            assert len(manifest_files) == 1
+            manifest_path = manifest_files[0]
             with manifest_path.open() as f:
                 manifest = json.load(f)
 
@@ -993,7 +999,10 @@ class TestSaveSweepManifest:
             ]
             save_sweep_manifest(results, tmpdir)
 
-            manifest_path = Path(tmpdir) / "sweep_manifest.json"
+            # Find the manifest file (includes unique ID in filename)
+            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
+            assert len(manifest_files) == 1
+            manifest_path = manifest_files[0]
             with manifest_path.open() as f:
                 manifest = json.load(f)
 
@@ -1012,7 +1021,10 @@ class TestSaveSweepManifest:
             ]
             save_sweep_manifest(results, tmpdir)
 
-            manifest_path = Path(tmpdir) / "sweep_manifest.json"
+            # Find the manifest file (includes unique ID in filename)
+            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
+            assert len(manifest_files) == 1
+            manifest_path = manifest_files[0]
             with manifest_path.open() as f:
                 manifest = json.load(f)
 
@@ -1021,7 +1033,7 @@ class TestSaveSweepManifest:
             assert "+" in timestamp or "Z" in timestamp or timestamp.endswith("+00:00")
 
     def test_manifest_path_is_correct(self, simple_config):
-        """Verify manifest is saved as sweep_manifest.json in output_dir."""
+        """Verify manifest is saved as sweep_manifest_<uuid>.json in output_dir."""
         with tempfile.TemporaryDirectory() as tmpdir:
             results = [
                 SimulationResult(
@@ -1032,5 +1044,6 @@ class TestSaveSweepManifest:
             ]
             save_sweep_manifest(results, tmpdir)
 
-            manifest_path = Path(tmpdir) / "sweep_manifest.json"
-            assert manifest_path.exists()
+            # Find the manifest file (includes unique ID in filename)
+            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
+            assert len(manifest_files) == 1
