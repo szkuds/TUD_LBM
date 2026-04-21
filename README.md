@@ -21,43 +21,49 @@ The project setup is documented in [project_setup.md](project_setup.md).
 
 ## Installation
 
-### Recommended: Using Conda (preferred for scientific computing)
+TUD-LBM requires Python 3.10 or newer.
 
-We recommend using **conda** for installation, as it handles complex dependencies (JAX, scipy) efficiently:
+We recommend using **uv** for installation because it provides a fast, consistent, and cross-platform workflow for Linux, macOS, and Windows. For most users, uv is the simplest way to create an isolated environment and install the package from the repository.
 
-```console
-# Clone the repository
-git clone https://git@github.com:szkuds/tud_lbm.git
-cd tud_lbm
+If you already work in a conda-based scientific Python environment, on an HPC system, or need non-Python/system-level dependencies managed outside the project, conda remains a good optional alternative.
 
-# Create conda environment from environment.yml
-conda env create -f environment.yml
+### Install uv
 
-# Activate environment
-conda activate tud-lbm
+Install `uv` by following the official instructions for your platform:
 
-# Install the package in editable mode
-pip install -e .
-```
+- https://docs.astral.sh/uv/getting-started/installation/
 
-### Alternative: Using pip
-
-For a basic pip-based installation:
+### Linux and macOS
 
 ```console
 git clone git@github.com:szkuds/tud_lbm.git
 cd tud_lbm
-python -m pip install .
+uv venv --python 3.10
+source .venv/bin/activate
+uv pip install .
+python -c "import tud_lbm"
 ```
 
-Note: This may take longer as complex packages like JAX are compiled from source. For scientific computing, conda is strongly recommended.
+### Windows
 
-### Why Conda?
+```console
+git clone git@github.com:szkuds/tud_lbm.git
+cd tud_lbm
+uv venv --python 3.10
+.venv\Scripts\activate
+uv pip install .
+python -c "import tud_lbm"
+```
 
-- **Faster installation**: Pre-built binaries for JAX and scipy (no compilation)
-- **Reproducibility**: Locked dependency versions in `environment.yml`
-- **Reliability**: No dependency resolver hangs with complex packages
-- **Research standard**: Used widely in the scientific computing community
+### Optional: editable install for contributors
+
+```console
+uv pip install -e .[dev]
+```
+
+### Optional: conda
+
+If you prefer conda for scientific Python environments, you can still use the conda-based workflow documented in [project_setup.md](project_setup.md).
 
 ## Documentation
 
@@ -93,7 +99,7 @@ tud_lbm example/config_simple.toml
 tud_lbm  # launches interactive parameter prompts
 ```
 
----
+***
 
 For the full package reference (module-by-module API, operator tables, and architecture details), see the [developer documentation](README.dev.md#package-reference).
 
