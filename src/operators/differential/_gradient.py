@@ -44,13 +44,13 @@ def compute_gradient(
     or close over *pad_mode* in a wrapper.
 
     Args:
-        grid: Scalar field, shape ``(nx, ny, 1, 1)`` or ``(nx, ny)``.
-        w: Lattice weights, shape ``(q,)``.
-        c: Lattice velocity vectors, shape ``(2, q)``.
+        grid: Scalar field, shape ``(nx, ny, nz, 1, 1)`` or ``(nx, ny)``.
+        w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
+        c: Lattice velocity vectors, shape ``(1, 1, 1, q, 2)``.
         pad_mode: Four padding modes ``(right_y, left_y, bottom_x, top_x)``.
 
     Returns:
-        Gradient field, shape ``(nx, ny, 1, 2)``.
+        Gradient field, shape ``(nx, ny, nz, 1, 2)``.
     """
     gp = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
     return grad_core(gp, w, c)

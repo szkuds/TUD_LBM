@@ -56,10 +56,10 @@ def lap_core(
 
     Args:
         padded: Shape ``(nx + 2, ny + 2)``.
-        w: Lattice weights, shape ``(q,)``.
+        w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
 
     Returns:
-        Laplacian field, shape ``(nx, ny, 1, 1)``.
+        Laplacian field, shape ``(nx, ny, nz, 1, 1)``.
     """
     i0 = padded[1:-1, 1:-1]  # centre values
 
