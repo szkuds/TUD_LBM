@@ -948,13 +948,13 @@ class TestSaveSweepLog:
             ]
             save_sweep_log(results, tmpdir)
 
-            # Find the manifest file (it has the sweep_id in the filename)
-            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
-            assert len(manifest_files) == 1
-            manifest_path = manifest_files[0]
+            # Find the log file (it has the sweep_id in the filename)
+            log_files = list(Path(tmpdir).glob("sweep_log_*.json"))
+            assert len(log_files) == 1
+            log_path = log_files[0]
 
-            with manifest_path.open() as f:
-                manifest = json.load(f)
+            with log_path.open() as f:
+                log = json.load(f)
 
             assert log["total_simulations"] == 3
             assert log["successful"] == 2
@@ -973,13 +973,13 @@ class TestSaveSweepLog:
             )
             save_sweep_log([result], tmpdir)
 
-            # Find the manifest file (it has the sweep_id in the filename)
-            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
-            assert len(manifest_files) == 1
-            manifest_path = manifest_files[0]
+            # Find the log file (it has the sweep_id in the filename)
+            log_files = list(Path(tmpdir).glob("sweep_log_*.json"))
+            assert len(log_files) == 1
+            log_path = log_files[0]
 
-            with manifest_path.open() as f:
-                manifest = json.load(f)
+            with log_path.open() as f:
+                log = json.load(f)
 
             entry = log["simulations"][0]
             assert "index" in entry
@@ -1001,13 +1001,13 @@ class TestSaveSweepLog:
             ]
             save_sweep_log(results, tmpdir)
 
-            # Find the manifest file (it has the sweep_id in the filename)
-            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
-            assert len(manifest_files) == 1
-            manifest_path = manifest_files[0]
+            # Find the log file (it has the sweep_id in the filename)
+            log_files = list(Path(tmpdir).glob("sweep_log_*.json"))
+            assert len(log_files) == 1
+            log_path = log_files[0]
 
-            with manifest_path.open() as f:
-                manifest = json.load(f)
+            with log_path.open() as f:
+                log = json.load(f)
 
             sweep_id = UUID(log["sweep_id"])
             assert sweep_id is not None
@@ -1024,20 +1024,20 @@ class TestSaveSweepLog:
             ]
             save_sweep_log(results, tmpdir)
 
-            # Find the manifest file (it has the sweep_id in the filename)
-            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
-            assert len(manifest_files) == 1
-            manifest_path = manifest_files[0]
+            # Find the log file (it has the sweep_id in the filename)
+            log_files = list(Path(tmpdir).glob("sweep_log_*.json"))
+            assert len(log_files) == 1
+            log_path = log_files[0]
 
-            with manifest_path.open() as f:
-                manifest = json.load(f)
+            with log_path.open() as f:
+                log = json.load(f)
 
             timestamp = log["timestamp"]
             assert "T" in timestamp
             assert "+" in timestamp or "Z" in timestamp or timestamp.endswith("+00:00")
 
-    def test_manifest_path_is_correct(self, simple_config):
-        """Verify manifest is saved with sweep_id in filename in output_dir."""
+    def test_log_path_is_correct(self, simple_config):
+        """Verify log is saved with sweep_id in filename in output_dir."""
         with tempfile.TemporaryDirectory() as tmpdir:
             results = [
                 SimulationResult(
@@ -1048,6 +1048,6 @@ class TestSaveSweepLog:
             ]
             save_sweep_log(results, tmpdir)
 
-            # Find the manifest file (it has the sweep_id in the filename)
-            manifest_files = list(Path(tmpdir).glob("sweep_manifest_*.json"))
-            assert len(manifest_files) == 1
+            # Find the log file (it has the sweep_id in the filename)
+            log_files = list(Path(tmpdir).glob("sweep_log_*.json"))
+            assert len(log_files) == 1
