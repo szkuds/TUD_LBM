@@ -407,7 +407,7 @@ def _run_parallel_sweep(
 ) -> list[Any]:
     """Run a parameter sweep in parallel and save a manifest."""
     from runner.parallel_runner import run_parallel_simulations
-    from runner.parallel_runner import save_sweep_manifest
+    from runner.parallel_runner import save_sweep_log
 
     console.print("[bold green]Starting parallel parameter sweep...[/bold green]")
     console.print(f"[dim]Simulations: {len(configs)}[/dim]")
@@ -423,7 +423,7 @@ def _run_parallel_sweep(
     )
 
     manifest_dir = Path(configs[0].results_dir).expanduser() / "sweep_manifest"
-    save_sweep_manifest(results, manifest_dir)
+    save_sweep_log(results, manifest_dir)
 
     successful = sum(1 for result in results if result.status == "success")
     failed = sum(1 for result in results if result.status == "failed")
