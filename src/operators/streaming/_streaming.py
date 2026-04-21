@@ -63,6 +63,8 @@ def stream(
     wall_right = _has_wall_bc(bc_config, "right")
     wall_bottom = _has_wall_bc(bc_config, "bottom")
     wall_top = _has_wall_bc(bc_config, "top")
+    wall_front = _has_wall_bc(bc_config, "front")
+    wall_back = _has_wall_bc(bc_config, "back")
 
     for i in range(lattice.q):
         shift = tuple(c_np[..., i, :].flatten())
@@ -73,13 +75,26 @@ def stream(
         #
         #   roll(+1) along axis → wrap lands at index  0 of that axis
         #   roll(-1) along axis → wrap lands at index -1 of that axis
-        sx, sy = shift  # for 2-D lattices (d == 2)
-        if sx > 0 and wall_left:
-            f = f.at[0, :, i, :].set(0.0)
-        elif sx < 0 and wall_right:
-            f = f.at[-1, :, i, :].set(0.0)
-        if sy > 0 and wall_bottom:
-            f = f.at[:, 0, i, :].set(0.0)
-        elif sy < 0 and wall_top:
-            f = f.at[:, -1, i, :].set(0.0)
+        
+        if lattice.d >= 1:
+            sx = shift[0]
+            if sx > 0 and wall_left:
+                f = f.at[0, :, i, :].set(0.0)
+            elif sx < 0 and wall_right:
+                f = f.at[-1, :, i, :].set(0.0)
+        
+        if lattice.d >= 2:
+            sy = shift[1]
+            if sy > 0 and wall_bottom:
+                f = f.at[:, 0, i, :].set(0.0)
+            elif sy < 0 and wall_top:
+                f = f.at[:, -1, i, :].set(0.0)
+
+        if lattice.d >= 3:
+            sz = shift[2]
+            if sz > 0 and wall_front:
+                f = f.at[:, :, 0, i, :].set(0.0)
+            elif sz < 0 and wall_back:
+                f = f.at[:, :, -1, i, :].set(0.0)
+
     return f

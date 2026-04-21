@@ -164,6 +164,7 @@ class SimulationConfig:
         self._normalize()
         self._apply_defaults()
         self._make_grid_shape_3D()
+        self._set_all_bcs()
         self._validate_common()
         if self.sim_type == "multiphase":
             self._validate_multiphase()
@@ -186,6 +187,8 @@ class SimulationConfig:
                     "bottom": "periodic",
                     "left": "periodic",
                     "right": "periodic",
+                    "front": "periodic",
+                    "back": "periodic",
                 },
             )
     
@@ -193,6 +196,12 @@ class SimulationConfig:
         """Promote grid_shape to 3D by adding a singleton z-dimension."""
         if len(self.grid_shape) < 3:
             object.__setattr__(self, "grid_shape", self.grid_shape + (1,) * (3 - len(self.grid_shape)))
+    
+    def _set_all_bcs(self) -> None:
+        """Set missing BCs in bc_config to 'periodic'."""
+        for edge in ("top", "bottom", "left", "right", "front", "back"):
+            if edge not in self.bc_config:
+                self.bc_config[edge] = "periodic"
 
     def _validate_common(self) -> None:
         if len(self.grid_shape) < 2:

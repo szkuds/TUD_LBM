@@ -77,5 +77,5 @@ class GravityForceModule:
         Returns:
             Gravity force field, shape ``(nx, ny, 1, 2)``.
         """
-        rho = jnp.sum(state.f, axis=2, keepdims=True)
+        rho = jnp.sum(state.f, axis=-2, keepdims=True)
         return -precomputed * rho
