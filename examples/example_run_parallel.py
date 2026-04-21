@@ -27,37 +27,25 @@ configure_jax()
 
 def run_parallel_sweep():
     """Execute a parameter sweep with parallel simulations."""
-    print("\n=== Parallel Simulation Sweep ===")
-
     # Load configuration from TOML file (with array parameters preserved)
     config_path = Path(__file__).parent / "config_parallel.toml"
     adapter = TomlAdapter()
     config_dict = adapter.load_raw(str(config_path))
 
-    print(f"✓ Config loaded from: {config_path.name}")
-    print(f"  Raw config keys: {list(config_dict.keys())}")
-
     # Detect and expand array parameters
     configs, metadata = expand_config(config_dict)
 
-    print("\n✓ Array expansion:")
     if metadata:
-        print(f"  Array fields: {sorted(metadata.field_names)}")
-        for field, values in metadata.array_values.items():
-            print(f"    - {field}: {values}")
-        print(f"  Total configurations: {metadata.total_combinations}")
+        for _field, _values in metadata.array_values.items():
+            pass
     else:
-        print("  No array parameters found (single configuration)")
+        pass
 
     # Optional: Enumerate and display each configuration before execution
-    print("\n✓ Configuration details:")
-    for idx, params, cfg in enumerate_configs(config_dict):
-        params_str = ", ".join(f"{k}={v}" for k, v in params.items()) if params else "(base)"
-        print(f"  [{idx}] {params_str}")
-        print(f"      grid: {cfg.grid_shape}, tau: {cfg.tau}, nt: {cfg.nt}")
+    for _idx, params, _cfg in enumerate_configs(config_dict):
+        ", ".join(f"{k}={v}" for k, v in params.items()) if params else "(base)"
 
     # Execute simulations in parallel
-    print(f"\n✓ Starting parallel execution ({len(configs)} simulations)...")
 
     # Extract parameters for each config
     params_list = [params for idx, params, cfg in enumerate_configs(config_dict)]
@@ -73,14 +61,10 @@ def run_parallel_sweep():
     # Save results manifest
     results_dir = Path(configs[0].results_dir).expanduser() / "sweep_manifest"
     save_sweep_log(results, results_dir)
-    print(f"✓ Manifest saved to: {results_dir / 'sweep_manifest.json'}")
 
     # Summary
-    successful = sum(1 for r in results if r.status == "success")
-    failed = sum(1 for r in results if r.status == "failed")
-    print(f"\n{'=' * 70}")
-    print(f"Results: {successful} successful, {failed} failed")
-    print(f"{'=' * 70}\n")
+    sum(1 for r in results if r.status == "success")
+    sum(1 for r in results if r.status == "failed")
 
     return results
 

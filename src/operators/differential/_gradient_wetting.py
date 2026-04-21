@@ -9,12 +9,15 @@ knowledge of wetting.
 """
 
 from __future__ import annotations
-import jax.numpy as jnp
+from typing import TYPE_CHECKING
 from operators.differential._gradient import grad_core
 from operators.differential._pad_utils import _apply_stencil_padding
 from operators.differential._pad_utils import to_2d
 from operators.wetting import build_wetting_fn
 from registry import register_operator
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
 
 
 @register_operator("differential", name="gradient_wetting")
@@ -26,7 +29,7 @@ def build_wetting_gradient(
     rho_l: float | None = None,
     rho_v: float | None = None,
     width: int | None = None,
-):
+) -> callable:
     """Return a wetting-corrected gradient closure.
 
     Closes over static config (w, c, pad_mode, bc_config, rho_l, rho_v, width).

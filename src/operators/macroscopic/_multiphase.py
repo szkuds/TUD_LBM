@@ -12,11 +12,14 @@ padding and optional wetting ghost-cell correction).
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
-from operators.macroscopic import MultiphaseParams
-from operators.protocols import DifferentialOperator
 from registry import macroscopic_operator
-from setup.lattice import Lattice
+
+if TYPE_CHECKING:
+    from operators.macroscopic import MultiphaseParams
+    from operators.protocols import DifferentialOperator
+    from setup.lattice import Lattice
 
 # ── EOS and chemical potential ───────────────────────────────────────
 
@@ -98,10 +101,10 @@ def compute_macroscopic_multiphase(
     lap_rho = laplacian_density(rho)  # (nx, ny, 1, 1)
     mu = mu_0[..., None, None] - mp.kappa * lap_rho  # (nx, ny, 1, 1)
 
-    # Chemical-potential gradient — always the standard (non-wetting) gradient
+    # Chemical-potential gradient - always the standard (non-wetting) gradient
     grad_mu = gradient_standard(mu)  # (nx, ny, 1, 2)
 
-    # F_int = −ρ ∇μ
+    # F_int = -ρ ∇μ
     force_int = -rho * grad_mu  # (nx, ny, 1, 2)
 
     # 4. Total force

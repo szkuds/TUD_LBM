@@ -23,6 +23,8 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.prompt import Prompt
 from rich.table import Table
+from config import SimulationConfig
+from config.array_expansion import ArrayParameterSet
 
 console = Console()
 
@@ -36,7 +38,7 @@ _SECTION_ALIAS_MAP = {
 }
 
 
-def _parse_override_argument(raw_override: str) -> tuple[str, Any]:
+def _parse_override_argument(raw_override: str) -> tuple[str, object]:
     """Parse one --override expression and return (path, typed_value).
 
     Supports two formats:
@@ -72,7 +74,8 @@ def _parse_override_argument(raw_override: str) -> tuple[str, Any]:
 
     text = raw_override.strip()
     if not text:
-        raise ValueError("override expression cannot be empty")
+        msg = "override expression cannot be empty"
+        raise ValueError(msg)
 
     if "=" in text:
         path, value_expr = text.split("=", 1)
@@ -85,23 +88,27 @@ def _parse_override_argument(raw_override: str) -> tuple[str, Any]:
         elif text.startswith("(") and text.endswith(")"):
             text = text[1:-1].strip()
         if "," not in text:
+            msg = "invalid override format. Use 'path=value' (e.g. simulation_type.tau=0.7)."
             raise ValueError(
-                "invalid override format. Use 'path=value' (e.g. simulation_type.tau=0.7).",
+                msg,
             )
         path, value_expr = text.split(",", 1)
         path = path.strip()
         value_expr = value_expr.strip()
 
     if not path:
-        raise ValueError("override path cannot be empty")
+        msg = "override path cannot be empty"
+        raise ValueError(msg)
     if not value_expr:
-        raise ValueError("override value cannot be empty")
+        msg = "override value cannot be empty"
+        raise ValueError(msg)
 
     try:
         value = tomllib.loads(f"value = {value_expr}")["value"]
     except tomllib.TOMLDecodeError as exc:
+        msg = f"invalid override value '{value_expr}'. Use a TOML literal (quoted strings, numbers, booleans, arrays)."
         raise ValueError(
-            f"invalid override value '{value_expr}'. Use a TOML literal (quoted strings, numbers, booleans, arrays).",
+            msg,
         ) from exc
 
     return path, value
@@ -139,7 +146,8 @@ def _normalize_override_path(path: str) -> list[str]:
     """
     parts = [segment.strip() for segment in path.split(".") if segment.strip()]
     if not parts:
-        raise ValueError("override path cannot be empty")
+        msg = "override path cannot be empty"
+        raise ValueError(msg)
 
     head = parts[0]
     if head in _SECTION_ALIAS_MAP:
@@ -148,11 +156,12 @@ def _normalize_override_path(path: str) -> list[str]:
         parts = [mapped, *parts[1:]] if mapped else parts[1:]
 
     if not parts:
-        raise ValueError(f"override path '{path}' does not reference a field")
+        msg = f"override path '{path}' does not reference a field"
+        raise ValueError(msg)
     return parts
 
 
-def _set_nested_override(raw_config: dict[str, Any], path: str, value: Any) -> None:
+def _set_nested_override(raw_config: dict[str, Any], path: str, value: object) -> None:
     """Apply a typed override value to raw config using dotted-path syntax.
 
     Automatically creates nested dicts as needed. For example, to set
@@ -191,7 +200,8 @@ def _set_nested_override(raw_config: dict[str, Any], path: str, value: Any) -> N
         if not isinstance(existing, dict):
             dotted_prefix = ".".join(parts[:-1])
             # TRY004: use TypeError for invalid type
-            raise TypeError(f"override path '{path}' is invalid: '{dotted_prefix}' is not a table")
+            msg = f"override path '{path}' is invalid: '{dotted_prefix}' is not a table"
+            raise TypeError(msg)
         cursor = existing
     cursor[parts[-1]] = value
 
@@ -285,7 +295,7 @@ def _display_operators() -> None:
         console.print()
 
 
-def _display_config_summary(config) -> None:
+def _display_config_summary(config: SimulationConfig | None) -> None:
     """Display a summary of the simulation configuration."""
     console.print()
 
@@ -327,7 +337,7 @@ def _display_config_summary(config) -> None:
     console.print()
 
 
-def _run_simulation(config: Any):
+def _run_simulation(config: SimulationConfig) -> None:
     """Run the simulation with the given configuration."""
     from config.jax_config import configure_jax
 
@@ -377,7 +387,7 @@ def _run_simulation(config: Any):
     return final_state
 
 
-def _display_sweep_summary(metadata: Any) -> None:
+def _display_sweep_summary(metadata: ArrayParameterSet) -> None:
     """Display detected parameter-sweep axes and total combinations."""
     console.print()
     table = Table(
@@ -399,7 +409,7 @@ def _display_sweep_summary(metadata: Any) -> None:
 
 
 def _run_parallel_sweep(
-    configs: list[Any],
+    configs: list[SimulationConfig],
     parameters_list: list[dict[str, Any]],
     *,
     max_workers: int | None,
@@ -440,13 +450,14 @@ def _run_parallel_sweep(
 def _validate_cli_args(overrides: tuple[str, ...], config_path: str | None) -> None:
     """TRY301: raise lives here, outside the try-block in main()."""
     if overrides and not config_path:
-        raise click.UsageError("--override requires CONFIG_PATH")
+        msg = "--override requires CONFIG_PATH"
+        raise click.UsageError(msg)
 
 
 def _load_config_from_file(
     config_path: str,
     overrides: tuple[str, ...],
-) -> tuple[list[Any], Any | None, Any | None, list[dict[str, Any]] | None]:
+) -> tuple[list[SimulationConfig], SimulationConfig | None, ArrayParameterSet | None, list[dict[str, Any]] | None]:
     """Load and expand a TOML config file; return (configs, config, sweep_metadata, parameters_list)."""
     from config.adapter_toml import TomlAdapter
     from config.array_expansion import enumerate_configs
@@ -464,7 +475,7 @@ def _load_config_from_file(
     return configs, None, sweep_metadata, parameters_list
 
 
-def _load_config_interactive() -> tuple[list[Any], Any, None, None]:
+def _load_config_interactive() -> tuple[list[SimulationConfig], SimulationConfig, None, None]:
     """Collect simulation parameters interactively; return the same 4-tuple as _load_config_from_file."""
     # TODO: the interactive mode can be extended further. Plotting is not yet added for example_for_test.
     from config import SimulationConfig
@@ -486,7 +497,11 @@ def _load_config_interactive() -> tuple[list[Any], Any, None, None]:
     return [config], config, None, None
 
 
-def _display_summary(config: Any | None, sweep_metadata: Any | None, configs: list[Any]) -> None:
+def _display_summary(
+    config: SimulationConfig | None,
+    sweep_metadata: ArrayParameterSet | None,
+    configs: list[SimulationConfig],
+) -> None:
     """Display either a single-run config summary or a sweep summary."""
     if sweep_metadata is None:
         _display_config_summary(config)
@@ -496,14 +511,14 @@ def _display_summary(config: Any | None, sweep_metadata: Any | None, configs: li
         _display_config_summary(configs[0])
 
 
-def _print_dry_run_message(sweep_metadata: Any | None) -> None:
+def _print_dry_run_message(sweep_metadata: ArrayParameterSet | None) -> None:
     if sweep_metadata is None:
         console.print("[yellow]Dry run mode - simulation not started[/yellow]")
     else:
         console.print("[yellow]Dry run mode - parameter sweep not started[/yellow]")
 
 
-def _confirm_run(sweep_metadata: Any | None, configs: list[Any]) -> bool:
+def _confirm_run(sweep_metadata: ArrayParameterSet | None, configs: list[SimulationConfig]) -> bool:
     if sweep_metadata is None:
         prompt_text = "[bold]Start simulation?[/bold]"
     else:
@@ -515,13 +530,14 @@ def _check_sweep_errors(results: list[Any]) -> None:
     """TRY301: raise lives here, outside the try-block in main()."""
     failed = sum(1 for result in results if result.status == "failed")
     if failed > 0:
-        raise RuntimeError(f"Parameter sweep completed with {failed} failed simulation(s).")
+        msg = f"Parameter sweep completed with {failed} failed simulation(s)."
+        raise RuntimeError(msg)
 
 
 def _execute_run(
-    configs: list[Any],
-    config: Any | None,
-    sweep_metadata: Any | None,
+    configs: list[SimulationConfig],
+    config: SimulationConfig | None,
+    sweep_metadata: ArrayParameterSet | None,
     parameters_list: list[dict[str, Any]] | None,
     max_workers: int | None,
     fail_fast: bool,

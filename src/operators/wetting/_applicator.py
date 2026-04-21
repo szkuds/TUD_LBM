@@ -6,11 +6,14 @@ density array.
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from typing import Any
-import jax.numpy as jnp
 from operators.wetting._apply_edge import _apply_wetting_edge
 from operators.wetting._edge_config import _resolve_wetting_edges
 from registry import wetting_operator
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
 
 
 @wetting_operator(name="applicator")
@@ -19,7 +22,7 @@ def build_wetting_applicator(
     rho_v: float,
     width: int,
     bc_config: dict[str, Any] | None = None,
-):
+) -> jnp.ndarray:
     """Build a wetting ghost-cell applicator with baked-in static parameters.
 
     Args:
@@ -43,10 +46,10 @@ def build_wetting_applicator(
 
     def apply(
         gp: jnp.ndarray,
-        phi_l: Any,
-        phi_r: Any,
-        d_rho_l: Any,
-        d_rho_r: Any,
+        phi_l: jnp.ndarray,
+        phi_r: jnp.ndarray,
+        d_rho_l: jnp.ndarray,
+        d_rho_r: jnp.ndarray,
     ) -> jnp.ndarray:
         """Apply wetting ghost-cell corrections to a padded density array.
 

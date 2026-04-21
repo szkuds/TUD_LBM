@@ -21,13 +21,19 @@ Example usage::
 """
 
 from __future__ import annotations
-from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import product
+from typing import TYPE_CHECKING
 from typing import Any
 from config.simulation_config import SimulationConfig
 from config.simulation_config import get_array_eligible_fields
 from config.simulation_config import get_nested_sweepable_fields
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+# Constants for grid_shape validation
+GRID_SHAPE_TUPLE_LEN = 2  # grid_shape is a (nx, ny) tuple
 
 
 @dataclass(frozen=True)
@@ -45,13 +51,13 @@ class ArrayParameterSet:
     total_combinations: int
 
 
-def detect_array_fields(config: SimulationConfig) -> ArrayParameterSet | None:
+def detect_array_fields(_config: SimulationConfig) -> ArrayParameterSet | None:
     """Detect which fields in a config contain array values.
 
     Returns None if no arrays are present.
 
     Args:
-        config: A :class:`SimulationConfig` (should only contain scalars
+        _config: A :class:`SimulationConfig` (should only contain scalars
             after full expansion; this is more for validation/inspection).
 
     Returns:
@@ -63,7 +69,7 @@ def detect_array_fields(config: SimulationConfig) -> ArrayParameterSet | None:
     return None
 
 
-def _is_array_value(value: Any, field_name: str = "") -> bool:
+def _is_array_value(value: Any, field_name: str = "") -> bool:  # noqa: ANN401
     """Check if a value should be treated as an array for expansion.
 
     Special case: grid_shape can be a 2-tuple of ints (scalar) or a
@@ -74,7 +80,7 @@ def _is_array_value(value: Any, field_name: str = "") -> bool:
     # Handle grid_shape special case
     if field_name == "grid_shape":
         # If it's a tuple of 2 ints, it's a scalar grid_shape
-        if isinstance(value, tuple) and len(value) == 2 and all(isinstance(x, int) for x in value):
+        if isinstance(value, tuple) and len(value) == GRID_SHAPE_TUPLE_LEN and all(isinstance(x, int) for x in value):
             return False
         # If it's a list or tuple of tuples, it's an array
         if isinstance(value, (list, tuple)):
@@ -183,9 +189,12 @@ def expand_config(
             continue
         if _is_array_value(value, field_name=key):
             if not allow_arrays:
-                raise ValueError(
+                msg = (
                     f"Array values found for field '{key}' but allow_arrays=False. "
-                    f"Use allow_arrays=True or flatten config.",
+                    f"Use allow_arrays=True or flatten config."
+                )
+                raise ValueError(
+                    msg,
                 )
             top_level_axes[key] = tuple(value)
 
@@ -193,8 +202,9 @@ def expand_config(
     nested_axes = _extract_nested_array_axes(config_dict)
     if nested_axes and not allow_arrays:
         first = next(iter(nested_axes))
+        msg = f"Array values found for nested field '{first}' but allow_arrays=False."
         raise ValueError(
-            f"Array values found for nested field '{first}' but allow_arrays=False.",
+            msg,
         )
 
     # ── 3. Combine all axes ───────────────────────────────────────────────

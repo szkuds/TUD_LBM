@@ -1,8 +1,11 @@
 """Shared wetting parameter containers."""
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from typing import NamedTuple
-import jax.numpy as jnp
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
 
 
 class WettingParams(NamedTuple):

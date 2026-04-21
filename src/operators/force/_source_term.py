@@ -6,11 +6,14 @@ Uses the density gradient operator for computing gravity corrections.
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import numpy as np
-from operators.protocols import DifferentialOperator
 from registry import force_model
-from setup.lattice import Lattice
+
+if TYPE_CHECKING:
+    from operators.protocols import DifferentialOperator
+    from setup.lattice import Lattice
 
 
 @force_model(name="source_term_wb")

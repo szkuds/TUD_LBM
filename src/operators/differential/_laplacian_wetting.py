@@ -8,12 +8,16 @@ The base ``_laplacian`` module has zero knowledge of wetting.
 """
 
 from __future__ import annotations
-import jax.numpy as jnp
+from typing import TYPE_CHECKING
 from operators.differential._laplacian import lap_core
 from operators.differential._pad_utils import _apply_stencil_padding
 from operators.differential._pad_utils import to_2d
 from operators.wetting import build_wetting_fn
 from registry import register_operator
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
+    from operators.protocols import DifferentialOperator
 
 
 @register_operator("differential", name="laplacian_wetting")
@@ -24,7 +28,7 @@ def build_wetting_laplacian(
     rho_l: float | None = None,
     rho_v: float | None = None,
     width: int | None = None,
-):
+) -> DifferentialOperator:
     """Return a wetting-corrected Laplacian closure.
 
     Closes over static config (w, pad_mode, bc_config, rho_l, rho_v, width).

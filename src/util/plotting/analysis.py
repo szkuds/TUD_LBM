@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 from pathlib import Path
-import matplotlib.axes
+from typing import TYPE_CHECKING
 import numpy as np
 from registry import plotting_operator
 from util.plotting.base import PlotOperator
+
+if TYPE_CHECKING:
+    import matplotlib.axes
 
 
 @plotting_operator(name="analysis")
@@ -20,6 +23,7 @@ class AnalysisPlotOperator(PlotOperator):
         data: dict[str, np.ndarray],
         timestep: int,
     ) -> None:
+        """Render diagnostic plots from saved simulation history."""
         del data
         data_dir = self.data_dir or Path()
         files = sorted(data_dir.glob("*.npz"))

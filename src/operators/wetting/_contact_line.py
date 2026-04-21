@@ -21,7 +21,7 @@ def compute_contact_line_location(
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Compute contact-line locations at the solid wall.
 
-    The algorithm finds the liquid–vapour transition at the wall row
+    The algorithm finds the liquid-vapour transition at the wall row
     (``j=0``), interpolates the interface x-position, and projects
     down to the solid using the measured contact angle.
 

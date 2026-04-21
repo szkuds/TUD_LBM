@@ -1,12 +1,26 @@
 """Wetting extra-state plugin."""
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from typing import Any
+from typing import TypedDict
+import jax
 import jax.numpy as jnp
+from typing_extensions import Unpack
 from operators.wetting._contact_angle import compute_contact_angle
 from operators.wetting._contact_line import compute_contact_line_location
 from registry import extra_state_plugin
+from state.state import State
 from state.state import WettingState
+
+if TYPE_CHECKING:
+    from setup import SimulationSetup
+
+
+class WettingContext(TypedDict, total=False):
+    """Type-safe context dictionary for wetting state updates."""
+
+    force_ext: jax.Array | None
 
 
 def _cfg_value(cfg: dict[str, Any], *keys: str, default: float) -> float:
@@ -21,11 +35,11 @@ class WettingExtraStatePlugin:
     """Initialises and updates wetting extra state."""
 
     @staticmethod
-    def is_active(config: Any) -> bool:
+    def is_active(config: SimulationSetup) -> bool:
         return getattr(config, "wetting_config", None) is not None
 
     @staticmethod
-    def init_state(setup: Any) -> dict[str, Any]:
+    def init_state(setup: SimulationSetup) -> dict[str, Any]:
         wetting_cfg = setup.config.wetting_config
         if wetting_cfg is None:
             return {}
@@ -56,11 +70,16 @@ class WettingExtraStatePlugin:
                 cll_right=cll_right,
                 opt_state_left=None,
                 opt_state_right=None,
-            )
+            ),
         }
 
     @staticmethod
-    def update_state(setup: Any, prev_state: Any, new_state: Any, **context: Any) -> Any:
+    def update_state(
+        setup: SimulationSetup,
+        prev_state: State,
+        new_state: State,
+        **context: Unpack[WettingContext],
+    ) -> State:
         if prev_state.wetting is None or setup.wetting_fn is None:
             return new_state
 

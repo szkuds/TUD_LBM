@@ -1,10 +1,13 @@
 """Force magnitude plot operators."""
 
 from __future__ import annotations
-import matplotlib.axes
+from typing import TYPE_CHECKING
 import numpy as np
 from registry import plotting_operator
 from util.plotting.base import PlotOperator
+
+if TYPE_CHECKING:
+    import matplotlib.axes
 
 
 class _BaseForceOperator(PlotOperator):

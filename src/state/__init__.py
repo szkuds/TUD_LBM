@@ -11,11 +11,23 @@ Public API::
     from state import State, WettingState, build_optional_fields, build_extra_state
 """
 
+from __future__ import annotations
+from typing import TYPE_CHECKING
+from state._extra_state import ExtraStateContext
 from state._extra_state import _build_extra_state
 from state._extra_state import _update_extra_state
 from state._optional_fields import _build_optional_fields
 from state.state import State
 from state.state import WettingState
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
+    from setup import SimulationSetup
+
+try:
+    from typing import Unpack
+except ImportError:
+    from typing_extensions import Unpack
 
 __all__ = [
     "State",
@@ -26,7 +38,9 @@ __all__ = [
 ]
 
 
-def build_optional_fields(setup, nx: int, ny: int, d: int):
+def build_optional_fields(
+    setup: SimulationSetup, nx: int, ny: int, d: int
+) -> tuple[jnp.ndarray | None, jnp.ndarray | None]:
     """Build the optional ``force`` and ``force_ext`` fields.
 
     Returns zero-filled arrays for fields that will be written by the
@@ -55,7 +69,7 @@ def build_optional_fields(setup, nx: int, ny: int, d: int):
     return _build_optional_fields(setup, nx, ny, d)
 
 
-def build_extra_state(setup):
+def build_extra_state(setup: SimulationSetup) -> ExtraStateContext:
     """Collect extra State fields initialised by active extra-state plugins.
 
     Args:
@@ -71,6 +85,8 @@ def build_extra_state(setup):
     return _build_extra_state(setup)
 
 
-def update_extra_state(setup, prev_state, new_state, **context):
+def update_extra_state(
+    setup: SimulationSetup, prev_state: State, new_state: State, **context: Unpack[ExtraStateContext]
+) -> State:
     """Apply plugin-driven extra-state updates after one step."""
     return _update_extra_state(setup, prev_state, new_state, **context)

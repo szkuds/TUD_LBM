@@ -102,59 +102,10 @@ ignore = [
     "TD",     # TODOs
     "FIX001", # Resolve FIXMEs
     "FIX002", # Resolve TODOs
-    "B028",   # No explicit `stacklevel` keyword argument found in warning
-    # No docstrings required in the following cases
-    "D100", # Missing module docstring
-    "D104", # Missing public package docstring
-    "D105", # Missing docstring in magic method
-    "D107", # Missing docstring in `__init__`
+    "PLR0913",
+    "PLC0415",
+    "COM812"
 
-    # --- annotations (scientific/JAX code doesn't require full typing) ---
-    "ANN001", # Missing type annotation for function argument
-    "ANN002", # Missing type annotation for *args
-    "ANN003", # Missing type annotation for **kwargs
-    "ANN201", # Missing return type annotation for public function
-    "ANN202", # Missing return type annotation for private function
-    "ANN401", # Dynamically typed expressions (typing.Any) disallowed
-
-    # --- docstring style (noisy for physics code) ---
-    "D101", # Missing docstring in public class
-    "D102", # Missing docstring in public method
-    "D103", # Missing docstring in public function
-    "D200", # No blank lines allowed after function docstring
-    "D205", # 1 blank line required between summary line and description
-    "D301", # Use r""" if any backslashes in a docstring
-    "D415", # First line should end with a period
-    "D417", # Missing argument description in the docstring
-
-    # --- exception message style (verbose for scientific code) ---
-    "TRY003", # Avoid specifying long messages outside the exception class
-    "EM101",  # Exception must not use a string literal
-    "EM102",  # Exception must not use an f-string literal
-
-    # --- TYPE_CHECKING imports (JAX type annotations cause circular imports) ---
-    "TC001", # Move application import into a type-checking block
-    "TC002", # Move third-party import into a type-checking block
-    "TC003", # Move standard library import into a type-checking block
-
-    # --- scientific/numeric code patterns ---
-    "PLR2004", # Magic value used in comparison (physics constants are intentional)
-    "PLR0913", # Too many arguments in function definition (LBM operators need many params)
-    "RUF002",  # Ambiguous unicode in docstring (Greek letters intentional in physics docs)
-    "RUF003",  # Ambiguous unicode in comment
-
-    # --- exception handling patterns ---
-    "BLE001", # Do not catch blind exception
-    "S110",   # try-except-pass detected
-
-    # --- print statements (needed in examples and CLI output) ---
-    "T201",   # `print` found
-
-    # --- import location (lazy imports needed for optional JAX deps) ---
-    "PLC0415", # `import` should be at the top-level of a file
-    "COM812",
-    "ARG",
-    "C901"
 ]
 pydocstyle.convention = "google"
 
@@ -170,7 +121,27 @@ extend-immutable-calls = ["array_field"]
     "S101",   # Use of assert is detected
     "SLF001", # Private member access
     "INP001", # File is part of an implicit namespace package
-    "S108" # Probable insecure usage of temporary file or directory
+    "S108", # Probable insecure usage of temporary file or directory
+    "ANN001", # Missing type annotation for function argument
+    "D103", # Missing docstring in public function
+    "PLC0415",
+    "ARG001",
+    "PLR2004",
+    "D102",
+    "ARG004",
+    "ARG003",
+    "ANN202",
+    "ANN002",
+    "ANN003",
+    "ARG005",
+    "ARG002",
+    "RUF002",
+    "RUF003",
+    "D100",
+    "D102",
+    "D104",
+    "D205",
+    "PLR0913",
 ]
 # Examples are standalone scripts, not part of the package
 "examples/**.py" = [
@@ -182,6 +153,14 @@ extend-immutable-calls = ["array_field"]
     "RUF009",  # array_field / config_field are dataclasses.field() wrappers, not mutable defaults
 ]
 "src/util/plotting/__init__.py" = ["I001"]
+"src/util/plotting/base.py" = ["ARG002"]
+"src/setup/simulation_setup.py" = ["PLC0415", "RUF002"]
+"src/setup/__init__.py" = ["PLC0415"]
+"src/runner/parallel_runner.py" = ["PLC0415", "ARG001", "LOG015", "G004"]
+"src/operators/protocols.py" = ["ANN401", "RUF002"]
+"src/operators/macroscopic/_multiphase.py" = ["RUF002", "RUF003"]
+"src/operators/collision/_bgk.py" = ["RUF002"]
+"src/util/io.py" = ["ANN002"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tud_lbm"]

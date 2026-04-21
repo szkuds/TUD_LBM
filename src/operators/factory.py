@@ -37,10 +37,12 @@ def build_operator(kind: str, scheme: str) -> OperatorTarget:
     ops = get_operators(kind)
 
     if not ops:
-        raise ValueError(f"No operators registered for kind '{kind}'")
+        msg = f"No operators registered for kind '{kind}'"
+        raise ValueError(msg)
 
     try:
         return ops[scheme].target
     except KeyError as exc:
         valid_schemes = ", ".join(sorted(ops.keys()))
-        raise ValueError(f"Unknown {kind} scheme '{scheme}'. Valid schemes: {valid_schemes}") from exc
+        msg = f"Unknown {kind} scheme '{scheme}'. Valid schemes: {valid_schemes}"
+        raise ValueError(msg) from exc

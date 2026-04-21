@@ -15,6 +15,9 @@ from typing import Any
 import jax.numpy as jnp
 from registry import get_operators
 
+# Number of edges for 2D stencil padding
+NUM_PAD_EDGES = 4
+
 
 def _apply_stencil_padding(
     grid_2d: jnp.ndarray,
@@ -37,7 +40,7 @@ def _apply_stencil_padding(
 
 def to_2d(grid: jnp.ndarray) -> jnp.ndarray:
     """Squeeze ``(nx, ny, 1, 1)`` → ``(nx, ny)``; no-op if already 2-D."""
-    return grid[:, :, 0, 0] if grid.ndim == 4 else grid
+    return grid[:, :, 0, 0] if grid.ndim == NUM_PAD_EDGES else grid
 
 
 def determine_pad_modes(bc_config: dict[str, Any] | None) -> list[str]:

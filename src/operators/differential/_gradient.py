@@ -1,4 +1,4 @@
-"""LBM-stencil gradient operator — pure function.
+r"""LBM-stencil gradient operator — pure function.
 
 Registered as ``("differential", "gradient")`` via ``@register_operator``.
 Auto-discovered by ``auto_load_operators('operators.differential')``.
@@ -73,7 +73,7 @@ def grad_core(
     Returns:
         Gradient field, shape ``(nx, ny, 1, 2)``.
     """
-    # Neighbour slices (D2Q9 directions 1–8; direction 0 cancels out)
+    # Neighbour slices (D2Q9 directions 1-8; direction 0 cancels out)
     ip1_j0 = padded[2:, 1:-1]  # (i+1, j)
     im1_j0 = padded[:-2, 1:-1]  # (i-1, j)
     i0_jp1 = padded[1:-1, 2:]  # (i, j+1)

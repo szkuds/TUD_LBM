@@ -12,10 +12,13 @@ compile-time constants derived from the :class:`Lattice`.
 """
 
 from __future__ import annotations
-import jax.numpy as jnp
+from typing import TYPE_CHECKING
 import numpy as np
 from registry import boundary_condition
-from setup.lattice import Lattice
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
+    from setup.lattice import Lattice
 
 
 @boundary_condition(name="bounce-back", pad_edge_mode="edge")
@@ -61,6 +64,7 @@ def apply_bounce_back(
         for i in incoming:
             f_streamed = f_streamed.at[-1, :, i, 0].set(f_collision[-1, :, opp[i], 0])
     else:
-        raise ValueError(f"Unknown edge '{edge}'")
+        msg = f"Unknown edge '{edge}'"
+        raise ValueError(msg)
 
     return f_streamed

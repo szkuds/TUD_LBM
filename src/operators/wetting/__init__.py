@@ -25,7 +25,7 @@ from operators.wetting.hysteresis import update_wetting_state as _hysteresis_upd
 auto_load_operators("operators.wetting")
 
 
-def build_wetting_fn(scheme: str = "contact_angle"):
+def build_wetting_fn(scheme: str = "contact_angle"):  # noqa: ANN201
     """Return a wetting operator looked up from the registry.
 
     Args:

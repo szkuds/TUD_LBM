@@ -4,9 +4,12 @@ from __future__ import annotations
 from abc import ABC
 from abc import abstractmethod
 from pathlib import Path
-import matplotlib.axes
-import numpy as np
-from config import SimulationConfig
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import matplotlib.axes
+    import numpy as np
+    from config import SimulationConfig
 
 
 class PlotOperator(ABC):
@@ -15,6 +18,12 @@ class PlotOperator(ABC):
     name: str
 
     def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:
+        """Initialize the plot operator with config and optional data directory.
+
+        Args:
+            config: Simulation configuration object.
+            data_dir: Optional path to data directory for loading snapshots.
+        """
         self.config = config
         self.data_dir = Path(data_dir) if data_dir is not None else None
 

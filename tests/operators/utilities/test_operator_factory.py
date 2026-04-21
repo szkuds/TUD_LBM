@@ -246,7 +246,7 @@ class TestBackwardCompatibility:
     """
 
     def test_collision_init_import_recommended(self):
-        """Recommended import: from operators.collision import build_collision_fn"""
+        """Recommended import: from operators.collision import build_collision_fn."""
         from operators.collision import build_collision_fn
 
         op = build_collision_fn("bgk")
@@ -350,7 +350,7 @@ class TestFactoryPattern:
 
         # Register a test operator
         @register_operator("_test_operator_kind", name="_test_scheme")
-        def test_op():
+        def test_op() -> str:
             return "test"
 
         # Generic factory finds it

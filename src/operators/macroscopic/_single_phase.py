@@ -5,9 +5,12 @@ Computes density (zeroth moment) and velocity (first moment / density).
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from registry import macroscopic_operator
-from setup.lattice import Lattice
+
+if TYPE_CHECKING:
+    from setup.lattice import Lattice
 
 
 @macroscopic_operator(name="standard")

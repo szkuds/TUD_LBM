@@ -1,6 +1,7 @@
 """Extra-state plugins for force modules."""
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from typing import Any
 import jax.numpy as jnp
 from operators.force._electric import ElectricParams
@@ -8,8 +9,13 @@ from operators.force._electric import _equilibrium_h
 from operators.force._electric import _rho_to_phi
 from registry import extra_state_plugin
 
+if TYPE_CHECKING:
+    from config import SimulationConfig
+    from setup import SimulationSetup
+    from state import State
 
-def _get_electric_params(setup: Any) -> ElectricParams | None:
+
+def _get_electric_params(setup: SimulationSetup) -> ElectricParams | None:
     if setup.forces is None:
         return None
     for spec in setup.forces.specs:
@@ -23,11 +29,11 @@ class ElectricExtraStatePlugin:
     """Initialises and updates electric potential distributions."""
 
     @staticmethod
-    def is_active(config: Any) -> bool:
+    def is_active(config: SimulationConfig) -> bool:
         return getattr(config, "electric_force", None) is not None
 
     @staticmethod
-    def init_state(setup: Any) -> dict[str, Any]:
+    def init_state(setup: SimulationSetup) -> dict[str, Any]:
         params = _get_electric_params(setup)
         if params is None:
             return {}
@@ -38,7 +44,7 @@ class ElectricExtraStatePlugin:
         return {"h": _equilibrium_h(potential, setup.lattice.w)}
 
     @staticmethod
-    def update_state(setup: Any, prev_state: Any, new_state: Any, **context: Any) -> Any:
+    def update_state(setup: SimulationSetup, prev_state: State, new_state: State) -> State:
         params = _get_electric_params(setup)
         if params is None or prev_state.h is None:
             return new_state

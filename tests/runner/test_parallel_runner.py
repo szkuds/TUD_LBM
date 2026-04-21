@@ -518,7 +518,7 @@ class TestRunParallelSimulations:
 
         progress_calls = []
 
-        def mock_progress(completed, total):
+        def mock_progress(completed, total) -> None:
             progress_calls.append((completed, total))
 
         def mock_run_single_sim(index, config, **kwargs):
@@ -918,7 +918,7 @@ class TestSaveSweepLog:
                     config=simple_config,
                     status="success",
                     output_dir="/output_0",
-                )
+                ),
             ]
             save_sweep_log(results, output_dir)
             assert output_dir.exists()
@@ -997,7 +997,7 @@ class TestSaveSweepLog:
                     index=0,
                     config=simple_config,
                     status="success",
-                )
+                ),
             ]
             save_sweep_log(results, tmpdir)
 
@@ -1020,7 +1020,7 @@ class TestSaveSweepLog:
                     index=0,
                     config=simple_config,
                     status="success",
-                )
+                ),
             ]
             save_sweep_log(results, tmpdir)
 
@@ -1044,7 +1044,7 @@ class TestSaveSweepLog:
                     index=0,
                     config=simple_config,
                     status="success",
-                )
+                ),
             ]
             save_sweep_log(results, tmpdir)
 

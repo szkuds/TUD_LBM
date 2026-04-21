@@ -26,27 +26,31 @@ Usage::
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from typing import NamedTuple
 from typing import cast
-import jax.numpy as jnp
-from config.simulation_config import SimulationConfig
-from operators.boundary import BCMasks
 from operators.differential import build_diff_ops
 from operators.force import ForceSetup
 from operators.force import build_forces
-from operators.macroscopic import MultiphaseParams
-from operators.protocols import BoundaryOperator
-from operators.protocols import CollisionOperator
-from operators.protocols import DifferentialOperator
-from operators.protocols import EquilibriumOperator
-from operators.protocols import ExtraStatePlugin
-from operators.protocols import HysteresisOperator
-from operators.protocols import InitialPopulationOperator
-from operators.protocols import MacroscopicOperator
-from operators.protocols import StepOperator
-from operators.protocols import StreamingOperator
 from setup.lattice import Lattice
 from setup.lattice import build_lattice
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
+    from config.simulation_config import SimulationConfig
+    from operators.boundary import BCMasks
+    from operators.macroscopic import MultiphaseParams
+    from operators.protocols import BoundaryOperator
+    from operators.protocols import CollisionOperator
+    from operators.protocols import DifferentialOperator
+    from operators.protocols import EquilibriumOperator
+    from operators.protocols import ExtraStatePlugin
+    from operators.protocols import HysteresisOperator
+    from operators.protocols import InitialPopulationOperator
+    from operators.protocols import MacroscopicOperator
+    from operators.protocols import StepOperator
+    from operators.protocols import StreamingOperator
+    from state import WettingState
 
 
 class SimulationSetup(NamedTuple):
@@ -148,10 +152,13 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     """
     # ── Validation: wetting config requires multiphase sim_type ──
     if config.wetting_config is not None and config.sim_type != "multiphase":
-        raise ValueError(
+        msg = (
             f"Wetting configuration present but sim_type is '{config.sim_type}'. "
             "Wetting requires sim_type = 'multiphase'. "
             "Wetting is an addon to multiphase simulations, detected by the presence of [wetting] config."
+        )
+        raise ValueError(
+            msg,
         )
 
     # Import here to avoid circular import issues at module level
@@ -248,9 +255,9 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
             f_t: jnp.ndarray,
             *,
             force_ext: jnp.ndarray | None = None,
-            wetting=None,
-            gradient_density=None,
-            laplacian_density=None,
+            wetting: WettingState = None,
+            gradient_density: DifferentialOperator = None,
+            laplacian_density: DifferentialOperator = None,
         ) -> jnp.ndarray:
             return multiphase_step(
                 setup,

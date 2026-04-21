@@ -112,6 +112,7 @@ def build_lattice(name: str) -> Lattice:
     lattices = get_operators("lattice")
     if key not in lattices:
         supported = ", ".join(sorted(lattices))
-        raise ValueError(f"Unsupported lattice type '{name}'. Supported: {supported}")
+        msg = f"Unsupported lattice type '{name}'. Supported: {supported}"
+        raise ValueError(msg)
     target = lattices[key].target
     return target()

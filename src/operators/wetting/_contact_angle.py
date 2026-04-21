@@ -2,7 +2,7 @@
 
 Ported from :class:`simulation_operators.wetting.ContactAngle`.
 Computes left and right contact angles from the density field using
-linear interpolation at the liquid–vapour interface.
+linear interpolation at the liquid-vapour interface.
 
 All operations are JAX-compatible and jittable.
 """
@@ -20,7 +20,7 @@ def compute_contact_angle(
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Compute contact angles (left and right) from a density field.
 
-    The algorithm finds the liquid–vapour transition at the bottom two
+    The algorithm finds the liquid-vapour transition at the bottom two
     rows (``j=1`` and ``j=2``), interpolates the interface x-position,
     and derives the contact angle from the slope.
 

@@ -1,3 +1,5 @@
+"""Base class for output data writers."""
+
 from abc import ABC
 from abc import abstractmethod
 from typing import ClassVar
@@ -5,10 +7,17 @@ import numpy as np
 
 
 class OutputWriter(ABC):
+    """Abstract base class for output writer implementations."""
+
     registry: ClassVar[dict[str, type["OutputWriter"]]] = {}
     data_dir: str
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs: dict) -> None:
+        """Register OutputWriter subclasses in the registry.
+
+        Args:
+            **kwargs: Keyword arguments passed to parent class.
+        """
         super().__init_subclass__(**kwargs)
 
         # Skip base class itself
@@ -17,7 +26,8 @@ class OutputWriter(ABC):
         key = cls.__name__.lower()
         # Prevent duplicate names
         if key in OutputWriter.registry:
-            raise ValueError(f"Output writer '{key}' already registered.")
+            msg = f"Output writer '{key}' already registered."
+            raise ValueError(msg)
 
         OutputWriter.registry[key] = cls
 

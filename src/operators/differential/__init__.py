@@ -11,16 +11,16 @@ Example:
 """
 
 from __future__ import annotations
-from collections.abc import Callable
 from typing import TYPE_CHECKING
-import jax.numpy as jnp
 from operators._loader import auto_load_operators
 from operators.factory import build_operator
-from operators.protocols import DifferentialOperator
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    import jax.numpy as jnp
     from config.simulation_config import SimulationConfig
     from operators.macroscopic import MultiphaseParams
+    from operators.protocols import DifferentialOperator
     from setup.lattice import Lattice
 
 # Auto-discover and import private operator modules for registry registration.

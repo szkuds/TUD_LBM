@@ -8,10 +8,79 @@ mirrored distributions from the post-collision state.
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import numpy as np
 from registry import boundary_condition
-from setup.lattice import Lattice
+
+if TYPE_CHECKING:
+    from setup.lattice import Lattice
+
+# Diagonal component indices for streaming roll correction
+DIAGONAL_1_IDX = 1
+DIAGONAL_2_IDX = 2
+
+
+def _apply_bottom_symmetry(
+    f_streamed: jnp.ndarray,
+    f_collision: jnp.ndarray,
+    top_indices: list[int],
+    bot_indices: list[int],
+) -> jnp.ndarray:
+    """Apply mirror-symmetry at bottom edge (y=0)."""
+    for k in range(len(top_indices)):
+        dst = top_indices[k]
+        src = bot_indices[k]
+        f_streamed = f_streamed.at[:, 0, dst, 0].set(f_collision[:, 0, src, 0])
+    return f_streamed
+
+
+def _apply_top_symmetry(
+    f_streamed: jnp.ndarray,
+    f_collision: jnp.ndarray,
+    top_indices: list[int],
+    bot_indices: list[int],
+) -> jnp.ndarray:
+    """Apply mirror-symmetry at top edge (y=ny-1) with diagonal roll correction."""
+    for k in range(len(bot_indices)):
+        dst = bot_indices[k]
+        src = top_indices[k]
+        src_vals = f_collision[:, -1, src, 0]
+        # Diagonal components need a roll correction for streaming shift
+        if k == DIAGONAL_1_IDX:
+            src_vals = jnp.roll(src_vals, 1, axis=0)
+        elif k == DIAGONAL_2_IDX:
+            src_vals = jnp.roll(src_vals, -1, axis=0)
+        f_streamed = f_streamed.at[:, -1, dst, 0].set(src_vals)
+    return f_streamed
+
+
+def _apply_left_symmetry(
+    f_streamed: jnp.ndarray,
+    f_collision: jnp.ndarray,
+    right_indices: list[int],
+    left_indices: list[int],
+) -> jnp.ndarray:
+    """Apply mirror-symmetry at left edge (x=0)."""
+    for k in range(len(right_indices)):
+        dst = right_indices[k]
+        src = left_indices[k]
+        f_streamed = f_streamed.at[0, :, dst, 0].set(f_collision[0, :, src, 0])
+    return f_streamed
+
+
+def _apply_right_symmetry(
+    f_streamed: jnp.ndarray,
+    f_collision: jnp.ndarray,
+    right_indices: list[int],
+    left_indices: list[int],
+) -> jnp.ndarray:
+    """Apply mirror-symmetry at right edge (x=nx-1)."""
+    for k in range(len(left_indices)):
+        dst = left_indices[k]
+        src = right_indices[k]
+        f_streamed = f_streamed.at[-1, :, dst, 0].set(f_collision[-1, :, src, 0])
+    return f_streamed
 
 
 @boundary_condition(name="symmetry", pad_edge_mode="edge")
@@ -39,37 +108,12 @@ def apply_symmetry(
     left = [int(x) for x in np.array(lattice.left_indices)]
 
     if edge == "bottom":
-        # Mirror vertical component at y = 0
-        for k in range(len(top)):
-            dst = top[k]
-            src = bot[k]
-            f_streamed = f_streamed.at[:, 0, dst, 0].set(f_collision[:, 0, src, 0])
-    elif edge == "top":
-        # Mirror vertical component at y = ny-1
-        for k in range(len(bot)):
-            dst = bot[k]
-            src = top[k]
-            src_vals = f_collision[:, -1, src, 0]
-            # Diagonal components need a roll correction for
-            # the streaming shift — match the legacy behaviour.
-            if k == 1:
-                src_vals = jnp.roll(src_vals, 1, axis=0)
-            elif k == 2:
-                src_vals = jnp.roll(src_vals, -1, axis=0)
-            f_streamed = f_streamed.at[:, -1, dst, 0].set(src_vals)
-    elif edge == "left":
-        # Mirror horizontal component at x = 0
-        for k in range(len(right)):
-            dst = right[k]
-            src = left[k]
-            f_streamed = f_streamed.at[0, :, dst, 0].set(f_collision[0, :, src, 0])
-    elif edge == "right":
-        # Mirror horizontal component at x = nx-1
-        for k in range(len(left)):
-            dst = left[k]
-            src = right[k]
-            f_streamed = f_streamed.at[-1, :, dst, 0].set(f_collision[-1, :, src, 0])
-    else:
-        raise ValueError(f"Unknown edge '{edge}'")
-
-    return f_streamed
+        return _apply_bottom_symmetry(f_streamed, f_collision, top, bot)
+    if edge == "top":
+        return _apply_top_symmetry(f_streamed, f_collision, top, bot)
+    if edge == "left":
+        return _apply_left_symmetry(f_streamed, f_collision, right, left)
+    if edge == "right":
+        return _apply_right_symmetry(f_streamed, f_collision, right, left)
+    msg = f"Unknown edge '{edge}'"
+    raise ValueError(msg)

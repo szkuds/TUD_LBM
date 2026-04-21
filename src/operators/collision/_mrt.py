@@ -1,4 +1,4 @@
-"""MRT (Multiple Relaxation Time) collision operator — pure function.
+r"""MRT (Multiple Relaxation Time) collision operator — pure function.
 
 Extracted from :class:`simulation_operators.collision_models.CollisionMRT`.
 Uses the D2Q9 moment transformation matrix *M* and its inverse *M_INV*.

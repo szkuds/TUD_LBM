@@ -4,10 +4,16 @@ Defines N circular inclusions from config-provided fractional centres and radii.
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from operators.equilibrium._equilibrium import compute_equilibrium
 from registry import initialise_operator
-from setup.lattice import Lattice
+
+if TYPE_CHECKING:
+    from setup.lattice import Lattice
+
+# Number of coordinates per centre (x, y)
+CENTRE_COORDS = 2
 
 
 @initialise_operator(
@@ -23,10 +29,10 @@ def init_multiphase_bubbles(
     rho_l: float = 1.0,
     rho_v: float = 0.33,
     interface_width: int = 4,
-    centres,
-    radii,
+    centres: list,
+    radii: list,
     dispersed: str = "vapour",
-    **kwargs,
+    **_kwargs: object,
 ) -> jnp.ndarray:
     """Initialise multiple diffuse-interface bubbles/droplets.
 
@@ -41,19 +47,23 @@ def init_multiphase_bubbles(
         radii: Sequence of radius fractions of ``min(nx, ny)``.
         dispersed: ``"vapour"`` for low-density inclusions in liquid,
             or ``"liquid"`` for high-density inclusions in vapour.
+        **kwargs: Additional arguments (ignored).
 
     Returns:
         Initial distribution ``f``, shape ``(nx, ny, q, 1)``.
     """
     if dispersed not in {"vapour", "liquid"}:
-        raise ValueError("'dispersed' must be 'vapour' or 'liquid'.")
+        msg = "'dispersed' must be 'vapour' or 'liquid'."
+        raise ValueError(msg)
 
     centres_list = list(centres)
     radii_list = list(radii)
     if not centres_list or not radii_list:
-        raise ValueError("'centres' and 'radii' must be non-empty.")
+        msg = "'centres' and 'radii' must be non-empty."
+        raise ValueError(msg)
     if len(centres_list) != len(radii_list):
-        raise ValueError("'centres' and 'radii' must have the same length.")
+        msg = "'centres' and 'radii' must have the same length."
+        raise ValueError(msg)
 
     x, y = jnp.meshgrid(jnp.arange(nx), jnp.arange(ny), indexing="ij")
     avg = (rho_l + rho_v) / 2.0
@@ -70,11 +80,13 @@ def init_multiphase_bubbles(
 
     min_dim = float(min(nx, ny))
     for centre, radius_fraction in zip(centres_list, radii_list, strict=False):
-        if len(centre) != 2:
-            raise ValueError("Each centre must have exactly two coordinates: [fx, fy].")
+        if len(centre) != CENTRE_COORDS:
+            msg = "Each centre must have exactly two coordinates: [fx, fy]."
+            raise ValueError(msg)
         fx, fy = float(centre[0]), float(centre[1])
         if not (0.0 <= fx <= 1.0 and 0.0 <= fy <= 1.0):
-            raise ValueError("Centre fractions must be in [0, 1].")
+            msg = "Centre fractions must be in [0, 1]."
+            raise ValueError(msg)
 
         radius = float(radius_fraction) * min_dim
         cx, cy = fx * nx, fy * ny

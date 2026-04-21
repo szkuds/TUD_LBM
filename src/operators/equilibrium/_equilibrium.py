@@ -1,4 +1,4 @@
-"""Equilibrium distribution computation — pure function.
+r"""Equilibrium distribution computation — pure function.
 
 Extracted from :class:`simulation_operators.equilibrium.EquilibriumWB`.
 Implements the well-balanced equilibrium used throughout TUD-LBM:
@@ -14,14 +14,17 @@ Implements the well-balanced equilibrium used throughout TUD-LBM:
 with :math:`c_s^2 = 1/3`.
 
 The *rest direction* (``i = 0``) is computed via mass conservation:
-``feq_0 = rho − Σ_{i>0} feq_i``, which matches the legacy
+``feq_0 = rho - Σ_{i>0} feq_i``, which matches the legacy
 ``EquilibriumWB`` class exactly.
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from registry import equilibrium_operator
-from setup.lattice import Lattice
+
+if TYPE_CHECKING:
+    from setup.lattice import Lattice
 
 
 @equilibrium_operator(name="wb")

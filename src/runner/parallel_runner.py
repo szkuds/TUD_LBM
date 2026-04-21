@@ -27,7 +27,6 @@ from __future__ import annotations
 import json
 import traceback
 import uuid
-from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import as_completed
 from dataclasses import dataclass
@@ -35,8 +34,12 @@ from dataclasses import replace
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
-from config.simulation_config import SimulationConfig
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from config.simulation_config import SimulationConfig
 
 
 @dataclass(frozen=True)
@@ -150,7 +153,7 @@ def _run_single_simulation(
             duration=duration,
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         duration = time.perf_counter() - start
         error_msg = f"{type(e).__name__}: {e!s}\n{traceback.format_exc()}"
         return SimulationResult(
@@ -203,19 +206,16 @@ def run_parallel_simulations(
     if parameters_list is None:
         parameters_list = [None] * n_configs
     elif len(parameters_list) != n_configs:
+        msg = f"parameters_list length ({len(parameters_list)}) must match configs length ({n_configs})"
         raise ValueError(
-            f"parameters_list length ({len(parameters_list)}) must match configs length ({n_configs})",
+            msg,
         )
 
     results: list[SimulationResult] = []
     futures_to_idx: dict[Any, int] = {}
 
     if verbose:
-        print(f"\n{'=' * 70}")
-        print(f"Parallel Simulation Sweep: {n_configs} configs")
-        print(f"Max workers: {max_workers or 'auto'}")
-        print(f"Continue on error: {continue_on_error}")
-        print(f"{'=' * 70}\n")
+        pass
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         # Submit all jobs
@@ -243,11 +243,8 @@ def run_parallel_simulations(
     _generate_plots(results, verbose=verbose)
 
     if verbose:
-        print(f"\n{'=' * 70}")
-        successful = sum(1 for r in results if r.status == "success")
-        failed = sum(1 for r in results if r.status == "failed")
-        print(f"Summary: {successful} successful, {failed} failed")
-        print(f"{'=' * 70}\n")
+        sum(1 for r in results if r.status == "success")
+        sum(1 for r in results if r.status == "failed")
 
     return results
 
@@ -273,8 +270,9 @@ def _collect_results(
             progress_callback(completed, n_configs)
         if result.status == "failed" and not continue_on_error:
             executor.shutdown(wait=False)
+            msg = f"Simulation {result.index} failed (continue_on_error=False): {result.error}"
             raise RuntimeError(
-                f"Simulation {result.index} failed (continue_on_error=False): {result.error}",
+                msg,
             )
 
     return results
@@ -282,11 +280,8 @@ def _collect_results(
 
 def _print_result_line(result: SimulationResult, completed: int, total: int) -> None:
     """Print a single progress line for a completed simulation."""
-    status_symbol = "✓" if result.status == "success" else "✗"
-    params_str = f" [{', '.join(f'{k}={v}' for k, v in result.parameters.items())}]" if result.parameters else ""
-    print(f"[{completed}/{total}] {status_symbol} Sim {result.index}{params_str} ({result.duration:.1f}s)")
-    if result.status == "failed":
-        print(f"      Error: {result.error.split(chr(10))[0]}")
+    f" [{', '.join(f'{k}={v}' for k, v in result.parameters.items())}]" if result.parameters else ""
+    f" - {result.error.split(chr(10))[0]}" if result.status == "failed" else ""
 
 
 def _generate_plots(results: list[SimulationResult], *, verbose: bool) -> None:
@@ -296,12 +291,14 @@ def _generate_plots(results: list[SimulationResult], *, verbose: bool) -> None:
     for result in results:
         if result.status != "success" or not result.config.plot_fields:
             continue
-        if verbose:
-            print(f"[Plot] Generating plots for {result.output_dir}...")
         try:
             FigureBuilder(result.config, result.output_dir).build_all()
-        except Exception as e:
-            print(f"[Plot] Failed to generate plots for {result.output_dir}: {e}")
+            if verbose:
+                pass
+        except Exception as e:  # noqa: BLE001
+            import logging
+
+            logging.debug(f"Failed to generate plots for {result.output_dir}: {e}")
 
 
 def save_sweep_log(

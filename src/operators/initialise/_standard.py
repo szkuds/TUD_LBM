@@ -5,10 +5,13 @@ population distributions at equilibrium.
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from operators.equilibrium import build_equilibrium_fn
 from registry import initialise_operator
-from setup.lattice import Lattice
+
+if TYPE_CHECKING:
+    from setup.lattice import Lattice
 
 
 @initialise_operator(name="standard")
@@ -19,7 +22,7 @@ def init_standard(
     *,
     density: float = 1.0,
     velocity: tuple[float, float] = (0.0, 0.0),
-    **kwargs,
+    **_kwargs: object,
 ) -> jnp.ndarray:
     """Initialise uniform density and velocity at equilibrium.
 
@@ -29,6 +32,7 @@ def init_standard(
         lattice: :class:`~setup.lattice.Lattice`.
         density: Uniform density value.
         velocity: Uniform velocity ``(ux, uy)``.
+        **kwargs: Additional arguments (ignored).
 
     Returns:
         Initial distribution ``f``, shape ``(nx, ny, q, 1)``.

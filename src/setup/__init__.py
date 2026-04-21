@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from setup.simulation_setup import SimulationSetup
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> object:
     """Lazy import to avoid circular dependencies."""
     if name == "SimulationSetup":
         from setup.simulation_setup import SimulationSetup
@@ -46,7 +46,8 @@ def __getattr__(name: str):
         from operators.macroscopic import build_multiphase_params
 
         return build_multiphase_params
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
 
 
 __all__ = [

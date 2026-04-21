@@ -26,23 +26,31 @@ from config.dir_config import BASE_RESULTS_DIR
 CONFIG_SECTION: str = "config_section"
 ARRAY_ELIGIBLE: str = "array_eligible"
 NESTED_SWEEPABLE: str = "nested_sweepable"
+MIN_GRID_DIMENSIONS: int = 2
+MIN_TAU_VALUE: float = 0.5
 
 
 def array_field(
     *,
-    default=dataclasses.MISSING,
-    default_factory=dataclasses.MISSING,
+    default: object = dataclasses.MISSING,
+    default_factory: object = dataclasses.MISSING,
     section: str | None = None,
     nested_sweepable: bool = False,
-    **kwargs,
-):
+    **kwargs: object,
+) -> field:
     """Field factory for array-eligible SimulationConfig fields.
 
     Args:
+        default: Default value for the field.
+        default_factory: Default factory function for the field.
         section: Config section name for serialisation routing.
         nested_sweepable: If ``True``, sub-keys inside this dict field
             will also be inspected for list values during Cartesian-product
             expansion (e.g. ``gravity_force``, ``wetting_config``).
+        **kwargs: Additional keyword arguments passed to the field factory.
+
+    Returns:
+        A dataclass field with array-eligible metadata.
     """
     metadata = dict(kwargs.pop("metadata", {}))
     metadata[ARRAY_ELIGIBLE] = True
@@ -53,24 +61,30 @@ def array_field(
     return field(default=default, default_factory=default_factory, metadata=metadata, **kwargs)
 
 
-def _normalize_sequence(value):
-    return tuple(value) if not isinstance(value, tuple) else value
+def _normalize_sequence(value: object) -> tuple[Any, ...]:
+    """Ensure value is a tuple."""
+    return tuple(value) if not isinstance(value, tuple) else value  # type: ignore[arg-type]
 
 
-def _first_if_list(value):
+def _first_if_list(value: object) -> object:
+    """Return first element if value is a list, otherwise return value."""
     if isinstance(value, list):
         return value[0] if value else value
     return value
 
 
-def _validate_positive(value, name: str) -> None:
-    if value is not None and value <= 0:
-        raise ValueError(f"{name} must be positive, got {value}")
+def _validate_positive(value: object, name: str) -> None:
+    """Validate that value is positive."""
+    if value is not None and value <= 0:  # type: ignore[operator]
+        msg = f"{name} must be positive, got {value}"
+        raise ValueError(msg)
 
 
-def _validate_nonnegative(value, name: str) -> None:
-    if value is not None and value < 0:
-        raise ValueError(f"{name} must be non-negative, got {value}")
+def _validate_nonnegative(value: object, name: str) -> None:
+    """Validate that value is non-negative."""
+    if value is not None and value < 0:  # type: ignore[operator]
+        msg = f"{name} must be non-negative, got {value}"
+        raise ValueError(msg)
 
 
 def _valid_collision_schemes() -> set[str]:
@@ -96,6 +110,14 @@ def _valid_lattices() -> set[str]:
 
 @dataclass(frozen=True)
 class SimulationConfig:
+    """Validated, serialisable simulation configuration for TUD-LBM.
+
+    This frozen dataclass is used for parsing, validation, and serialisation.
+    It never enters a JIT boundary and serves as the configuration container
+    for all simulation parameters including grid, collision, boundary conditions,
+    and output settings.
+    """
+
     # ── Simulation identity ──────────────────────────────────────
     sim_type: Literal["single_phase", "multiphase"] = field(
         default="single_phase",
@@ -161,6 +183,7 @@ class SimulationConfig:
     # Validation
 
     def __post_init__(self) -> None:
+        """Validate and normalize configuration after initialization."""
         self._normalize()
         self._apply_defaults()
         self._validate_common()
@@ -189,73 +212,110 @@ class SimulationConfig:
             )
 
     def _validate_common(self) -> None:
-        if len(self.grid_shape) < 2:
-            raise ValueError(f"grid_shape must have at least 2 dimensions, got {len(self.grid_shape)}")
-        if any(d <= 0 for d in self.grid_shape):
-            raise ValueError(f"All grid dimensions must be positive, got {self.grid_shape}")
+        """Validate common simulation configuration parameters."""
+        self._validate_grid_shape()
+        self._validate_lattice()
+        self._validate_tau()
+        self._validate_time_steps()
+        self._validate_collision()
+        self._validate_init()
+        self._validate_save_fields()
 
+    def _validate_grid_shape(self) -> None:
+        """Validate grid_shape dimensions."""
+        if len(self.grid_shape) < MIN_GRID_DIMENSIONS:
+            msg = f"grid_shape must have at least {MIN_GRID_DIMENSIONS} dimensions, got {len(self.grid_shape)}"
+            raise ValueError(msg)
+        if any(d <= 0 for d in self.grid_shape):
+            msg = f"All grid dimensions must be positive, got {self.grid_shape}"
+            raise ValueError(msg)
+
+    def _validate_lattice(self) -> None:
+        """Validate lattice_type is supported."""
         if self.lattice_type not in _valid_lattices():
             valid = _valid_lattices()
-            raise ValueError(f"lattice_type must be one of {valid}, got '{self.lattice_type}'")
+            msg = f"lattice_type must be one of {valid}, got '{self.lattice_type}'"
+            raise ValueError(msg)
 
-        if self.tau <= 0.5:
-            raise ValueError(f"tau must be > 0.5 for stability, got {self.tau}")
+    def _validate_tau(self) -> None:
+        """Validate tau for stability."""
+        if self.tau <= MIN_TAU_VALUE:
+            msg = f"tau must be > {MIN_TAU_VALUE} for stability, got {self.tau}"
+            raise ValueError(msg)
 
+    def _validate_time_steps(self) -> None:
+        """Validate time stepping parameters."""
         if self.nt <= 0:
-            raise ValueError(f"nt must be positive, got {self.nt}")
-
-        valid_schemes = _valid_collision_schemes()
-        if self.collision_scheme not in valid_schemes:
-            raise ValueError(f"collision_scheme must be one of {sorted(valid_schemes)}, got '{self.collision_scheme}'")
-
-        if self.collision_scheme == "mrt" and self.k_diag is None:
-            raise ValueError("k_diag must be provided when using MRT collision scheme")
-
+            msg = f"nt must be positive, got {self.nt}"
+            raise ValueError(msg)
         _validate_nonnegative(self.save_interval, "save_interval")
         _validate_nonnegative(self.skip_interval, "skip_interval")
 
-        if self.init_type == "init_from_file" and self.init_dir is None:
-            raise ValueError("init_dir must be provided when init_type is 'init_from_file'")
+    def _validate_collision(self) -> None:
+        """Validate collision scheme and parameters."""
+        valid_schemes = _valid_collision_schemes()
+        if self.collision_scheme not in valid_schemes:
+            msg = f"collision_scheme must be one of {sorted(valid_schemes)}, got '{self.collision_scheme}'"
+            raise ValueError(msg)
 
+        if self.collision_scheme == "mrt" and self.k_diag is None:
+            msg = "k_diag must be provided when using MRT collision scheme"
+            raise ValueError(msg)
+
+    def _validate_init(self) -> None:
+        """Validate initialization parameters."""
+        if self.init_type == "init_from_file" and self.init_dir is None:
+            msg = "init_dir must be provided when init_type is 'init_from_file'"
+            raise ValueError(msg)
+
+    def _validate_save_fields(self) -> None:
+        """Validate save_fields are valid."""
         if self.save_fields is not None:
             valid_fields = {"f", "rho", "u", "force", "force_ext", "h"}
             invalid = set(self.save_fields) - valid_fields
             if invalid:
-                raise ValueError(f"Invalid save_fields: {invalid}. Valid fields: {valid_fields}")
+                msg = f"Invalid save_fields: {invalid}. Valid fields: {valid_fields}"
+                raise ValueError(msg)
 
     def _validate_multiphase(self) -> None:
         required = ("kappa", "rho_l", "rho_v", "interface_width", "eos")
         for name in required:
             if getattr(self, name) is None:
-                raise ValueError(f"'{name}' is required for multiphase simulations")
+                msg = f"'{name}' is required for multiphase simulations"
+                raise ValueError(msg)
 
         _validate_positive(self.rho_l, "rho_l")
         _validate_positive(self.rho_v, "rho_v")
         if self.rho_l is not None and self.rho_v is not None and self.rho_l <= self.rho_v:
-            raise ValueError(f"rho_l ({self.rho_l}) must be greater than rho_v ({self.rho_v})")
+            msg = f"rho_l ({self.rho_l}) must be greater than rho_v ({self.rho_v})"
+            raise ValueError(msg)
         _validate_positive(self.kappa, "kappa")
         _validate_positive(self.interface_width, "interface_width")
 
         valid_eos = _valid_eos()
         if self.eos not in valid_eos:
-            raise ValueError(f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'")
+            msg = f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'"
+            raise ValueError(msg)
 
     @property
     def is_single_phase(self) -> bool:
+        """Check if simulation is single-phase."""
         return self.sim_type == "single_phase"
 
     @property
     def is_multiphase(self) -> bool:
+        """Check if simulation is multiphase."""
         return self.sim_type == "multiphase"
 
     @property
     def force_enabled(self) -> bool:
-        """True if any ``*_force`` field is populated."""
+        """Check if any force field is populated."""
         return any(getattr(self, f.name) is not None for f in dataclasses.fields(self) if f.name.endswith("_force"))
 
     # Serialisation
 
     def to_dict(self) -> dict[str, Any]:
+        """Convert configuration to dictionary format."""
         from dataclasses import asdict
 
         d = asdict(self)
@@ -265,6 +325,7 @@ class SimulationConfig:
         return d
 
     def __repr__(self) -> str:
+        """Return string representation of SimulationConfig."""
         return (
             f"SimulationConfig(\n"
             f"  sim_type={self.sim_type!r},\n"
@@ -279,6 +340,7 @@ class SimulationConfig:
 
 
 def get_array_eligible_fields() -> frozenset[str]:
+    """Get names of fields eligible for array expansion in configuration sweeps."""
     return frozenset(f.name for f in dataclasses.fields(SimulationConfig) if f.metadata.get(ARRAY_ELIGIBLE, False))
 
 
@@ -288,6 +350,7 @@ def get_nested_sweepable_fields() -> frozenset[str]:
 
 
 def get_fields_for_section(section: str) -> frozenset[str]:
+    """Get field names belonging to a specific configuration section."""
     return frozenset(
         f.name
         for f in dataclasses.fields(SimulationConfig)

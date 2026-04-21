@@ -12,9 +12,12 @@ Example:
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from operators._loader import auto_load_operators
 from operators.factory import build_operator
-from operators.protocols import StreamingOperator
+
+if TYPE_CHECKING:
+    from operators.protocols import StreamingOperator
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("operators.streaming")

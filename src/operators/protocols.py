@@ -24,16 +24,16 @@ Usage::
 """
 
 from __future__ import annotations
-from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Protocol
 from typing import runtime_checkable
-import jax.numpy as jnp
-import matplotlib.axes
-import numpy as np
 
 if TYPE_CHECKING:
+    from pathlib import Path
+    import jax.numpy as jnp
+    import matplotlib.axes
+    import numpy as np
     from config.simulation_config import SimulationConfig
     from setup.lattice import Lattice
     from state.state import State
@@ -163,6 +163,8 @@ class MacroscopicOperator(Protocol):
         Args:
             f: Populations, shape ``(nx, ny, q, 1)``.
             lattice: :class:`~setup.lattice.Lattice`.
+            force: Optional external force field.
+            **kwargs: Additional keyword arguments.
             force: Optional external force field, shape ``(nx, ny, 1, d)``.
                 When provided, velocity is corrected by ``u ← u + force / (2ρ)``.
 

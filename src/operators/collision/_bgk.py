@@ -1,4 +1,4 @@
-"""BGK (Bhatnagar–Gross–Krook) collision operator — IMPLEMENTATION.
+r"""BGK (Bhatnagar-Gross-Krook) collision operator — IMPLEMENTATION.
 
 This is an internal implementation of the CollisionOperator protocol.
 Do NOT import this module directly.
@@ -21,8 +21,11 @@ where *S* is the optional source term.
 """
 
 from __future__ import annotations
-import jax.numpy as jnp
+from typing import TYPE_CHECKING
 from registry import collision_model
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
 
 
 @collision_model(name="bgk")

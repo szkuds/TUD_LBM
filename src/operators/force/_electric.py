@@ -24,11 +24,16 @@ Usage::
 """
 
 from __future__ import annotations
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 from typing import NamedTuple
 import jax.numpy as jnp
 from registry import force_model
-from setup.lattice import Lattice
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from config.simulation_config import SimulationConfig
+    from setup.lattice import Lattice
+    from state.state import State
 
 # ══════════════════════════════════════════════════════════════════════
 # Data types
@@ -127,8 +132,8 @@ class ElectricForceModule:
     @staticmethod
     def build(
         params: dict,
-        grid_shape: tuple[int, ...],
-        config,
+        _grid_shape: tuple[int, ...],
+        config: SimulationConfig,
         lattice: Lattice,
     ) -> ElectricParams:
         """Build electric parameters (setup-time, non-jitted).
@@ -153,9 +158,9 @@ class ElectricForceModule:
 
     @staticmethod
     def compute(
-        state,
+        state: State,
         precomputed: ElectricParams,
-        **kwargs,
+        **_kwargs: dict,
     ) -> jnp.ndarray:
         """Compute electric force (step-time, jittable).
 
@@ -166,6 +171,7 @@ class ElectricForceModule:
         Args:
             state: Current simulation :class:`State`.
             precomputed: :class:`ElectricParams` from :meth:`build`.
+            **kwargs: Additional arguments (ignored).
 
         Returns:
             Electric force field, shape ``(nx, ny, 1, 2)``.

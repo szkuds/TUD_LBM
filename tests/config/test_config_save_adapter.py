@@ -119,7 +119,7 @@ class TestConfigAdapterABCSave:
         """A subclass that only implements load() should fail to instantiate."""
 
         class IncompleteAdapter(ConfigAdapter):
-            def load(self, path): ...
+            def load(self, path) -> None: ...
 
             # save() not implemented
 
@@ -130,7 +130,7 @@ class TestConfigAdapterABCSave:
         """A subclass that only implements save() should fail to instantiate."""
 
         class IncompleteAdapter(ConfigAdapter):
-            def save(self, config, path): ...
+            def save(self, config, path) -> None: ...
 
             # load() not implemented
 

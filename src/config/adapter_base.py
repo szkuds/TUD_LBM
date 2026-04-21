@@ -44,10 +44,17 @@ class ConfigAdapter(ABC):
         ...
 
     @abstractmethod
-    def save(self, config: SimulationConfig, path: str) -> None: ...
+    def save(self, config: SimulationConfig, path: str) -> None:
+        """Save a :class:`SimulationConfig` to *path*.
+
+        Args:
+            config: Configuration to save.
+            path: Filesystem path where to save the configuration.
+        """
+        ...
 
     @staticmethod
-    def _serialize_safe(value: Any) -> Any:
+    def _serialize_safe(value: Any) -> Any:  # noqa: ANN401
         """Convert tuples to lists and recursively process nested structures."""
         if isinstance(value, tuple):
             value = list(value)
@@ -98,6 +105,7 @@ def get_adapter(path: str) -> ConfigAdapter:
     ext = Path(path).suffix.lower()
     fqn = _ADAPTER_MAP.get(ext)
     if not fqn:
-        raise ValueError(f"Unsupported extension '{ext}'. Supported: {', '.join(sorted(_ADAPTER_MAP))}")
+        msg = f"Unsupported extension '{ext}'. Supported: {', '.join(sorted(_ADAPTER_MAP))}"
+        raise ValueError(msg)
     module_path, class_name = fqn.rsplit(".", 1)
     return getattr(importlib.import_module(module_path), class_name)()

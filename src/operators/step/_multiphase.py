@@ -5,26 +5,30 @@ Supports both wetting and non-wetting multiphase simulations.
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from operators.force import compute_total_force_ext
 from operators.step._common import _apply_common_step
 from operators.step._wetting_differential_operators import _make_wetting_differential_ops
 from registry import update_timestep_operator
-from setup import SimulationSetup
 from state import update_extra_state
 from state.state import State
 from state.state import WettingState
 
+if TYPE_CHECKING:
+    from operators.protocols import DifferentialOperator
+    from setup import SimulationSetup
+
 
 def _run_multiphase_pipeline(
     setup: SimulationSetup,
-    f_t,
+    f_t: jnp.ndarray,
     *,
-    force_ext=None,
+    force_ext: jnp.ndarray = None,
     wetting: WettingState | None = None,
-    gradient_density=None,
-    laplacian_density=None,
-):
+    gradient_density: DifferentialOperator = None,
+    laplacian_density: DifferentialOperator = None,
+) -> [jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Run one multiphase pipeline pass and return ``(f_out, rho, u, force_tot)``."""
     if gradient_density is None or laplacian_density is None:
         if wetting is not None and setup.config.wetting_config is not None:
@@ -60,13 +64,13 @@ def _run_multiphase_pipeline(
 
 def multiphase_step(
     setup: SimulationSetup,
-    f_t,
+    f_t: jnp.ndarray,
     *,
-    force_ext=None,
+    force_ext: jnp.ndarray = None,
     wetting: WettingState | None = None,
-    gradient_density=None,
-    laplacian_density=None,
-):
+    gradient_density: DifferentialOperator = None,
+    laplacian_density: DifferentialOperator = None,
+) -> jnp.ndarray:
     """Run one multiphase trial step and return post-BC populations."""
     f_out, _rho, _u, _force_tot = _run_multiphase_pipeline(
         setup,

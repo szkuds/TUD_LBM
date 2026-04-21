@@ -5,16 +5,22 @@ Not registered in the operator registry; imported directly by siblings.
 """
 
 from __future__ import annotations
-from state.state import State
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
+    from operators.protocols import DifferentialOperator
+    from setup import SimulationSetup
+    from state.state import State
 
 
 def _apply_common_step(
-    setup,
+    setup: SimulationSetup,
     state: State,
-    rho,
-    u,
-    force_tot,
-    gradient_density=None,
+    rho: jnp.ndarray,
+    u: jnp.ndarray,
+    force_tot: jnp.ndarray,
+    gradient_density: DifferentialOperator = None,
 ) -> State:
     """Apply equilibrium → collision (+source) → streaming → BCs.
 

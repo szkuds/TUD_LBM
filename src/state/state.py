@@ -22,10 +22,13 @@ Usage::
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
-import jax.numpy as jnp
-from operators.protocols import ExtraState
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
+    from operators.protocols import ExtraState
 
 
 class WettingState(NamedTuple):

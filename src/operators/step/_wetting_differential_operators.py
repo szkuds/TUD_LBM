@@ -7,11 +7,16 @@ Internal helper — not registered in the operator registry.
 """
 
 from __future__ import annotations
-import jax.numpy as jnp
+from typing import TYPE_CHECKING
 from operators.wetting import build_wetting_fn
 
+if TYPE_CHECKING:
+    import jax.numpy as jnp
+    from setup import SimulationSetup
+    from state import WettingState
 
-def _make_wetting_differential_ops(setup, wetting_state):
+
+def _make_wetting_differential_ops(setup: SimulationSetup, wetting_state: WettingState) -> tuple:
     """Build grid-only gradient and laplacian shims from live wetting params.
 
     Extracts (phi_l, phi_r, d_rho_l, d_rho_r) from wetting_state,
@@ -36,7 +41,7 @@ def _make_wetting_differential_ops(setup, wetting_state):
             "phi_r": wetting_state.phi_right,
             "d_rho_l": wetting_state.d_rho_left,
             "d_rho_r": wetting_state.d_rho_right,
-        }
+        },
     )
 
     def wetting_gradient_density(grid: jnp.ndarray) -> jnp.ndarray:

@@ -19,8 +19,12 @@ Usage::
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from registry import force_model
+
+if TYPE_CHECKING:
+    from state import State
 
 # ══════════════════════════════════════════════════════════════════════
 # ForceOperator protocol — registry-backed module
@@ -38,7 +42,7 @@ class GravityForceModule:
     def build(
         params: dict,
         grid_shape: tuple[int, ...],
-        **kwargs,
+        **_kwargs: object,
     ) -> jnp.ndarray:
         """Build a constant gravity-force template.
 
@@ -63,9 +67,9 @@ class GravityForceModule:
 
     @staticmethod
     def compute(
-        state,
+        state: State,
         precomputed: jnp.ndarray,
-        **kwargs,
+        **_kwargs: object,
     ) -> jnp.ndarray:
         """Compute gravity force (step-time, jittable).
 
@@ -73,6 +77,7 @@ class GravityForceModule:
             state: Current simulation :class:`State`. Only ``state.f``
                 is used (to compute density).
             precomputed: Gravity template from :meth:`build`.
+            **kwargs: Additional arguments (ignored).
 
         Returns:
             Gravity force field, shape ``(nx, ny, 1, 2)``.

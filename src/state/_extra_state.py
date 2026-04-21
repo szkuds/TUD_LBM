@@ -4,9 +4,27 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import TypedDict
+
+try:
+    from typing import Unpack
+except ImportError:
+    from typing_extensions import Unpack
 
 if TYPE_CHECKING:
+    import jax
     from setup.simulation_setup import SimulationSetup
+    from state.state import State
+
+
+class ExtraStateContext(TypedDict, total=False):
+    """Context dictionary passed to extra-state plugins during state updates.
+
+    Attributes:
+        force_ext: External force field, shape (nx, ny, 1, d) or None.
+    """
+
+    force_ext: jax.Array | None
 
 
 _WARNED_MESSAGES: set[str] = set()
@@ -43,10 +61,10 @@ def _build_extra_state(setup: SimulationSetup) -> dict[str, Any]:
 
 def _update_extra_state(
     setup: SimulationSetup,
-    prev_state: Any,
-    new_state: Any,
-    **context: Any,
-) -> Any:
+    prev_state: State,
+    new_state: State,
+    **context: Unpack[ExtraStateContext],
+) -> State:
     """Apply active extra-state plugins after a step and return updated state."""
     updated = new_state
     for plugin in setup.extra_state_plugins:

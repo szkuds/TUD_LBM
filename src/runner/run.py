@@ -49,6 +49,7 @@ import jax.numpy as jnp
 from state.state import State
 
 if TYPE_CHECKING:
+    from setup import SimulationSetup
     from util.io import SimulationIO
 
 
@@ -56,7 +57,7 @@ if TYPE_CHECKING:
 
 
 def init_state(
-    setup,
+    setup: SimulationSetup,
     *,
     f: jnp.ndarray | None = None,
     init_kwargs: dict | None = None,
@@ -113,7 +114,7 @@ def init_state(
 
 
 def run(
-    setup,
+    setup: SimulationSetup,
     initial_state: State,
     nt: int | None = None,
     save_interval: int = 1,
@@ -160,7 +161,7 @@ def run(
         )
 
         @jax.jit
-        def scan_body_io(state, t):
+        def scan_body_io(state: State, t: int) -> State:
             new_state = setup.step_fn(setup, state)
             do_save(new_state, t)
             return new_state, None
@@ -174,7 +175,7 @@ def run(
 
     # ── In-memory trajectory mode ────────────────────────────────
     @jax.jit
-    def scan_body(state, t):
+    def scan_body(state: State, _t: int) -> State:
         new_state = setup.step_fn(setup, state)
         return new_state, new_state
 

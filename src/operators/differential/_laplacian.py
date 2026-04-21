@@ -1,4 +1,4 @@
-"""LBM-stencil Laplacian operator — pure function.
+r"""LBM-stencil Laplacian operator — pure function.
 
 Registered as ``("differential", "laplacian")`` via ``@register_operator``.
 

@@ -4,10 +4,13 @@ Places a sessile droplet (half-circle) at the top wall.
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from operators.equilibrium._equilibrium import compute_equilibrium
 from registry import initialise_operator
-from setup.lattice import Lattice
+
+if TYPE_CHECKING:
+    from setup.lattice import Lattice
 
 
 @initialise_operator(name="wetting_drop_top")
@@ -19,12 +22,21 @@ def init_wetting_top(
     rho_l: float = 1.0,
     rho_v: float = 0.33,
     interface_width: int = 4,
-    **kwargs,
+    **_kwargs: object,
 ) -> jnp.ndarray:
     """Initialise a sessile droplet resting on the top wall.
 
     The droplet is a half-circle centred at ``(nx/2, ny-1)`` with
     radius ``ny / 3.33``.
+
+    Args:
+        nx: Grid size in x.
+        ny: Grid size in y.
+        lattice: :class:`~setup.lattice.Lattice`.
+        rho_l: Liquid density.
+        rho_v: Vapour density.
+        interface_width: Diffuse-interface thickness.
+        **kwargs: Additional arguments (ignored).
 
     Args:
         nx: Grid size in x.

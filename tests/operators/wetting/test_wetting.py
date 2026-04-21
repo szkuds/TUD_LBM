@@ -3,7 +3,7 @@
 - ``operators.wetting.contact_line.compute_contact_line_location``
 - ``operators.wetting.hysteresis`` (WettingParams, clamp, cost fns,
 optimise routines, update_wetting_state)
-- Wiring into ``step_multiphase`` via ``WettingState``
+- Wiring into ``step_multiphase`` via ``WettingState``.
 """
 
 from __future__ import annotations

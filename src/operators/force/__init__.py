@@ -14,14 +14,20 @@ Example:
 
 from __future__ import annotations
 import dataclasses
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
 from typing import cast
-import jax.numpy as jnp
 from operators._loader import auto_load_operators
 from operators.factory import build_operator
-from operators.protocols import ForceOperator
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    import jax.numpy as jnp
+    from config import SimulationConfig
+    from operators.protocols import ForceOperator
+    from setup import SimulationSetup
+    from state import State
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("operators.force")
@@ -79,9 +85,9 @@ def _build_force_fn(scheme: str) -> Callable[..., object] | type:
 
 
 def build_forces(
-    config: Any,
+    config: SimulationConfig,
     grid_shape: tuple[int, ...],
-    lattice: Any,
+    lattice: Any,  # noqa: ANN401
 ) -> ForceSetup:
     """Discover ``*_force`` fields on config, build ForceSetup with specs and source term.
 
@@ -118,15 +124,15 @@ def build_forces(
                 name=f.name,
                 compute_fn=compute_fn,
                 precomputed=precomputed,
-            )
+            ),
         )
 
     return ForceSetup(specs=tuple(specs), source_term=compute_source)
 
 
 def compute_total_force_ext(
-    setup: Any,
-    state: Any,
+    setup: SimulationSetup,
+    state: State,
     force_setup: ForceSetup | None,
 ) -> tuple[jnp.ndarray | None, Any]:
     """Compute the summed external force contribution.

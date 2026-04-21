@@ -3,7 +3,7 @@ channels:
   - conda-forge
 dependencies:
   # Core dependencies (pre-built via conda)
-  - python=3.11
+  - python=3.14
   - jax
   - numpy
   - scipy

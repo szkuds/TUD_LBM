@@ -13,16 +13,19 @@ Example:
 """
 
 from __future__ import annotations
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
 import jax.numpy as jnp
 from operators.boundary import _bounce_back as _bb  # noqa: F401
 from operators.boundary import _periodic as _per  # noqa: F401
 from operators.boundary import _symmetry as _sym  # noqa: F401
-from operators.protocols import BoundaryOperator
 from registry import get_operators
-from setup.lattice import Lattice
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from operators.protocols import BoundaryOperator
+    from setup.lattice import Lattice
 
 
 class BCMasks(NamedTuple):
@@ -112,14 +115,14 @@ def build_bc(
     def bc_fn(
         f_streamed: jnp.ndarray,
         f_collision: jnp.ndarray,
-        bc_masks: Any,
+        _bc_masks: Any,  # noqa: ANN401
     ) -> jnp.ndarray:
         """Apply all boundary conditions in sequence.
 
         Args:
             f_streamed: Post-streaming populations.
             f_collision: Post-collision populations.
-            bc_masks: :class:`~setup.simulation_setup.BCMasks` (currently
+            _bc_masks: :class:`~setup.simulation_setup.BCMasks` (currently
                 unused — the per-_edge functions slice by index; masks are
                 reserved for a future vectorised implementation).
 

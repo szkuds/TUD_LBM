@@ -2,23 +2,42 @@
 
 from __future__ import annotations
 import math
-import os
 import warnings
 from pathlib import Path
 import matplotlib as mpl
-from config import SimulationConfig
 
 mpl.use("Agg")
 
+from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 import numpy as np
 from registry import get_operators
+
+if TYPE_CHECKING:
+    import os
+    from config import SimulationConfig
+
+    _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
+        1: (1, 1),
+        2: (2, 1),
+        3: (2, 2),
+        4: (2, 2),
+    }
 
 
 class FigureBuilder:
     """Build and save composite figures for saved simulation snapshots."""
 
+    _SMALL_LAYOUTS: dict[int, tuple[int, int]] = _SMALL_LAYOUTS
+
     def __init__(self, config: SimulationConfig, run_dir: str | os.PathLike, dpi: int = 150) -> None:
+        """Initialize figure builder with simulation config and output directory.
+
+        Args:
+            config: Simulation configuration object.
+            run_dir: Directory containing simulation results and output.
+            dpi: Resolution in dots per inch for saved figures.
+        """
         self.config = config
         self.run_dir = Path(run_dir)
         self.dpi = dpi
@@ -70,7 +89,7 @@ class FigureBuilder:
             row, col = divmod(idx, ncols)
             try:
                 op(axes[row][col], data, timestep)
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:  ## noqa: BLE001
                 axes[row][col].set_title(f"{op.name} - ERROR")
                 axes[row][col].text(
                     0.5,
@@ -132,12 +151,8 @@ class FigureBuilder:
     @staticmethod
     def _layout(n: int) -> tuple[int, int]:
         """Choose a compact subplot layout for *n* panels."""
-        if n <= 1:
-            return 1, 1
-        if n <= 2:
-            return 2, 1
-        if n <= 4:
-            return 2, 2
+        if layout := FigureBuilder._SMALL_LAYOUTS.get(n):
+            return layout
         ncols = math.ceil(math.sqrt(n))
         nrows = math.ceil(n / ncols)
         return ncols, nrows

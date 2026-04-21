@@ -4,10 +4,13 @@ Places a sessile droplet (half-circle) at the bottom wall.
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from operators.equilibrium._equilibrium import compute_equilibrium
 from registry import initialise_operator
-from setup.lattice import Lattice
+
+if TYPE_CHECKING:
+    from setup.lattice import Lattice
 
 
 @initialise_operator(name="wetting")
@@ -19,7 +22,7 @@ def init_wetting(
     rho_l: float = 1.0,
     rho_v: float = 0.33,
     interface_width: int = 4,
-    **kwargs,
+    **_kwargs: object,
 ) -> jnp.ndarray:
     """Initialise a sessile droplet resting on the bottom wall.
 
@@ -30,6 +33,10 @@ def init_wetting(
         nx: Grid size in x.
         ny: Grid size in y.
         lattice: :class:`~setup.lattice.Lattice`.
+        rho_l: Liquid density.
+        rho_v: Vapour density.
+        interface_width: Interface width parameter.
+        **kwargs: Additional arguments (ignored).
         rho_l: Liquid density.
         rho_v: Vapour density.
         interface_width: Diffuse-interface thickness.

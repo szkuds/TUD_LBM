@@ -98,12 +98,14 @@ def register_operator(
     def decorator(obj: _OT) -> _OT:
         resolved_name = name or getattr(obj, "name", None) or getattr(obj, "__name__", None)
         if not resolved_name:
+            msg = f"{obj!r} must define 'name' or have a __name__, or pass name= to @register_operator"
             raise ValueError(
-                f"{obj!r} must define 'name' or have a __name__, or pass name= to @register_operator",
+                msg,
             )
         key = f"{kind}:{resolved_name}"
         if key in OPERATOR_REGISTRY:
-            raise ValueError(f"Duplicate operator registration: {key}")
+            msg = f"Duplicate operator registration: {key}"
+            raise ValueError(msg)
         entry: OperatorEntry[object] = OperatorEntry(
             name=resolved_name,
             kind=kind,
