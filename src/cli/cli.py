@@ -14,8 +14,10 @@ Example Python usage::
 
 import os
 import sys
+from pathlib import Path
 from typing import Any
 import click
+import tomllib
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
@@ -23,6 +25,108 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 console = Console()
+
+_SECTION_ALIAS_MAP = {
+    "simulation_type": "",
+    "multiphase": "",
+    "output": "",
+    "boundary_conditions": "bc_config",
+    "wetting": "wetting_config",
+    "hysteresis": "hysteresis_config",
+}
+
+
+def _parse_override_argument(raw_override: str) -> tuple[str, Any]:
+    """Parse one --override expression and return (path, typed_value)."""
+    value_expr: str
+
+    text = raw_override.strip()
+    if not text:
+        raise ValueError("override expression cannot be empty")
+
+    if "=" in text:
+        path, value_expr = text.split("=", 1)
+        path = path.strip()
+        value_expr = value_expr.strip()
+    else:
+        # Also support forms like: (path, value) or override(path, value)
+        if text.startswith("override(") and text.endswith(")"):
+            text = text[len("override(") : -1].strip()
+        elif text.startswith("(") and text.endswith(")"):
+            text = text[1:-1].strip()
+        if "," not in text:
+            raise ValueError(
+                "invalid override format. Use 'path=value' (e.g. simulation_type.tau=0.7).",
+            )
+        path, value_expr = text.split(",", 1)
+        path = path.strip()
+        value_expr = value_expr.strip()
+
+    if not path:
+        raise ValueError("override path cannot be empty")
+    if not value_expr:
+        raise ValueError("override value cannot be empty")
+
+    try:
+        value = tomllib.loads(f"value = {value_expr}")["value"]
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(
+            f"invalid override value '{value_expr}'. Use a TOML literal (quoted strings, numbers, booleans, arrays).",
+        ) from exc
+
+    return path, value
+
+
+def _normalize_override_path(path: str) -> list[str]:
+    """Map TOML table paths to raw-config keys and split into segments."""
+    parts = [segment.strip() for segment in path.split(".") if segment.strip()]
+    if not parts:
+        raise ValueError("override path cannot be empty")
+
+    head = parts[0]
+    if head in _SECTION_ALIAS_MAP:
+        mapped = _SECTION_ALIAS_MAP[head]
+        # SIM108: use ternary instead of if-else block
+        parts = [mapped, *parts[1:]] if mapped else parts[1:]
+
+    if not parts:
+        raise ValueError(f"override path '{path}' does not reference a field")
+    return parts
+
+
+def _set_nested_override(raw_config: dict[str, Any], path: str, value: Any) -> None:
+    """Apply a typed override value to raw config using dotted-path syntax."""
+    parts = _normalize_override_path(path)
+
+    if len(parts) == 1:
+        raw_config[parts[0]] = value
+        return
+
+    cursor: dict[str, Any] = raw_config
+    for key in parts[:-1]:
+        existing = cursor.get(key)
+        if existing is None:
+            existing = {}
+            cursor[key] = existing
+        if not isinstance(existing, dict):
+            dotted_prefix = ".".join(parts[:-1])
+            # TRY004: use TypeError for invalid type
+            raise TypeError(f"override path '{path}' is invalid: '{dotted_prefix}' is not a table")
+        cursor = existing
+    cursor[parts[-1]] = value
+
+
+def _apply_overrides(raw_config: dict[str, Any], overrides: tuple[str, ...]) -> None:
+    """Parse and apply all --override expressions in order."""
+    if not overrides:
+        return
+
+    console.print("[cyan]Applying CLI overrides:[/cyan]")
+    for raw_override in overrides:
+        path, value = _parse_override_argument(raw_override)
+        _set_nested_override(raw_config, path, value)
+        console.print(f"  - {path} = {value!r}")
+    console.print()
 
 
 def _display_operators() -> None:
@@ -64,9 +168,12 @@ def _display_operators() -> None:
         for name in sorted(ops):
             entry = ops[name]
             target = entry.target
-            # Build a human-readable target description
             target_mod = getattr(target, "__module__", type(target).__module__)
-            target_name = getattr(target, "__qualname__", getattr(target, "__name__", type(target).__name__))
+            target_name = getattr(
+                target,
+                "__qualname__",
+                getattr(target, "__name__", type(target).__name__),
+            )
             target_str = f"{target_mod}.{target_name}"
 
             meta_str = ""
@@ -171,6 +278,168 @@ def _run_simulation(config: Any):
     return final_state
 
 
+def _display_sweep_summary(metadata: Any) -> None:
+    """Display detected parameter-sweep axes and total combinations."""
+    console.print()
+    table = Table(
+        title="Parameter Sweep",
+        show_header=True,
+        header_style="bold magenta",
+    )
+    table.add_column("Field", style="cyan", no_wrap=True)
+    table.add_column("Values", style="green")
+
+    for field_name in sorted(metadata.field_names):
+        values = metadata.array_values.get(field_name, ())
+        values_str = ", ".join(str(v) for v in values)
+        table.add_row(field_name, values_str)
+
+    console.print(table)
+    console.print(f"[bold blue]Total combinations:[/bold blue] {metadata.total_combinations}")
+    console.print()
+
+
+def _run_parallel_sweep(
+    configs: list[Any],
+    parameters_list: list[dict[str, Any]],
+    *,
+    max_workers: int | None,
+    continue_on_error: bool,
+) -> list[Any]:
+    """Run a parameter sweep in parallel and save a manifest."""
+    from runner.parallel_runner import run_parallel_simulations
+    from runner.parallel_runner import save_sweep_manifest
+
+    console.print("[bold green]Starting parallel parameter sweep...[/bold green]")
+    console.print(f"[dim]Simulations: {len(configs)}[/dim]")
+    console.print(f"[dim]Max workers: {max_workers if max_workers is not None else 'auto'}[/dim]")
+    console.print()
+
+    results = run_parallel_simulations(
+        configs,
+        max_workers=max_workers,
+        parameters_list=parameters_list,
+        verbose=True,
+        continue_on_error=continue_on_error,
+    )
+
+    manifest_dir = Path(configs[0].results_dir).expanduser() / "sweep_manifest"
+    save_sweep_manifest(results, manifest_dir)
+
+    successful = sum(1 for result in results if result.status == "success")
+    failed = sum(1 for result in results if result.status == "failed")
+
+    console.print()
+    console.print("[bold green]Parallel sweep completed.[/bold green]")
+    console.print(f"  Successful runs : {successful}")
+    console.print(f"  Failed runs     : {failed}")
+    console.print(f"  Manifest folder : {manifest_dir}")
+
+    return results
+
+
+def _validate_cli_args(overrides: tuple[str, ...], config_path: str | None) -> None:
+    """TRY301: raise lives here, outside the try-block in main()."""
+    if overrides and not config_path:
+        raise click.UsageError("--override requires CONFIG_PATH")
+
+
+def _load_config_from_file(
+    config_path: str,
+    overrides: tuple[str, ...],
+) -> tuple[list[Any], Any | None, Any | None, list[dict[str, Any]] | None]:
+    """Load and expand a TOML config file; return (configs, config, sweep_metadata, parameters_list)."""
+    from config.adapter_toml import TomlAdapter
+    from config.array_expansion import enumerate_configs
+    from config.array_expansion import expand_config
+
+    console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
+    raw_config = TomlAdapter().load_raw(config_path)
+    _apply_overrides(raw_config, overrides)
+    configs, sweep_metadata = expand_config(raw_config)
+
+    if sweep_metadata is None:
+        return configs, configs[0], None, None
+
+    parameters_list = [params for _, params, _ in enumerate_configs(raw_config)]
+    return configs, None, sweep_metadata, parameters_list
+
+
+def _load_config_interactive() -> tuple[list[Any], Any, None, None]:
+    """Collect simulation parameters interactively; return the same 4-tuple as _load_config_from_file."""
+    # TODO: the interactive mode can be extended further. Plotting is not yet added for example_for_test.
+    from config import SimulationConfig
+
+    console.print("[cyan]Interactive mode - creating default simulation config[/cyan]")
+
+    grid_x = int(Prompt.ask("Grid size X", default="100"))
+    grid_y = int(Prompt.ask("Grid size Y", default="100"))
+    tau = float(Prompt.ask("Relaxation time (tau)", default="0.6"))
+    nt = int(Prompt.ask("Number of timesteps", default="1000"))
+    save_interval = int(Prompt.ask("Save interval", default=str(nt // 10)))
+
+    config = SimulationConfig(
+        grid_shape=(grid_x, grid_y),
+        tau=tau,
+        nt=nt,
+        save_interval=save_interval,
+    )
+    return [config], config, None, None
+
+
+def _display_summary(config: Any | None, sweep_metadata: Any | None, configs: list[Any]) -> None:
+    """Display either a single-run config summary or a sweep summary."""
+    if sweep_metadata is None:
+        _display_config_summary(config)
+    else:
+        _display_sweep_summary(sweep_metadata)
+        console.print("[dim]Preview of the first expanded configuration:[/dim]")
+        _display_config_summary(configs[0])
+
+
+def _print_dry_run_message(sweep_metadata: Any | None) -> None:
+    if sweep_metadata is None:
+        console.print("[yellow]Dry run mode - simulation not started[/yellow]")
+    else:
+        console.print("[yellow]Dry run mode - parameter sweep not started[/yellow]")
+
+
+def _confirm_run(sweep_metadata: Any | None, configs: list[Any]) -> bool:
+    if sweep_metadata is None:
+        prompt_text = "[bold]Start simulation?[/bold]"
+    else:
+        prompt_text = f"[bold]Start parameter sweep ({len(configs)} simulations)?[/bold]"
+    return Confirm.ask(prompt_text, default=True)
+
+
+def _check_sweep_errors(results: list[Any]) -> None:
+    """TRY301: raise lives here, outside the try-block in main()."""
+    failed = sum(1 for result in results if result.status == "failed")
+    if failed > 0:
+        raise RuntimeError(f"Parameter sweep completed with {failed} failed simulation(s).")
+
+
+def _execute_run(
+    configs: list[Any],
+    config: Any | None,
+    sweep_metadata: Any | None,
+    parameters_list: list[dict[str, Any]] | None,
+    max_workers: int | None,
+    fail_fast: bool,
+) -> None:
+    """Dispatch to single-run or parallel-sweep execution."""
+    if sweep_metadata is None:
+        _run_simulation(config)
+    else:
+        results = _run_parallel_sweep(
+            configs,
+            parameters_list or [],
+            max_workers=max_workers,
+            continue_on_error=not fail_fast,
+        )
+        _check_sweep_errors(results)
+
+
 @click.command()
 @click.argument("config_path", type=click.Path(exists=True), required=False)
 @click.option(
@@ -189,12 +458,33 @@ def _run_simulation(config: Any):
     is_flag=True,
     help="List all registered operators with metadata and exit",
 )
+@click.option(
+    "--max-workers",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Number of worker processes for parameter sweeps (default: auto)",
+)
+@click.option(
+    "--fail-fast",
+    is_flag=True,
+    help="Stop a parameter sweep on first failed simulation",
+)
+@click.option(
+    "--override",
+    "overrides",
+    multiple=True,
+    help="Override config values using path=value (repeatable), "
+    "e.g. --override simulation_type.simulation_name='new name'",
+)
 @click.version_option(package_name="tud_lbm")
 def main(
     config_path: str,
     no_prompt: bool,
     dry_run: bool,
     list_operators: bool,
+    max_workers: int | None,
+    fail_fast: bool,
+    overrides: tuple[str, ...],
 ) -> None:
     """Run a TUD-LBM simulation.
 
@@ -217,53 +507,29 @@ def main(
     console.print()
 
     try:
-        # Handle --list-simulation-operators early
         if list_operators:
             _display_operators()
             return
 
-        if config_path:
-            # ── Load config file ─────────────────────────────────────
-            from config import from_toml
+        # TRY301: validation raise is inside _validate_cli_args, not this try-block
+        _validate_cli_args(overrides, config_path)
 
-            console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
-            config = from_toml(config_path)
-        # TODO: the interactive mode can be extended further. Plotting is not yet added for example_for_test.
-        else:
-            # ── Interactive mode ─────────────────────────────────────
-            from config import SimulationConfig
+        configs, config, sweep_metadata, parameters_list = (
+            _load_config_from_file(config_path, overrides) if config_path else _load_config_interactive()
+        )
 
-            console.print(
-                "[cyan]Interactive mode - creating default simulation config[/cyan]",
-            )
-
-            grid_x = int(Prompt.ask("Grid size X", default="100"))
-            grid_y = int(Prompt.ask("Grid size Y", default="100"))
-            tau = float(Prompt.ask("Relaxation time (tau)", default="0.6"))
-            nt = int(Prompt.ask("Number of timesteps", default="1000"))
-            save_interval = int(Prompt.ask("Save interval", default=str(nt // 10)))
-
-            config = SimulationConfig(
-                grid_shape=(grid_x, grid_y),
-                tau=tau,
-                nt=nt,
-                save_interval=save_interval,
-            )
-
-        # Display configuration summary
-        _display_config_summary(config)
+        _display_summary(config, sweep_metadata, configs)
 
         if dry_run:
-            console.print("[yellow]Dry run mode - simulation not started[/yellow]")
+            _print_dry_run_message(sweep_metadata)
             return
 
-        # Confirm before running
-        if not no_prompt and not Confirm.ask("[bold]Start simulation?[/bold]", default=True):
+        if not no_prompt and not _confirm_run(sweep_metadata, configs):
             console.print("[yellow]Simulation cancelled.[/yellow]")
             return
 
-        # Run the simulation
-        _run_simulation(config)
+        # TRY301: sweep error raise is inside _check_sweep_errors, not this try-block
+        _execute_run(configs, config, sweep_metadata, parameters_list, max_workers, fail_fast)
 
         console.print()
         console.print(

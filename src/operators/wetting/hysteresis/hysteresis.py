@@ -319,7 +319,7 @@ def _build_default_evaluate_fn(
             interparticle forces are not double-counted.
         rho_mean: Mean density ``(rho_l + rho_v) / 2``.
     """
-    from operators.step._wetting_shims import _make_wetting_differential_ops
+    from operators.step._wetting_differential_operators import _make_wetting_differential_ops
 
     lattice = setup.lattice
     mp = setup.multiphase_params

@@ -7,7 +7,7 @@ Supports both wetting and non-wetting multiphase simulations.
 from __future__ import annotations
 from operators.force import compute_total_force_ext
 from operators.step._common import _apply_common_step
-from operators.step._wetting_shims import _make_wetting_differential_ops
+from operators.step._wetting_differential_operators import _make_wetting_differential_ops
 from registry import update_timestep_operator
 from setup import SimulationSetup
 from state.state import State

@@ -39,12 +39,12 @@ def _make_wetting_differential_ops(setup, wetting_state):
         }
     )
 
-    def gradient_density_shim(grid: jnp.ndarray) -> jnp.ndarray:
+    def wetting_gradient_density(grid: jnp.ndarray) -> jnp.ndarray:
         """Gradient shim that injects live wetting parameters."""
         return setup.gradient_density(grid, phi_l, phi_r, d_rho_l, d_rho_r)
 
-    def laplacian_density_shim(grid: jnp.ndarray) -> jnp.ndarray:
+    def wetting_laplacian_density(grid: jnp.ndarray) -> jnp.ndarray:
         """Laplacian shim that injects live wetting parameters."""
         return setup.laplacian_density(grid, phi_l, phi_r, d_rho_l, d_rho_r)
 
-    return gradient_density_shim, laplacian_density_shim
+    return wetting_gradient_density, wetting_laplacian_density
