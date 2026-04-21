@@ -64,16 +64,17 @@ _D2Q9_W = [4 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 36, 1 / 36, 1 / 36, 1 / 36]
 @lattice_operator(name="D2Q9", dim=2, q=9)
 def _build_d2q9() -> Lattice:
     """Construct a D2Q9 :class:`Lattice`."""
-    c_np = np.array(list(zip(_D2Q9_CX, _D2Q9_CY, strict=False))).T  # shape (2, 9)
-    w_np = np.array(_D2Q9_W)
-    c_t = c_np.T  # shape (9, 2) — row per velocity
+    c_np = np.array(list(zip(_D2Q9_CX, _D2Q9_CY, strict=False)))[None, None, None, :, :]  # shape (1, 1, 1, 9, 2)
+    w_np = np.array(_D2Q9_W)[None, None, None, :, None]  # shape (1, 1, 1, 9, 1)
 
-    opp = np.array([c_t.tolist().index((-c_t[i]).tolist()) for i in range(9)])
-    main = np.nonzero((np.abs(c_t[:, 0]) + np.abs(c_t[:, 1])) == 1)[0]
-    right = np.nonzero(c_t[:, 0] == 1)[0]
-    left = np.nonzero(c_t[:, 0] == -1)[0]
-    top = np.nonzero(c_t[:, 1] == 1)[0]
-    bottom = np.nonzero(c_t[:, 1] == -1)[0]
+    opp = np.array([c_np[0,0,0].tolist().index((-ci).tolist()) for ci in c_np[0,0,0]])
+
+    main = np.nonzero(np.sum(np.abs(c_np), axis=-1) == 1)[-1]
+
+    right  = np.nonzero(c_np[0,0,0][:, 0] == 1)[0]
+    left   = np.nonzero(c_np[0,0,0][:, 0] == -1)[0]
+    top    = np.nonzero(c_np[0,0,0][:, 1] == 1)[0]
+    bottom = np.nonzero(c_np[0,0,0][:, 1] == -1)[0]
 
     return Lattice(
         name="D2Q9",
@@ -105,20 +106,19 @@ _D3Q19_W = [
 @lattice_operator(name="D3Q19", dim=3, q=19)
 def _build_d3q19() -> Lattice:
     """Construct a D3Q19 :class:Lattice."""
-    c_np = np.array(list(zip(_D3Q19_CX, _D3Q19_CY, _D3Q19_CZ, strict=False))).T  # shape (3, 19)
-    w_np = np.array(_D3Q19_W)
-    c_t = c_np.T  # shape (19, 3)
+    c_np = np.array(list(zip(_D3Q19_CX, _D3Q19_CY, _D3Q19_CZ, strict=False)))[None, None, None, :, :]  # shape (1, 1, 1, 19, 3)
+    w_np = np.array(_D3Q19_W)[None, None, None, :, None]  # shape (1, 1, 1, 19, 1)
 
-    opp = np.array([c_t.tolist().index((-c_t[i]).tolist()) for i in range(19)])
+    opp = np.array([c_np[0,0,0].tolist().index((-ci).tolist()) for ci in c_np[0,0,0]])
 
-    main = np.nonzero(np.sum(np.abs(c_t), axis=1) == 1)[0]
+    main = np.nonzero(np.sum(np.abs(c_np), axis=-1) == 1)[-1]
 
-    right  = np.nonzero(c_t[:, 0] == 1)[0]
-    left   = np.nonzero(c_t[:, 0] == -1)[0]
-    top    = np.nonzero(c_t[:, 1] == 1)[0]
-    bottom = np.nonzero(c_t[:, 1] == -1)[0]
-    front  = np.nonzero(c_t[:, 2] == 1)[0]
-    back   = np.nonzero(c_t[:, 2] == -1)[0]
+    right  = np.nonzero(c_np[0,0,0][:, 0] == 1)[0]
+    left   = np.nonzero(c_np[0,0,0][:, 0] == -1)[0]
+    top    = np.nonzero(c_np[0,0,0][:, 1] == 1)[0]
+    bottom = np.nonzero(c_np[0,0,0][:, 1] == -1)[0]
+    front  = np.nonzero(c_np[0,0,0][:, 2] == 1)[0]
+    back   = np.nonzero(c_np[0,0,0][:, 2] == -1)[0]
 
     return Lattice(
         name="D3Q19",
