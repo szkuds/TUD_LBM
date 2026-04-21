@@ -42,6 +42,25 @@ from config.dir_config import BASE_RESULTS_DIR
 #   "extra"                 → merged into simulation_type directly
 CONFIG_SECTION: str = "config_section"
 
+# ── Array expansion eligibility metadata ──────────────────────────────
+#
+# Mark fields with ARRAY_ELIGIBLE: True in metadata to allow them in
+# parallel parameter sweeps. This is simpler and more maintainable than
+# a hardcoded list, and follows the same pattern as CONFIG_SECTION.
+ARRAY_ELIGIBLE: str = "array_eligible"
+
+
+def get_array_eligible_fields() -> frozenset[str]:
+    """Return field names that support array values for parameter sweeps.
+
+    Reads the ARRAY_ELIGIBLE metadata from dataclass fields.
+    Fields not marked with this metadata default to False (not eligible).
+
+    Returns:
+        Frozenset of field names that can be used in parallel sweeps.
+    """
+    return frozenset(f.name for f in dataclasses.fields(SimulationConfig) if f.metadata.get(ARRAY_ELIGIBLE, False))
+
 
 def get_fields_for_section(section: str) -> frozenset[str]:
     """Return the field names whose ``config_section`` metadata equals *section*.
@@ -102,15 +121,15 @@ class SimulationConfig:
 
     # ── Lattice & grid ───────────────────────────────────────────
     lattice_type: str = "D2Q9"
-    grid_shape: tuple[int, ...] = (64, 64)
+    grid_shape: tuple[int, ...] = field(default=(64, 64), metadata={ARRAY_ELIGIBLE: True})
 
     # ── Time stepping ────────────────────────────────────────────
-    nt: int = 1000
-    tau: float = 1.0
+    nt: int = field(default=1000, metadata={ARRAY_ELIGIBLE: True})
+    tau: float = field(default=1.0, metadata={ARRAY_ELIGIBLE: True})
 
     # ── Collision ────────────────────────────────────────────────
-    collision_scheme: str = "bgk"
-    k_diag: tuple[float, ...] | None = None
+    collision_scheme: str = field(default="bgk", metadata={ARRAY_ELIGIBLE: True})
+    k_diag: tuple[float, ...] | None = field(default=None, metadata={ARRAY_ELIGIBLE: True})
 
     # ── Boundary conditions (ONLY topology: which BC on which face) ──
     bc_config: dict[str, Any] | None = field(
@@ -151,14 +170,15 @@ class SimulationConfig:
     save_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
     plot_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
     output_format: str | list[str] | None = field(default="numpy", metadata={CONFIG_SECTION: "output"})
+    output_dir: str | None = field(default=None, metadata={CONFIG_SECTION: "output"})
 
     # ── Multiphase ───────────────────────────────────────────────
     eos: str | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
-    kappa: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
-    rho_l: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
-    rho_v: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
-    interface_width: int | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
-    g: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
+    kappa: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase", ARRAY_ELIGIBLE: True})
+    rho_l: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase", ARRAY_ELIGIBLE: True})
+    rho_v: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase", ARRAY_ELIGIBLE: True})
+    interface_width: int | None = field(default=None, metadata={CONFIG_SECTION: "multiphase", ARRAY_ELIGIBLE: True})
+    g: float | None = field(default=None, metadata={CONFIG_SECTION: "multiphase", ARRAY_ELIGIBLE: True})
 
     # ── Extra / extensible ───────────────────────────────────────
     extra: dict[str, Any] = field(default_factory=dict, metadata={CONFIG_SECTION: "extra"})

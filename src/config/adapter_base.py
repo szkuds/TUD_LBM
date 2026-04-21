@@ -16,7 +16,32 @@ class ConfigAdapter(ABC):
     """Converts a config file into a SimulationConfig and back."""
 
     @abstractmethod
-    def load(self, path: str) -> SimulationConfig: ...
+    def load_raw(self, path: str) -> dict[str, Any]:
+        """Parse *path* and return raw configuration dict.
+
+        Unlike :meth:`load`, this returns the raw config dict without
+        instantiating :class:`SimulationConfig`. Useful for detecting
+        array fields before expansion.
+
+        Args:
+            path: Filesystem path to a configuration file.
+
+        Returns:
+            Raw config dictionary.
+        """
+        ...
+
+    @abstractmethod
+    def load(self, path: str) -> SimulationConfig:
+        """Parse *path* and return a :class:`SimulationConfig`.
+
+        Args:
+            path: Filesystem path to a configuration file.
+
+        Returns:
+            A validated :class:`SimulationConfig`.
+        """
+        ...
 
     @abstractmethod
     def save(self, config: SimulationConfig, path: str) -> None: ...
@@ -48,7 +73,10 @@ class ConfigAdapter(ABC):
                 continue
             if section == "multiphase" and sim_type != "multiphase":
                 continue
-            buckets[section][key] = cls._serialize_safe(value)
+            if isinstance(value, dict):
+                buckets[section].update(cls._serialize_safe(value))
+            else:
+                buckets[section][key] = cls._serialize_safe(value)
 
         buckets["simulation_type"]["type"] = sim_type
         for ek, ev in (config.extra or {}).items():

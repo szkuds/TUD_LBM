@@ -10,7 +10,7 @@ These tests validate that:
 from pathlib import Path
 
 # Get project root from environment or infer it
-PROJECT_ROOT = str(Path(__file__).parent.parent)
+PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
 
 
 class TestOptaxNotRequiredForCore:
