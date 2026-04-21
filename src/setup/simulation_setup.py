@@ -28,6 +28,7 @@ Usage::
 from __future__ import annotations
 from collections.abc import Callable
 from typing import NamedTuple
+from typing import cast
 import jax.numpy as jnp
 from config.simulation_config import SimulationConfig
 from operators.boundary import BCMasks
@@ -39,6 +40,7 @@ from operators.protocols import BoundaryOperator
 from operators.protocols import CollisionOperator
 from operators.protocols import DifferentialOperator
 from operators.protocols import EquilibriumOperator
+from operators.protocols import ExtraStatePlugin
 from operators.protocols import HysteresisOperator
 from operators.protocols import StepOperator
 from operators.protocols import StreamingOperator
@@ -80,11 +82,16 @@ class SimulationSetup(NamedTuple):
             implementing :class:`~operators.protocols.HysteresisOperator`.
             Built only when both ``wetting_config`` and ``hysteresis_config`` are present;
             ``None`` otherwise.
+        extra_state_plugins: Active plugin tuple used to initialise and update
+            operation-specific extra state (e.g. electric potential, wetting state).
         collision_fn: Pre-built collision operator, resolved at setup time.
         equilibrium_fn: Pre-built equilibrium operator, resolved at setup time.
         macroscopic_fn: Pre-built macroscopic operator, resolved at setup time.
         streaming_fn: Pre-built streaming operator, resolved at setup time.
         bc_fn: Pre-built boundary-condition operator, resolved at setup time.
+        multiphase_step: Optional setup-bound multiphase trial-step callable.
+            Signature:
+            ``(f_t, force_ext=None, wetting=None, gradient_density=None, laplacian_density=None) -> f_out``.
     """
 
     # ── Core references ──
@@ -110,6 +117,7 @@ class SimulationSetup(NamedTuple):
     # ── Step function (unbound: (setup, state) -> State) ──
     step_fn: StepOperator | None = None
     wetting_fn: HysteresisOperator | None = None
+    extra_state_plugins: tuple[ExtraStatePlugin, ...] = ()
 
     # ── Pre-built operator closures (resolved at setup time) ──
     collision_fn: CollisionOperator | None = None
@@ -118,6 +126,7 @@ class SimulationSetup(NamedTuple):
     streaming_fn: StreamingOperator | None = None
     bc_fn: BoundaryOperator | None = None
     initial_f_fn: Callable[..., jnp.ndarray] | None = None
+    multiphase_step: Callable[..., jnp.ndarray] | None = None
 
 
 # ── Main factory ─────────────────────────────────────────────────────
@@ -155,6 +164,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     from operators.step import build_step_fn
     from operators.streaming import build_streaming_fn
     from operators.wetting import build_wetting_fn
+    from registry import get_operators
 
     lattice = build_lattice(config.lattice_type)
     bc_masks = build_bc_masks(tuple(config.grid_shape))
@@ -189,6 +199,12 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     if config.wetting_config is not None and config.hysteresis_config is not None:
         wetting_fn = build_wetting_fn("hysteresis")
 
+    extra_state_plugins = tuple(
+        cast("ExtraStatePlugin", entry.target)
+        for entry in sorted(get_operators("extra_state").values(), key=lambda e: e.name)
+        if cast("ExtraStatePlugin", entry.target).is_active(config)
+    )
+
     def _initial_f_fn(init_kwargs: dict | None = None) -> jnp.ndarray:
         kw: dict = {}
         if mp_params is not None:
@@ -199,7 +215,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
             kw["npz_path"] = config.init_dir
         return build_initialise_fn(config.init_type)(config.grid_shape[0], config.grid_shape[1], lattice, **kw)
 
-    return SimulationSetup(
+    setup = SimulationSetup(
         config=config,
         lattice=lattice,
         grid_shape=tuple(config.grid_shape),
@@ -214,6 +230,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         laplacian_density=laplacian_density,
         step_fn=step_fn,
         wetting_fn=wetting_fn,
+        extra_state_plugins=extra_state_plugins,
         collision_fn=collision_fn,
         equilibrium_fn=equilibrium_fn,
         macroscopic_fn=macroscopic_fn,
@@ -221,3 +238,27 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         bc_fn=bc_fn,
         initial_f_fn=_initial_f_fn,
     )
+
+    if config.sim_type == "multiphase":
+        from operators.step._multiphase import multiphase_step
+
+        def _multiphase_step_bound(
+            f_t: jnp.ndarray,
+            *,
+            force_ext: jnp.ndarray | None = None,
+            wetting=None,
+            gradient_density=None,
+            laplacian_density=None,
+        ) -> jnp.ndarray:
+            return multiphase_step(
+                setup,
+                f_t,
+                force_ext=force_ext,
+                wetting=wetting,
+                gradient_density=gradient_density,
+                laplacian_density=laplacian_density,
+            )
+
+        setup = setup._replace(multiphase_step=_multiphase_step_bound)
+
+    return setup

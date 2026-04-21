@@ -18,7 +18,8 @@ Example:
 from __future__ import annotations
 from operators._loader import auto_load_operators
 from operators.factory import build_operator
-from operators.wetting.hysteresis import WettingParams
+from operators.wetting._params import WettingParams
+from operators.wetting.hysteresis import update_wetting_state as _hysteresis_update  # noqa: F401
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("operators.wetting")

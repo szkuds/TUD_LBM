@@ -180,6 +180,10 @@ class TestRegistryPopulated:
         names = get_operator_names("lattice")
         assert "D2Q9" in names
 
+    def test_extra_state_registered(self):
+        names = get_operator_names("extra_state")
+        assert names >= {"electric", "wetting"}
+
 
 # =====================================================================
 # Lattice via registry

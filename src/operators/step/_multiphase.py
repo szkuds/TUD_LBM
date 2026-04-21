@@ -5,12 +5,78 @@ Supports both wetting and non-wetting multiphase simulations.
 """
 
 from __future__ import annotations
+import jax.numpy as jnp
 from operators.force import compute_total_force_ext
 from operators.step._common import _apply_common_step
 from operators.step._wetting_differential_operators import _make_wetting_differential_ops
 from registry import update_timestep_operator
 from setup import SimulationSetup
+from state import update_extra_state
 from state.state import State
+from state.state import WettingState
+
+
+def _run_multiphase_pipeline(
+    setup: SimulationSetup,
+    f_t,
+    *,
+    force_ext=None,
+    wetting: WettingState | None = None,
+    gradient_density=None,
+    laplacian_density=None,
+):
+    """Run one multiphase pipeline pass and return ``(f_out, rho, u, force_tot)``."""
+    if gradient_density is None or laplacian_density is None:
+        if wetting is not None and setup.config.wetting_config is not None:
+            wet_grad, wet_lap = _make_wetting_differential_ops(setup, wetting)
+        else:
+            wet_grad = setup.gradient_density
+            wet_lap = setup.laplacian_density
+        if gradient_density is None:
+            gradient_density = wet_grad
+        if laplacian_density is None:
+            laplacian_density = wet_lap
+
+    rho, u, force_tot = setup.macroscopic_fn(
+        f_t,
+        setup.lattice,
+        setup.multiphase_params,
+        force_ext,
+        gradient_standard=setup.gradient_standard,
+        laplacian_density=laplacian_density,
+    )
+
+    # Reuse the shared equilibrium→collision→streaming→BC path for consistency.
+    temp_state = State(
+        f=f_t,
+        rho=rho,
+        u=u,
+        t=jnp.array(0),
+        wetting=wetting,
+    )
+    next_state = _apply_common_step(setup, temp_state, rho, u, force_tot, gradient_density=gradient_density)
+    return next_state.f, rho, u, force_tot
+
+
+def multiphase_step(
+    setup: SimulationSetup,
+    f_t,
+    *,
+    force_ext=None,
+    wetting: WettingState | None = None,
+    gradient_density=None,
+    laplacian_density=None,
+):
+    """Run one multiphase trial step and return post-BC populations."""
+    f_out, _rho, _u, _force_tot = _run_multiphase_pipeline(
+        setup,
+        f_t,
+        force_ext=force_ext,
+        wetting=wetting,
+        gradient_density=gradient_density,
+        laplacian_density=laplacian_density,
+    )
+    return f_out
 
 
 @update_timestep_operator(name="multiphase")
@@ -31,41 +97,23 @@ def step_multiphase(setup: SimulationSetup, state: State) -> State:
         Updated :class:`~state.state.State` after one time step.
     """
     # 1. External forces
-    force_ext, state = compute_total_force_ext(setup, state, setup.forces, setup.streaming_fn)
+    force_ext, state = compute_total_force_ext(setup, state, setup.forces)
 
-    # 1.1. Resolve density operators (wetting shims if applicable)
-    # Wetting shims should only be applied if BOTH the state has wetting AND setup was built with wetting config
-    if state.wetting is not None and setup.config.wetting_config is not None:
-        gradient_density, laplacian_density = _make_wetting_differential_ops(setup, state.wetting)
-    else:
-        gradient_density = setup.gradient_density
-        laplacian_density = setup.laplacian_density
-
-    # 2. Multiphase macroscopic (chemical potential force, wetting-corrected operators)
-    rho, u, force_tot = setup.macroscopic_fn(
+    f_next, rho, u, force_tot = _run_multiphase_pipeline(
+        setup,
         state.f,
-        setup.lattice,
-        setup.multiphase_params,
-        force_ext,
-        gradient_standard=setup.gradient_standard,
-        laplacian_density=laplacian_density,
+        force_ext=force_ext,
+        wetting=state.wetting,
+    )
+    new_state = state._replace(
+        f=f_next,
+        rho=rho,
+        u=u,
+        t=state.t + 1,
     )
 
-    # 3–6. Shared pipeline (equilibrium → collision (+source with grad_density) → streaming → BCs)
-    new_state = _apply_common_step(setup, state, rho, u, force_tot, gradient_density=gradient_density)
-
-    # 7. Hysteresis update (if applicable)
-    new_wetting = new_state.wetting
-    if new_state.wetting is not None and setup.wetting_fn is not None:
-        new_wetting = setup.wetting_fn(
-            state.wetting,
-            rho,
-            setup,
-            state.f,
-            force_ext=force_ext,
-        )
+    new_state = update_extra_state(setup, state, new_state, force_ext=force_ext)
 
     return new_state._replace(
         force=force_tot,
-        wetting=new_wetting,
     )

@@ -12,6 +12,7 @@ Public API::
 """
 
 from state._extra_state import _build_extra_state
+from state._extra_state import _update_extra_state
 from state._optional_fields import _build_optional_fields
 from state.state import State
 from state.state import WettingState
@@ -21,6 +22,7 @@ __all__ = [
     "WettingState",
     "build_extra_state",
     "build_optional_fields",
+    "update_extra_state",
 ]
 
 
@@ -54,24 +56,21 @@ def build_optional_fields(setup, nx: int, ny: int, d: int):
 
 
 def build_extra_state(setup):
-    """Collect extra State fields initialised by registered force specs.
-
-    Some force implementations define additional fields that must be
-    stored in the State pytree (e.g. electric potential ``h`` for
-    electrokinetic flows). This helper iterates over all active force
-    specs and collects their initialised field contributions.
-
-    Returns an empty dict when no forces are registered, keeping the
-    call site unconditional and simplifying the orchestrator logic.
+    """Collect extra State fields initialised by active extra-state plugins.
 
     Args:
         setup: :class:`~setup.simulation_setup.SimulationSetup`.
 
     Returns:
         A dictionary mapping field names to initialised arrays.
-        Empty when no forces are active.
+        Empty when no plugins are active.
 
     See Also:
         :func:`state._extra_state._build_extra_state`
     """
     return _build_extra_state(setup)
+
+
+def update_extra_state(setup, prev_state, new_state, **context):
+    """Apply plugin-driven extra-state updates after one step."""
+    return _update_extra_state(setup, prev_state, new_state, **context)

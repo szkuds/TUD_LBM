@@ -271,3 +271,12 @@ def plotting_operator(
 ) -> Callable[[_OT], _OT]:
     """Register a plotting operator (kind ``"plotting"``)."""
     return register_operator("plotting", name=name, **meta)
+
+
+def extra_state_plugin(
+    *,
+    name: str | None = None,
+    **meta: object,
+) -> Callable[[_OT], _OT]:
+    """Register an extra-state plugin (kind ``"extra_state"``)."""
+    return register_operator("extra_state", name=name, **meta)

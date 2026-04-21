@@ -318,9 +318,7 @@ class ForceOperator(Protocol):
     """Unified protocol for force operator modules.
 
     Every force module exposes setup-time ``build`` and step-time
-    ``compute`` methods. Forces with auxiliary carry fields may also
-    implement ``init_state`` and ``update_state``; stateless forces can
-    rely on the default no-op behaviour documented here.
+    ``compute`` methods.
     """
 
     def build(self, params: Any, grid_shape: tuple[int, ...]) -> Any:
@@ -331,23 +329,23 @@ class ForceOperator(Protocol):
         """Compute the force contribution for the current state."""
         ...
 
-    def init_state(
-        self,
-        grid_shape: tuple[int, ...],
-        lattice: Lattice,
-        precomputed: Any,
-    ) -> dict[str, jnp.ndarray]:
-        """Create additional state fields required at t=0.
 
-        Stateless forces may use the default empty mapping.
-        """
+@runtime_checkable
+class ExtraStatePlugin(Protocol):
+    """Plugin contract for initialising and updating extra ``State`` fields."""
+
+    name: str
+
+    def is_active(self, config: Any) -> bool:
+        """Return whether this plugin should be enabled for the given config."""
         ...
 
-    def update_state(self, state: Any, precomputed: Any, lattice: Lattice, stream_fn: Any) -> Any:
-        """Update auxiliary state fields by one step.
+    def init_state(self, setup: Any) -> dict[str, Any]:
+        """Create initial extra fields merged into :class:`state.state.State`."""
+        ...
 
-        Stateless forces may use the default identity update.
-        """
+    def update_state(self, setup: Any, prev_state: Any, new_state: Any, **context: Any) -> Any:
+        """Apply per-step extra-state updates and return the updated state."""
         ...
 
 
@@ -519,6 +517,7 @@ __all__ = [
     "ConfigReader",
     "DifferentialOperator",
     "EquilibriumOperator",
+    "ExtraStatePlugin",
     "ForceOperator",
     "HysteresisOperator",
     "InitialiserOperator",
