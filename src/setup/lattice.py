@@ -90,6 +90,52 @@ def _build_d2q9() -> Lattice:
     )
 
 
+# ── D3Q19 constants (computed once at import time) ────────────────────
+_D3Q19_CX = [0, 1, -1, 0, 0, 0, 0, 1, -1, 1, -1, 1, -1, 1, -1, 0, 0, 0, 0]
+_D3Q19_CY = [0, 0, 0, 1, -1, 0, 0, 1, -1, -1, 1, 0, 0, 0, 0, 1, -1, 1, -1]
+_D3Q19_CZ = [0, 0, 0, 0, 0, 1, -1, 0, 0, 0, 0, 1, -1, -1, 1, 1, -1, -1, 1]
+
+_D3Q19_W = [
+1 / 3,                                                          # Center (1)
+1 / 18, 1 / 18, 1 / 18, 1 / 18, 1 / 18, 1 / 18,                 # Faces (6)
+1 / 36, 1 / 36, 1 / 36, 1 / 36, 1 / 36, 1 / 36,                 # Edges (12)
+1 / 36, 1 / 36, 1 / 36, 1 / 36, 1 / 36, 1 / 36
+]
+
+@lattice_operator(name="D3Q19", dim=3, q=19)
+def _build_d3q19() -> Lattice:
+    """Construct a D3Q19 :class:Lattice."""
+    c_np = np.array(list(zip(_D3Q19_CX, _D3Q19_CY, _D3Q19_CZ, strict=False))).T  # shape (3, 19)
+    w_np = np.array(_D3Q19_W)
+    c_t = c_np.T  # shape (19, 3)
+
+    opp = np.array([c_t.tolist().index((-c_t[i]).tolist()) for i in range(19)])
+
+    main = np.nonzero(np.sum(np.abs(c_t), axis=1) == 1)[0]
+
+    right  = np.nonzero(c_t[:, 0] == 1)[0]
+    left   = np.nonzero(c_t[:, 0] == -1)[0]
+    top    = np.nonzero(c_t[:, 1] == 1)[0]
+    bottom = np.nonzero(c_t[:, 1] == -1)[0]
+    front  = np.nonzero(c_t[:, 2] == 1)[0]
+    back   = np.nonzero(c_t[:, 2] == -1)[0]
+
+    return Lattice(
+        name="D3Q19",
+        d=3,
+        q=19,
+        c=jnp.array(c_np),
+        w=jnp.array(w_np),
+        opp_indices=jnp.array(opp),
+        main_indices=jnp.array(main),
+        right_indices=jnp.array(right),
+        left_indices=jnp.array(left),
+        top_indices=jnp.array(top),
+        bottom_indices=jnp.array(bottom),
+        front_indices=jnp.array(front),
+        back_indices=jnp.array(back),
+    )
+
 # ── Public factory ───────────────────────────────────────────────────
 
 
