@@ -8,7 +8,7 @@ step on the substrate.
 from __future__ import annotations
 import jax.numpy as jnp
 from tud_lbm.operators.equilibrium._equilibrium import compute_equilibrium
-from registry import initialise_operator
+from tud_lbm.registry import initialise_operator
 from tud_lbm.lattice.lattice import Lattice
 
 

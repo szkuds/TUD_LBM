@@ -13,12 +13,20 @@ readability and extensibility. Structured as:
 
 Example usage::
 
-    from tud_lbm import SimulationConfig, build_setup, run
-    from tud_lbm.lattice import Lattice
-
-    cfg = SimulationConfig(grid_shape=(64, 64), tau=0.8)
-    setup = build_setup(cfg)
-    final_state, _ = run(setup, init_state=..., nt=5000)
+    from tud_lbm import SimulationConfig, build_setup, run, State
+    from tud_lbm.pipeline.runner import init_state
+    
+    # Create configuration with sensible defaults
+    config = SimulationConfig(grid_shape=(64, 64), tau=0.8, nt=5000)
+    
+    # Build simulation setup from config
+    setup = build_setup(config)
+    
+    # Initialize state
+    state = init_state(setup)
+    
+    # Run simulation
+    final_state, trajectory = run(setup, state, nt=config.nt)
 """
 
 __version__ = "0.2.0"
@@ -27,11 +35,8 @@ __version__ = "0.2.0"
 def __getattr__(name):
     """Lazy load main API to avoid circular imports."""
     if name == "SimulationConfig":
-        from tud_lbm.config.simulation import SimulationConfig
+        from tud_lbm.config.simulation_config import SimulationConfig
         return SimulationConfig
-    elif name == "RunnerConfig":
-        from tud_lbm.config.runner import RunnerConfig
-        return RunnerConfig
     elif name == "Lattice":
         from tud_lbm.lattice.lattice import Lattice
         return Lattice
@@ -57,7 +62,6 @@ def __dir__():
     """Expose public API."""
     return [
         "SimulationConfig",
-        "RunnerConfig",
         "Lattice",
         "build_lattice",
         "build_setup",

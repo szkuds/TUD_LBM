@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 import jax.numpy as jnp
 import numpy as np
-from registry import stream_operator
+from tud_lbm.registry import stream_operator
 from tud_lbm.lattice.lattice import Lattice
 
 # BC types that implement solid-wall (bounce-back) behaviour.

@@ -35,7 +35,7 @@ class MultiphaseParams(NamedTuple):
 
 
 # Auto-discover and import private operator modules for registry registration
-auto_load_operators("operators.macroscopic")
+auto_load_operators("tud_lbm.operators.macroscopic")
 
 
 def build_macroscopic_fn(scheme: str = "standard") -> MacroscopicOperator:

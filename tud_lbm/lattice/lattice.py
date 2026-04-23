@@ -18,8 +18,8 @@ from __future__ import annotations
 from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
-from registry import get_operators
-from registry import lattice_operator
+from tud_lbm.registry import get_operators
+from tud_lbm.registry import lattice_operator
 
 
 class Lattice(NamedTuple):

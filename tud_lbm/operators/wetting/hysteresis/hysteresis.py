@@ -34,7 +34,7 @@ import jax.numpy as jnp
 from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
 from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
 from tud_lbm.operators.wetting._params import WettingParams
-from registry import wetting_operator
+from tud_lbm.registry import wetting_operator
 from tud_lbm.pipeline.state.state import WettingState
 
 # ── Helpers ──────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ which matches the padding order in ``gradient.py`` / ``laplacian.py``.
 from __future__ import annotations
 from typing import Any
 import jax.numpy as jnp
-from registry import get_operators
+from tud_lbm.registry import get_operators
 
 
 def _apply_stencil_padding(

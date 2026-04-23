@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from tud_lbm.operators.force._electric import ElectricParams
 from tud_lbm.operators.force._electric import _equilibrium_h
 from tud_lbm.operators.force._electric import _rho_to_phi
-from registry import extra_state_plugin
+from tud_lbm.registry import extra_state_plugin
 
 
 def _get_electric_params(setup: Any) -> ElectricParams | None:

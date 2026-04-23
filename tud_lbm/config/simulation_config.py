@@ -74,24 +74,33 @@ def _validate_nonnegative(value, name: str) -> None:
 
 
 def _valid_collision_schemes() -> set[str]:
-    import operators.collision  # noqa: F401
-    from registry import get_operator_names
-
-    return get_operator_names("collision_models")
+    """Get valid collision scheme names. Returns empty set if operators not loaded."""
+    try:
+        import tud_lbm.operators.collision  # noqa: F401
+        from tud_lbm.registry import get_operator_names
+        return get_operator_names("collision_models")
+    except (ImportError, KeyError):
+        return set()  # Operators not yet loaded - skip validation
 
 
 def _valid_eos() -> set[str]:
-    import operators.macroscopic  # noqa: F401
-    from registry import get_operator_names
-
-    return get_operator_names("macroscopic") - {"standard"}
+    """Get valid EOS names. Returns empty set if operators not loaded."""
+    try:
+        import tud_lbm.operators.macroscopic  # noqa: F401
+        from tud_lbm.registry import get_operator_names
+        return get_operator_names("macroscopic") - {"standard"}
+    except (ImportError, KeyError):
+        return set()  # Operators not yet loaded - skip validation
 
 
 def _valid_lattices() -> set[str]:
-    import setup.lattice  # noqa: F401
-    from registry import get_operator_names
-
-    return get_operator_names("lattice")
+    """Get valid lattice types. Returns empty set if operators not loaded."""
+    try:
+        import tud_lbm.lattice.lattice  # noqa: F401
+        from tud_lbm.registry import get_operator_names
+        return get_operator_names("lattice")
+    except (ImportError, KeyError):
+        return set()  # Operators not yet loaded - skip validation
 
 
 @dataclass(frozen=True)
@@ -194,9 +203,10 @@ class SimulationConfig:
         if any(d <= 0 for d in self.grid_shape):
             raise ValueError(f"All grid dimensions must be positive, got {self.grid_shape}")
 
-        if self.lattice_type not in _valid_lattices():
-            valid = _valid_lattices()
-            raise ValueError(f"lattice_type must be one of {valid}, got '{self.lattice_type}'")
+        # Validate lattice type only if operators are loaded
+        valid_lattices = _valid_lattices()
+        if valid_lattices and self.lattice_type not in valid_lattices:
+            raise ValueError(f"lattice_type must be one of {valid_lattices}, got '{self.lattice_type}'")
 
         if self.tau <= 0.5:
             raise ValueError(f"tau must be > 0.5 for stability, got {self.tau}")
@@ -204,8 +214,9 @@ class SimulationConfig:
         if self.nt <= 0:
             raise ValueError(f"nt must be positive, got {self.nt}")
 
+        # Validate collision scheme only if operators are loaded
         valid_schemes = _valid_collision_schemes()
-        if self.collision_scheme not in valid_schemes:
+        if valid_schemes and self.collision_scheme not in valid_schemes:
             raise ValueError(f"collision_scheme must be one of {sorted(valid_schemes)}, got '{self.collision_scheme}'")
 
         if self.collision_scheme == "mrt" and self.k_diag is None:

@@ -17,7 +17,7 @@ from tud_lbm.operators.factory import build_operator
 from tud_lbm.operators.protocols import StreamingOperator
 
 # Auto-discover and import private operator modules for registry registration
-auto_load_operators("operators.streaming")
+auto_load_operators("tud_lbm.operators.streaming")
 
 
 def build_streaming_fn(scheme: str = "standard") -> StreamingOperator:

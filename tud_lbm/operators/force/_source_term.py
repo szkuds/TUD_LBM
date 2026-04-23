@@ -9,7 +9,7 @@ from __future__ import annotations
 import jax.numpy as jnp
 import numpy as np
 from tud_lbm.operators.protocols import DifferentialOperator
-from registry import force_model
+from tud_lbm.registry import force_model
 from tud_lbm.lattice.lattice import Lattice
 
 

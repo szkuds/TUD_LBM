@@ -9,7 +9,7 @@ All operations are JAX-compatible and jittable.
 
 from __future__ import annotations
 import jax.numpy as jnp
-from registry import wetting_operator
+from tud_lbm.registry import wetting_operator
 
 
 @wetting_operator(name="contact_line_location")

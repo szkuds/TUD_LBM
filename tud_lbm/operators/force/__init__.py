@@ -24,7 +24,7 @@ from tud_lbm.operators.factory import build_operator
 from tud_lbm.operators.protocols import ForceOperator
 
 # Auto-discover and import private operator modules for registry registration
-auto_load_operators("operators.force")
+auto_load_operators("tud_lbm.operators.force")
 
 
 class ForceParams(NamedTuple):
@@ -98,7 +98,7 @@ def build_forces(
         A :class:`ForceSetup` containing force specs and the source-term callable.
     """
     # Lazy import to avoid circular imports and ensure registry is populated
-    from operators.force._source_term import source as compute_source
+    from tud_lbm.operators.force._source_term import source as compute_source
 
     specs: list[ForceParams] = []
     for f in dataclasses.fields(config):

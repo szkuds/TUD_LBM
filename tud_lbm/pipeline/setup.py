@@ -155,17 +155,17 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         )
 
     # Import here to avoid circular import issues at module level
-    from operators.boundary import build_bc
-    from operators.boundary import build_bc_masks
-    from operators.collision import build_collision_fn
-    from operators.equilibrium import build_equilibrium_fn
-    from operators.initialise import build_initialise_fn
-    from operators.macroscopic import build_macroscopic_fn
-    from operators.macroscopic import build_multiphase_params
-    from operators.step import build_step_fn
-    from operators.streaming import build_streaming_fn
-    from operators.wetting import build_wetting_fn
-    from registry import get_operators
+    from tud_lbm.operators.boundary import build_bc
+    from tud_lbm.operators.boundary import build_bc_masks
+    from tud_lbm.operators.collision import build_collision_fn
+    from tud_lbm.operators.equilibrium import build_equilibrium_fn
+    from tud_lbm.operators.initialise import build_initialise_fn
+    from tud_lbm.operators.macroscopic import build_macroscopic_fn
+    from tud_lbm.operators.macroscopic import build_multiphase_params
+    from tud_lbm.operators.step import build_step_fn
+    from tud_lbm.operators.streaming import build_streaming_fn
+    from tud_lbm.operators.wetting import build_wetting_fn
+    from tud_lbm.registry import get_operators
 
     lattice = build_lattice(config.lattice_type)
     bc_masks = build_bc_masks(tuple(config.grid_shape))

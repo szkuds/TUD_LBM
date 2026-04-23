@@ -17,7 +17,7 @@ from tud_lbm.operators.factory import build_operator
 from tud_lbm.operators.protocols import CollisionOperator
 
 # Auto-discover and import private operator modules for registry registration
-auto_load_operators("operators.collision")
+auto_load_operators("tud_lbm.operators.collision")
 
 
 def build_collision_fn(scheme: str) -> CollisionOperator:

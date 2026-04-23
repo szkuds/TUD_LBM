@@ -18,7 +18,7 @@ from tud_lbm.operators.factory import build_operator
 from tud_lbm.operators.protocols import InitialiserOperator
 
 # Auto-discover and import private operator modules for registry registration.
-auto_load_operators("operators.initialise")
+auto_load_operators("tud_lbm.operators.initialise")
 
 
 def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:

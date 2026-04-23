@@ -14,7 +14,7 @@ from tud_lbm.operators.differential._gradient import grad_core
 from tud_lbm.operators.differential._pad_utils import _apply_stencil_padding
 from tud_lbm.operators.differential._pad_utils import to_2d
 from tud_lbm.operators.wetting import build_wetting_fn
-from registry import register_operator
+from tud_lbm.registry import register_operator
 
 
 @register_operator("differential", name="gradient_wetting")

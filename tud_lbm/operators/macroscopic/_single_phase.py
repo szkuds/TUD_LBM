@@ -6,7 +6,7 @@ Computes density (zeroth moment) and velocity (first moment / density).
 
 from __future__ import annotations
 import jax.numpy as jnp
-from registry import macroscopic_operator
+from tud_lbm.registry import macroscopic_operator
 from tud_lbm.lattice.lattice import Lattice
 
 

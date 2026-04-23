@@ -22,7 +22,7 @@ from tud_lbm.operators.wetting._params import WettingParams
 from tud_lbm.operators.wetting.hysteresis import update_wetting_state as _hysteresis_update  # noqa: F401
 
 # Auto-discover and import private operator modules for registry registration
-auto_load_operators("operators.wetting")
+auto_load_operators("tud_lbm.operators.wetting")
 
 
 def build_wetting_fn(scheme: str = "contact_angle"):

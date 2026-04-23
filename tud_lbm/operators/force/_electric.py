@@ -27,7 +27,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import NamedTuple
 import jax.numpy as jnp
-from registry import force_model
+from tud_lbm.registry import force_model
 from tud_lbm.lattice.lattice import Lattice
 
 # ══════════════════════════════════════════════════════════════════════

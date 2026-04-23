@@ -17,7 +17,7 @@ from tud_lbm.operators.factory import build_operator
 from tud_lbm.operators.protocols import EquilibriumOperator
 
 # Auto-discover and import private operator modules for registry registration
-auto_load_operators("operators.equilibrium")
+auto_load_operators("tud_lbm.operators.equilibrium")
 
 
 def build_equilibrium_fn(scheme: str = "wb") -> EquilibriumOperator:

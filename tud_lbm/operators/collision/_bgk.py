@@ -22,7 +22,7 @@ where *S* is the optional source term.
 
 from __future__ import annotations
 import jax.numpy as jnp
-from registry import collision_model
+from tud_lbm.registry import collision_model
 
 
 @collision_model(name="bgk")

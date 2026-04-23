@@ -19,12 +19,12 @@ from tud_lbm.operators.factory import build_operator
 from tud_lbm.operators.protocols import DifferentialOperator
 
 if TYPE_CHECKING:
-    from config.simulation_config import SimulationConfig
-    from operators.macroscopic import MultiphaseParams
-    from setup.lattice import Lattice
+    from tud_lbm.config.simulation_config import SimulationConfig
+    from tud_lbm.operators.macroscopic import MultiphaseParams
+    from tud_lbm.lattice.lattice import Lattice
 
 # Auto-discover and import private operator modules for registry registration.
-auto_load_operators("operators.differential")
+auto_load_operators("tud_lbm.operators.differential")
 
 
 def build_differential_fn(scheme: str) -> DifferentialOperator:
@@ -72,10 +72,10 @@ def build_diff_ops(
         ``(gradient_standard, gradient_density, laplacian_density)`` — three
         callable differential-operator closures.
     """
-    from operators.boundary import _bounce_back as _bb  # noqa: F401
-    from operators.boundary import _periodic as _per  # noqa: F401
-    from operators.boundary import _symmetry as _sym  # noqa: F401
-    from operators.differential._pad_utils import determine_pad_modes
+    from tud_lbm.operators.boundary import _bounce_back as _bb  # noqa: F401
+    from tud_lbm.operators.boundary import _periodic as _per  # noqa: F401
+    from tud_lbm.operators.boundary import _symmetry as _sym  # noqa: F401
+    from tud_lbm.operators.differential._pad_utils import determine_pad_modes
 
     # Standard gradient closure: (grid) → (nx, ny, 1, 2)
     _gradient_raw = build_differential_fn("gradient")

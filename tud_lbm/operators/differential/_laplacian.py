@@ -16,7 +16,7 @@ from __future__ import annotations
 import jax.numpy as jnp
 from tud_lbm.operators.differential._pad_utils import _apply_stencil_padding
 from tud_lbm.operators.differential._pad_utils import to_2d
-from registry import register_operator
+from tud_lbm.registry import register_operator
 
 
 @register_operator("differential", name="laplacian")

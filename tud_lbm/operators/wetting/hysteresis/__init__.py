@@ -27,7 +27,7 @@ from .hysteresis import _optimise_single_param
 from .hysteresis import update_wetting_state
 
 # Auto-discover and import private operator modules for registry registration
-auto_load_operators("operators.wetting")
+auto_load_operators("tud_lbm.operators.wetting")
 
 
 def build_wetting_fn(scheme: str = "contact_angle") -> HysteresisOperator:

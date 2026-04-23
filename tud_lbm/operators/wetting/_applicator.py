@@ -10,7 +10,7 @@ from typing import Any
 import jax.numpy as jnp
 from tud_lbm.operators.wetting._apply_edge import _apply_wetting_edge
 from tud_lbm.operators.wetting._edge_config import _resolve_wetting_edges
-from registry import wetting_operator
+from tud_lbm.registry import wetting_operator
 
 
 @wetting_operator(name="applicator")

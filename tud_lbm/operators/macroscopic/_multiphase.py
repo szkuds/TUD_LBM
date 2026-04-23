@@ -15,7 +15,7 @@ from __future__ import annotations
 import jax.numpy as jnp
 from tud_lbm.operators.macroscopic import MultiphaseParams
 from tud_lbm.operators.protocols import DifferentialOperator
-from registry import macroscopic_operator
+from tud_lbm.registry import macroscopic_operator
 from tud_lbm.lattice.lattice import Lattice
 
 # ── EOS and chemical potential ───────────────────────────────────────

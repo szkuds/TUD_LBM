@@ -5,7 +5,7 @@ from typing import Any
 import jax.numpy as jnp
 from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
 from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
-from registry import extra_state_plugin
+from tud_lbm.registry import extra_state_plugin
 from tud_lbm.pipeline.state.state import WettingState
 
 

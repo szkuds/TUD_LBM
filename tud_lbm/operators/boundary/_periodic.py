@@ -6,7 +6,7 @@ boundaries require no additional transformation.
 
 from __future__ import annotations
 import jax.numpy as jnp
-from registry import boundary_condition
+from tud_lbm.registry import boundary_condition
 from tud_lbm.lattice.lattice import Lattice
 
 
