@@ -1,6 +1,7 @@
 import importlib
 import pathlib
 import pkgutil
+
 from .base import OutputWriter
 
 # --- Automatic module discovery ---

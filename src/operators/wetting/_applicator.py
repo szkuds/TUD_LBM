@@ -6,8 +6,11 @@ density array.
 """
 
 from __future__ import annotations
+
 from typing import Any
+
 import jax.numpy as jnp
+
 from operators.wetting._apply_edge import _apply_wetting_edge
 from operators.wetting._edge_config import _resolve_wetting_edges
 from registry import wetting_operator

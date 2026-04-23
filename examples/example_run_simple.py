@@ -13,8 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from config.adapter_toml import TomlAdapter
 from config.jax_config import configure_jax
-from runner.run import init_state
-from runner.run import run
+from runner.run import init_state, run
 from setup.simulation_setup import build_setup
 from util.io import SimulationIO
 from util.plotting import FigureBuilder

@@ -6,7 +6,9 @@ gradient "sees" the desired wetting boundary condition.
 """
 
 from __future__ import annotations
+
 from typing import Any
+
 import jax.numpy as jnp
 
 # Density thresholds for detecting the interface region

@@ -16,10 +16,13 @@ Example:
 """
 
 from __future__ import annotations
+
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 from tud_lbm.operators.wetting._params import WettingParams
-from tud_lbm.operators.wetting.hysteresis import update_wetting_state as _hysteresis_update  # noqa: F401
+from tud_lbm.operators.wetting.hysteresis import (  # noqa: F401
+    update_wetting_state as _hysteresis_update,
+)
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("tud_lbm.operators.wetting")

@@ -9,7 +9,9 @@
 """
 
 from __future__ import annotations
+
 import inspect
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -168,8 +170,7 @@ class TestEndToEnd:
 
     def test_single_phase_e2e(self):
         from config import SimulationConfig
-        from runner import init_state
-        from runner import run
+        from runner import init_state, run
         from setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=5)
@@ -184,8 +185,7 @@ class TestEndToEnd:
 
     def test_multiphase_e2e(self):
         from config import SimulationConfig
-        from runner import init_state
-        from runner import run
+        from runner import init_state, run
         from setup import build_setup
 
         cfg = SimulationConfig(
@@ -208,8 +208,7 @@ class TestEndToEnd:
 
     def test_run_uses_setup_nt_default(self):
         from config import SimulationConfig
-        from runner import init_state
-        from runner import run
+        from runner import init_state, run
         from setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=4)
@@ -220,8 +219,7 @@ class TestEndToEnd:
 
     def test_save_interval(self):
         from config import SimulationConfig
-        from runner import init_state
-        from runner import run
+        from runner import init_state, run
         from setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
@@ -248,8 +246,7 @@ class TestEndToEnd:
 
     def test_mass_conservation(self):
         from config import SimulationConfig
-        from runner import init_state
-        from runner import run
+        from runner import init_state, run
         from setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)

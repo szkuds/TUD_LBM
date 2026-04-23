@@ -9,9 +9,10 @@ Tests validate that:
 
 import textwrap
 from pathlib import Path
+
 import pytest
-from config.adapter_base import ConfigAdapter
-from config.adapter_base import get_adapter
+
+from config.adapter_base import ConfigAdapter, get_adapter
 from config.adapter_toml import TomlAdapter
 from config.simulation_config import SimulationConfig
 
@@ -134,11 +135,15 @@ class TestGetAdapter:
         assert isinstance(adapter, TomlAdapter)
 
     def test_unsupported_extension_raises(self):
-        with pytest.raises(ValueError, match=r"Unsupported extension '\.yaml'\. Supported: .toml"):
+        with pytest.raises(
+            ValueError, match=r"Unsupported extension '\.yaml'\. Supported: .toml"
+        ):
             get_adapter("app_setup.yaml")
 
     def test_no_extension_raises(self):
-        with pytest.raises(ValueError, match=r"Unsupported extension ''. Supported: .toml"):
+        with pytest.raises(
+            ValueError, match=r"Unsupported extension ''. Supported: .toml"
+        ):
             get_adapter("app_setup")
 
 

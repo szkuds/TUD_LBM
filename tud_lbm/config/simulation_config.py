@@ -16,11 +16,11 @@ Usage::
 """
 
 from __future__ import annotations
+
 import dataclasses
-from dataclasses import dataclass
-from dataclasses import field
-from typing import Any
-from typing import Literal
+from dataclasses import dataclass, field
+from typing import Any, Literal
+
 from tud_lbm.config.dir_config import BASE_RESULTS_DIR
 
 CONFIG_SECTION: str = "config_section"
@@ -50,7 +50,9 @@ def array_field(
         metadata[NESTED_SWEEPABLE] = True
     if section is not None:
         metadata[CONFIG_SECTION] = section
-    return field(default=default, default_factory=default_factory, metadata=metadata, **kwargs)
+    return field(
+        default=default, default_factory=default_factory, metadata=metadata, **kwargs
+    )
 
 
 def _normalize_sequence(value):
@@ -78,6 +80,7 @@ def _valid_collision_schemes() -> set[str]:
     try:
         import tud_lbm.operators.collision  # noqa: F401
         from tud_lbm.registry import get_operator_names
+
         return get_operator_names("collision_models")
     except (ImportError, KeyError):
         return set()  # Operators not yet loaded - skip validation
@@ -88,6 +91,7 @@ def _valid_eos() -> set[str]:
     try:
         import tud_lbm.operators.macroscopic  # noqa: F401
         from tud_lbm.registry import get_operator_names
+
         return get_operator_names("macroscopic") - {"standard"}
     except (ImportError, KeyError):
         return set()  # Operators not yet loaded - skip validation
@@ -98,6 +102,7 @@ def _valid_lattices() -> set[str]:
     try:
         import tud_lbm.lattice.lattice  # noqa: F401
         from tud_lbm.registry import get_operator_names
+
         return get_operator_names("lattice")
     except (ImportError, KeyError):
         return set()  # Operators not yet loaded - skip validation
@@ -131,14 +136,22 @@ class SimulationConfig:
     )
 
     # ── Wetting model (promoted to first-class section) ──────────
-    wetting_config: dict[str, Any] | None = array_field(default=None, section="wetting", nested_sweepable=True)
+    wetting_config: dict[str, Any] | None = array_field(
+        default=None, section="wetting", nested_sweepable=True
+    )
 
     # ── Hysteresis model (promoted to first-class section) ───────
-    hysteresis_config: dict[str, Any] | None = array_field(default=None, section="hysteresis", nested_sweepable=True)
+    hysteresis_config: dict[str, Any] | None = array_field(
+        default=None, section="hysteresis", nested_sweepable=True
+    )
 
     # ── Forces (each force is its own field, named by physics) ───
-    gravity_force: dict[str, Any] | None = array_field(default=None, section="gravity_force", nested_sweepable=True)
-    electric_force: dict[str, Any] | None = array_field(default=None, section="electric_force", nested_sweepable=True)
+    gravity_force: dict[str, Any] | None = array_field(
+        default=None, section="gravity_force", nested_sweepable=True
+    )
+    electric_force: dict[str, Any] | None = array_field(
+        default=None, section="electric_force", nested_sweepable=True
+    )
     # ── Initialisation ───────────────────────────────────────────
     init_type: str = "standard"
     init_dir: str | None = None
@@ -148,12 +161,20 @@ class SimulationConfig:
     )
 
     # ── Output / IO ──────────────────────────────────────────────
-    results_dir: str = field(default=BASE_RESULTS_DIR, metadata={CONFIG_SECTION: "output"})
+    results_dir: str = field(
+        default=BASE_RESULTS_DIR, metadata={CONFIG_SECTION: "output"}
+    )
     save_interval: int = 0
     skip_interval: int = 0
-    save_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
-    plot_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
-    output_format: str | list[str] | None = field(default="numpy", metadata={CONFIG_SECTION: "output"})
+    save_fields: list[str] | None = field(
+        default=None, metadata={CONFIG_SECTION: "output"}
+    )
+    plot_fields: list[str] | None = field(
+        default=None, metadata={CONFIG_SECTION: "output"}
+    )
+    output_format: str | list[str] | None = field(
+        default="numpy", metadata={CONFIG_SECTION: "output"}
+    )
     output_dir: str | None = field(default=None, metadata={CONFIG_SECTION: "output"})
 
     # ── Multiphase ───────────────────────────────────────────────
@@ -165,7 +186,9 @@ class SimulationConfig:
     g: float | None = array_field(default=None, section="multiphase")
 
     # ── Extra / extensible ───────────────────────────────────────
-    extra: dict[str, Any] = field(default_factory=dict, metadata={CONFIG_SECTION: "extra"})
+    extra: dict[str, Any] = field(
+        default_factory=dict, metadata={CONFIG_SECTION: "extra"}
+    )
 
     # Validation
 
@@ -199,14 +222,20 @@ class SimulationConfig:
 
     def _validate_common(self) -> None:
         if len(self.grid_shape) < 2:
-            raise ValueError(f"grid_shape must have at least 2 dimensions, got {len(self.grid_shape)}")
+            raise ValueError(
+                f"grid_shape must have at least 2 dimensions, got {len(self.grid_shape)}"
+            )
         if any(d <= 0 for d in self.grid_shape):
-            raise ValueError(f"All grid dimensions must be positive, got {self.grid_shape}")
+            raise ValueError(
+                f"All grid dimensions must be positive, got {self.grid_shape}"
+            )
 
         # Validate lattice type only if operators are loaded
         valid_lattices = _valid_lattices()
         if valid_lattices and self.lattice_type not in valid_lattices:
-            raise ValueError(f"lattice_type must be one of {valid_lattices}, got '{self.lattice_type}'")
+            raise ValueError(
+                f"lattice_type must be one of {valid_lattices}, got '{self.lattice_type}'"
+            )
 
         if self.tau <= 0.5:
             raise ValueError(f"tau must be > 0.5 for stability, got {self.tau}")
@@ -217,7 +246,9 @@ class SimulationConfig:
         # Validate collision scheme only if operators are loaded
         valid_schemes = _valid_collision_schemes()
         if valid_schemes and self.collision_scheme not in valid_schemes:
-            raise ValueError(f"collision_scheme must be one of {sorted(valid_schemes)}, got '{self.collision_scheme}'")
+            raise ValueError(
+                f"collision_scheme must be one of {sorted(valid_schemes)}, got '{self.collision_scheme}'"
+            )
 
         if self.collision_scheme == "mrt" and self.k_diag is None:
             raise ValueError("k_diag must be provided when using MRT collision scheme")
@@ -226,13 +257,17 @@ class SimulationConfig:
         _validate_nonnegative(self.skip_interval, "skip_interval")
 
         if self.init_type == "init_from_file" and self.init_dir is None:
-            raise ValueError("init_dir must be provided when init_type is 'init_from_file'")
+            raise ValueError(
+                "init_dir must be provided when init_type is 'init_from_file'"
+            )
 
         if self.save_fields is not None:
             valid_fields = {"f", "rho", "u", "force", "force_ext", "h"}
             invalid = set(self.save_fields) - valid_fields
             if invalid:
-                raise ValueError(f"Invalid save_fields: {invalid}. Valid fields: {valid_fields}")
+                raise ValueError(
+                    f"Invalid save_fields: {invalid}. Valid fields: {valid_fields}"
+                )
 
     def _validate_multiphase(self) -> None:
         required = ("kappa", "rho_l", "rho_v", "interface_width", "eos")
@@ -242,14 +277,22 @@ class SimulationConfig:
 
         _validate_positive(self.rho_l, "rho_l")
         _validate_positive(self.rho_v, "rho_v")
-        if self.rho_l is not None and self.rho_v is not None and self.rho_l <= self.rho_v:
-            raise ValueError(f"rho_l ({self.rho_l}) must be greater than rho_v ({self.rho_v})")
+        if (
+            self.rho_l is not None
+            and self.rho_v is not None
+            and self.rho_l <= self.rho_v
+        ):
+            raise ValueError(
+                f"rho_l ({self.rho_l}) must be greater than rho_v ({self.rho_v})"
+            )
         _validate_positive(self.kappa, "kappa")
         _validate_positive(self.interface_width, "interface_width")
 
         valid_eos = _valid_eos()
         if self.eos not in valid_eos:
-            raise ValueError(f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'")
+            raise ValueError(
+                f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'"
+            )
 
     @property
     def is_single_phase(self) -> bool:
@@ -262,7 +305,11 @@ class SimulationConfig:
     @property
     def force_enabled(self) -> bool:
         """True if any ``*_force`` field is populated."""
-        return any(getattr(self, f.name) is not None for f in dataclasses.fields(self) if f.name.endswith("_force"))
+        return any(
+            getattr(self, f.name) is not None
+            for f in dataclasses.fields(self)
+            if f.name.endswith("_force")
+        )
 
     # Serialisation
 
@@ -290,12 +337,20 @@ class SimulationConfig:
 
 
 def get_array_eligible_fields() -> frozenset[str]:
-    return frozenset(f.name for f in dataclasses.fields(SimulationConfig) if f.metadata.get(ARRAY_ELIGIBLE, False))
+    return frozenset(
+        f.name
+        for f in dataclasses.fields(SimulationConfig)
+        if f.metadata.get(ARRAY_ELIGIBLE, False)
+    )
 
 
 def get_nested_sweepable_fields() -> frozenset[str]:
     """Return field names whose dict sub-keys may carry list sweep values."""
-    return frozenset(f.name for f in dataclasses.fields(SimulationConfig) if f.metadata.get(NESTED_SWEEPABLE, False))
+    return frozenset(
+        f.name
+        for f in dataclasses.fields(SimulationConfig)
+        if f.metadata.get(NESTED_SWEEPABLE, False)
+    )
 
 
 def get_fields_for_section(section: str) -> frozenset[str]:

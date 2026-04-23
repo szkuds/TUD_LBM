@@ -19,7 +19,9 @@ Usage::
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
+
 from tud_lbm.registry import force_model
 
 # ══════════════════════════════════════════════════════════════════════

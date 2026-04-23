@@ -16,14 +16,14 @@ Use registry.get_operators(category) to retrieve implementations.
 """
 
 from tud_lbm.operators.protocols import (
-    CollisionOperator,
-    StreamingOperator,
-    EquilibriumOperator,
-    MacroscopicOperator,
     BoundaryOperator,
+    CollisionOperator,
     DifferentialOperator,
+    EquilibriumOperator,
     ForceOperator,
     InitialiserOperator,
+    MacroscopicOperator,
+    StreamingOperator,
 )
 
 __all__ = [

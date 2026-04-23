@@ -1,9 +1,12 @@
 """Analysis plot operator for saved simulation history."""
 
 from __future__ import annotations
+
 from pathlib import Path
+
 import matplotlib.axes
 import numpy as np
+
 from registry import plotting_operator
 from util.plotting.base import PlotOperator
 
@@ -49,7 +52,9 @@ class AnalysisPlotOperator(PlotOperator):
             iters.append(step)
             umax_vals.append(float(np.max(vel_mag)))
             avg_rho_vals.append(float(np.mean(rho)))
-            ratio_vals.append(float(np.max(rho)) / safe_min if safe_min != 0 else np.inf)
+            ratio_vals.append(
+                float(np.max(rho)) / safe_min if safe_min != 0 else np.inf
+            )
 
         if not iters:
             ax.text(

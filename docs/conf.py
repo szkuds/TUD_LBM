@@ -17,7 +17,9 @@ import sys
 # Project root and src/ layout
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
-sys.path.insert(0, os.path.join(PROJECT_ROOT, "src"))  # so `import src...` works if still used
+sys.path.insert(
+    0, os.path.join(PROJECT_ROOT, "src")
+)  # so `import src...` works if still used
 
 # -- Project information -----------------------------------------------------
 

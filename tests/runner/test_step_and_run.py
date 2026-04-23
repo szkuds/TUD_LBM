@@ -1,6 +1,7 @@
 """Runner-focused tests for state init and IO callback behavior."""
 
 from pathlib import Path
+
 import jax.numpy as jnp
 import numpy as np
 
@@ -83,8 +84,7 @@ class TestStreamingIO:
 
     def test_trajectory_is_none_with_io_handler(self, tmp_path):
         """When io_handler is supplied, trajectory must be None."""
-        from runner.run import init_state
-        from runner.run import run
+        from runner.run import init_state, run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -102,8 +102,7 @@ class TestStreamingIO:
 
     def test_files_written_at_correct_steps(self, tmp_path):
         """Snapshots are written at every save_interval step."""
-        from runner.run import init_state
-        from runner.run import run
+        from runner.run import init_state, run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -123,8 +122,7 @@ class TestStreamingIO:
 
     def test_save_fields_filters_keys(self, tmp_path):
         """Only the requested fields appear in the saved files."""
-        from runner.run import init_state
-        from runner.run import run
+        from runner.run import init_state, run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -150,8 +148,7 @@ class TestStreamingIO:
 
     def test_skip_interval_suppresses_early_saves(self, tmp_path):
         """Steps ≤ skip_interval must not produce files."""
-        from runner.run import init_state
-        from runner.run import run
+        from runner.run import init_state, run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -176,8 +173,7 @@ class TestStreamingIO:
 
     def test_backward_compat_no_io_handler(self):
         """Existing trajectory-mode call is unaffected."""
-        from runner.run import init_state
-        from runner.run import run
+        from runner.run import init_state, run
 
         setup = _single_phase_setup()
         state = init_state(setup)

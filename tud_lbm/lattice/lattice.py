@@ -15,11 +15,13 @@ Usage::
 """
 
 from __future__ import annotations
+
 from typing import NamedTuple
+
 import jax.numpy as jnp
 import numpy as np
-from tud_lbm.registry import get_operators
-from tud_lbm.registry import lattice_operator
+
+from tud_lbm.registry import get_operators, lattice_operator
 
 
 class Lattice(NamedTuple):
@@ -96,16 +98,34 @@ _D3Q19_CY = [0, 0, 0, 1, -1, 0, 0, 1, -1, -1, 1, 0, 0, 0, 0, 1, -1, 1, -1]
 _D3Q19_CZ = [0, 0, 0, 0, 0, 1, -1, 0, 0, 0, 0, 1, -1, -1, 1, 1, -1, -1, 1]
 
 _D3Q19_W = [
-1 / 3,                                                          # Center (1)
-1 / 18, 1 / 18, 1 / 18, 1 / 18, 1 / 18, 1 / 18,                 # Faces (6)
-1 / 36, 1 / 36, 1 / 36, 1 / 36, 1 / 36, 1 / 36,                 # Edges (12)
-1 / 36, 1 / 36, 1 / 36, 1 / 36, 1 / 36, 1 / 36
+    1 / 3,  # Center (1)
+    1 / 18,
+    1 / 18,
+    1 / 18,
+    1 / 18,
+    1 / 18,
+    1 / 18,  # Faces (6)
+    1 / 36,
+    1 / 36,
+    1 / 36,
+    1 / 36,
+    1 / 36,
+    1 / 36,  # Edges (12)
+    1 / 36,
+    1 / 36,
+    1 / 36,
+    1 / 36,
+    1 / 36,
+    1 / 36,
 ]
+
 
 @lattice_operator(name="D3Q19", dim=3, q=19)
 def _build_d3q19() -> Lattice:
     """Construct a D3Q19 :class:Lattice."""
-    c_np = np.array(list(zip(_D3Q19_CX, _D3Q19_CY, _D3Q19_CZ, strict=False))).T  # shape (3, 19)
+    c_np = np.array(
+        list(zip(_D3Q19_CX, _D3Q19_CY, _D3Q19_CZ, strict=False))
+    ).T  # shape (3, 19)
     w_np = np.array(_D3Q19_W)
     c_t = c_np.T  # shape (19, 3)
 
@@ -113,12 +133,12 @@ def _build_d3q19() -> Lattice:
 
     main = np.nonzero(np.sum(np.abs(c_t), axis=1) == 1)[0]
 
-    right  = np.nonzero(c_t[:, 0] == 1)[0]
-    left   = np.nonzero(c_t[:, 0] == -1)[0]
-    top    = np.nonzero(c_t[:, 1] == 1)[0]
+    right = np.nonzero(c_t[:, 0] == 1)[0]
+    left = np.nonzero(c_t[:, 0] == -1)[0]
+    top = np.nonzero(c_t[:, 1] == 1)[0]
     bottom = np.nonzero(c_t[:, 1] == -1)[0]
-    front  = np.nonzero(c_t[:, 2] == 1)[0]
-    back   = np.nonzero(c_t[:, 2] == -1)[0]
+    front = np.nonzero(c_t[:, 2] == 1)[0]
+    back = np.nonzero(c_t[:, 2] == -1)[0]
 
     return Lattice(
         name="D3Q19",
@@ -135,6 +155,7 @@ def _build_d3q19() -> Lattice:
         front_indices=jnp.array(front),
         back_indices=jnp.array(back),
     )
+
 
 # ── Public factory ───────────────────────────────────────────────────
 

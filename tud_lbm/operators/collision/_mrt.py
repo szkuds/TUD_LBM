@@ -15,7 +15,9 @@ where *K* = ``diag(k_diag)`` is the diagonal relaxation-rate matrix and
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
+
 from tud_lbm.registry import collision_model
 
 # ── D2Q9 moment basis (compile-time constant) ───────────────────────

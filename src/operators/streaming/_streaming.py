@@ -12,9 +12,12 @@ interior before the boundary-condition operator runs.
 """
 
 from __future__ import annotations
+
 from typing import Any
+
 import jax.numpy as jnp
 import numpy as np
+
 from registry import stream_operator
 from setup.lattice import Lattice
 

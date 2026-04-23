@@ -13,16 +13,18 @@ Example:
 """
 
 from __future__ import annotations
+
 from collections.abc import Callable
-from typing import Any
-from typing import NamedTuple
+from typing import Any, NamedTuple
+
 import jax.numpy as jnp
+
+from tud_lbm.lattice.lattice import Lattice
 from tud_lbm.operators.boundary import _bounce_back as _bb  # noqa: F401
 from tud_lbm.operators.boundary import _periodic as _per  # noqa: F401
 from tud_lbm.operators.boundary import _symmetry as _sym  # noqa: F401
 from tud_lbm.operators.protocols import BoundaryOperator
 from tud_lbm.registry import get_operators
-from tud_lbm.lattice.lattice import Lattice
 
 
 class BCMasks(NamedTuple):

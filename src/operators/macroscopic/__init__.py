@@ -14,7 +14,9 @@ Example:
 """
 
 from __future__ import annotations
+
 from typing import NamedTuple
+
 from operators._loader import auto_load_operators
 from operators.factory import build_operator
 from operators.protocols import MacroscopicOperator

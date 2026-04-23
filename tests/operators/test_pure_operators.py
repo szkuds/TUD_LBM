@@ -18,10 +18,12 @@ without any class instance.
 """
 
 from functools import partial
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
 from setup.lattice import build_lattice
 
 # ── Shared helpers ───────────────────────────────────────────────────
@@ -406,6 +408,7 @@ class TestComputeMacroscopicMultiphase:
     def _gradient_and_laplacian(self, lattice):
         """Build gradient and laplacian_wetting callables."""
         import jax
+
         from operators.differential import build_differential_fn
 
         pad_modes = ("wrap", "wrap", "wrap", "wrap")

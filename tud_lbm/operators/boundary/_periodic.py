@@ -5,9 +5,11 @@ boundaries require no additional transformation.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
-from tud_lbm.registry import boundary_condition
+
 from tud_lbm.lattice.lattice import Lattice
+from tud_lbm.registry import boundary_condition
 
 
 @boundary_condition(name="periodic", pad_edge_mode="wrap")

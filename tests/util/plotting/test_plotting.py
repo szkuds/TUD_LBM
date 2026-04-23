@@ -1,8 +1,10 @@
 """Tests for the plotting operator package and figure builder."""
 
 from __future__ import annotations
+
 import numpy as np
 import pytest
+
 from config import SimulationConfig
 from registry import get_operator_names
 from util.plotting import visualise

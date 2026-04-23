@@ -1,9 +1,11 @@
 """Density field plot operator."""
 
 from __future__ import annotations
+
 import matplotlib.axes
 import matplotlib.colors
 import numpy as np
+
 from registry import plotting_operator
 from util.plotting.base import PlotOperator
 

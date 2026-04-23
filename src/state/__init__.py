@@ -11,11 +11,9 @@ Public API::
     from state import State, WettingState, build_optional_fields, build_extra_state
 """
 
-from state._extra_state import _build_extra_state
-from state._extra_state import _update_extra_state
+from state._extra_state import _build_extra_state, _update_extra_state
 from state._optional_fields import _build_optional_fields
-from state.state import State
-from state.state import WettingState
+from state.state import State, WettingState
 
 __all__ = [
     "State",

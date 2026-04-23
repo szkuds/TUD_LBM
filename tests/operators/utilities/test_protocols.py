@@ -7,6 +7,7 @@ registered, it must satisfy its protocol's structural requirements.
 
 import jax.numpy as jnp
 import pytest
+
 from operators.boundary import build_bc_masks
 from setup.lattice import build_lattice
 
@@ -127,7 +128,9 @@ class TestEquilibriumProtocol:
 class TestMacroscopicProtocol:
     """Verify macroscopic operators conform to MacroscopicOperator."""
 
-    def test_standard_macroscopic_conformance(self, lattice_d2q9, grid_shape, test_state):
+    def test_standard_macroscopic_conformance(
+        self, lattice_d2q9, grid_shape, test_state
+    ):
         """Standard macroscopic should match protocol."""
         from operators.macroscopic import build_macroscopic_fn
 
@@ -139,7 +142,9 @@ class TestMacroscopicProtocol:
         assert rho.shape == rho_expected.shape
         assert u.shape == u_expected.shape
 
-    def test_macroscopic_with_force_conformance(self, lattice_d2q9, grid_shape, test_state):
+    def test_macroscopic_with_force_conformance(
+        self, lattice_d2q9, grid_shape, test_state
+    ):
         """Macroscopic with force should return 3-tuple."""
         from operators.macroscopic import build_macroscopic_fn
 
@@ -179,8 +184,7 @@ class TestBoundaryProtocol:
 
     def test_bounce_back_bc_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Bounce-back boundary should match protocol."""
-        from operators.boundary import build_bc
-        from operators.boundary import build_bc_masks
+        from operators.boundary import build_bc, build_bc_masks
 
         f_stream, f_col = test_state[0], test_state[0]
         bc_config = {

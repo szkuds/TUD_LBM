@@ -7,7 +7,9 @@ optimise routines, update_wetting_state)
 """
 
 from __future__ import annotations
+
 from functools import partial
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -154,8 +156,7 @@ class TestWettingParamsHelpers:
         np.testing.assert_allclose(float(p2.d_rho_left), 0.1)
 
     def test_clamp_params(self):
-        from operators.wetting.hysteresis import WettingParams
-        from operators.wetting.hysteresis import _clamp_params
+        from operators.wetting.hysteresis import WettingParams, _clamp_params
 
         p = WettingParams(
             d_rho_left=jnp.array(-0.5),
@@ -192,8 +193,8 @@ class TestOptimiseSingleParam:
 
     def test_reduces_loss(self):
         import optax
-        from operators.wetting.hysteresis import WettingParams
-        from operators.wetting.hysteresis import _optimise_single_param
+
+        from operators.wetting.hysteresis import WettingParams, _optimise_single_param
 
         # Simple quadratic objective: minimise (d_rho_left - 0.1)^2
         target = 0.1
@@ -216,14 +217,16 @@ class TestOptimiseSingleParam:
             phi_right=jnp.array(1.2),
         )
         opt = optax.adam(0.01)
-        _p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50, 1e-10)
+        _p_final, loss_final = _optimise_single_param(
+            objective, p0, mask_fn, opt, 50, 1e-10
+        )
         initial_loss = float(objective(p0))
         assert float(loss_final) < initial_loss
 
     def test_jittable(self):
         import optax
-        from operators.wetting.hysteresis import WettingParams
-        from operators.wetting.hysteresis import _optimise_single_param
+
+        from operators.wetting.hysteresis import WettingParams, _optimise_single_param
 
         def objective(p):
             return (p.d_rho_left - 0.1) ** 2
@@ -246,7 +249,9 @@ class TestOptimiseSingleParam:
 
         @jax.jit
         def run_opt(initial_params):
-            return _optimise_single_param(objective, initial_params, mask_fn, opt, 10, 1e-10)
+            return _optimise_single_param(
+                objective, initial_params, mask_fn, opt, 10, 1e-10
+            )
 
         _p_final, loss = run_opt(p0)
         assert not jnp.isnan(loss)

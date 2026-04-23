@@ -22,9 +22,11 @@ Usage::
 """
 
 from __future__ import annotations
-from typing import Any
-from typing import NamedTuple
+
+from typing import Any, NamedTuple
+
 import jax.numpy as jnp
+
 from operators.protocols import ExtraState
 
 

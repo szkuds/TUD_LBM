@@ -12,9 +12,11 @@ without any legacy operator class instances.
 """
 
 from functools import partial
+
 import jax
 import jax.numpy as jnp
 import numpy as np
+
 from config.simulation_config import SimulationConfig
 from runner.run import init_state
 from setup.lattice import build_lattice

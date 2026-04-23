@@ -43,9 +43,12 @@ Usage::
 """
 
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
+
 import jax
 import jax.numpy as jnp
+
 from state.state import State
 
 if TYPE_CHECKING:
@@ -82,8 +85,7 @@ def init_state(
     Returns:
         A :class:`State` ready to be passed to :func:`run`.
     """
-    from state import build_extra_state
-    from state import build_optional_fields
+    from state import build_extra_state, build_optional_fields
 
     lattice = setup.lattice
     nx, ny = setup.grid_shape[0], setup.grid_shape[1]

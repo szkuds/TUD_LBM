@@ -24,11 +24,10 @@ Usage::
 """
 
 from __future__ import annotations
+
 from pathlib import Path
-from typing import TYPE_CHECKING
-from typing import Any
-from typing import Protocol
-from typing import runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
 import jax.numpy as jnp
 import matplotlib.axes
 import numpy as np
@@ -36,8 +35,7 @@ import numpy as np
 if TYPE_CHECKING:
     from config.simulation_config import SimulationConfig
     from setup.lattice import Lattice
-    from state.state import State
-    from state.state import WettingState
+    from state.state import State, WettingState
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -325,7 +323,9 @@ class ForceOperator(Protocol):
         """Construct precomputed data for the force module."""
         ...
 
-    def compute(self, state: Any, precomputed: Any, *, diff_ops: Any = None) -> jnp.ndarray:
+    def compute(
+        self, state: Any, precomputed: Any, *, diff_ops: Any = None
+    ) -> jnp.ndarray:
         """Compute the force contribution for the current state."""
         ...
 
@@ -415,7 +415,9 @@ class ExtraStatePlugin(Protocol):
         """Create initial extra fields merged into :class:`state.state.State`."""
         ...
 
-    def update_state(self, setup: Any, prev_state: Any, new_state: Any, **context: Any) -> Any:
+    def update_state(
+        self, setup: Any, prev_state: Any, new_state: Any, **context: Any
+    ) -> Any:
         """Apply per-step extra-state updates and return the updated state."""
         ...
 

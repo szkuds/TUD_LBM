@@ -21,9 +21,10 @@ close over it to get a jittable closure.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
-from tud_lbm.operators.differential._pad_utils import _apply_stencil_padding
-from tud_lbm.operators.differential._pad_utils import to_2d
+
+from tud_lbm.operators.differential._pad_utils import _apply_stencil_padding, to_2d
 from tud_lbm.registry import register_operator
 
 

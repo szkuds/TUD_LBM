@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from click.testing import CliRunner
+
 from config.array_expansion import ArrayParameterSet
 from config.simulation_config import SimulationConfig
 from runner.parallel_runner import SimulationResult
@@ -23,8 +25,12 @@ def test_cli_single_config_uses_single_run(monkeypatch, tmp_path):
 
     config = _make_config(str(tmp_path))
 
-    monkeypatch.setattr("config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
-    monkeypatch.setattr("config.array_expansion.expand_config", lambda raw: ([config], None))
+    monkeypatch.setattr(
+        "config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"}
+    )
+    monkeypatch.setattr(
+        "config.array_expansion.expand_config", lambda raw: ([config], None)
+    )
 
     called = {"single": False}
 
@@ -56,8 +62,13 @@ def test_cli_array_config_uses_parallel_sweep(monkeypatch, tmp_path):
         total_combinations=2,
     )
 
-    monkeypatch.setattr("config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
-    monkeypatch.setattr("config.array_expansion.expand_config", lambda raw: ([config_a, config_b], metadata))
+    monkeypatch.setattr(
+        "config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"}
+    )
+    monkeypatch.setattr(
+        "config.array_expansion.expand_config",
+        lambda raw: ([config_a, config_b], metadata),
+    )
     monkeypatch.setattr(
         "config.array_expansion.enumerate_configs",
         lambda raw: iter(
@@ -103,8 +114,13 @@ def test_cli_array_config_dry_run_skips_parallel_execution(monkeypatch, tmp_path
         total_combinations=2,
     )
 
-    monkeypatch.setattr("config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
-    monkeypatch.setattr("config.array_expansion.expand_config", lambda raw: ([config_a, config_b], metadata))
+    monkeypatch.setattr(
+        "config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"}
+    )
+    monkeypatch.setattr(
+        "config.array_expansion.expand_config",
+        lambda raw: ([config_a, config_b], metadata),
+    )
     monkeypatch.setattr(
         "config.array_expansion.enumerate_configs",
         lambda raw: iter(
@@ -186,7 +202,9 @@ def test_cli_override_updates_nested_sweep_field(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "config.adapter_toml.TomlAdapter.load_raw",
-        lambda self, path: {"gravity_force": {"force_g": 5e-7, "inclination_angle_deg": 50}},
+        lambda self, path: {
+            "gravity_force": {"force_g": 5e-7, "inclination_angle_deg": 50}
+        },
     )
 
     def _fake_expand(raw):
@@ -196,11 +214,15 @@ def test_cli_override_updates_nested_sweep_field(monkeypatch, tmp_path):
     monkeypatch.setattr("config.array_expansion.expand_config", _fake_expand)
     monkeypatch.setattr(
         "config.array_expansion.enumerate_configs",
-        lambda raw: iter([(0, {"gravity_force.inclination_angle_deg": 50}, config_a)] * 2),
+        lambda raw: iter(
+            [(0, {"gravity_force.inclination_angle_deg": 50}, config_a)] * 2
+        ),
     )
     monkeypatch.setattr(
         "cli.cli._run_parallel_sweep",
-        lambda configs, parameters_list, **kwargs: [SimulationResult(index=0, config=config_a, status="success")],
+        lambda configs, parameters_list, **kwargs: [
+            SimulationResult(index=0, config=config_a, status="success")
+        ],
     )
 
     result = CliRunner().invoke(
@@ -223,7 +245,9 @@ def test_cli_override_rejects_invalid_value(monkeypatch, tmp_path):
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
 
-    monkeypatch.setattr("config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"tau": 0.8})
+    monkeypatch.setattr(
+        "config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"tau": 0.8}
+    )
 
     result = CliRunner().invoke(
         main,

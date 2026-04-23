@@ -1,8 +1,11 @@
 """Wetting extra-state plugin."""
 
 from __future__ import annotations
+
 from typing import Any
+
 import jax.numpy as jnp
+
 from operators.wetting._contact_angle import compute_contact_angle
 from operators.wetting._contact_line import compute_contact_line_location
 from registry import extra_state_plugin
@@ -46,10 +49,18 @@ class WettingExtraStatePlugin:
 
         return {
             "wetting": WettingState(
-                d_rho_left=jnp.array(_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.05)),
-                d_rho_right=jnp.array(_cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.05)),
-                phi_left=jnp.array(_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.2)),
-                phi_right=jnp.array(_cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.2)),
+                d_rho_left=jnp.array(
+                    _cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.05)
+                ),
+                d_rho_right=jnp.array(
+                    _cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.05)
+                ),
+                phi_left=jnp.array(
+                    _cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.2)
+                ),
+                phi_right=jnp.array(
+                    _cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.2)
+                ),
                 ca_left=ca_left,
                 ca_right=ca_right,
                 cll_left=cll_left,
@@ -60,7 +71,9 @@ class WettingExtraStatePlugin:
         }
 
     @staticmethod
-    def update_state(setup: Any, prev_state: Any, new_state: Any, **context: Any) -> Any:
+    def update_state(
+        setup: Any, prev_state: Any, new_state: Any, **context: Any
+    ) -> Any:
         if prev_state.wetting is None or setup.wetting_fn is None:
             return new_state
 

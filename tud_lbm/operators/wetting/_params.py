@@ -1,7 +1,9 @@
 """Shared wetting parameter containers."""
 
 from __future__ import annotations
+
 from typing import NamedTuple
+
 import jax.numpy as jnp
 
 

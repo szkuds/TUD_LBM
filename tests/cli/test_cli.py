@@ -1,11 +1,15 @@
 """Tests for CLI helper functions and edge cases."""
 
 from __future__ import annotations
+
 import pytest
-from cli.cli import _apply_overrides
-from cli.cli import _normalize_override_path
-from cli.cli import _parse_override_argument
-from cli.cli import _set_nested_override
+
+from cli.cli import (
+    _apply_overrides,
+    _normalize_override_path,
+    _parse_override_argument,
+    _set_nested_override,
+)
 
 # =========================================================================
 # _parse_override_argument Tests

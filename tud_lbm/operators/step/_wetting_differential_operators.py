@@ -7,7 +7,9 @@ Internal helper — not registered in the operator registry.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
+
 from tud_lbm.operators.wetting import build_wetting_fn
 
 

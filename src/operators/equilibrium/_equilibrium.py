@@ -19,7 +19,9 @@ The *rest direction* (``i = 0``) is computed via mass conservation:
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
+
 from registry import equilibrium_operator
 from setup.lattice import Lattice
 

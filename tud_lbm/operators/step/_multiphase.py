@@ -5,15 +5,18 @@ Supports both wetting and non-wetting multiphase simulations.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
+
 from tud_lbm.operators.force import compute_total_force_ext
 from tud_lbm.operators.step._common import _apply_common_step
-from tud_lbm.operators.step._wetting_differential_operators import _make_wetting_differential_ops
-from tud_lbm.registry import update_timestep_operator
+from tud_lbm.operators.step._wetting_differential_operators import (
+    _make_wetting_differential_ops,
+)
 from tud_lbm.pipeline.setup import SimulationSetup
 from tud_lbm.pipeline.state import update_extra_state
-from tud_lbm.pipeline.state.state import State
-from tud_lbm.pipeline.state.state import WettingState
+from tud_lbm.pipeline.state.state import State, WettingState
+from tud_lbm.registry import update_timestep_operator
 
 
 def _run_multiphase_pipeline(
@@ -54,7 +57,9 @@ def _run_multiphase_pipeline(
         t=jnp.array(0),
         wetting=wetting,
     )
-    next_state = _apply_common_step(setup, temp_state, rho, u, force_tot, gradient_density=gradient_density)
+    next_state = _apply_common_step(
+        setup, temp_state, rho, u, force_tot, gradient_density=gradient_density
+    )
     return next_state.f, rho, u, force_tot
 
 

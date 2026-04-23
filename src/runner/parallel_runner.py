@@ -24,18 +24,17 @@ Example usage::
 """
 
 from __future__ import annotations
+
 import json
 import traceback
 import uuid
 from collections.abc import Callable
-from concurrent.futures import ProcessPoolExecutor
-from concurrent.futures import as_completed
-from dataclasses import dataclass
-from dataclasses import replace
-from datetime import datetime
-from datetime import timezone
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
 from config.simulation_config import SimulationConfig
 
 
@@ -86,9 +85,9 @@ def _run_single_simulation(
         :class:`SimulationResult` with status and output path.
     """
     import time
+
     from config.jax_config import configure_jax
-    from runner.run import init_state
-    from runner.run import run
+    from runner.run import init_state, run
     from setup.simulation_setup import build_setup
     from util.io import SimulationIO
 
@@ -219,7 +218,9 @@ def run_parallel_simulations(
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         # Submit all jobs
-        for idx, (config, params) in enumerate(zip(configs, parameters_list, strict=False)):
+        for idx, (config, params) in enumerate(
+            zip(configs, parameters_list, strict=False)
+        ):
             future = executor.submit(
                 _run_single_simulation,
                 index=idx,
@@ -283,8 +284,14 @@ def _collect_results(
 def _print_result_line(result: SimulationResult, completed: int, total: int) -> None:
     """Print a single progress line for a completed simulation."""
     status_symbol = "✓" if result.status == "success" else "✗"
-    params_str = f" [{', '.join(f'{k}={v}' for k, v in result.parameters.items())}]" if result.parameters else ""
-    print(f"[{completed}/{total}] {status_symbol} Sim {result.index}{params_str} ({result.duration:.1f}s)")
+    params_str = (
+        f" [{', '.join(f'{k}={v}' for k, v in result.parameters.items())}]"
+        if result.parameters
+        else ""
+    )
+    print(
+        f"[{completed}/{total}] {status_symbol} Sim {result.index}{params_str} ({result.duration:.1f}s)"
+    )
     if result.status == "failed":
         print(f"      Error: {result.error.split(chr(10))[0]}")
 

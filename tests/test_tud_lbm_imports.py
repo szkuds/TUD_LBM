@@ -4,8 +4,9 @@ This test verifies the Phase 1 checkpoint of the folder restructuring refactorin
 ensuring that the new tud_lbm/ package hierarchy exists and has proper exports.
 """
 
-import pytest
 import importlib.util
+
+import pytest
 
 
 class TestTudLbmStructure:
@@ -34,15 +35,18 @@ class TestTudLbmStructure:
     def test_pipeline_state_module_exists(self):
         """Test that pipeline.state module exists on disk."""
         import os
+
         state_path = os.path.join(
             os.path.dirname(__file__),
             "..",
             "tud_lbm",
             "pipeline",
             "state",
-            "__init__.py"
+            "__init__.py",
         )
-        assert os.path.exists(state_path), f"State module __init__.py not found at {state_path}"
+        assert os.path.exists(
+            state_path
+        ), f"State module __init__.py not found at {state_path}"
 
     def test_registry_module_exists(self):
         """Test that registry module can be imported."""
@@ -67,8 +71,15 @@ class TestTudLbmStructure:
     def test_operator_subcategories_exist(self):
         """Test that all operator subcategories exist."""
         subcategories = [
-            "collision", "streaming", "equilibrium", "macroscopic",
-            "boundary", "differential", "force", "wetting", "initialise"
+            "collision",
+            "streaming",
+            "equilibrium",
+            "macroscopic",
+            "boundary",
+            "differential",
+            "force",
+            "wetting",
+            "initialise",
         ]
         for sub in subcategories:
             spec = importlib.util.find_spec(f"tud_lbm.operators.{sub}")

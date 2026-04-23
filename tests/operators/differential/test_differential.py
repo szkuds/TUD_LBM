@@ -9,10 +9,12 @@ Verifies:
 """
 
 from __future__ import annotations
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
 from operators.wetting import build_wetting_fn
 from setup.lattice import build_lattice
 
@@ -238,7 +240,12 @@ class TestBuildWettingGradient:
             lattice.w,
             lattice.c,
             wetting_pad,
-            bc_config={"bottom": "wetting", "top": "bounce-back", "left": "periodic", "right": "periodic"},
+            bc_config={
+                "bottom": "wetting",
+                "top": "bounce-back",
+                "left": "periodic",
+                "right": "periodic",
+            },
             rho_l=rho_l,
             rho_v=rho_v,
             width=wetting_params["width"],
@@ -247,7 +254,9 @@ class TestBuildWettingGradient:
 
         assert not jnp.allclose(plain, with_wetting, atol=1e-9)
 
-    def test_deterministic_result(self, lattice, periodic_pad, wetting_params, const_field):
+    def test_deterministic_result(
+        self, lattice, periodic_pad, wetting_params, const_field
+    ):
         from operators.differential._gradient_wetting import build_wetting_gradient
 
         fn = build_wetting_gradient(
@@ -271,7 +280,9 @@ class TestBuildWettingGradient:
             "d_rho": [0.03, 0.07],
         }
         _resolve_wetting_fields = build_wetting_fn("resolve_wetting_fields")
-        phi_l, phi_r, d_rho_l, d_rho_r = _resolve_wetting_fields(params_array, chemical_step=0)
+        phi_l, phi_r, d_rho_l, d_rho_r = _resolve_wetting_fields(
+            params_array, chemical_step=0
+        )
 
         fn = build_wetting_gradient(
             lattice.w,
@@ -342,10 +353,12 @@ class TestWettingUtil:
 
     def test_reconstruction_uses_d2q9_weights(self):
         """Ghost row should be a D2Q9-weighted average of interior neighbour."""
-        from operators.wetting._ghost_reconstruction import _W_CARDINAL
-        from operators.wetting._ghost_reconstruction import _W_DIAGONAL
-        from operators.wetting._ghost_reconstruction import _W_TOTAL
-        from operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
+        from operators.wetting._ghost_reconstruction import (
+            _W_CARDINAL,
+            _W_DIAGONAL,
+            _W_TOTAL,
+            _reconstruct_ghost_row,
+        )
 
         # 6 rows along the wall, 4 columns (2 interior + 2 ghost)
         arr = jnp.zeros((6, 4))
@@ -353,23 +366,29 @@ class TestWettingUtil:
         vals = jnp.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
         arr = arr.at[:, 1].set(vals)
 
-        out = _reconstruct_ghost_row(arr, ghost_idx=0, interior_offset=1, wrap_start=True, wrap_end=True)
+        out = _reconstruct_ghost_row(
+            arr, ghost_idx=0, interior_offset=1, wrap_start=True, wrap_end=True
+        )
         # Interior point at index 2: cardinal=3.0, diag_minus=2.0, diag_plus=4.0
         expected = (_W_CARDINAL * 3.0 + _W_DIAGONAL * (2.0 + 4.0)) / _W_TOTAL
         np.testing.assert_allclose(float(out[2, 0]), expected, atol=1e-6)
 
     def test_reconstruction_corner_periodic(self):
         """Start corner wraps to last row when periodic."""
-        from operators.wetting._ghost_reconstruction import _W_CARDINAL
-        from operators.wetting._ghost_reconstruction import _W_DIAGONAL
-        from operators.wetting._ghost_reconstruction import _W_TOTAL
-        from operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
+        from operators.wetting._ghost_reconstruction import (
+            _W_CARDINAL,
+            _W_DIAGONAL,
+            _W_TOTAL,
+            _reconstruct_ghost_row,
+        )
 
         arr = jnp.zeros((6, 4))
         vals = jnp.array([10.0, 20.0, 30.0, 40.0, 50.0, 60.0])
         arr = arr.at[:, 1].set(vals)
 
-        out = _reconstruct_ghost_row(arr, ghost_idx=0, interior_offset=1, wrap_start=True, wrap_end=True)
+        out = _reconstruct_ghost_row(
+            arr, ghost_idx=0, interior_offset=1, wrap_start=True, wrap_end=True
+        )
         # Start corner (index 0): wrap_start → uses arr[-1, 1] = 60.0
         expected_start = (_W_CARDINAL * 10.0 + _W_DIAGONAL * (60.0 + 20.0)) / _W_TOTAL
         np.testing.assert_allclose(float(out[0, 0]), expected_start, atol=1e-6)
@@ -380,16 +399,20 @@ class TestWettingUtil:
 
     def test_reconstruction_corner_non_periodic(self):
         """Non-periodic corners mirror the adjacent interior value."""
-        from operators.wetting._ghost_reconstruction import _W_CARDINAL
-        from operators.wetting._ghost_reconstruction import _W_DIAGONAL
-        from operators.wetting._ghost_reconstruction import _W_TOTAL
-        from operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
+        from operators.wetting._ghost_reconstruction import (
+            _W_CARDINAL,
+            _W_DIAGONAL,
+            _W_TOTAL,
+            _reconstruct_ghost_row,
+        )
 
         arr = jnp.zeros((6, 4))
         vals = jnp.array([10.0, 20.0, 30.0, 40.0, 50.0, 60.0])
         arr = arr.at[:, 1].set(vals)
 
-        out = _reconstruct_ghost_row(arr, ghost_idx=0, interior_offset=1, wrap_start=False, wrap_end=False)
+        out = _reconstruct_ghost_row(
+            arr, ghost_idx=0, interior_offset=1, wrap_start=False, wrap_end=False
+        )
         # Start corner: non-periodic → uses arr[1, 1] = 20.0 instead of arr[-1, 1]
         expected_start = (_W_CARDINAL * 10.0 + _W_DIAGONAL * (20.0 + 20.0)) / _W_TOTAL
         np.testing.assert_allclose(float(out[0, 0]), expected_start, atol=1e-6)
@@ -411,7 +434,9 @@ class TestWettingUtil:
         # Create a slice with values spanning the full density range
         n = 32
         edge = jnp.linspace(rho_v, rho_l, n)
-        result = _apply_wetting_modification(edge, rho_l, rho_v, 1.2, 1.2, 0.05, 0.05, 4)
+        result = _apply_wetting_modification(
+            edge, rho_l, rho_v, 1.2, 1.2, 0.05, 0.05, 4
+        )
 
         # Values clearly outside the interface should be unchanged
         outside_mask = (np.array(edge) >= upper) | (np.array(edge) <= lower)
@@ -430,7 +455,9 @@ class TestWettingUtil:
 
         edge = jnp.linspace(rho_v, rho_l, 32)
         # Use extreme phi values to force clamping
-        result = _apply_wetting_modification(edge, rho_l, rho_v, 10.0, 10.0, 0.0, 0.0, 4)
+        result = _apply_wetting_modification(
+            edge, rho_l, rho_v, 10.0, 10.0, 0.0, 0.0, 4
+        )
 
         # Identify which values were actually modified (inside the interface)
         edge_np = np.array(edge)
@@ -470,7 +497,12 @@ class TestWettingUtil:
 
     def test_left_right_wetting_uses_transpose(self):
         """Left/right wetting should modify the left/right ghost columns."""
-        bc = {"left": "wetting", "right": "wetting", "bottom": "bounce-back", "top": "bounce-back"}
+        bc = {
+            "left": "wetting",
+            "right": "wetting",
+            "bottom": "bounce-back",
+            "top": "bounce-back",
+        }
         _build_wetting_applicator = build_wetting_fn("applicator")
         fn = _build_wetting_applicator(rho_l=1.0, rho_v=0.1, width=4, bc_config=bc)
         gp = jnp.ones((NX + 2, NY + 2)) * 0.5
@@ -499,14 +531,20 @@ class TestWettingUtil:
 
         # Periodic perpendicular (default for unspecified edges)
         _build_wetting_applicator = build_wetting_fn("applicator")
-        fn_periodic = _build_wetting_applicator(rho_l=1.0, rho_v=0.1, width=4, bc_config={"bottom": "wetting"})
+        fn_periodic = _build_wetting_applicator(
+            rho_l=1.0, rho_v=0.1, width=4, bc_config={"bottom": "wetting"}
+        )
 
         # Non-periodic perpendicular (bounce-back on left/right)
         fn_nonperiodic = _build_wetting_applicator(
             rho_l=1.0,
             rho_v=0.1,
             width=4,
-            bc_config={"bottom": "wetting", "left": "bounce-back", "right": "bounce-back"},
+            bc_config={
+                "bottom": "wetting",
+                "left": "bounce-back",
+                "right": "bounce-back",
+            },
         )
 
         # For a uniform field they happen to be the same; use a non-uniform
@@ -518,4 +556,6 @@ class TestWettingUtil:
         out_p2 = fn_periodic(gp2, 1.0, 1.0, 0.0, 0.0)
         out_np2 = fn_nonperiodic(gp2, 1.0, 1.0, 0.0, 0.0)
         # With asymmetric interior, periodic and non-periodic corners differ
-        assert float(out_p2[0, 0]) != float(out_np2[0, 0]) or float(out_p2[-1, 0]) != float(out_np2[-1, 0])
+        assert float(out_p2[0, 0]) != float(out_np2[0, 0]) or float(
+            out_p2[-1, 0]
+        ) != float(out_np2[-1, 0])

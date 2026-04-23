@@ -2,10 +2,11 @@
 
 import warnings
 from types import SimpleNamespace
+
 import jax.numpy as jnp
 import pytest
-from state._extra_state import _build_extra_state
-from state._extra_state import _update_extra_state
+
+from state._extra_state import _build_extra_state, _update_extra_state
 from state.state import State
 
 

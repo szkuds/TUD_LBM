@@ -1,24 +1,30 @@
 """Build composite per-timestep figures from registered plot operators."""
 
 from __future__ import annotations
+
 import math
 import os
 import warnings
 from pathlib import Path
+
 import matplotlib as mpl
+
 from config import SimulationConfig
 
 mpl.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
+
 from registry import get_operators
 
 
 class FigureBuilder:
     """Build and save composite figures for saved simulation snapshots."""
 
-    def __init__(self, config: SimulationConfig, run_dir: str | os.PathLike, dpi: int = 150) -> None:
+    def __init__(
+        self, config: SimulationConfig, run_dir: str | os.PathLike, dpi: int = 150
+    ) -> None:
         self.config = config
         self.run_dir = Path(run_dir)
         self.dpi = dpi

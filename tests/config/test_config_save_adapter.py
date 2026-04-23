@@ -9,9 +9,10 @@ Covers:
 """
 
 from pathlib import Path
+
 import pytest
-from config.adapter_base import ConfigAdapter
-from config.adapter_base import get_adapter
+
+from config.adapter_base import ConfigAdapter, get_adapter
 from config.adapter_toml import TomlAdapter
 from config.simulation_config import SimulationConfig
 

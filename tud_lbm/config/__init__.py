@@ -7,9 +7,11 @@ Public API::
 """
 
 from __future__ import annotations
+
 from typing import Any
-from tud_lbm.readers.dict import DictAdapter
+
 from tud_lbm.config.simulation_config import SimulationConfig
+from tud_lbm.readers.dict import DictAdapter
 
 
 def from_toml(path: str) -> SimulationConfig:

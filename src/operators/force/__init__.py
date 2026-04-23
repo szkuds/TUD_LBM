@@ -13,12 +13,13 @@ Example:
 """
 
 from __future__ import annotations
+
 import dataclasses
 from collections.abc import Callable
-from typing import Any
-from typing import NamedTuple
-from typing import cast
+from typing import Any, NamedTuple, cast
+
 import jax.numpy as jnp
+
 from operators._loader import auto_load_operators
 from operators.factory import build_operator
 from operators.protocols import ForceOperator
@@ -157,7 +158,9 @@ def compute_total_force_ext(
             gradient_density=setup.gradient_density,
             laplacian_density=setup.laplacian_density,
         )
-        total_force = contribution if total_force is None else total_force + contribution
+        total_force = (
+            contribution if total_force is None else total_force + contribution
+        )
 
     return total_force, state
 

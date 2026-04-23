@@ -29,9 +29,8 @@ Tests are organized by what they explain:
 """
 
 import pytest
-from registry import get_operators
-from registry import register_operator
-from registry import unregister_operator
+
+from registry import get_operators, register_operator, unregister_operator
 
 # ── PART 1: Generic Factory Tests ─────────────────────────────────────────
 

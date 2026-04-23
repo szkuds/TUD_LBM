@@ -4,10 +4,12 @@ Places a sessile droplet (half-circle) at the top wall.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
+
+from tud_lbm.lattice.lattice import Lattice
 from tud_lbm.operators.equilibrium._equilibrium import compute_equilibrium
 from tud_lbm.registry import initialise_operator
-from tud_lbm.lattice.lattice import Lattice
 
 
 @initialise_operator(name="wetting_drop_top")

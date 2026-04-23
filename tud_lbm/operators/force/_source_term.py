@@ -6,11 +6,13 @@ Uses the density gradient operator for computing gravity corrections.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
 import numpy as np
+
+from tud_lbm.lattice.lattice import Lattice
 from tud_lbm.operators.protocols import DifferentialOperator
 from tud_lbm.registry import force_model
-from tud_lbm.lattice.lattice import Lattice
 
 
 @force_model(name="source_term_wb")
@@ -75,7 +77,13 @@ def source(
         u_grad_rho = ux * grad_rho_x + uy * grad_rho_y
 
         source_3d = source_3d.at[:, :, i].set(
-            wi * (3.0 * cf + 9.0 * cf_cor * cu - 3.0 * uf_cor + 0.5 * (3.0 * (cxi * cxi + cyi * cyi) - d) * u_grad_rho),
+            wi
+            * (
+                3.0 * cf
+                + 9.0 * cf_cor * cu
+                - 3.0 * uf_cor
+                + 0.5 * (3.0 * (cxi * cxi + cyi * cyi) - d) * u_grad_rho
+            ),
         )
 
     return jnp.expand_dims(source_3d, axis=-1)

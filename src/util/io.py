@@ -1,9 +1,10 @@
 import logging
 import sys
-from datetime import datetime
-from datetime import timezone
+from datetime import datetime, timezone
 from pathlib import Path
+
 from config import SimulationConfig
+
 from .output_data import output_writers
 
 
@@ -41,7 +42,9 @@ class SimulationIO:
         if config:
             self.save_config(config)
 
-        self.save_data_step = output_writers[output_format].save_data_step.__get__(self, type(self))
+        self.save_data_step = output_writers[output_format].save_data_step.__get__(
+            self, type(self)
+        )
 
     def _setup_logging(self) -> None:
         """Configure root logger so everything printed to the console is
@@ -91,7 +94,9 @@ class SimulationIO:
         """Creates a unique, timestamped directory for a single simulation run."""
         timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d/%H-%M-%S")
         base = Path(self.base_dir)
-        suffix = f"{timestamp}_{self.simulation_name}" if self.simulation_name else timestamp
+        suffix = (
+            f"{timestamp}_{self.simulation_name}" if self.simulation_name else timestamp
+        )
         run_dir = base / suffix
         run_dir.mkdir(parents=True, exist_ok=True)
         print(f"Created results directory: {run_dir}")

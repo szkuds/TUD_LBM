@@ -9,10 +9,11 @@ knowledge of wetting.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
+
 from tud_lbm.operators.differential._gradient import grad_core
-from tud_lbm.operators.differential._pad_utils import _apply_stencil_padding
-from tud_lbm.operators.differential._pad_utils import to_2d
+from tud_lbm.operators.differential._pad_utils import _apply_stencil_padding, to_2d
 from tud_lbm.operators.wetting import build_wetting_fn
 from tud_lbm.registry import register_operator
 

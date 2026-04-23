@@ -21,13 +21,17 @@ Example usage::
 """
 
 from __future__ import annotations
+
 from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import product
 from typing import Any
-from config.simulation_config import SimulationConfig
-from config.simulation_config import get_array_eligible_fields
-from config.simulation_config import get_nested_sweepable_fields
+
+from config.simulation_config import (
+    SimulationConfig,
+    get_array_eligible_fields,
+    get_nested_sweepable_fields,
+)
 
 
 @dataclass(frozen=True)
@@ -74,7 +78,11 @@ def _is_array_value(value: Any, field_name: str = "") -> bool:
     # Handle grid_shape special case
     if field_name == "grid_shape":
         # If it's a tuple of 2 ints, it's a scalar grid_shape
-        if isinstance(value, tuple) and len(value) == 2 and all(isinstance(x, int) for x in value):
+        if (
+            isinstance(value, tuple)
+            and len(value) == 2
+            and all(isinstance(x, int) for x in value)
+        ):
             return False
         # If it's a list or tuple of tuples, it's an array
         if isinstance(value, (list, tuple)):
@@ -89,7 +97,9 @@ def _is_array_value(value: Any, field_name: str = "") -> bool:
     return isinstance(value, (list, tuple)) and not isinstance(value, (str, bytes))
 
 
-def _extract_nested_array_axes(config_dict: dict[str, Any]) -> dict[str, tuple[Any, ...]]:
+def _extract_nested_array_axes(
+    config_dict: dict[str, Any],
+) -> dict[str, tuple[Any, ...]]:
     """Return dotted-path → values for array sub-keys inside nested sweepable fields.
 
     For example, if ``config_dict["gravity_force"] = {"force_g": 5e-7,
@@ -212,7 +222,9 @@ def expand_config(
             continue
         if k in get_nested_sweepable_fields() and isinstance(v, dict):
             # Remove sub-keys that are being swept
-            stripped = {sk: sv for sk, sv in v.items() if f"{k}.{sk}" not in nested_axes}
+            stripped = {
+                sk: sv for sk, sv in v.items() if f"{k}.{sk}" not in nested_axes
+            }
             scalar_dict[k] = stripped
         else:
             scalar_dict[k] = v
@@ -222,7 +234,11 @@ def expand_config(
 
     combinations = list(product(*axis_lists))
     configs: list[SimulationConfig] = [
-        SimulationConfig(**_apply_combo_to_dict(scalar_dict, dict(zip(axis_keys, combo, strict=False))))
+        SimulationConfig(
+            **_apply_combo_to_dict(
+                scalar_dict, dict(zip(axis_keys, combo, strict=False))
+            )
+        )
         for combo in combinations
     ]
 
@@ -271,7 +287,9 @@ def enumerate_configs(
         if k in top_level_keys:
             continue
         if k in get_nested_sweepable_fields() and isinstance(v, dict):
-            stripped = {sk: sv for sk, sv in v.items() if f"{k}.{sk}" not in nested_keys}
+            stripped = {
+                sk: sv for sk, sv in v.items() if f"{k}.{sk}" not in nested_keys
+            }
             scalar_dict[k] = stripped
         else:
             scalar_dict[k] = v

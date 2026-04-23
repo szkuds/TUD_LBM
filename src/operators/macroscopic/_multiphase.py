@@ -12,7 +12,9 @@ padding and optional wetting ghost-cell correction).
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
+
 from operators.macroscopic import MultiphaseParams
 from operators.protocols import DifferentialOperator
 from registry import macroscopic_operator
@@ -38,7 +40,13 @@ def _eos_double_well(
     Returns:
         ``μ_0(ρ)``, shape ``(nx, ny)``.
     """
-    return 2.0 * beta * (rho_2d - rho_l) * (rho_2d - rho_v) * (2.0 * rho_2d - rho_l - rho_v)
+    return (
+        2.0
+        * beta
+        * (rho_2d - rho_l)
+        * (rho_2d - rho_v)
+        * (2.0 * rho_2d - rho_l - rho_v)
+    )
 
 
 # ── Public API ───────────────────────────────────────────────────────
@@ -91,7 +99,9 @@ def compute_macroscopic_multiphase(
     u = jnp.concatenate([ux, uy], axis=-1) / rho  # (nx, ny, 1, 2)
 
     # 3. Interparticle force from chemical potential
-    beta = 8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
+    beta = (
+        8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
+    )
 
     # Laplacian and gradient are always pad-modes-only.
     mu_0 = _eos_double_well(rho[:, :, 0, 0], beta, mp.rho_l, mp.rho_v)

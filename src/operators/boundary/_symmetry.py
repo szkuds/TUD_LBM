@@ -8,8 +8,10 @@ mirrored distributions from the post-collision state.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
 import numpy as np
+
 from registry import boundary_condition
 from setup.lattice import Lattice
 

@@ -14,6 +14,7 @@ Example:
 """
 
 from __future__ import annotations
+
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 from tud_lbm.operators.protocols import StepOperator

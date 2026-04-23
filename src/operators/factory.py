@@ -10,8 +10,8 @@ Example:
 """
 
 from __future__ import annotations
-from registry import OperatorTarget
-from registry import get_operators
+
+from registry import OperatorTarget, get_operators
 
 
 def build_operator(kind: str, scheme: str) -> OperatorTarget:
@@ -43,4 +43,6 @@ def build_operator(kind: str, scheme: str) -> OperatorTarget:
         return ops[scheme].target
     except KeyError as exc:
         valid_schemes = ", ".join(sorted(ops.keys()))
-        raise ValueError(f"Unknown {kind} scheme '{scheme}'. Valid schemes: {valid_schemes}") from exc
+        raise ValueError(
+            f"Unknown {kind} scheme '{scheme}'. Valid schemes: {valid_schemes}"
+        ) from exc

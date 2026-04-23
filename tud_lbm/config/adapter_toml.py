@@ -17,11 +17,14 @@ Example usage::
 """
 
 from __future__ import annotations
+
 import dataclasses
+import tomllib
 from pathlib import Path
 from typing import Any
+
 import tomli_w
-import tomllib
+
 from tud_lbm.config.adapter_base import ConfigAdapter
 from tud_lbm.config.simulation_config import SimulationConfig
 
@@ -76,14 +79,20 @@ class TomlAdapter(ConfigAdapter):
             KeyError: If force type is unknown.
             TypeError: If force section is not a table.
         """
-        known_force_fields = {f.name for f in dataclasses.fields(SimulationConfig) if f.name.endswith("_force")}
+        known_force_fields = {
+            f.name
+            for f in dataclasses.fields(SimulationConfig)
+            if f.name.endswith("_force")
+        }
         for key, value in raw.items():
             if not key.endswith("_force"):
                 continue
             if key not in known_force_fields:
                 raise KeyError(f"Unknown force type '{key}'")
             if not isinstance(value, dict):
-                raise TypeError(f"Force section '[{key}]' must be a table, got {type(value).__name__}.")
+                raise TypeError(
+                    f"Force section '[{key}]' must be a table, got {type(value).__name__}."
+                )
             sim_table[key] = dict(value)
 
     def load_raw(self, path: str) -> dict[str, Any]:
@@ -114,7 +123,9 @@ class TomlAdapter(ConfigAdapter):
         # ── [simulation_type] (required) ──────────────────────────────────
         sim_table = dict(raw.get("simulation_type", {}))
         if not sim_table:
-            raise ValueError(f"Config file '{path}' is missing the required [simulation_type] table.")
+            raise ValueError(
+                f"Config file '{path}' is missing the required [simulation_type] table."
+            )
 
         sim_type: str = sim_table.pop("type", "single_phase")
 
@@ -125,7 +136,9 @@ class TomlAdapter(ConfigAdapter):
         # ── Validate sim_type ────────────────────────────────────────
         valid_types = ("single_phase", "multiphase")
         if sim_type not in valid_types:
-            raise ValueError(f"Unknown simulation type '{sim_type}'. Expected one of: {', '.join(valid_types)}.")
+            raise ValueError(
+                f"Unknown simulation type '{sim_type}'. Expected one of: {', '.join(valid_types)}."
+            )
 
         # ── Merge [multiphase] table (for multiphase simulations) ────
         if sim_type == "multiphase":

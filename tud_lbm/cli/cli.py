@@ -14,14 +14,14 @@ Example Python usage::
 
 import os
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
+
 import click
-import tomllib
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Confirm
-from rich.prompt import Prompt
+from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 console = Console()
@@ -191,7 +191,9 @@ def _set_nested_override(raw_config: dict[str, Any], path: str, value: Any) -> N
         if not isinstance(existing, dict):
             dotted_prefix = ".".join(parts[:-1])
             # TRY004: use TypeError for invalid type
-            raise TypeError(f"override path '{path}' is invalid: '{dotted_prefix}' is not a table")
+            raise TypeError(
+                f"override path '{path}' is invalid: '{dotted_prefix}' is not a table"
+            )
         cursor = existing
     cursor[parts[-1]] = value
 
@@ -231,9 +233,7 @@ def _apply_overrides(raw_config: dict[str, Any], overrides: tuple[str, ...]) -> 
 def _display_operators() -> None:
     """Display all registered operators grouped by kind in Rich tables."""
     from operators import load_all
-    from registry import OPERATOR_REGISTRY
-    from registry import get_operator_category
-    from registry import get_operators
+    from registry import OPERATOR_REGISTRY, get_operator_category, get_operators
 
     load_all()
 
@@ -321,7 +321,9 @@ def _display_config_summary(config) -> None:
             for f in config.__dataclass_fields__.values()
             if f.name.endswith("_force") and getattr(config, f.name) is not None
         ]
-        table.add_row("Forces", ", ".join(active_forces) if active_forces else "enabled")
+        table.add_row(
+            "Forces", ", ".join(active_forces) if active_forces else "enabled"
+        )
 
     console.print(table)
     console.print()
@@ -333,8 +335,7 @@ def _run_simulation(config: Any):
 
     configure_jax()
 
-    from runner import init_state
-    from runner import run
+    from runner import init_state, run
     from setup import build_setup
     from util.io import SimulationIO
 
@@ -394,7 +395,9 @@ def _display_sweep_summary(metadata: Any) -> None:
         table.add_row(field_name, values_str)
 
     console.print(table)
-    console.print(f"[bold blue]Total combinations:[/bold blue] {metadata.total_combinations}")
+    console.print(
+        f"[bold blue]Total combinations:[/bold blue] {metadata.total_combinations}"
+    )
     console.print()
 
 
@@ -406,12 +409,13 @@ def _run_parallel_sweep(
     continue_on_error: bool,
 ) -> list[Any]:
     """Run a parameter sweep in parallel and save a manifest."""
-    from runner.parallel_runner import run_parallel_simulations
-    from runner.parallel_runner import save_sweep_log
+    from runner.parallel_runner import run_parallel_simulations, save_sweep_log
 
     console.print("[bold green]Starting parallel parameter sweep...[/bold green]")
     console.print(f"[dim]Simulations: {len(configs)}[/dim]")
-    console.print(f"[dim]Max workers: {max_workers if max_workers is not None else 'auto'}[/dim]")
+    console.print(
+        f"[dim]Max workers: {max_workers if max_workers is not None else 'auto'}[/dim]"
+    )
     console.print()
 
     results = run_parallel_simulations(
@@ -449,8 +453,7 @@ def _load_config_from_file(
 ) -> tuple[list[Any], Any | None, Any | None, list[dict[str, Any]] | None]:
     """Load and expand a TOML config file; return (configs, config, sweep_metadata, parameters_list)."""
     from config.adapter_toml import TomlAdapter
-    from config.array_expansion import enumerate_configs
-    from config.array_expansion import expand_config
+    from config.array_expansion import enumerate_configs, expand_config
 
     console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
     raw_config = TomlAdapter().load_raw(config_path)
@@ -486,7 +489,9 @@ def _load_config_interactive() -> tuple[list[Any], Any, None, None]:
     return [config], config, None, None
 
 
-def _display_summary(config: Any | None, sweep_metadata: Any | None, configs: list[Any]) -> None:
+def _display_summary(
+    config: Any | None, sweep_metadata: Any | None, configs: list[Any]
+) -> None:
     """Display either a single-run config summary or a sweep summary."""
     if sweep_metadata is None:
         _display_config_summary(config)
@@ -507,7 +512,9 @@ def _confirm_run(sweep_metadata: Any | None, configs: list[Any]) -> bool:
     if sweep_metadata is None:
         prompt_text = "[bold]Start simulation?[/bold]"
     else:
-        prompt_text = f"[bold]Start parameter sweep ({len(configs)} simulations)?[/bold]"
+        prompt_text = (
+            f"[bold]Start parameter sweep ({len(configs)} simulations)?[/bold]"
+        )
     return Confirm.ask(prompt_text, default=True)
 
 
@@ -515,7 +522,9 @@ def _check_sweep_errors(results: list[Any]) -> None:
     """TRY301: raise lives here, outside the try-block in main()."""
     failed = sum(1 for result in results if result.status == "failed")
     if failed > 0:
-        raise RuntimeError(f"Parameter sweep completed with {failed} failed simulation(s).")
+        raise RuntimeError(
+            f"Parameter sweep completed with {failed} failed simulation(s)."
+        )
 
 
 def _execute_run(
@@ -647,7 +656,9 @@ def main(
         _validate_cli_args(overrides, config_path)
 
         configs, config, sweep_metadata, parameters_list = (
-            _load_config_from_file(config_path, overrides) if config_path else _load_config_interactive()
+            _load_config_from_file(config_path, overrides)
+            if config_path
+            else _load_config_interactive()
         )
 
         _display_summary(config, sweep_metadata, configs)
@@ -661,7 +672,9 @@ def main(
             return
 
         # TRY301: sweep error raise is inside _check_sweep_errors, not this try-block
-        _execute_run(configs, config, sweep_metadata, parameters_list, max_workers, fail_fast)
+        _execute_run(
+            configs, config, sweep_metadata, parameters_list, max_workers, fail_fast
+        )
 
         console.print()
         console.print(

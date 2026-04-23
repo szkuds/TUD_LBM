@@ -1,9 +1,9 @@
 """Private helpers for plugin-driven extra-state init and update."""
 
 from __future__ import annotations
+
 import warnings
-from typing import TYPE_CHECKING
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from setup.simulation_setup import SimulationSetup
@@ -34,7 +34,9 @@ def _build_extra_state(setup: SimulationSetup) -> dict[str, Any]:
         plugin_extra = plugin.init_state(setup)
         for key, value in plugin_extra.items():
             if key in extra:
-                _warn_once(f"Extra-state key '{key}' was produced by multiple plugins; keeping the first value.")
+                _warn_once(
+                    f"Extra-state key '{key}' was produced by multiple plugins; keeping the first value."
+                )
                 continue
             extra[key] = value
 
@@ -52,7 +54,9 @@ def _update_extra_state(
     for plugin in setup.extra_state_plugins:
         next_state = plugin.update_state(setup, prev_state, updated, **context)
         if next_state is None:
-            _warn_once(f"Extra-state plugin '{plugin.name}' returned None; ignoring update.")
+            _warn_once(
+                f"Extra-state plugin '{plugin.name}' returned None; ignoring update."
+            )
             continue
         updated = next_state
     return updated

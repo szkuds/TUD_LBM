@@ -4,11 +4,12 @@ Registered as ``update_timestep:single_phase`` via the operator registry.
 """
 
 from __future__ import annotations
+
 from tud_lbm.operators.force import compute_total_force_ext
 from tud_lbm.operators.step._common import _apply_common_step
-from tud_lbm.registry import update_timestep_operator
 from tud_lbm.pipeline.state import update_extra_state
 from tud_lbm.pipeline.state.state import State
+from tud_lbm.registry import update_timestep_operator
 
 
 @update_timestep_operator(name="single_phase")
@@ -27,7 +28,9 @@ def step_single_phase(setup, state: State) -> State:
 
     # 2. Macroscopic fields
     if force_ext is not None:
-        rho, u, force_tot = setup.macroscopic_fn(state.f, setup.lattice, force=force_ext)
+        rho, u, force_tot = setup.macroscopic_fn(
+            state.f, setup.lattice, force=force_ext
+        )
     else:
         rho, u = setup.macroscopic_fn(state.f, setup.lattice)
         force_tot = None

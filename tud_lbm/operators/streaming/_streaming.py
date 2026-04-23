@@ -12,11 +12,14 @@ interior before the boundary-condition operator runs.
 """
 
 from __future__ import annotations
+
 from typing import Any
+
 import jax.numpy as jnp
 import numpy as np
-from tud_lbm.registry import stream_operator
+
 from tud_lbm.lattice.lattice import Lattice
+from tud_lbm.registry import stream_operator
 
 # BC types that implement solid-wall (bounce-back) behaviour.
 _WALL_BC_TYPES = frozenset({"bounce-back", "wetting"})

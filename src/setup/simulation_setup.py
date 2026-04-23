@@ -26,27 +26,29 @@ Usage::
 """
 
 from __future__ import annotations
-from typing import NamedTuple
-from typing import cast
+
+from typing import NamedTuple, cast
+
 import jax.numpy as jnp
+
 from config.simulation_config import SimulationConfig
 from operators.boundary import BCMasks
 from operators.differential import build_diff_ops
-from operators.force import ForceSetup
-from operators.force import build_forces
+from operators.force import ForceSetup, build_forces
 from operators.macroscopic import MultiphaseParams
-from operators.protocols import BoundaryOperator
-from operators.protocols import CollisionOperator
-from operators.protocols import DifferentialOperator
-from operators.protocols import EquilibriumOperator
-from operators.protocols import ExtraStatePlugin
-from operators.protocols import HysteresisOperator
-from operators.protocols import InitialPopulationOperator
-from operators.protocols import MacroscopicOperator
-from operators.protocols import StepOperator
-from operators.protocols import StreamingOperator
-from setup.lattice import Lattice
-from setup.lattice import build_lattice
+from operators.protocols import (
+    BoundaryOperator,
+    CollisionOperator,
+    DifferentialOperator,
+    EquilibriumOperator,
+    ExtraStatePlugin,
+    HysteresisOperator,
+    InitialPopulationOperator,
+    MacroscopicOperator,
+    StepOperator,
+    StreamingOperator,
+)
+from setup.lattice import Lattice, build_lattice
 
 
 class SimulationSetup(NamedTuple):
@@ -155,13 +157,11 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         )
 
     # Import here to avoid circular import issues at module level
-    from operators.boundary import build_bc
-    from operators.boundary import build_bc_masks
+    from operators.boundary import build_bc, build_bc_masks
     from operators.collision import build_collision_fn
     from operators.equilibrium import build_equilibrium_fn
     from operators.initialise import build_initialise_fn
-    from operators.macroscopic import build_macroscopic_fn
-    from operators.macroscopic import build_multiphase_params
+    from operators.macroscopic import build_macroscopic_fn, build_multiphase_params
     from operators.step import build_step_fn
     from operators.streaming import build_streaming_fn
     from operators.wetting import build_wetting_fn
@@ -171,7 +171,9 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     bc_masks = build_bc_masks(tuple(config.grid_shape))
 
     # Build multiphase params if applicable (multiphase runs with optional wetting)
-    mp_params = build_multiphase_params(config) if config.sim_type == "multiphase" else None
+    mp_params = (
+        build_multiphase_params(config) if config.sim_type == "multiphase" else None
+    )
 
     # Build force specs
     force_setup = build_forces(config, tuple(config.grid_shape), lattice)
@@ -179,7 +181,9 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     forces = force_setup if force_setup.specs else None
 
     # Build differential operators
-    gradient_standard, gradient_density, laplacian_density = build_diff_ops(config, mp_params, lattice)
+    gradient_standard, gradient_density, laplacian_density = build_diff_ops(
+        config, mp_params, lattice
+    )
 
     # Resolve step operator from registry
     step_fn = build_step_fn(config.sim_type)
@@ -209,13 +213,23 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     def _initial_f_fn(init_kwargs: dict | None = None) -> jnp.ndarray:
         kw: dict = {}
         if mp_params is not None:
-            kw.update(rho_l=mp_params.rho_l, rho_v=mp_params.rho_v, interface_width=mp_params.interface_width)
+            kw.update(
+                rho_l=mp_params.rho_l,
+                rho_v=mp_params.rho_v,
+                interface_width=mp_params.interface_width,
+            )
         kw.update(config.initialisation)
         if init_kwargs:
             kw.update(init_kwargs)
-        if config.init_type == "init_from_file" and "npz_path" not in kw and config.init_dir is not None:
+        if (
+            config.init_type == "init_from_file"
+            and "npz_path" not in kw
+            and config.init_dir is not None
+        ):
             kw["npz_path"] = config.init_dir
-        return build_initialise_fn(config.init_type)(config.grid_shape[0], config.grid_shape[1], lattice, **kw)
+        return build_initialise_fn(config.init_type)(
+            config.grid_shape[0], config.grid_shape[1], lattice, **kw
+        )
 
     setup = SimulationSetup(
         config=config,

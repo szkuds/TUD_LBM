@@ -15,45 +15,53 @@ Example usage::
 
     from tud_lbm import SimulationConfig, build_setup, run, State
     from tud_lbm.pipeline.runner import init_state
-    
+
     # Create configuration with sensible defaults
     config = SimulationConfig(grid_shape=(64, 64), tau=0.8, nt=5000)
-    
+
     # Build simulation setup from config
     setup = build_setup(config)
-    
+
     # Initialize state
     state = init_state(setup)
-    
+
     # Run simulation
     final_state, trajectory = run(setup, state, nt=config.nt)
 """
 
 __version__ = "0.2.0"
 
+
 # Lazy imports to avoid circular dependencies
 def __getattr__(name):
     """Lazy load main API to avoid circular imports."""
     if name == "SimulationConfig":
         from tud_lbm.config.simulation_config import SimulationConfig
+
         return SimulationConfig
     elif name == "Lattice":
         from tud_lbm.lattice.lattice import Lattice
+
         return Lattice
     elif name == "build_lattice":
         from tud_lbm.lattice.lattice import build_lattice
+
         return build_lattice
     elif name == "build_setup":
         from tud_lbm.pipeline.setup import build_setup
+
         return build_setup
     elif name == "run":
         from tud_lbm.pipeline.runner import run
+
         return run
     elif name == "State":
         from tud_lbm.pipeline.state.state import State
+
         return State
     elif name == "WettingState":
         from tud_lbm.pipeline.state.state import WettingState
+
         return WettingState
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

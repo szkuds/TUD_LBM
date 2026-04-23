@@ -29,13 +29,15 @@ can differentiate through it.
 """
 
 from __future__ import annotations
+
 import jax
 import jax.numpy as jnp
+
 from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
 from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
 from tud_lbm.operators.wetting._params import WettingParams
-from tud_lbm.registry import wetting_operator
 from tud_lbm.pipeline.state.state import WettingState
+from tud_lbm.registry import wetting_operator
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -235,11 +237,17 @@ def update_wetting_state(
 
     def left_objective(p):
         ca_l, _, cll_l, _ = evaluate_fn(p)
-        return jnp.where(in_window_left, _cost_cll(cll_left, cll_l), _cost_ca(ca_target_left, ca_l))
+        return jnp.where(
+            in_window_left, _cost_cll(cll_left, cll_l), _cost_ca(ca_target_left, ca_l)
+        )
 
     def right_objective(p):
         _, ca_r, _, cll_r = evaluate_fn(p)
-        return jnp.where(in_window_right, _cost_cll(cll_right, cll_r), _cost_ca(ca_target_right, ca_r))
+        return jnp.where(
+            in_window_right,
+            _cost_cll(cll_right, cll_r),
+            _cost_ca(ca_target_right, ca_r),
+        )
 
     def left_mask(g):
         return g._replace(
@@ -254,8 +262,12 @@ def update_wetting_state(
         )
 
     # --- 5.2: optimise left side, then right side ---
-    p1, _ = _optimise_single_param(left_objective, params, left_mask, optimiser, max_iter, loss_tol)
-    new_params, _ = _optimise_single_param(right_objective, p1, right_mask, optimiser, max_iter, loss_tol)
+    p1, _ = _optimise_single_param(
+        left_objective, params, left_mask, optimiser, max_iter, loss_tol
+    )
+    new_params, _ = _optimise_single_param(
+        right_objective, p1, right_mask, optimiser, max_iter, loss_tol
+    )
 
     # 6. Return updated wetting state
     return wetting._replace(
@@ -286,7 +298,9 @@ def _build_default_evaluate_fn(
     ``jax.value_and_grad`` can differentiate through the param → shim
     → step → CA/CLL chain.
     """
-    from operators.step._wetting_differential_operators import _make_wetting_differential_ops
+    from operators.step._wetting_differential_operators import (
+        _make_wetting_differential_ops,
+    )
 
     def evaluate_fn(params: WettingParams):
         if setup.config.wetting_config is not None:
@@ -309,7 +323,9 @@ def _build_default_evaluate_fn(
             laplacian_density = setup.laplacian_density
 
         if setup.multiphase_step is None:
-            raise ValueError("Multiphase hysteresis requires setup.multiphase_step to be configured.")
+            raise ValueError(
+                "Multiphase hysteresis requires setup.multiphase_step to be configured."
+            )
 
         f_out = setup.multiphase_step(
             f_t,

@@ -11,9 +11,12 @@ Example:
 """
 
 from __future__ import annotations
+
 from collections.abc import Callable
 from typing import TYPE_CHECKING
+
 import jax.numpy as jnp
+
 from operators._loader import auto_load_operators
 from operators.factory import build_operator
 from operators.protocols import DifferentialOperator
@@ -81,7 +84,9 @@ def build_diff_ops(
     _gradient_raw = build_differential_fn("gradient")
 
     def gradient_standard(grid: jnp.ndarray) -> jnp.ndarray:
-        return _gradient_raw(grid, lattice.w, lattice.c, tuple(determine_pad_modes(config.bc_config)))
+        return _gradient_raw(
+            grid, lattice.w, lattice.c, tuple(determine_pad_modes(config.bc_config))
+        )
 
     wetting_config = config.wetting_config
     if wetting_config is not None and mp_params is not None:
@@ -111,10 +116,14 @@ def build_diff_ops(
         _laplacian_raw = build_differential_fn("laplacian")
 
         def gradient_density(grid: jnp.ndarray) -> jnp.ndarray:
-            return _gradient_raw(grid, lattice.w, lattice.c, tuple(determine_pad_modes(config.bc_config)))
+            return _gradient_raw(
+                grid, lattice.w, lattice.c, tuple(determine_pad_modes(config.bc_config))
+            )
 
         def laplacian_density(grid: jnp.ndarray) -> jnp.ndarray:
-            return _laplacian_raw(grid, lattice.w, tuple(determine_pad_modes(config.bc_config)))
+            return _laplacian_raw(
+                grid, lattice.w, tuple(determine_pad_modes(config.bc_config))
+            )
 
     return gradient_standard, gradient_density, laplacian_density
 

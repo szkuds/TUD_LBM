@@ -8,9 +8,10 @@ Public API::
 """
 
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
-from setup.lattice import Lattice
-from setup.lattice import build_lattice
+
+from setup.lattice import Lattice, build_lattice
 
 # Re-export from their canonical locations; avoid circular imports
 # by using TYPE_CHECKING for type hints and lazy imports for runtime

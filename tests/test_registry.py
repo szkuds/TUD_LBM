@@ -9,7 +9,9 @@ Tests for:
 """
 
 from __future__ import annotations
+
 import pytest
+
 import operators.boundary
 
 # Import all operator packages to trigger registration decorators.
@@ -23,12 +25,14 @@ import operators.macroscopic
 import operators.streaming
 import operators.wetting  # noqa: F401
 import setup.lattice  # noqa: F401
-from registry import OPERATOR_REGISTRY
-from registry import get_operator_category
-from registry import get_operator_names
-from registry import get_operators
-from registry import register_operator
-from registry import unregister_operator
+from registry import (
+    OPERATOR_REGISTRY,
+    get_operator_category,
+    get_operator_names,
+    get_operators,
+    register_operator,
+    unregister_operator,
+)
 
 # =====================================================================
 # Registration mechanics
@@ -294,7 +298,9 @@ class TestDummyOperatorAutoExposure:
             assert ops["_dummy_test_force"].target is _dummy_force_builder
 
             # Metadata carries result_field
-            assert ops["_dummy_test_force"].metadata["result_field"] == "gravity_template"
+            assert (
+                ops["_dummy_test_force"].metadata["result_field"] == "gravity_template"
+            )
         finally:
             unregister_operator("force", "_dummy_test_force")
 

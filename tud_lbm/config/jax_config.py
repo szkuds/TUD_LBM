@@ -6,6 +6,7 @@ Import and call `configure_jax()` at the start of your script to apply settings.
 
 # Set environment variable to prevent JAX from pre-allocating all GPU memory.
 import os
+
 import jax
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"

@@ -24,9 +24,12 @@ Usage::
 """
 
 from __future__ import annotations
+
 from collections.abc import Callable
 from typing import NamedTuple
+
 import jax.numpy as jnp
+
 from registry import force_model
 from setup.lattice import Lattice
 
@@ -148,7 +151,9 @@ class ElectricForceModule:
         """
         from operators.differential import build_diff_ops
 
-        gradient_standard, _, _ = build_diff_ops(config, mp_params=None, lattice=lattice)
+        gradient_standard, _, _ = build_diff_ops(
+            config, mp_params=None, lattice=lattice
+        )
         return ElectricParams(**params, gradient_standard=gradient_standard)
 
     @staticmethod

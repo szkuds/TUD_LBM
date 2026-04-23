@@ -5,15 +5,18 @@ Supports both wetting and non-wetting multiphase simulations.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
+
 from operators.force import compute_total_force_ext
 from operators.step._common import _apply_common_step
-from operators.step._wetting_differential_operators import _make_wetting_differential_ops
+from operators.step._wetting_differential_operators import (
+    _make_wetting_differential_ops,
+)
 from registry import update_timestep_operator
 from setup import SimulationSetup
 from state import update_extra_state
-from state.state import State
-from state.state import WettingState
+from state.state import State, WettingState
 
 
 def _run_multiphase_pipeline(
@@ -54,7 +57,9 @@ def _run_multiphase_pipeline(
         t=jnp.array(0),
         wetting=wetting,
     )
-    next_state = _apply_common_step(setup, temp_state, rho, u, force_tot, gradient_density=gradient_density)
+    next_state = _apply_common_step(
+        setup, temp_state, rho, u, force_tot, gradient_density=gradient_density
+    )
     return next_state.f, rho, u, force_tot
 
 

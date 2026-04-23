@@ -6,11 +6,13 @@ and is therefore only called at setup time, outside JIT.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
 import numpy as np
+
+from tud_lbm.lattice.lattice import Lattice
 from tud_lbm.operators.equilibrium import build_equilibrium_fn
 from tud_lbm.registry import initialise_operator
-from tud_lbm.lattice.lattice import Lattice
 
 
 @initialise_operator(name="init_from_file")

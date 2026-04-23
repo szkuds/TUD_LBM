@@ -6,7 +6,9 @@ step on the substrate.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
+
 from operators.equilibrium._equilibrium import compute_equilibrium
 from registry import initialise_operator
 from setup.lattice import Lattice

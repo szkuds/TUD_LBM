@@ -645,6 +645,7 @@ class TestBuildMultiphaseParams:
 
     def test_missing_field_raises(self):
         from dataclasses import dataclass
+
         from operators.macroscopic import build_multiphase_params
 
         @dataclass

@@ -6,6 +6,7 @@ average of the cardinal and two diagonal neighbours (D2Q9 weights).
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
 
 # Stencil weights for ghost-cell reconstruction (Lattice, D2Q9)
@@ -45,16 +46,20 @@ def _reconstruct_ghost_row(
     cardinal = arr[1:-1, int_col]
     diag_minus = arr[:-2, int_col]
     diag_plus = arr[2:, int_col]
-    arr = arr.at[1:-1, ghost_idx].set((_W_CARDINAL * cardinal + _W_DIAGONAL * (diag_minus + diag_plus)) / _W_TOTAL)
+    arr = arr.at[1:-1, ghost_idx].set(
+        (_W_CARDINAL * cardinal + _W_DIAGONAL * (diag_minus + diag_plus)) / _W_TOTAL
+    )
 
     # Start corner (index 0)
     start_wrap = arr[-1, int_col] if wrap_start else arr[1, int_col]
     arr = arr.at[0, ghost_idx].set(
-        (_W_CARDINAL * arr[0, int_col] + _W_DIAGONAL * (start_wrap + arr[1, int_col])) / _W_TOTAL
+        (_W_CARDINAL * arr[0, int_col] + _W_DIAGONAL * (start_wrap + arr[1, int_col]))
+        / _W_TOTAL
     )
 
     # End corner (index -1)
     end_wrap = arr[0, int_col] if wrap_end else arr[-2, int_col]
     return arr.at[-1, ghost_idx].set(
-        (_W_CARDINAL * arr[-1, int_col] + _W_DIAGONAL * (arr[-2, int_col] + end_wrap)) / _W_TOTAL
+        (_W_CARDINAL * arr[-1, int_col] + _W_DIAGONAL * (arr[-2, int_col] + end_wrap))
+        / _W_TOTAL
     )

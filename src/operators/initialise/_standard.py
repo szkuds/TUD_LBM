@@ -5,7 +5,9 @@ population distributions at equilibrium.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
+
 from operators.equilibrium import build_equilibrium_fn
 from registry import initialise_operator
 from setup.lattice import Lattice

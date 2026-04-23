@@ -12,10 +12,12 @@ compile-time constants derived from the :class:`Lattice`.
 """
 
 from __future__ import annotations
+
 import jax.numpy as jnp
 import numpy as np
-from tud_lbm.registry import boundary_condition
+
 from tud_lbm.lattice.lattice import Lattice
+from tud_lbm.registry import boundary_condition
 
 
 @boundary_condition(name="bounce-back", pad_edge_mode="edge")

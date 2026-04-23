@@ -5,6 +5,7 @@ Not registered in the operator registry; imported directly by siblings.
 """
 
 from __future__ import annotations
+
 from state.state import State
 
 
@@ -41,7 +42,9 @@ def _apply_common_step(
     # 4. Collision (with or without source term)
     if force_tot is not None and setup.forces is not None:
         # Use provided gradient_density if available (for wetting), else use setup default
-        grad = gradient_density if gradient_density is not None else setup.gradient_density
+        grad = (
+            gradient_density if gradient_density is not None else setup.gradient_density
+        )
         src = setup.forces.source_term(rho, u, force_tot, lattice, gradient=grad)
         f_col = setup.collision_fn(state.f, feq, setup.tau, src)
     else:

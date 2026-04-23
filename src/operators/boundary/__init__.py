@@ -13,10 +13,12 @@ Example:
 """
 
 from __future__ import annotations
+
 from collections.abc import Callable
-from typing import Any
-from typing import NamedTuple
+from typing import Any, NamedTuple
+
 import jax.numpy as jnp
+
 from operators.boundary import _bounce_back as _bb  # noqa: F401
 from operators.boundary import _periodic as _per  # noqa: F401
 from operators.boundary import _symmetry as _sym  # noqa: F401

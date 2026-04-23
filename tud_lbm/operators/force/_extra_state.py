@@ -1,11 +1,16 @@
 """Extra-state plugins for force modules."""
 
 from __future__ import annotations
+
 from typing import Any
+
 import jax.numpy as jnp
-from tud_lbm.operators.force._electric import ElectricParams
-from tud_lbm.operators.force._electric import _equilibrium_h
-from tud_lbm.operators.force._electric import _rho_to_phi
+
+from tud_lbm.operators.force._electric import (
+    ElectricParams,
+    _equilibrium_h,
+    _rho_to_phi,
+)
 from tud_lbm.registry import extra_state_plugin
 
 
@@ -38,7 +43,9 @@ class ElectricExtraStatePlugin:
         return {"h": _equilibrium_h(potential, setup.lattice.w)}
 
     @staticmethod
-    def update_state(setup: Any, prev_state: Any, new_state: Any, **context: Any) -> Any:
+    def update_state(
+        setup: Any, prev_state: Any, new_state: Any, **context: Any
+    ) -> Any:
         params = _get_electric_params(setup)
         if params is None or prev_state.h is None:
             return new_state
@@ -58,8 +65,14 @@ class ElectricExtraStatePlugin:
         h_col = (1.0 - omega_e) * prev_state.h + omega_e * h_eq
 
         top_potential = jnp.full((prev_state.h.shape[0], 1, 1, 1), params.voltage_top)
-        h_col = h_col.at[:, -1:, :, :].set(_equilibrium_h(top_potential, setup.lattice.w))
-        bottom_potential = jnp.full((prev_state.h.shape[0], 1, 1, 1), params.voltage_bottom)
-        h_col = h_col.at[:, :1, :, :].set(_equilibrium_h(bottom_potential, setup.lattice.w))
+        h_col = h_col.at[:, -1:, :, :].set(
+            _equilibrium_h(top_potential, setup.lattice.w)
+        )
+        bottom_potential = jnp.full(
+            (prev_state.h.shape[0], 1, 1, 1), params.voltage_bottom
+        )
+        h_col = h_col.at[:, :1, :, :].set(
+            _equilibrium_h(bottom_potential, setup.lattice.w)
+        )
 
         return new_state._replace(h=setup.streaming_fn(h_col, setup.lattice))

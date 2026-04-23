@@ -32,7 +32,9 @@ Usage (strategy 2)::
 """
 
 from __future__ import annotations
+
 from collections.abc import Callable
+
 import jax
 import numpy as np
 
