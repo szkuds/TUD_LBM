@@ -149,7 +149,7 @@ class ElectricForceModule:
         Returns:
             :class:`ElectricParams` NamedTuple with a closed-over gradient callable.
         """
-        from operators.differential import build_diff_ops
+        from tud_lbm.operators.differential import build_diff_ops
 
         gradient_standard, _, _ = build_diff_ops(
             config, mp_params=None, lattice=lattice

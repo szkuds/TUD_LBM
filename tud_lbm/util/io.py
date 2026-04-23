@@ -3,7 +3,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tud_lbm.config.simulation_config import SimulationConfig
+from tud_lbm.config import SimulationConfig
 
 from .output_data import output_writers
 

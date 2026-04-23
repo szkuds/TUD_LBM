@@ -33,9 +33,9 @@ import matplotlib.axes
 import numpy as np
 
 if TYPE_CHECKING:
-    from config.simulation_config import SimulationConfig
-    from setup.lattice import Lattice
-    from state.state import State, WettingState
+    from tud_lbm.config.simulation_config import SimulationConfig
+    from tud_lbm.lattice.lattice import Lattice
+    from tud_lbm.pipeline.state import State, WettingState
 
 
 # ══════════════════════════════════════════════════════════════════════════════

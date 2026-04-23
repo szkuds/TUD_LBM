@@ -29,7 +29,7 @@ def from_toml(path: str) -> SimulationConfig:
         A :class:`SimulationConfig`.
     """
     # Lazy import to avoid pulling in tomllib when unused
-    from config.adapter_toml import TomlAdapter
+    from tud_lbm.config.adapter_toml import TomlAdapter
 
     return TomlAdapter().load(path)
 

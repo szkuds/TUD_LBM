@@ -12,10 +12,14 @@ from pathlib import Path
 
 import pytest
 
-from config.adapter_base import ConfigAdapter, get_adapter
-from config.adapter_toml import TomlAdapter
-from config.simulation_config import SimulationConfig
+try:
+    import tomli_w
+except ImportError:
+    pytest.skip("tomli_w not installed", allow_module_level=True)
 
+from tud_lbm.config.adapter_base import ConfigAdapter, get_adapter
+from tud_lbm.config.adapter_toml import TomlAdapter
+from tud_lbm.config.simulation_config import SimulationConfig
 
 class TestTomlAdapterSave:
     """Tests for TomlAdapter.save()."""
@@ -107,11 +111,9 @@ class TestTomlAdapterSave:
         adapter.save(cfg, str(dest))
         assert dest.exists()
 
-
 # ══════════════════════════════════════════════════════════════════════
 # ConfigAdapter ABC enforcement
 # ══════════════════════════════════════════════════════════════════════
-
 
 class TestConfigAdapterABCSave:
     """The ABC must force subclasses to implement save()."""
@@ -138,11 +140,9 @@ class TestConfigAdapterABCSave:
         with pytest.raises(TypeError):
             IncompleteAdapter()
 
-
 # ══════════════════════════════════════════════════════════════════════
 # get_adapter() dispatch
 # ══════════════════════════════════════════════════════════════════════
-
 
 class TestGetAdapterDispatch:
     """get_adapter() should raise for unsupported extensions."""
@@ -155,17 +155,15 @@ class TestGetAdapterDispatch:
         adapter = get_adapter("config.toml")
         assert isinstance(adapter, TomlAdapter)
 
-
 # ══════════════════════════════════════════════════════════════════════
 # SimulationIO integration
 # ══════════════════════════════════════════════════════════════════════
-
 
 class TestSimulationIOConfigFileType:
     """SimulationIO should write the config file in the requested format."""
 
     def test_default_filetype_saves_toml(self, tmp_path):
-        from util.io import SimulationIO
+        from tud_lbm.util.io import SimulationIO
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         io = SimulationIO(
@@ -180,7 +178,7 @@ class TestSimulationIOConfigFileType:
 
     def test_toml_config_is_loadable(self, tmp_path):
         """The config.toml saved by SimulationIO should be loadable."""
-        from util.io import SimulationIO
+        from tud_lbm.util.io import SimulationIO
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.7, nt=200)
         io = SimulationIO(

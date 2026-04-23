@@ -39,7 +39,7 @@ Issues = "https://github.com/szkuds/tud_lbm/issues"
 ReadTheDocs = "https://tud_lbm.readthedocs.io"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
 
 [project.scripts]
 tud-lbm = "cli:main"
@@ -54,7 +54,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["src"]
+source = ["tud_lbm"]
 command_line = "-m pytest"
 
 [tool.tox]

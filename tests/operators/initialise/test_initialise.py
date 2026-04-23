@@ -11,9 +11,9 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from operators.initialise import build_initialise_fn
-from registry import get_operators
-from setup.lattice import build_lattice
+from tud_lbm.operators.initialise import build_initialise_fn
+from tud_lbm.registry import get_operators
+from tud_lbm.lattice.lattice import build_lattice
 
 NX, NY = 16, 16
 

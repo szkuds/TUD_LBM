@@ -23,7 +23,10 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-import tomli_w
+try:
+    import tomli_w
+except ImportError:
+    tomli_w = None  # Optional dependency
 
 from tud_lbm.config.adapter_base import ConfigAdapter
 from tud_lbm.config.simulation_config import SimulationConfig
@@ -220,7 +223,11 @@ class TomlAdapter(ConfigAdapter):
 
         Raises:
             OSError: If the file cannot be written.
+            ImportError: If tomli_w is not installed.
         """
+        if tomli_w is None:
+            raise ImportError("tomli_w is required for saving TOML files. Install with: pip install tomli-w")
+        
         path_obj: Path = Path(path).expanduser()
         path_obj.parent.mkdir(parents=True, exist_ok=True)
 

@@ -73,8 +73,8 @@ def _build_force_fn(scheme: str) -> Callable[..., object] | type:
         ValueError: If scheme is not registered.
     """
     # Lazy imports trigger module registration via decorators.
-    from operators.force import _electric as _elec_impl  # noqa: F401
-    from operators.force import _gravity as _grav_impl  # noqa: F401
+    from tud_lbm.operators.force import _electric as _elec_impl  # noqa: F401
+    from tud_lbm.operators.force import _gravity as _grav_impl  # noqa: F401
 
     return build_operator("force", scheme)
 

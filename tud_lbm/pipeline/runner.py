@@ -85,7 +85,7 @@ def init_state(
     Returns:
         A :class:`State` ready to be passed to :func:`run`.
     """
-    from state import build_extra_state, build_optional_fields
+    from tud_lbm.pipeline.state import build_extra_state, build_optional_fields
 
     lattice = setup.lattice
     nx, ny = setup.grid_shape[0], setup.grid_shape[1]
@@ -152,7 +152,7 @@ def run(
 
     # ── Streaming I/O mode ───────────────────────────────────────
     if io_handler is not None:
-        from runner.io_callbacks import make_save_callback
+        from tud_lbm.pipeline.io_callbacks import make_save_callback
 
         do_save = make_save_callback(
             io_handler,

@@ -30,7 +30,7 @@ Tests are organized by what they explain:
 
 import pytest
 
-from registry import get_operators, register_operator, unregister_operator
+from tud_lbm.registry import get_operators, register_operator, unregister_operator
 
 # ── PART 1: Generic Factory Tests ─────────────────────────────────────────
 
@@ -44,7 +44,7 @@ class TestGenericFactory:
     """
 
     def test_generic_factory_resolves_registered_operator(self):
-        """Generic factory returns the correct operator from registry.
+        """Generic factory returns the correct operator from tud_lbm.registry.
 
         This test documents:
           build_operator("collision_models", "bgk")
@@ -53,8 +53,8 @@ class TestGenericFactory:
             ↓ (returns the function)
           collide_bgk ✓
         """
-        from operators.collision._bgk import collide_bgk
-        from operators.factory import build_operator
+        from tud_lbm.operators.collision._bgk import collide_bgk
+        from tud_lbm.operators.factory import build_operator
 
         result = build_operator("collision_models", "bgk")
         assert result is collide_bgk
@@ -65,7 +65,7 @@ class TestGenericFactory:
         This test documents error handling when the operator kind
         itself is not registered (e.g., "unknown_operator_type").
         """
-        from operators.factory import build_operator
+        from tud_lbm.operators.factory import build_operator
 
         with pytest.raises(ValueError, match="No operators registered"):
             build_operator("nonexistent_kind", "some_scheme")
@@ -76,7 +76,7 @@ class TestGenericFactory:
         This test documents error handling when the scheme is not
         registered under the given kind (e.g., "collision_models:invalid").
         """
-        from operators.factory import build_operator
+        from tud_lbm.operators.factory import build_operator
 
         with pytest.raises(ValueError, match=r"Unknown.*scheme"):
             build_operator("collision_models", "invalid_scheme_xyz")
@@ -87,7 +87,7 @@ class TestGenericFactory:
         When a scheme is unknown, the error should help the developer
         by listing what schemes ARE available. This is helpful UX.
         """
-        from operators.factory import build_operator
+        from tud_lbm.operators.factory import build_operator
 
         with pytest.raises(ValueError) as exc_info:
             build_operator("collision_models", "not_a_real_scheme")
@@ -119,7 +119,7 @@ class TestTypesSafeCollisionWrapper:
           - IDE: Autocomplete knows the function signature
           - Developer: Knows it satisfies the protocol contract
         """
-        from operators.collision import build_collision_fn
+        from tud_lbm.operators.collision import build_collision_fn
 
         collision_op = build_collision_fn("bgk")
 
@@ -135,9 +135,9 @@ class TestTypesSafeCollisionWrapper:
 
         It adds type safety without duplicating factory logic.
         """
-        from operators.collision import build_collision_fn
-        from operators.collision._bgk import collide_bgk
-        from operators.factory import build_operator
+        from tud_lbm.operators.collision import build_collision_fn
+        from tud_lbm.operators.collision._bgk import collide_bgk
+        from tud_lbm.operators.factory import build_operator
 
         # Both should return the same underlying function
         wrapper_result = build_collision_fn("bgk")
@@ -151,7 +151,7 @@ class TestTypesSafeCollisionWrapper:
         Since the wrapper delegates to the generic factory, error
         handling is consistent across all operator types.
         """
-        from operators.collision import build_collision_fn
+        from tud_lbm.operators.collision import build_collision_fn
 
         with pytest.raises(ValueError):
             build_collision_fn("invalid_scheme")
@@ -168,15 +168,15 @@ class TestTypeSafeStreamingWrapper:
 
     def test_wrapper_returns_streaming_operator(self):
         """Wrapper returns a StreamingOperator satisfying the protocol."""
-        from operators.streaming import build_streaming_fn
+        from tud_lbm.operators.streaming import build_streaming_fn
 
         streaming_op = build_streaming_fn("standard")
         assert callable(streaming_op)
 
     def test_wrapper_delegates_to_generic_factory(self):
         """Wrapper delegates to generic factory without duplication."""
-        from operators.factory import build_operator
-        from operators.streaming import build_streaming_fn
+        from tud_lbm.operators.factory import build_operator
+        from tud_lbm.operators.streaming import build_streaming_fn
 
         wrapper_result = build_streaming_fn("standard")
         generic_result = build_operator("stream", "standard")
@@ -192,15 +192,15 @@ class TestTypeSafeEquilibriumWrapper:
 
     def test_wrapper_returns_equilibrium_operator(self):
         """Wrapper returns an EquilibriumOperator satisfying the protocol."""
-        from operators.equilibrium import build_equilibrium_fn
+        from tud_lbm.operators.equilibrium import build_equilibrium_fn
 
         eq_op = build_equilibrium_fn("wb")
         assert callable(eq_op)
 
     def test_wrapper_delegates_to_generic_factory(self):
         """Wrapper delegates to generic factory without duplication."""
-        from operators.equilibrium import build_equilibrium_fn
-        from operators.factory import build_operator
+        from tud_lbm.operators.equilibrium import build_equilibrium_fn
+        from tud_lbm.operators.factory import build_operator
 
         wrapper_result = build_equilibrium_fn("wb")
         generic_result = build_operator("equilibrium", "wb")
@@ -216,15 +216,15 @@ class TestTypeSafeMacroscopicWrapper:
 
     def test_wrapper_returns_macroscopic_operator(self):
         """Wrapper returns a MacroscopicOperator satisfying the protocol."""
-        from operators.macroscopic import build_macroscopic_fn
+        from tud_lbm.operators.macroscopic import build_macroscopic_fn
 
         macro_op = build_macroscopic_fn("standard")
         assert callable(macro_op)
 
     def test_wrapper_delegates_to_generic_factory(self):
         """Wrapper delegates to generic factory without duplication."""
-        from operators.factory import build_operator
-        from operators.macroscopic import build_macroscopic_fn
+        from tud_lbm.operators.factory import build_operator
+        from tud_lbm.operators.macroscopic import build_macroscopic_fn
 
         wrapper_result = build_macroscopic_fn("standard")
         generic_result = build_operator("macroscopic", "standard")
@@ -240,13 +240,13 @@ class TestBackwardCompatibility:
 
     The import location changed (factory.py → __init__.py), but
     the public API `build_collision_fn` is still available via both
-    `from operators.collision import build_collision_fn` (recommended)
+    `from tud_lbm.operators.collision import build_collision_fn` (recommended)
     and falls back gracefully for any old code.
     """
 
     def test_collision_init_import_recommended(self):
-        """Recommended import: from operators.collision import build_collision_fn"""
-        from operators.collision import build_collision_fn
+        """Recommended import: from tud_lbm.operators.collision import build_collision_fn"""
+        from tud_lbm.operators.collision import build_collision_fn
 
         op = build_collision_fn("bgk")
         assert callable(op)
@@ -254,7 +254,7 @@ class TestBackwardCompatibility:
     def test_collision_factory_module_no_longer_exists(self):
         """Old factory.py files were deleted. Import from __init__.py instead."""
         with pytest.raises(ModuleNotFoundError):
-            from operators.collision.factory import build_collision_fn  # noqa: F401
+            from tud_lbm.operators.collision.factory import build_collision_fn  # noqa: F401
 
     def test_all_schemes_still_available(self):
         """All previously available schemes are still accessible.
@@ -262,7 +262,7 @@ class TestBackwardCompatibility:
         Refactoring doesn't change which operators are registered,
         just how they're accessed.
         """
-        from operators.collision import build_collision_fn
+        from tud_lbm.operators.collision import build_collision_fn
 
         bgk_op = build_collision_fn("bgk")
         mrt_op = build_collision_fn("mrt")
@@ -283,10 +283,10 @@ class TestOperatorIntegration:
 
     def test_all_operator_kinds_accessible_via_factories(self):
         """Every operator kind has a factory function."""
-        from operators.collision import build_collision_fn
-        from operators.equilibrium import build_equilibrium_fn
-        from operators.macroscopic import build_macroscopic_fn
-        from operators.streaming import build_streaming_fn
+        from tud_lbm.operators.collision import build_collision_fn
+        from tud_lbm.operators.equilibrium import build_equilibrium_fn
+        from tud_lbm.operators.macroscopic import build_macroscopic_fn
+        from tud_lbm.operators.streaming import build_streaming_fn
 
         assert callable(build_collision_fn("bgk"))
         assert callable(build_streaming_fn("standard"))
@@ -299,10 +299,10 @@ class TestOperatorIntegration:
         This verifies the primary use case: step.py builds operators
         at the start of each timestep using factories.
         """
-        from operators.collision import build_collision_fn
-        from operators.equilibrium import build_equilibrium_fn
-        from operators.macroscopic import build_macroscopic_fn
-        from operators.streaming import build_streaming_fn
+        from tud_lbm.operators.collision import build_collision_fn
+        from tud_lbm.operators.equilibrium import build_equilibrium_fn
+        from tud_lbm.operators.macroscopic import build_macroscopic_fn
+        from tud_lbm.operators.streaming import build_streaming_fn
 
         # Simulate what step.py does
         collision_fn = build_collision_fn("bgk")
@@ -353,7 +353,7 @@ class TestFactoryPattern:
             return "test"
 
         # Generic factory finds it
-        from operators.factory import build_operator
+        from tud_lbm.operators.factory import build_operator
 
         result = build_operator("_test_operator_kind", "_test_scheme")
 
@@ -373,14 +373,14 @@ class TestFactoryPattern:
           - Easy testing (can register test operators)
           - Plugin system (register operators dynamically)
         """
-        from operators.factory import build_operator
+        from tud_lbm.operators.factory import build_operator
 
         # Registry has all the data
         collision_ops = get_operators("collision_models")
         assert "bgk" in collision_ops
         assert "mrt" in collision_ops
 
-        # Factory just reads from registry and returns
+        # Factory just reads from tud_lbm.registry and returns
         bgk_fn = build_operator("collision_models", "bgk")
         assert bgk_fn is collision_ops["bgk"].target
 

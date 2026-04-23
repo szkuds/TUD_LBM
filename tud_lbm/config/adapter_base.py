@@ -90,7 +90,7 @@ class ConfigAdapter(ABC):
 
 
 _ADAPTER_MAP: dict[str, str] = {
-    ".toml": "config.adapter_toml.TomlAdapter",
+    ".toml": "tud_lbm.config.adapter_toml.TomlAdapter",
 }
 
 

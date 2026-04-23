@@ -5,9 +5,6 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SRC_ROOT = PROJECT_ROOT / "src"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -18,7 +15,7 @@ def _register_step_operators():
     early, so their @update_timestep_operator decorators fire and
     register the step operators.
     """
-    from operators import step as _  # noqa: F401
+    from tud_lbm.operators import step as _  # noqa: F401
 
 
 @pytest.fixture

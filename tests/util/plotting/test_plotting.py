@@ -5,10 +5,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from config import SimulationConfig
-from registry import get_operator_names
-from util.plotting import visualise
-from util.plotting.figure_builder import FigureBuilder
+from tud_lbm.config import SimulationConfig
+from tud_lbm.registry import get_operator_names
+from tud_lbm.util.plotting import visualise
+from tud_lbm.util.plotting.figure_builder import FigureBuilder
 
 
 @pytest.fixture

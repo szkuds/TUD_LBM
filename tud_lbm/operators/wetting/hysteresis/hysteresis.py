@@ -298,7 +298,7 @@ def _build_default_evaluate_fn(
     ``jax.value_and_grad`` can differentiate through the param → shim
     → step → CA/CLL chain.
     """
-    from operators.step._wetting_differential_operators import (
+    from tud_lbm.operators.step._wetting_differential_operators import (
         _make_wetting_differential_ops,
     )
 

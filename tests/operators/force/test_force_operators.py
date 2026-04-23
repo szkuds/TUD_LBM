@@ -7,10 +7,10 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from config.simulation_config import SimulationConfig
-from operators.force import ForceParams, ForceSetup
-from setup.lattice import build_lattice
-from state.state import State
+from tud_lbm.config.simulation_config import SimulationConfig
+from tud_lbm.operators.force import ForceParams, ForceSetup
+from tud_lbm.lattice.lattice import build_lattice
+from tud_lbm.pipeline.state.state import State
 
 NX, NY = 8, 8
 
@@ -29,7 +29,7 @@ def sim_config():
 @pytest.fixture(scope="module")
 def electric_params(lattice, sim_config):
     """Pre-built ElectricParams with a real gradient closure."""
-    from operators.force._electric import ElectricForceModule
+    from tud_lbm.operators.force._electric import ElectricForceModule
 
     return ElectricForceModule.build(
         {
@@ -59,7 +59,7 @@ def make_state(lattice, rho_value=1.0, h=None):
 
 
 def make_electric_setup(lattice, electric_params):
-    from operators.streaming._streaming import stream
+    from tud_lbm.operators.streaming._streaming import stream
 
     specs = (
         ForceParams(
@@ -85,7 +85,7 @@ class TestGravityForce:
     """GravityForceModule build/compute behaviour."""
 
     def test_template_shape(self, lattice, sim_config):
-        from operators.force._gravity import GravityForceModule
+        from tud_lbm.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build(
             {"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice
@@ -93,7 +93,7 @@ class TestGravityForce:
         assert template.shape == (NX, NY, 1, 2)
 
     def test_vertical_gravity(self, lattice, sim_config):
-        from operators.force._gravity import GravityForceModule
+        from tud_lbm.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build(
             {"force_g": 0.001, "inclination_angle_deg": 0.0},
@@ -113,7 +113,7 @@ class TestGravityForce:
         )
 
     def test_inclined_gravity(self, lattice, sim_config):
-        from operators.force._gravity import GravityForceModule
+        from tud_lbm.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build(
             {"force_g": 0.001, "inclination_angle_deg": 90.0},
@@ -133,7 +133,7 @@ class TestGravityForce:
         )
 
     def test_compute_gravity_force_shape(self, lattice, sim_config):
-        from operators.force._gravity import GravityForceModule
+        from tud_lbm.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build(
             {"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice
@@ -143,7 +143,7 @@ class TestGravityForce:
         assert force.shape == (NX, NY, 1, 2)
 
     def test_compute_gravity_force_value(self, lattice, sim_config):
-        from operators.force._gravity import GravityForceModule
+        from tud_lbm.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build(
             {"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice
@@ -158,7 +158,7 @@ class TestGravityForce:
         )
 
     def test_jittable(self, lattice, sim_config):
-        from operators.force._gravity import GravityForceModule
+        from tud_lbm.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build(
             {"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice
@@ -177,7 +177,7 @@ class TestElectricParams:
     """ElectricForceModule.build creates a valid NamedTuple pytree."""
 
     def test_creation(self, lattice, sim_config):
-        from operators.force._electric import ElectricForceModule
+        from tud_lbm.operators.force._electric import ElectricForceModule
 
         ep = ElectricForceModule.build(
             {
@@ -194,7 +194,7 @@ class TestElectricParams:
         assert ep.permittivity_vapour == 1.0
 
     def test_is_pytree(self, lattice, sim_config):
-        from operators.force._electric import ElectricForceModule
+        from tud_lbm.operators.force._electric import ElectricForceModule
 
         ep = ElectricForceModule.build(
             {
@@ -212,7 +212,7 @@ class TestElectricParams:
         assert ep2.permittivity_liquid == ep.permittivity_liquid
 
     def test_legacy_state_hooks_removed(self):
-        from operators.force._electric import ElectricForceModule
+        from tud_lbm.operators.force._electric import ElectricForceModule
 
         assert not hasattr(ElectricForceModule, "init_state")
         assert not hasattr(ElectricForceModule, "update_state")
@@ -227,15 +227,15 @@ class TestElectricExtraStateInit:
     """ElectricExtraStatePlugin.init_state produces a valid initial distribution."""
 
     def test_shape(self, lattice, electric_params):
-        from operators.force._extra_state import ElectricExtraStatePlugin
+        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
 
         setup = make_electric_setup(lattice, electric_params)
         hi = ElectricExtraStatePlugin.init_state(setup)["h"]
         assert hi.shape == (NX, NY, 9, 1)
 
     def test_linear_profile(self, lattice, sim_config):
-        from operators.force._electric import ElectricForceModule
-        from operators.force._extra_state import ElectricExtraStatePlugin
+        from tud_lbm.operators.force._electric import ElectricForceModule
+        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
 
         params = ElectricForceModule.build(
             {
@@ -274,8 +274,8 @@ class TestComputeElectricForce:
     """ElectricForceModule.compute returns correct shape and is jittable."""
 
     def test_shape(self, lattice, electric_params):
-        from operators.force._electric import ElectricForceModule
-        from operators.force._extra_state import ElectricExtraStatePlugin
+        from tud_lbm.operators.force._electric import ElectricForceModule
+        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
 
         setup = make_electric_setup(lattice, electric_params)
         hi = ElectricExtraStatePlugin.init_state(setup)["h"]
@@ -285,8 +285,8 @@ class TestComputeElectricForce:
         assert force.shape == (NX, NY, 1, 2)
 
     def test_zero_voltage_zero_force(self, lattice, sim_config):
-        from operators.force._electric import ElectricForceModule
-        from operators.force._extra_state import ElectricExtraStatePlugin
+        from tud_lbm.operators.force._electric import ElectricForceModule
+        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
 
         params = ElectricForceModule.build(
             {
@@ -309,8 +309,8 @@ class TestComputeElectricForce:
         np.testing.assert_allclose(np.array(force), 0.0, atol=1e-10)
 
     def test_jittable(self, lattice, electric_params):
-        from operators.force._electric import ElectricForceModule
-        from operators.force._extra_state import ElectricExtraStatePlugin
+        from tud_lbm.operators.force._electric import ElectricForceModule
+        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
 
         setup = make_electric_setup(lattice, electric_params)
         hi = ElectricExtraStatePlugin.init_state(setup)["h"]
@@ -330,7 +330,7 @@ class TestElectricExtraStateUpdate:
     """ElectricExtraStatePlugin.update_state advances the electric distribution."""
 
     def test_shape(self, lattice, electric_params):
-        from operators.force._extra_state import ElectricExtraStatePlugin
+        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
 
         setup = make_electric_setup(lattice, electric_params)
         hi = ElectricExtraStatePlugin.init_state(setup)["h"]

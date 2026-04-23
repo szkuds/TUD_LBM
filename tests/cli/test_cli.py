@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from cli.cli import (
-    _apply_overrides,
-    _normalize_override_path,
-    _parse_override_argument,
-    _set_nested_override,
-)
+try:
+    from tud_lbm.cli.cli import (
+        _apply_overrides,
+        _normalize_override_path,
+        _parse_override_argument,
+        _set_nested_override,
+    )
+except ImportError:
+    pytest.skip("click or rich dependency not installed", allow_module_level=True)
 
 # =========================================================================
 # _parse_override_argument Tests

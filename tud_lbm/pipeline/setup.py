@@ -259,7 +259,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     )
 
     if config.sim_type == "multiphase":
-        from operators.step._multiphase import multiphase_step
+        from tud_lbm.operators.step._multiphase import multiphase_step
 
         def _multiphase_step_bound(
             f_t: jnp.ndarray,
