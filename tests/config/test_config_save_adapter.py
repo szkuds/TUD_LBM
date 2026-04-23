@@ -163,7 +163,7 @@ class TestSimulationIOConfigFileType:
     """SimulationIO should write the config file in the requested format."""
 
     def test_default_filetype_saves_toml(self, tmp_path):
-        from tud_lbm.util.io import SimulationIO
+        from tud_lbm.io import SimulationIO
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         io = SimulationIO(
@@ -178,7 +178,7 @@ class TestSimulationIOConfigFileType:
 
     def test_toml_config_is_loadable(self, tmp_path):
         """The config.toml saved by SimulationIO should be loadable."""
-        from tud_lbm.util.io import SimulationIO
+        from tud_lbm.io import SimulationIO
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.7, nt=200)
         io = SimulationIO(

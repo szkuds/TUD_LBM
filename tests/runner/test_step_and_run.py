@@ -75,7 +75,7 @@ class TestStreamingIO:
 
     def _make_io(self, tmp_path):
         """Build a SimulationIO that writes numpy files to *tmp_path*."""
-        from tud_lbm.util.io import SimulationIO
+        from tud_lbm.io import SimulationIO
 
         return SimulationIO(
             base_dir=str(tmp_path),

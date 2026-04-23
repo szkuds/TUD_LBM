@@ -1,32 +1,50 @@
 """TUD LBM — Physics-first Lattice Boltzmann Method simulation framework.
 
 A JAX-accelerated LBM package for PhD students and researchers, emphasizing
-readability and extensibility. Structured as:
+readability and extensibility.
 
-- lattice/      : Velocity models (D2Q9, D3Q19, etc.)
-- operators/    : Physics operators (collision, streaming, etc.)
-- pipeline/     : Composition and execution
-- config/       : Configuration (pure data)
-- io/           : Output adapters (plotting, saving)
-- cli/          : Command-line interface
-- readers/      : Input adapters (TOML, YAML, etc.)
+Quick Start
+-----------
 
-Example usage::
+The main workflow: Config → Setup → State → Run::
 
-    from tud_lbm import SimulationConfig, build_setup, run, State
-    from tud_lbm.pipeline.runner import init_state
+    from tud_lbm import SimulationConfig, build_setup, run, init_state
 
-    # Create configuration with sensible defaults
+    # 1. Create configuration with sensible defaults
     config = SimulationConfig(grid_shape=(64, 64), tau=0.8, nt=5000)
 
-    # Build simulation setup from config
+    # 2. Build simulation setup from config
     setup = build_setup(config)
 
-    # Initialize state
+    # 3. Initialize state (single-phase or multiphase)
     state = init_state(setup)
 
-    # Run simulation
+    # 4. Run simulation
     final_state, trajectory = run(setup, state, nt=config.nt)
+
+Key Classes & Functions
+-----------------------
+
+**Configuration & Setup:**
+- SimulationConfig     : Immutable configuration container (sensible defaults)
+- build_lattice()      : Create velocity model (D2Q9, D3Q19, etc.)
+- build_setup()        : Build complete simulation setup
+- State                : Single-phase simulation state (rho, u, f)
+- WettingState         : Multiphase state with contact angle and interface tracking
+
+**Execution:**
+- init_state()         : Initialize state from setup
+- run()                : Execute simulation, returns (final_state, trajectory)
+
+**Input/Output:**
+- readers              : Config loaders (DictAdapter, TomlAdapter)
+- plotting             : Visualization (FigureBuilder, PlotOperator, visualise)
+- io                   : Output writers (NumPy, VTK) and managers (SimulationIO)
+
+Full API Reference
+-------------------
+
+See https://github.com/tudelft-ceg/tud-lbm for documentation.
 """
 
 __version__ = "0.2.0"
@@ -34,7 +52,19 @@ __version__ = "0.2.0"
 
 # Lazy imports to avoid circular dependencies
 def __getattr__(name):
-    """Lazy load main API to avoid circular imports."""
+    """Lazy load main API to avoid circular imports.
+    
+    Exports:
+    --------
+    SimulationConfig : Immutable frozen dataclass with physics & grid parameters
+    Lattice          : Velocity model (D2Q9, D3Q19, etc.)
+    build_lattice()  : Factory to create lattice from config
+    build_setup()    : Factory to create complete Setup from config
+    init_state()     : Initialize State or WettingState from setup
+    run()            : Execute simulation for N timesteps
+    State            : Single-phase simulation state (rho, u, f, t)
+    WettingState     : Multiphase state for contact angle tracking
+    """
     if name == "SimulationConfig":
         from tud_lbm.config.simulation_config import SimulationConfig
 
@@ -51,6 +81,10 @@ def __getattr__(name):
         from tud_lbm.pipeline.setup import build_setup
 
         return build_setup
+    elif name == "init_state":
+        from tud_lbm.pipeline.runner import init_state
+
+        return init_state
     elif name == "run":
         from tud_lbm.pipeline.runner import run
 
@@ -67,12 +101,13 @@ def __getattr__(name):
 
 
 def __dir__():
-    """Expose public API."""
+    """Expose public API for IDE autocompletion and help()."""
     return [
         "SimulationConfig",
         "Lattice",
         "build_lattice",
         "build_setup",
+        "init_state",
         "run",
         "State",
         "WettingState",

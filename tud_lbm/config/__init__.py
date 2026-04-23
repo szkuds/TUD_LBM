@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from tud_lbm.config.simulation_config import SimulationConfig
-from tud_lbm.readers.dict import DictAdapter
+from tud_lbm.io.readers import DictAdapter
 
 
 def from_toml(path: str) -> SimulationConfig:
@@ -28,8 +28,7 @@ def from_toml(path: str) -> SimulationConfig:
     Returns:
         A :class:`SimulationConfig`.
     """
-    # Lazy import to avoid pulling in tomllib when unused
-    from tud_lbm.config.adapter_toml import TomlAdapter
+    # Lazy import to avoid pulling in tomllib when unused\n    from tud_lbm.config.adapter_toml import TomlAdapter
 
     return TomlAdapter().load(path)
 

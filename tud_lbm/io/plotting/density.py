@@ -7,7 +7,7 @@ import matplotlib.colors
 import numpy as np
 
 from tud_lbm.registry import plotting_operator
-from tud_lbm.util.plotting.base import PlotOperator
+from tud_lbm.io.plotting.base import PlotOperator
 
 
 @plotting_operator(name="density")
