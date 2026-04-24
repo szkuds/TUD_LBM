@@ -11,8 +11,8 @@ import numpy as np
 
 def _single_phase_setup():
     """Return a SimulationSetup for a tiny single-phase grid."""
-    from config.simulation_config import SimulationConfig
-    from setup.simulation_setup import build_setup
+    from tud_lbm.config.simulation_config import SimulationConfig
+    from tud_lbm.pipeline.setup import build_setup
 
     cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
     return build_setup(cfg)
@@ -27,7 +27,7 @@ class TestInitState:
     """State initialisation."""
 
     def test_rest_equilibrium(self):
-        from runner.run import init_state
+        from tud_lbm.pipeline.runner import init_state
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -36,7 +36,7 @@ class TestInitState:
         np.testing.assert_allclose(float(jnp.sum(state.rho)), 64.0, rtol=1e-5)
 
     def test_custom_f(self):
-        from runner.run import init_state
+        from tud_lbm.pipeline.runner import init_state
 
         setup = _single_phase_setup()
         f_custom = jnp.ones((8, 8, 1, 9, 1)) * 0.5
@@ -53,8 +53,8 @@ class TestIOCallbacks:
     """IO callback utilities."""
 
     def test_state_to_numpy(self):
-        from runner.io_callbacks import _state_to_numpy
-        from runner.run import init_state
+        from tud_lbm.pipeline.io_callbacks import _state_to_numpy
+        from tud_lbm.pipeline.runner import init_state
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -74,7 +74,7 @@ class TestStreamingIO:
 
     def _make_io(self, tmp_path):
         """Build a SimulationIO that writes numpy files to *tmp_path*."""
-        from util.io import SimulationIO
+        from tud_lbm.io import SimulationIO
 
         return SimulationIO(
             base_dir=str(tmp_path),
@@ -83,8 +83,8 @@ class TestStreamingIO:
 
     def test_trajectory_is_none_with_io_handler(self, tmp_path):
         """When io_handler is supplied, trajectory must be None."""
-        from runner.run import init_state
-        from runner.run import run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -102,8 +102,8 @@ class TestStreamingIO:
 
     def test_files_written_at_correct_steps(self, tmp_path):
         """Snapshots are written at every save_interval step."""
-        from runner.run import init_state
-        from runner.run import run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -123,8 +123,8 @@ class TestStreamingIO:
 
     def test_save_fields_filters_keys(self, tmp_path):
         """Only the requested fields appear in the saved files."""
-        from runner.run import init_state
-        from runner.run import run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -150,8 +150,8 @@ class TestStreamingIO:
 
     def test_skip_interval_suppresses_early_saves(self, tmp_path):
         """Steps ≤ skip_interval must not produce files."""
-        from runner.run import init_state
-        from runner.run import run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -176,8 +176,8 @@ class TestStreamingIO:
 
     def test_backward_compat_no_io_handler(self):
         """Existing trajectory-mode call is unaffected."""
-        from runner.run import init_state
-        from runner.run import run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)

@@ -1,37 +1,37 @@
 # ─── Core simulation parameters ─────────────────────────────────────
 [simulation_type]
 simulation_name = "Test complex simulation"
-type            = "multiphase"
-grid_shape      = [201, 101]
-lattice_type    = "D2Q9"
-tau             = 0.99
-nt              = 20000
-init_type       = "wetting_chem_step"
+type = "multiphase"
+grid_shape = [201, 101]
+lattice_type = "D2Q9"
+tau = 0.99
+nt = 20000
+init_type = "wetting_chem_step"
 
 [multiphase]
-kappa           = 0.017
-rho_l           = 1.0
-rho_v           = 0.33
+kappa = 0.017
+rho_l = 1.0
+rho_v = 0.33
 interface_width = 5
-eos             = "double-well"
+eos = "double-well"
 
 [boundary_conditions]
-left   = "periodic"
-right  = "periodic"
-top    = "bounce-back"
+left = "periodic"
+right = "periodic"
+top = "bounce-back"
 bottom = "wetting"
 
 [wetting]
-phi_left    = 1.2
-phi_right   = 1.2
-d_rho_left  = 0.0
+phi_left = 1.2
+phi_right = 1.2
+d_rho_left = 0.0
 d_rho_right = 0.0
 
 [hysteresis]
-ca_advancing    = 90.0
-ca_receding     = 80.0
-learning_rate   = 0.05
-max_iterations  = 10
+ca_advancing = 90.0
+ca_receding = 80.0
+learning_rate = 0.05
+max_iterations = 10
 
 # ─── Forces (each force is its own section, named by physics) ───────
 #
@@ -40,7 +40,7 @@ max_iterations  = 10
 # external force. No [[force]] array-of-tables, no "type" key needed.
 
 [gravity_force]
-force_g               = 5e-7
+force_g = 5e-7
 inclination_angle_deg = 50
 
 # To add a second force, just add another section:

@@ -7,8 +7,8 @@ registered, it must satisfy its protocol's structural requirements.
 
 import jax.numpy as jnp
 import pytest
-from operators.boundary import build_bc_masks
-from setup.lattice import build_lattice
+from tud_lbm.lattice.lattice import build_lattice
+from tud_lbm.operators.boundary import build_bc_masks
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ class TestCollisionProtocol:
 
     def test_bgk_collision_conformance(self, lattice_d2q9, grid_shape):
         """BGK collision operator should accept the protocol signature."""
-        from operators.collision import build_collision_fn
+        from tud_lbm.operators.collision import build_collision_fn
 
         bgk_fn = build_collision_fn("bgk")
 
@@ -60,7 +60,7 @@ class TestCollisionProtocol:
 
     def test_mrt_collision_conformance(self, lattice_d2q9, grid_shape):
         """MRT collision operator should accept the protocol signature."""
-        from operators.collision import build_collision_fn
+        from tud_lbm.operators.collision import build_collision_fn
 
         mrt_fn = build_collision_fn("mrt")
 
@@ -85,7 +85,7 @@ class TestStreamingProtocol:
 
     def test_standard_streaming_conformance(self, lattice_d2q9, grid_shape):
         """Standard streaming should match protocol."""
-        from operators.streaming import build_streaming_fn
+        from tud_lbm.operators.streaming import build_streaming_fn
 
         stream = build_streaming_fn("standard")
 
@@ -107,7 +107,7 @@ class TestEquilibriumProtocol:
 
     def test_wb_equilibrium_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Well-balanced equilibrium should match protocol."""
-        from operators.equilibrium import build_equilibrium_fn
+        from tud_lbm.operators.equilibrium import build_equilibrium_fn
 
         equilibrium = build_equilibrium_fn("wb")
 
@@ -129,7 +129,7 @@ class TestMacroscopicProtocol:
 
     def test_standard_macroscopic_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Standard macroscopic should match protocol."""
-        from operators.macroscopic import build_macroscopic_fn
+        from tud_lbm.operators.macroscopic import build_macroscopic_fn
 
         macroscopic = build_macroscopic_fn("standard")
 
@@ -141,7 +141,7 @@ class TestMacroscopicProtocol:
 
     def test_macroscopic_with_force_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Macroscopic with force should return 3-tuple."""
-        from operators.macroscopic import build_macroscopic_fn
+        from tud_lbm.operators.macroscopic import build_macroscopic_fn
 
         macroscopic = build_macroscopic_fn("standard")
 
@@ -162,7 +162,7 @@ class TestBoundaryProtocol:
 
     def test_periodic_bc_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Periodic boundary should match protocol."""
-        from operators.boundary import build_bc
+        from tud_lbm.operators.boundary import build_bc
 
         f_stream, f_col = test_state[0], test_state[0]
         bc_config = {
@@ -179,8 +179,8 @@ class TestBoundaryProtocol:
 
     def test_bounce_back_bc_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Bounce-back boundary should match protocol."""
-        from operators.boundary import build_bc
-        from operators.boundary import build_bc_masks
+        from tud_lbm.operators.boundary import build_bc
+        from tud_lbm.operators.boundary import build_bc_masks
 
         f_stream, f_col = test_state[0], test_state[0]
         bc_config = {
@@ -204,7 +204,7 @@ class TestInitialiserProtocol:
 
     def test_standard_initialiser_conformance(self, lattice_d2q9, grid_shape):
         """Standard initialiser should match protocol."""
-        from operators.initialise import build_initialise_fn
+        from tud_lbm.operators.initialise import build_initialise_fn
 
         init_fn = build_initialise_fn("standard")
         nx, ny = grid_shape

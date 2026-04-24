@@ -8,46 +8,30 @@ requires = ["setuptools>=64.0.0", "setuptools-scm", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-authors = [
-    { name = "Sacha Szkudlarek", email = "s.b.szkudlarek@tudelft.nl" }
-]
+authors = [{ name = "Sacha Szkudlarek", email = "s.b.szkudlarek@tudelft.nl" }]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "Natural Language :: English",
-    "Programming Language :: Python :: 3.14",
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
   # Install via conda for best results
   # See environment.yml for conda-based app_setup
 ]
 description = "This is a lattice Boltzmann method package developed at Delft University of Technology."
-keywords = ["LBM"," TUD"," Delft University of Technology"]
-license = {file = "LICENSE"}
+keywords = ["LBM", " TUD", " Delft University of Technology"]
+license = { file = "LICENSE" }
 name = "tud_lbm"
-readme = {file = "README.md", content-type = "text/markdown"}
+readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
 version = "2026.0.0a1"
 
 [project.optional-dependencies]
-dev = [
-    "pytest",
-    "pytest-cov",
-    "coverage",
-    "ruff",
-    "python-dotenv",
-]
-publishing = [
-    "build",
-    "twine",
-]
-docs = [
-    "sphinx",
-    "sphinx-rtd-theme",
-    "myst-parser",
-    "sphinx-autoapi",
-]
+dev = ["pytest", "pytest-cov", "coverage", "ruff", "python-dotenv"]
+publishing = ["build", "twine"]
+docs = ["sphinx", "sphinx-rtd-theme", "myst-parser", "sphinx-autoapi"]
 
 [project.urls]
 Repository = "https://github.com/szkuds/tud_lbm"
@@ -55,7 +39,7 @@ Issues = "https://github.com/szkuds/tud_lbm/issues"
 ReadTheDocs = "https://tud_lbm.readthedocs.io"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
 
 [project.scripts]
 tud-lbm = "cli:main"
@@ -63,14 +47,14 @@ tud-lbm = "cli:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "integration: Integration tests that validate end-to-end physics pipelines",
-    "unit: Unit tests for individual operators",
-    "conformance: Tests that verify operators satisfy protocol contracts",
+  "integration: Integration tests that validate end-to-end physics pipelines",
+  "unit: Unit tests for individual operators",
+  "conformance: Tests that verify operators satisfy protocol contracts",
 ]
 
 [tool.coverage.run]
 branch = true
-source = ["src"]
+source = ["tud_lbm"]
 command_line = "-m pytest"
 
 [tool.tox]
@@ -104,7 +88,7 @@ ignore = [
     "FIX002", # Resolve TODOs
     "PLR0913",
     "PLC0415",
-    "COM812"
+    "COM812",
 
 ]
 pydocstyle.convention = "google"
@@ -142,30 +126,40 @@ extend-immutable-calls = ["array_field"]
     "D104",
     "D205",
     "PLR0913",
+    "TRY300",
 ]
 # Examples are standalone scripts, not part of the package
 "examples/**.py" = [
-    "INP001", # File is part of an implicit namespace package
-    "ANN201", # Missing return type annotation
+  "INP001", # File is part of an implicit namespace package
+  "ANN201", # Missing return type annotation
+    "ERA001",
 ]
 
-"src/config/simulation_config.py" = [
-    "RUF009",  # array_field / config_field are dataclasses.field() wrappers, not mutable defaults
+"examples/minimal_example.py" = ["RUF002"]
+"tud_lbm/config/simulation_config.py" = [
+  "RUF009", # array_field / config_field are dataclasses.field() wrappers, not mutable defaults
 ]
-"src/util/plotting/__init__.py" = ["I001"]
-"src/util/plotting/base.py" = ["ARG002"]
-"src/setup/simulation_setup.py" = ["PLC0415", "RUF002"]
-"src/setup/__init__.py" = ["PLC0415"]
-"src/runner/parallel_runner.py" = ["PLC0415", "ARG001", "LOG015", "G004"]
-"src/operators/protocols.py" = ["ANN401", "RUF002"]
-"src/operators/macroscopic/_multiphase.py" = ["RUF002", "RUF003"]
-"src/operators/collision/_bgk.py" = ["RUF002"]
-"src/util/io.py" = ["ANN002"]
+"tud_lbm/util/plotting/__init__.py" = ["I001"]
+"tud_lbm/util/plotting/base.py" = ["ARG002"]
+"tud_lbm/pipeline/setup.py" = ["PLC0415", "RUF002"]
+"tud_lbm/pipeline/__init__.py" = ["PLC0415"]  # was src/setup/__init__.py — verify this path
+"tud_lbm/runner/parallel_runner.py" = ["PLC0415", "ARG001", "LOG015", "G004"]
+"tud_lbm/operators/protocols.py" = ["ANN401", "RUF002"]
+"tud_lbm/operators/macroscopic/_multiphase.py" = ["RUF002", "RUF003"]
+"tud_lbm/operators/collision/_bgk.py" = ["RUF002"]
+"tud_lbm/util/io.py" = ["ANN002"]
+"tud_lbm/pipeline/**" = ["T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tud_lbm"]
 force-single-line = true
-no-lines-before = ["future","standard-library","third-party","first-party","local-folder"]
+no-lines-before = [
+  "future",
+  "standard-library",
+  "third-party",
+  "first-party",
+  "local-folder",
+]
 
 [tool.bumpversion]
 current_version = "0.0.2"

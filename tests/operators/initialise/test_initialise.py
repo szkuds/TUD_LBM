@@ -10,9 +10,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from operators.initialise import build_initialise_fn
-from registry import get_operators
-from setup.lattice import build_lattice
+from tud_lbm.lattice.lattice import build_lattice
+from tud_lbm.operators.initialise import build_initialise_fn
+from tud_lbm.registry import get_operators
 
 NX, NY = 16, 16
 
@@ -92,14 +92,32 @@ class TestMultiphaseInitShape:
     @pytest.mark.parametrize("init_type", _MULTIPHASE_TYPES)
     def test_shape(self, lattice, init_type):
         fn = build_initialise_fn(init_type)
-        f = fn(NX, NY, lattice, rho_l=1.0, rho_v=0.33, interface_width=4, centres=[[0.5, 0.5]], radii=[0.2])
+        f = fn(
+            NX,
+            NY,
+            lattice,
+            rho_l=1.0,
+            rho_v=0.33,
+            interface_width=4,
+            centres=[[0.5, 0.5]],
+            radii=[0.2],
+        )
         assert f.shape == (NX, NY, 9, 1)
 
     @pytest.mark.parametrize("init_type", _MULTIPHASE_TYPES)
     def test_density_range(self, lattice, init_type):
         """Density should be between rho_v and rho_l everywhere."""
         fn = build_initialise_fn(init_type)
-        f = fn(NX, NY, lattice, rho_l=1.0, rho_v=0.33, interface_width=4, centres=[[0.5, 0.5]], radii=[0.2])
+        f = fn(
+            NX,
+            NY,
+            lattice,
+            rho_l=1.0,
+            rho_v=0.33,
+            interface_width=4,
+            centres=[[0.5, 0.5]],
+            radii=[0.2],
+        )
         rho = jnp.sum(f, axis=2, keepdims=True)
         assert float(jnp.min(rho)) >= 0.33 - 0.01
         assert float(jnp.max(rho)) <= 1.0 + 0.01
@@ -133,7 +151,16 @@ class TestMassConservation:
 
     def test_bubble_mass_positive(self, lattice):
         fn = build_initialise_fn("multiphase_bubbles")
-        f = fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4, centres=[[0.5, 0.5]], radii=[0.2])
+        f = fn(
+            32,
+            32,
+            lattice,
+            rho_l=1.0,
+            rho_v=0.33,
+            interface_width=4,
+            centres=[[0.5, 0.5]],
+            radii=[0.2],
+        )
         rho = jnp.sum(f, axis=2, keepdims=True)
         total_mass = float(jnp.sum(rho))
         # Mass must be positive and between rho_v * N and rho_l * N
@@ -199,12 +226,30 @@ class TestMultiphaseBubbles:
     def test_mismatched_centres_and_radii_raises(self, lattice):
         fn = build_initialise_fn("multiphase_bubbles")
         with pytest.raises(ValueError, match="same length"):
-            fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4, centres=[[0.5, 0.5]], radii=[0.2, 0.1])
+            fn(
+                32,
+                32,
+                lattice,
+                rho_l=1.0,
+                rho_v=0.33,
+                interface_width=4,
+                centres=[[0.5, 0.5]],
+                radii=[0.2, 0.1],
+            )
 
     def test_empty_centres_raises(self, lattice):
         fn = build_initialise_fn("multiphase_bubbles")
         with pytest.raises(ValueError, match="non-empty"):
-            fn(32, 32, lattice, rho_l=1.0, rho_v=0.33, interface_width=4, centres=[], radii=[])
+            fn(
+                32,
+                32,
+                lattice,
+                rho_l=1.0,
+                rho_v=0.33,
+                interface_width=4,
+                centres=[],
+                radii=[],
+            )
 
     def test_liquid_dispersed_mode(self, lattice):
         fn = build_initialise_fn("multiphase_bubbles")

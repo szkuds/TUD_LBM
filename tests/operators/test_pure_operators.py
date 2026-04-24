@@ -22,7 +22,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from setup.lattice import build_lattice
+from tud_lbm.lattice.lattice import build_lattice
 
 # ── Shared helpers ───────────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ def rest_state(lattice):
     u = jnp.zeros((NX, NY, NZ, 1, 2))
     # At rest: feq_0 = rho - sum_rest, feq_i = w_i * rho for i>0
     # Actually, compute equilibrium properly
-    from operators.equilibrium import build_equilibrium_fn
+    from tud_lbm.operators.equilibrium import build_equilibrium_fn
 
     equilibrium_fn = build_equilibrium_fn("wb")
     feq = equilibrium_fn(rho, u, lattice)
@@ -57,7 +57,7 @@ class TestCollideBGK:
     """``collide_bgk`` is a correct, jittable pure function."""
 
     def test_no_source(self, lattice, rest_state):
-        from operators.collision._bgk import collide_bgk
+        from tud_lbm.operators.collision._bgk import collide_bgk
 
         feq, _, _ = rest_state
         f = feq  # at equilibrium
@@ -69,7 +69,7 @@ class TestCollideBGK:
         np.testing.assert_allclose(np.array(f_col), np.array(f), atol=1e-6)
 
     def test_with_source(self, lattice, rest_state):
-        from operators.collision._bgk import collide_bgk
+        from tud_lbm.operators.collision._bgk import collide_bgk
 
         feq, _, _ = rest_state
         f = feq
@@ -83,14 +83,14 @@ class TestCollideBGK:
         np.testing.assert_allclose(np.array(f_col), np.array(expected), atol=1e-6)
 
     def test_shape_preserved(self, lattice, rest_state):
-        from operators.collision._bgk import collide_bgk
+        from tud_lbm.operators.collision._bgk import collide_bgk
 
         feq, _, _ = rest_state
         f_col = collide_bgk(feq, feq, 0.8)
         assert f_col.shape == feq.shape
 
     def test_jittable(self, lattice, rest_state):
-        from operators.collision._bgk import collide_bgk
+        from tud_lbm.operators.collision._bgk import collide_bgk
 
         feq, _, _ = rest_state
         jitted = jax.jit(collide_bgk)
@@ -99,7 +99,7 @@ class TestCollideBGK:
 
     def test_matches_legacy_formula(self, lattice):
         """Verify against the explicit legacy BGK formula."""
-        from operators.collision._bgk import collide_bgk
+        from tud_lbm.operators.collision._bgk import collide_bgk
 
         key = jax.random.PRNGKey(42)
         f = jax.random.uniform(key, (NX, NY, 9, 1))
@@ -123,7 +123,7 @@ class TestCollideMRT:
     """``collide_mrt`` is a correct, jittable pure function."""
 
     def test_at_equilibrium(self, lattice, rest_state):
-        from operators.collision._mrt import collide_mrt
+        from tud_lbm.operators.collision._mrt import collide_mrt
 
         feq, _, _ = rest_state
         tau = 0.8
@@ -134,7 +134,7 @@ class TestCollideMRT:
         np.testing.assert_allclose(np.array(f_col), np.array(feq), atol=1e-5)
 
     def test_with_source(self, lattice, rest_state):
-        from operators.collision._mrt import collide_mrt
+        from tud_lbm.operators.collision._mrt import collide_mrt
 
         feq, _, _ = rest_state
         source = jnp.ones_like(feq) * 0.001
@@ -146,14 +146,14 @@ class TestCollideMRT:
         assert float(jnp.max(diff)) > 0.0
 
     def test_shape_preserved(self, lattice, rest_state):
-        from operators.collision._mrt import collide_mrt
+        from tud_lbm.operators.collision._mrt import collide_mrt
 
         feq, _, _ = rest_state
         f_col = collide_mrt(feq, feq, 0.8)
         assert f_col.shape == feq.shape
 
     def test_jittable(self, lattice, rest_state):
-        from operators.collision._mrt import collide_mrt
+        from tud_lbm.operators.collision._mrt import collide_mrt
 
         feq, _, _ = rest_state
         jitted = jax.jit(collide_mrt)
@@ -161,7 +161,7 @@ class TestCollideMRT:
         assert f_col.shape == feq.shape
 
     def test_custom_k_diag(self, lattice, rest_state):
-        from operators.collision._mrt import collide_mrt
+        from tud_lbm.operators.collision._mrt import collide_mrt
 
         feq, _, _ = rest_state
         k_diag = jnp.array([0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.8, 0.8])
@@ -178,19 +178,19 @@ class TestCollisionFactory:
     """``build_collision_fn`` dispatches to the correct function."""
 
     def test_bgk(self):
-        from operators.collision import build_collision_fn
-        from operators.collision._bgk import collide_bgk
+        from tud_lbm.operators.collision import build_collision_fn
+        from tud_lbm.operators.collision._bgk import collide_bgk
 
         assert build_collision_fn("bgk") is collide_bgk
 
     def test_mrt(self):
-        from operators.collision import build_collision_fn
-        from operators.collision._mrt import collide_mrt
+        from tud_lbm.operators.collision import build_collision_fn
+        from tud_lbm.operators.collision._mrt import collide_mrt
 
         assert build_collision_fn("mrt") is collide_mrt
 
     def test_unknown_raises(self):
-        from operators.collision import build_collision_fn
+        from tud_lbm.operators.collision import build_collision_fn
 
         with pytest.raises(ValueError, match="Unknown collision"):
             build_collision_fn("invalid")
@@ -206,7 +206,7 @@ class TestStream:
 
     def test_rest_direction_unchanged(self, lattice):
         """Direction 0 (zero velocity) should not move."""
-        from operators.streaming._streaming import stream
+        from tud_lbm.operators.streaming._streaming import stream
 
         f = jnp.zeros((NX, NY, 9, 1))
         f = f.at[3, 3, 0, 0].set(1.0)
@@ -218,7 +218,7 @@ class TestStream:
 
     def test_direction_1_shifts_right(self, lattice):
         """Direction 1 (cx=1, cy=0) shifts +1 in x."""
-        from operators.streaming._streaming import stream
+        from tud_lbm.operators.streaming._streaming import stream
 
         f = jnp.zeros((NX, NY, 9, 1))
         f = f.at[3, 3, 1, 0].set(1.0)
@@ -230,7 +230,7 @@ class TestStream:
 
     def test_periodic_wrap(self, lattice):
         """Streaming wraps around the domain (periodic)."""
-        from operators.streaming._streaming import stream
+        from tud_lbm.operators.streaming._streaming import stream
 
         f = jnp.zeros((NX, NY, 9, 1))
         # Put pulse at right edge, direction 1 (cx=1)
@@ -242,14 +242,14 @@ class TestStream:
         assert float(f_s[0, 3, 1, 0]) == 1.0
 
     def test_shape_preserved(self, lattice):
-        from operators.streaming._streaming import stream
+        from tud_lbm.operators.streaming._streaming import stream
 
         f = jnp.ones((NX, NY, 9, 1))
         f_s = stream(f, lattice)
         assert f_s.shape == f.shape
 
     def test_jittable(self, lattice):
-        from operators.streaming._streaming import stream
+        from tud_lbm.operators.streaming._streaming import stream
 
         f = jnp.ones((NX, NY, 9, 1))
         jitted_stream = jax.jit(partial(stream, lattice=lattice))
@@ -258,7 +258,7 @@ class TestStream:
 
     def test_mass_conservation(self, lattice):
         """Total mass should be conserved after streaming."""
-        from operators.streaming._streaming import stream
+        from tud_lbm.operators.streaming._streaming import stream
 
         key = jax.random.PRNGKey(0)
         f = jax.random.uniform(key, (NX, NY, 9, 1))
@@ -277,7 +277,7 @@ class TestComputeEquilibrium:
     """``compute_equilibrium`` matches the legacy WB equilibrium."""
 
     def test_rest_state(self, lattice):
-        from operators.equilibrium._equilibrium import compute_equilibrium
+        from tud_lbm.operators.equilibrium._equilibrium import compute_equilibrium
 
         rho = jnp.ones((NX, NY, NZ, 1, 1))
         u = jnp.zeros((NX, NY, NZ, 1, 2))
@@ -293,7 +293,7 @@ class TestComputeEquilibrium:
         )
 
     def test_mass_conservation_with_velocity(self, lattice):
-        from operators.equilibrium._equilibrium import compute_equilibrium
+        from tud_lbm.operators.equilibrium._equilibrium import compute_equilibrium
 
         rho = jnp.ones((NX, NY, NZ, 1, 1)) * 1.5
         u = jnp.ones((NX, NY, NZ, 1, 2)) * 0.05
@@ -308,7 +308,7 @@ class TestComputeEquilibrium:
         )
 
     def test_shape_preserved(self, lattice):
-        from operators.equilibrium._equilibrium import compute_equilibrium
+        from tud_lbm.operators.equilibrium._equilibrium import compute_equilibrium
 
         rho = jnp.ones((NX, NY, NZ, 1, 1))
         u = jnp.zeros((NX, NY, NZ, 1, 2))
@@ -317,7 +317,7 @@ class TestComputeEquilibrium:
         assert feq.shape == (NX, NY, NZ, 9, 1)
 
     def test_jittable(self, lattice):
-        from operators.equilibrium._equilibrium import compute_equilibrium
+        from tud_lbm.operators.equilibrium._equilibrium import compute_equilibrium
 
         rho = jnp.ones((NX, NY, NZ, 1, 1))
         u = jnp.zeros((NX, NY, NZ, 1, 2))
@@ -336,7 +336,7 @@ class TestComputeMacroscopic:
     """``compute_macroscopic`` extracts density and velocity."""
 
     def test_rest_state(self, lattice, rest_state):
-        from operators.macroscopic._single_phase import compute_macroscopic
+        from tud_lbm.operators.macroscopic._single_phase import compute_macroscopic
 
         feq, rho_expected, u_expected = rest_state
         rho, u = compute_macroscopic(feq, lattice)
@@ -345,7 +345,7 @@ class TestComputeMacroscopic:
         np.testing.assert_allclose(np.array(u), np.array(u_expected), atol=1e-6)
 
     def test_density_is_sum(self, lattice):
-        from operators.macroscopic._single_phase import compute_macroscopic
+        from tud_lbm.operators.macroscopic._single_phase import compute_macroscopic
 
         key = jax.random.PRNGKey(1)
         f = jax.random.uniform(key, (NX, NY, NZ, 9, 1), minval=0.05)
@@ -356,7 +356,7 @@ class TestComputeMacroscopic:
         np.testing.assert_allclose(np.array(rho), np.array(expected_rho), atol=1e-6)
 
     def test_with_force_returns_three(self, lattice, rest_state):
-        from operators.macroscopic._single_phase import compute_macroscopic
+        from tud_lbm.operators.macroscopic._single_phase import compute_macroscopic
 
         feq, _, _ = rest_state
         force = jnp.ones((NX, NY, NZ, 1, 2)) * 0.001
@@ -368,7 +368,7 @@ class TestComputeMacroscopic:
         assert u_eq.shape == (NX, NY, NZ, 1, 2)
 
     def test_shape_preserved(self, lattice, rest_state):
-        from operators.macroscopic._single_phase import compute_macroscopic
+        from tud_lbm.operators.macroscopic._single_phase import compute_macroscopic
 
         feq, _, _ = rest_state
         rho, u = compute_macroscopic(feq, lattice)
@@ -376,7 +376,7 @@ class TestComputeMacroscopic:
         assert u.shape == (NX, NY, NZ, 1, 2)
 
     def test_jittable(self, lattice, rest_state):
-        from operators.macroscopic._single_phase import compute_macroscopic
+        from tud_lbm.operators.macroscopic._single_phase import compute_macroscopic
 
         feq, _, _ = rest_state
         jitted_mac = jax.jit(partial(compute_macroscopic, lattice=lattice))
@@ -393,7 +393,7 @@ class TestComputeMacroscopicMultiphase:
     """``compute_macroscopic_multiphase`` returns (rho, u_eq, force)."""
 
     def _mp_params(self):
-        from operators.macroscopic import MultiphaseParams
+        from tud_lbm.operators.macroscopic import MultiphaseParams
 
         return MultiphaseParams(
             eos="double-well",
@@ -406,7 +406,7 @@ class TestComputeMacroscopicMultiphase:
     def _gradient_and_laplacian(self, lattice):
         """Build gradient and laplacian_wetting callables."""
         import jax
-        from operators.differential import build_differential_fn
+        from tud_lbm.operators.differential import build_differential_fn
 
         pad_modes = ("wrap", "wrap", "wrap", "wrap")
 
@@ -424,7 +424,7 @@ class TestComputeMacroscopicMultiphase:
         return gradient_standard, laplacian_field
 
     def test_returns_triple(self, lattice):
-        from operators.macroscopic._multiphase import compute_macroscopic_multiphase
+        from tud_lbm.operators.macroscopic._multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
         gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
@@ -444,7 +444,7 @@ class TestComputeMacroscopicMultiphase:
 
     def test_uniform_field_zero_force(self, lattice):
         """A perfectly uniform density field → zero interaction force."""
-        from operators.macroscopic._multiphase import compute_macroscopic_multiphase
+        from tud_lbm.operators.macroscopic._multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
         gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
@@ -464,7 +464,7 @@ class TestComputeMacroscopicMultiphase:
         np.testing.assert_allclose(np.array(force_total), 0.0, atol=1e-5)
 
     def test_jittable(self, lattice):
-        from operators.macroscopic._multiphase import compute_macroscopic_multiphase
+        from tud_lbm.operators.macroscopic._multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
         gradient_standard, laplacian = self._gradient_and_laplacian(lattice)
@@ -483,7 +483,7 @@ class TestComputeMacroscopicMultiphase:
         assert rho.shape == (16, 16, 1, 1, 1)
 
     def test_with_external_force(self, lattice):
-        from operators.macroscopic._multiphase import compute_macroscopic_multiphase
+        from tud_lbm.operators.macroscopic._multiphase import compute_macroscopic_multiphase
 
         mp = self._mp_params()
         gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
@@ -517,7 +517,7 @@ class TestApplyBounceBack:
     """``apply_bounce_back`` applies bounce-back on a single edge."""
 
     def test_bottom_edge(self, lattice):
-        from operators.boundary._bounce_back import apply_bounce_back
+        from tud_lbm.operators.boundary._bounce_back import apply_bounce_back
 
         key = jax.random.PRNGKey(10)
         f_s = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
@@ -535,7 +535,7 @@ class TestApplyBounceBack:
             )
 
     def test_top_edge(self, lattice):
-        from operators.boundary._bounce_back import apply_bounce_back
+        from tud_lbm.operators.boundary._bounce_back import apply_bounce_back
 
         key = jax.random.PRNGKey(11)
         f_s = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
@@ -551,14 +551,14 @@ class TestApplyBounceBack:
             )
 
     def test_shape_preserved(self, lattice):
-        from operators.boundary._bounce_back import apply_bounce_back
+        from tud_lbm.operators.boundary._bounce_back import apply_bounce_back
 
         f = jnp.ones((NX, NY, NZ, 9, 1))
         f_out = apply_bounce_back(f, f, lattice, "bottom")
         assert f_out.shape == f.shape
 
     def test_jittable(self, lattice):
-        from operators.boundary._bounce_back import apply_bounce_back
+        from tud_lbm.operators.boundary._bounce_back import apply_bounce_back
 
         f = jnp.ones((NX, NY, NZ, 9, 1))
         jitted_bb = jax.jit(
@@ -572,7 +572,7 @@ class TestApplyBounceBack:
         assert f_out.shape == f.shape
 
     def test_unknown_edge_raises(self, lattice):
-        from operators.boundary._bounce_back import apply_bounce_back
+        from tud_lbm.operators.boundary._bounce_back import apply_bounce_back
 
         f = jnp.ones((NX, NY, NZ, 9, 1))
         with pytest.raises(ValueError, match="Unknown edge"):
@@ -588,14 +588,14 @@ class TestApplySymmetry:
     """``apply_symmetry`` mirrors distributions on a single edge."""
 
     def test_bottom_edge_shape(self, lattice):
-        from operators.boundary._symmetry import apply_symmetry
+        from tud_lbm.operators.boundary._symmetry import apply_symmetry
 
         f = jnp.ones((NX, NY, NZ, 9, 1))
         f_out = apply_symmetry(f, f, lattice, "bottom")
         assert f_out.shape == f.shape
 
     def test_jittable(self, lattice):
-        from operators.boundary._symmetry import apply_symmetry
+        from tud_lbm.operators.boundary._symmetry import apply_symmetry
 
         f = jnp.ones((NX, NY, NZ, 9, 1))
         jitted_sym = jax.jit(
@@ -609,7 +609,7 @@ class TestApplySymmetry:
         assert f_out.shape == f.shape
 
     def test_unknown_edge_raises(self, lattice):
-        from operators.boundary._symmetry import apply_symmetry
+        from tud_lbm.operators.boundary._symmetry import apply_symmetry
 
         f = jnp.ones((NX, NY, NZ, 9, 1))
         with pytest.raises(ValueError, match="Unknown edge"):
@@ -625,7 +625,7 @@ class TestApplyPeriodic:
     """``apply_periodic`` is a no-op."""
 
     def test_returns_unchanged(self, lattice):
-        from operators.boundary._periodic import apply_periodic
+        from tud_lbm.operators.boundary._periodic import apply_periodic
 
         key = jax.random.PRNGKey(20)
         f = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
@@ -635,7 +635,7 @@ class TestApplyPeriodic:
         np.testing.assert_array_equal(np.array(f_out), np.array(f))
 
     def test_jittable(self, lattice):
-        from operators.boundary._periodic import apply_periodic
+        from tud_lbm.operators.boundary._periodic import apply_periodic
 
         f = jnp.ones((NX, NY, 9, 1))
         jitted_per = jax.jit(
@@ -659,10 +659,10 @@ class TestEndToEndPureFunctions:
 
     def test_single_step_mass_conservation(self, lattice):
         """One full step should conserve mass on a periodic domain."""
-        from operators.collision._bgk import collide_bgk
-        from operators.equilibrium._equilibrium import compute_equilibrium
-        from operators.macroscopic._single_phase import compute_macroscopic
-        from operators.streaming._streaming import stream
+        from tud_lbm.operators.collision._bgk import collide_bgk
+        from tud_lbm.operators.equilibrium._equilibrium import compute_equilibrium
+        from tud_lbm.operators.macroscopic._single_phase import compute_macroscopic
+        from tud_lbm.operators.streaming._streaming import stream
 
         rho = jnp.ones((NX, NY, NZ, 1, 1))
         u = jnp.zeros((NX, NY, NZ, 1, 2))
@@ -682,10 +682,10 @@ class TestEndToEndPureFunctions:
 
     def test_jit_full_step(self, lattice):
         """A full step wrapped in jax.jit compiles and runs."""
-        from operators.collision._bgk import collide_bgk
-        from operators.equilibrium._equilibrium import compute_equilibrium
-        from operators.macroscopic._single_phase import compute_macroscopic
-        from operators.streaming._streaming import stream
+        from tud_lbm.operators.collision._bgk import collide_bgk
+        from tud_lbm.operators.equilibrium._equilibrium import compute_equilibrium
+        from tud_lbm.operators.macroscopic._single_phase import compute_macroscopic
+        from tud_lbm.operators.streaming._streaming import stream
 
         def one_step(f, tau):
             rho, u = compute_macroscopic(f, lattice)
@@ -705,11 +705,11 @@ class TestEndToEndPureFunctions:
 
     def test_step_with_bounce_back(self, lattice):
         """Full step with bounce-back BCs compiles and runs."""
-        from operators.boundary import build_bc
-        from operators.collision._bgk import collide_bgk
-        from operators.equilibrium._equilibrium import compute_equilibrium
-        from operators.macroscopic._single_phase import compute_macroscopic
-        from operators.streaming._streaming import stream
+        from tud_lbm.operators.boundary import build_bc
+        from tud_lbm.operators.collision._bgk import collide_bgk
+        from tud_lbm.operators.equilibrium._equilibrium import compute_equilibrium
+        from tud_lbm.operators.macroscopic._single_phase import compute_macroscopic
+        from tud_lbm.operators.streaming._streaming import stream
 
         bc_config = {
             "top": "bounce-back",
@@ -742,7 +742,7 @@ class TestBuildBC:
     """``build_bc`` chains per-edge BC functions."""
 
     def test_all_periodic(self, lattice):
-        from operators.boundary import build_bc
+        from tud_lbm.operators.boundary import build_bc
 
         bc_fn = build_bc(None, lattice)
 
@@ -754,7 +754,7 @@ class TestBuildBC:
         np.testing.assert_array_equal(np.array(f_out), np.array(f))
 
     def test_bounce_back_bottom(self, lattice):
-        from operators.boundary import build_bc
+        from tud_lbm.operators.boundary import build_bc
 
         bc_config = {
             "top": "periodic",
@@ -779,7 +779,7 @@ class TestBuildBC:
             )
 
     def test_mixed_bcs(self, lattice):
-        from operators.boundary import build_bc
+        from tud_lbm.operators.boundary import build_bc
 
         bc_config = {
             "top": "symmetry",
@@ -795,7 +795,7 @@ class TestBuildBC:
 
     def test_composite_jittable(self, lattice):
         """The composite BC closure is jittable."""
-        from operators.boundary import build_bc
+        from tud_lbm.operators.boundary import build_bc
 
         bc_config = {
             "top": "symmetry",
@@ -811,11 +811,11 @@ class TestBuildBC:
 
     def test_step_with_bounce_back(self, lattice):
         """Full step with bounce-back BCs compiles and runs."""
-        from operators.boundary import build_bc
-        from operators.collision._bgk import collide_bgk
-        from operators.equilibrium._equilibrium import compute_equilibrium
-        from operators.macroscopic._single_phase import compute_macroscopic
-        from operators.streaming._streaming import stream
+        from tud_lbm.operators.boundary import build_bc
+        from tud_lbm.operators.collision._bgk import collide_bgk
+        from tud_lbm.operators.equilibrium._equilibrium import compute_equilibrium
+        from tud_lbm.operators.macroscopic._single_phase import compute_macroscopic
+        from tud_lbm.operators.streaming._streaming import stream
 
         bc_config = {
             "top": "bounce-back",

@@ -18,13 +18,13 @@ from pathlib import Path
 from unittest import mock
 from uuid import UUID
 import pytest
-from config.simulation_config import SimulationConfig
-from runner.parallel_runner import SimulationResult
-from runner.parallel_runner import _generate_plots
-from runner.parallel_runner import _print_result_line
-from runner.parallel_runner import _run_single_simulation
-from runner.parallel_runner import run_parallel_simulations
-from runner.parallel_runner import save_sweep_log
+from tud_lbm.config.simulation_config import SimulationConfig
+from tud_lbm.pipeline.parallel_runner import SimulationResult
+from tud_lbm.pipeline.parallel_runner import generate_plots
+from tud_lbm.pipeline.parallel_runner import print_result_line
+from tud_lbm.pipeline.parallel_runner import run_parallel_simulations
+from tud_lbm.pipeline.parallel_runner import run_single_simulation
+from tud_lbm.pipeline.parallel_runner import save_sweep_log
 
 # =========================================================================
 # Fixtures
@@ -133,7 +133,7 @@ class TestRunSingleSimulation:
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            result = _run_single_simulation(
+            result = run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=mock_run_fn,
@@ -161,7 +161,7 @@ class TestRunSingleSimulation:
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=mock_run_fn,
@@ -184,7 +184,7 @@ class TestRunSingleSimulation:
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 setup_fn=custom_setup_fn,
@@ -208,7 +208,7 @@ class TestRunSingleSimulation:
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 setup_fn=None,
@@ -233,7 +233,7 @@ class TestRunSingleSimulation:
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=custom_run_fn,
@@ -258,7 +258,7 @@ class TestRunSingleSimulation:
             mock_io_cls.return_value = mock_io
             mock_run.return_value = (mock_state, None)
 
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=None,
@@ -283,7 +283,7 @@ class TestRunSingleSimulation:
             mock_io_cls.return_value = mock_io
 
             parameters = {"alpha": 0.5, "beta": 2.0}
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 parameters=parameters,
@@ -312,7 +312,7 @@ class TestRunSingleSimulation:
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 parameters=None,
@@ -338,7 +338,7 @@ class TestRunSingleSimulation:
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            result = _run_single_simulation(
+            result = run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=mock_run_fn,
@@ -364,7 +364,7 @@ class TestRunSingleSimulation:
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            result = _run_single_simulation(
+            result = run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=mock_run_fn,
@@ -388,7 +388,7 @@ class TestRunSingleSimulation:
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            result = _run_single_simulation(
+            result = run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=mock_run_fn,
@@ -413,7 +413,7 @@ class TestRunSingleSimulation:
             mock_io.run_dir = expected_dir
             mock_io_cls.return_value = mock_io
 
-            result = _run_single_simulation(
+            result = run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=mock_run_fn,
@@ -456,7 +456,10 @@ class TestRunParallelSimulations:
             )
 
         with (
-            mock.patch("runner.parallel_runner._run_single_simulation", side_effect=mock_run_single_sim),
+            mock.patch(
+                "runner.parallel_runner._run_single_simulation",
+                side_effect=mock_run_single_sim,
+            ),
             mock.patch("runner.parallel_runner.ProcessPoolExecutor") as mock_executor_cls,
         ):
             mock_executor = mock.MagicMock()
@@ -491,7 +494,10 @@ class TestRunParallelSimulations:
             )
 
         with (
-            mock.patch("runner.parallel_runner._run_single_simulation", side_effect=mock_run_single_sim),
+            mock.patch(
+                "runner.parallel_runner._run_single_simulation",
+                side_effect=mock_run_single_sim,
+            ),
             mock.patch("runner.parallel_runner.ProcessPoolExecutor") as mock_executor_cls,
         ):
             mock_executor = mock.MagicMock()
@@ -530,7 +536,10 @@ class TestRunParallelSimulations:
             )
 
         with (
-            mock.patch("runner.parallel_runner._run_single_simulation", side_effect=mock_run_single_sim),
+            mock.patch(
+                "runner.parallel_runner._run_single_simulation",
+                side_effect=mock_run_single_sim,
+            ),
             mock.patch("runner.parallel_runner.ProcessPoolExecutor") as mock_executor_cls,
         ):
             mock_executor = mock.MagicMock()
@@ -571,7 +580,10 @@ class TestRunParallelSimulations:
             )
 
         with (
-            mock.patch("runner.parallel_runner._run_single_simulation", side_effect=mock_run_single_sim),
+            mock.patch(
+                "runner.parallel_runner._run_single_simulation",
+                side_effect=mock_run_single_sim,
+            ),
             mock.patch("runner.parallel_runner.ProcessPoolExecutor") as mock_executor_cls,
         ):
             mock_executor = mock.MagicMock()
@@ -617,7 +629,10 @@ class TestRunParallelSimulations:
             )
 
         with (
-            mock.patch("runner.parallel_runner._run_single_simulation", side_effect=mock_run_single_sim),
+            mock.patch(
+                "runner.parallel_runner._run_single_simulation",
+                side_effect=mock_run_single_sim,
+            ),
             mock.patch("runner.parallel_runner.ProcessPoolExecutor") as mock_executor_cls,
         ):
             mock_executor = mock.MagicMock()
@@ -660,7 +675,10 @@ class TestRunParallelSimulations:
             )
 
         with (
-            mock.patch("runner.parallel_runner._run_single_simulation", side_effect=mock_run_single_sim),
+            mock.patch(
+                "runner.parallel_runner._run_single_simulation",
+                side_effect=mock_run_single_sim,
+            ),
             mock.patch("runner.parallel_runner.ProcessPoolExecutor") as mock_executor_cls,
         ):
             mock_executor = mock.MagicMock()
@@ -751,7 +769,7 @@ class TestPrintResultLine:
             status="success",
             duration=1.5,
         )
-        _print_result_line(result, 1, 3)
+        print_result_line(result, 1, 3)
         captured = capsys.readouterr()
         assert "✓" in captured.out
 
@@ -764,7 +782,7 @@ class TestPrintResultLine:
             error="Test error",
             duration=1.5,
         )
-        _print_result_line(result, 1, 3)
+        print_result_line(result, 1, 3)
         captured = capsys.readouterr()
         assert "✗" in captured.out
 
@@ -778,7 +796,7 @@ class TestPrintResultLine:
             error=error_msg,
             duration=1.5,
         )
-        _print_result_line(result, 1, 3)
+        print_result_line(result, 1, 3)
         captured = capsys.readouterr()
         assert "First line" in captured.out
         assert "Second line" not in captured.out
@@ -792,7 +810,7 @@ class TestPrintResultLine:
             parameters={"alpha": 0.5, "beta": 2.0},
             duration=1.5,
         )
-        _print_result_line(result, 1, 3)
+        print_result_line(result, 1, 3)
         captured = capsys.readouterr()
         assert "[" in captured.out
         assert "]" in captured.out
@@ -807,7 +825,7 @@ class TestPrintResultLine:
             parameters=None,
             duration=1.5,
         )
-        _print_result_line(result, 1, 3)
+        print_result_line(result, 1, 3)
         captured = capsys.readouterr()
         assert "Sim 0" in captured.out
 
@@ -828,7 +846,7 @@ class TestGeneratePlots:
             status="failed",
         )
         with mock.patch("util.plotting.FigureBuilder") as mock_builder:
-            _generate_plots([failed_result], verbose=False)
+            generate_plots([failed_result], verbose=False)
         mock_builder.assert_not_called()
 
     def test_skips_when_plot_fields_falsy(self, simple_config):
@@ -842,7 +860,7 @@ class TestGeneratePlots:
         )
 
         with mock.patch("util.plotting.FigureBuilder") as mock_builder:
-            _generate_plots([result], verbose=False)
+            generate_plots([result], verbose=False)
         mock_builder.assert_not_called()
 
     def test_calls_figure_builder_for_qualifying_results(self, simple_config):
@@ -858,7 +876,7 @@ class TestGeneratePlots:
         with mock.patch("util.plotting.FigureBuilder") as mock_builder_cls:
             mock_builder = mock.Mock()
             mock_builder_cls.return_value = mock_builder
-            _generate_plots([result], verbose=False)
+            generate_plots([result], verbose=False)
 
         mock_builder_cls.assert_called_once_with(config_with_plots, "/output")
         mock_builder.build_all.assert_called_once()
@@ -877,7 +895,7 @@ class TestGeneratePlots:
             mock_builder = mock.Mock()
             mock_builder.build_all.side_effect = RuntimeError("Plot error")
             mock_builder_cls.return_value = mock_builder
-            _generate_plots([result], verbose=False)
+            generate_plots([result], verbose=False)
 
         captured = capsys.readouterr()
         assert "Failed to generate plots" in captured.out or "Plot error" in captured.out
@@ -896,7 +914,7 @@ class TestGeneratePlots:
         ]
 
         with mock.patch("util.plotting.FigureBuilder") as mock_builder:
-            _generate_plots(results, verbose=False)
+            generate_plots(results, verbose=False)
         mock_builder.assert_not_called()
 
 

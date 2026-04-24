@@ -10,10 +10,10 @@ Tests validate that:
 import textwrap
 from pathlib import Path
 import pytest
-from config.adapter_base import ConfigAdapter
-from config.adapter_base import get_adapter
-from config.adapter_toml import TomlAdapter
-from config.simulation_config import SimulationConfig
+from tud_lbm.config.adapter_base import ConfigAdapter
+from tud_lbm.config.adapter_base import get_adapter
+from tud_lbm.config.adapter_toml import TomlAdapter
+from tud_lbm.config.simulation_config import SimulationConfig
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 

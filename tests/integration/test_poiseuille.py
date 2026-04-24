@@ -32,10 +32,10 @@ import pytest
 # Ensure src/ is importable
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from config.simulation_config import SimulationConfig
-from runner.run import init_state
-from runner.run import run
-from setup.simulation_setup import build_setup
+from tud_lbm.config.simulation_config import SimulationConfig
+from tud_lbm.pipeline.runner import init_state
+from tud_lbm.pipeline.runner import run
+from tud_lbm.pipeline.setup import build_setup
 
 # ── Test parameters ──────────────────────────────────────────────────
 

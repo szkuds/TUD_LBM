@@ -8,7 +8,16 @@ Welcome to tud_lbm's documentation!
 
 .. toctree::
   :maxdepth: 2
-  :caption: Contents:
+  :caption: Design & Architecture:
+
+  architecture
+  lattice
+  operators
+  adapters
+
+.. toctree::
+  :maxdepth: 2
+  :caption: API Reference:
 
 Indices and tables
 ==================

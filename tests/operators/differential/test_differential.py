@@ -13,8 +13,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from operators.wetting import build_wetting_fn
-from setup.lattice import build_lattice
+from tud_lbm.lattice.lattice import build_lattice
+from tud_lbm.operators.wetting import build_wetting_fn
 
 NX, NY, NZ = 16, 16, 1
 
@@ -52,20 +52,20 @@ class TestComputeGradient:
     """``compute_gradient`` output shape and basic maths."""
 
     def test_output_shape(self, lattice, const_field, periodic_pad):
-        from operators.differential._gradient import compute_gradient
+        from tud_lbm.operators.differential._gradient import compute_gradient
 
         out = compute_gradient(const_field, lattice.w, lattice.c, periodic_pad)
         assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_constant_field_zero_gradient(self, lattice, const_field, periodic_pad):
-        from operators.differential._gradient import compute_gradient
+        from tud_lbm.operators.differential._gradient import compute_gradient
 
         out = compute_gradient(const_field, lattice.w, lattice.c, periodic_pad)
         np.testing.assert_allclose(np.array(out), 0.0, atol=1e-5)
 
     def test_2d_input_accepted(self, lattice, periodic_pad):
         """Also accepts a bare (nx, ny) array."""
-        from operators.differential._gradient import compute_gradient
+        from tud_lbm.operators.differential._gradient import compute_gradient
 
         field_2d = jnp.ones((NX, NY))
         out = compute_gradient(field_2d, lattice.w, lattice.c, periodic_pad)
@@ -77,7 +77,7 @@ class TestComputeGradient:
         linear_x_field,
         periodic_pad,
     ):
-        from operators.differential._gradient import compute_gradient
+        from tud_lbm.operators.differential._gradient import compute_gradient
 
         out = compute_gradient(linear_x_field, lattice.w, lattice.c, periodic_pad)
         # gx should be nonzero almost everywhere (periodic wrap creates edge artefacts)
@@ -86,14 +86,14 @@ class TestComputeGradient:
         assert float(np.mean(np.abs(gx[1:-1, :]))) > 0.1
 
     def test_jittable(self, lattice, const_field, periodic_pad):
-        from operators.differential._gradient import compute_gradient
+        from tud_lbm.operators.differential._gradient import compute_gradient
 
         jitted = jax.jit(compute_gradient, static_argnames=("pad_mode",))
         out = jitted(const_field, lattice.w, lattice.c, pad_mode=tuple(periodic_pad))
         assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_registered_in_registry(self):
-        from registry import get_operator_names
+        from tud_lbm.registry import get_operator_names
 
         assert "gradient" in get_operator_names("differential")
 
@@ -107,26 +107,26 @@ class TestComputeLaplacian:
     """``compute_laplacian`` output shape and basic maths."""
 
     def test_output_shape(self, lattice, const_field, periodic_pad):
-        from operators.differential._laplacian import compute_laplacian
+        from tud_lbm.operators.differential._laplacian import compute_laplacian
 
         out = compute_laplacian(const_field, lattice.w, periodic_pad)
         assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_constant_field_zero_laplacian(self, lattice, const_field, periodic_pad):
-        from operators.differential._laplacian import compute_laplacian
+        from tud_lbm.operators.differential._laplacian import compute_laplacian
 
         out = compute_laplacian(const_field, lattice.w, periodic_pad)
         np.testing.assert_allclose(np.array(out), 0.0, atol=1e-5)
 
     def test_2d_input_accepted(self, lattice, periodic_pad):
-        from operators.differential._laplacian import compute_laplacian
+        from tud_lbm.operators.differential._laplacian import compute_laplacian
 
         out = compute_laplacian(jnp.ones((NX, NY)), lattice.w, periodic_pad)
         assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_quadratic_field_nonzero_laplacian(self, lattice, periodic_pad):
         """f(i,j) = i² — Laplacian should be ~2 in the interior."""
-        from operators.differential._laplacian import compute_laplacian
+        from tud_lbm.operators.differential._laplacian import compute_laplacian
 
         xs = jnp.arange(NX, dtype=jnp.float32)
         field = (xs**2)[:, None, None, None] * jnp.ones((NX, NY, 1, 1))
@@ -136,14 +136,14 @@ class TestComputeLaplacian:
         assert float(np.mean(np.abs(lap_interior))) > 0.5
 
     def test_jittable(self, lattice, const_field, periodic_pad):
-        from operators.differential._laplacian import compute_laplacian
+        from tud_lbm.operators.differential._laplacian import compute_laplacian
 
         jitted = jax.jit(compute_laplacian, static_argnames=("pad_mode",))
         out = jitted(const_field, lattice.w, pad_mode=tuple(periodic_pad))
         assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_registered_in_registry(self):
-        from registry import get_operator_names
+        from tud_lbm.registry import get_operator_names
 
         assert "laplacian" in get_operator_names("differential")
 
@@ -179,7 +179,7 @@ class TestBuildWettingGradient:
         )
 
     def test_returns_callable(self, lattice, periodic_pad, wetting_params):
-        from operators.differential._gradient_wetting import build_wetting_gradient
+        from tud_lbm.operators.differential._gradient_wetting import build_wetting_gradient
 
         fn = build_wetting_gradient(
             lattice.w,
@@ -192,7 +192,7 @@ class TestBuildWettingGradient:
         assert callable(fn)
 
     def test_output_shape(self, lattice, periodic_pad, wetting_params, const_field):
-        from operators.differential._gradient_wetting import build_wetting_gradient
+        from tud_lbm.operators.differential._gradient_wetting import build_wetting_gradient
 
         fn = build_wetting_gradient(
             lattice.w,
@@ -211,8 +211,8 @@ class TestBuildWettingGradient:
         wetting_params,
     ):
         """Wetting correction changes the gradient when a droplet interface meets the wall."""
-        from operators.differential._gradient import compute_gradient
-        from operators.differential._gradient_wetting import build_wetting_gradient
+        from tud_lbm.operators.differential._gradient import compute_gradient
+        from tud_lbm.operators.differential._gradient_wetting import build_wetting_gradient
 
         # Pad modes matching bottom=wetting, top=bounce-back, left/right=periodic
         wetting_pad = ("wrap", "edge", "edge", "wrap")
@@ -238,7 +238,12 @@ class TestBuildWettingGradient:
             lattice.w,
             lattice.c,
             wetting_pad,
-            bc_config={"bottom": "wetting", "top": "bounce-back", "left": "periodic", "right": "periodic"},
+            bc_config={
+                "bottom": "wetting",
+                "top": "bounce-back",
+                "left": "periodic",
+                "right": "periodic",
+            },
             rho_l=rho_l,
             rho_v=rho_v,
             width=wetting_params["width"],
@@ -248,7 +253,7 @@ class TestBuildWettingGradient:
         assert not jnp.allclose(plain, with_wetting, atol=1e-9)
 
     def test_deterministic_result(self, lattice, periodic_pad, wetting_params, const_field):
-        from operators.differential._gradient_wetting import build_wetting_gradient
+        from tud_lbm.operators.differential._gradient_wetting import build_wetting_gradient
 
         fn = build_wetting_gradient(
             lattice.w,
@@ -264,7 +269,7 @@ class TestBuildWettingGradient:
 
     def test_chemical_step_variant(self, lattice, periodic_pad, const_field):
         """build_wetting_gradient with resolved chemical-step wetting fields."""
-        from operators.differential._gradient_wetting import build_wetting_gradient
+        from tud_lbm.operators.differential._gradient_wetting import build_wetting_gradient
 
         params_array = {
             "phi": [1.2, 1.4],
@@ -291,7 +296,7 @@ class TestBuildWettingGradient:
         assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_registered_in_registry(self):
-        from registry import get_operator_names
+        from tud_lbm.registry import get_operator_names
 
         assert "gradient_wetting" in get_operator_names("differential")
 
@@ -342,10 +347,10 @@ class TestWettingUtil:
 
     def test_reconstruction_uses_d2q9_weights(self):
         """Ghost row should be a D2Q9-weighted average of interior neighbour."""
-        from operators.wetting._ghost_reconstruction import _W_CARDINAL
-        from operators.wetting._ghost_reconstruction import _W_DIAGONAL
-        from operators.wetting._ghost_reconstruction import _W_TOTAL
-        from operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_CARDINAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_DIAGONAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_TOTAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
 
         # 6 rows along the wall, 4 columns (2 interior + 2 ghost)
         arr = jnp.zeros((6, 4))
@@ -360,10 +365,10 @@ class TestWettingUtil:
 
     def test_reconstruction_corner_periodic(self):
         """Start corner wraps to last row when periodic."""
-        from operators.wetting._ghost_reconstruction import _W_CARDINAL
-        from operators.wetting._ghost_reconstruction import _W_DIAGONAL
-        from operators.wetting._ghost_reconstruction import _W_TOTAL
-        from operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_CARDINAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_DIAGONAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_TOTAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
 
         arr = jnp.zeros((6, 4))
         vals = jnp.array([10.0, 20.0, 30.0, 40.0, 50.0, 60.0])
@@ -380,10 +385,10 @@ class TestWettingUtil:
 
     def test_reconstruction_corner_non_periodic(self):
         """Non-periodic corners mirror the adjacent interior value."""
-        from operators.wetting._ghost_reconstruction import _W_CARDINAL
-        from operators.wetting._ghost_reconstruction import _W_DIAGONAL
-        from operators.wetting._ghost_reconstruction import _W_TOTAL
-        from operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_CARDINAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_DIAGONAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_TOTAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
 
         arr = jnp.zeros((6, 4))
         vals = jnp.array([10.0, 20.0, 30.0, 40.0, 50.0, 60.0])
@@ -402,7 +407,7 @@ class TestWettingUtil:
 
     def test_modification_in_interface_region(self):
         """Modification should only affect densities inside the interface band."""
-        from operators.wetting._wetting_modification import _apply_wetting_modification
+        from tud_lbm.operators.wetting._wetting_modification import _apply_wetting_modification
 
         rho_l, rho_v = 1.0, 0.1
         upper = 0.95 * rho_l + 0.05 * rho_v  # 0.955
@@ -422,7 +427,7 @@ class TestWettingUtil:
 
     def test_modification_clamps_to_bounds(self):
         """Modified values inside the interface should be clamped to density bounds."""
-        from operators.wetting._wetting_modification import _apply_wetting_modification
+        from tud_lbm.operators.wetting._wetting_modification import _apply_wetting_modification
 
         rho_l, rho_v = 1.0, 0.1
         upper = 0.95 * rho_l + 0.05 * rho_v
@@ -470,7 +475,12 @@ class TestWettingUtil:
 
     def test_left_right_wetting_uses_transpose(self):
         """Left/right wetting should modify the left/right ghost columns."""
-        bc = {"left": "wetting", "right": "wetting", "bottom": "bounce-back", "top": "bounce-back"}
+        bc = {
+            "left": "wetting",
+            "right": "wetting",
+            "bottom": "bounce-back",
+            "top": "bounce-back",
+        }
         _build_wetting_applicator = build_wetting_fn("applicator")
         fn = _build_wetting_applicator(rho_l=1.0, rho_v=0.1, width=4, bc_config=bc)
         gp = jnp.ones((NX + 2, NY + 2)) * 0.5
@@ -495,7 +505,7 @@ class TestWettingUtil:
     def test_corner_periodic_vs_non_periodic(self):
         """Perpendicular periodic BCs affect corner ghost-cell values."""
         """Perpendicular periodic BCs affect corner ghost-cell values."""
-        from operators.wetting import build_wetting_fn
+        from tud_lbm.operators.wetting import build_wetting_fn
 
         # Periodic perpendicular (default for unspecified edges)
         _build_wetting_applicator = build_wetting_fn("applicator")
@@ -506,7 +516,11 @@ class TestWettingUtil:
             rho_l=1.0,
             rho_v=0.1,
             width=4,
-            bc_config={"bottom": "wetting", "left": "bounce-back", "right": "bounce-back"},
+            bc_config={
+                "bottom": "wetting",
+                "left": "bounce-back",
+                "right": "bounce-back",
+            },
         )
 
         # For a uniform field they happen to be the same; use a non-uniform

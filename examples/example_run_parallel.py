@@ -43,7 +43,7 @@ def run_parallel_sweep():
 
     # Optional: Enumerate and display each configuration before execution
     for _idx, params, _cfg in enumerate_configs(config_dict):
-        ", ".join(f"{k}={v}" for k, v in params.items()) if params else "(base)"
+        (", ".join(f"{k}={v}" for k, v in params.items()) if params else "(base)")
 
     # Execute simulations in parallel
 

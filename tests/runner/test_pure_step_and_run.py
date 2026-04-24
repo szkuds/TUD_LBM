@@ -15,10 +15,10 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import numpy as np
-from config.simulation_config import SimulationConfig
-from runner.run import init_state
-from setup.lattice import build_lattice
-from setup.simulation_setup import build_setup
+from tud_lbm.config.simulation_config import SimulationConfig
+from tud_lbm.lattice.lattice import build_lattice
+from tud_lbm.pipeline.runner import init_state
+from tud_lbm.pipeline.setup import build_setup
 
 # =====================================================================
 # Helpers
@@ -60,7 +60,7 @@ class TestSource:
     @staticmethod
     def _build_gradient_closure(lattice):
         """Build a gradient closure that takes only (grid)."""
-        from operators.differential import build_differential_fn
+        from tud_lbm.operators.differential import build_differential_fn
 
         _gradient = build_differential_fn("gradient")
         pad_modes = ("wrap", "wrap", "wrap", "wrap")
@@ -71,7 +71,7 @@ class TestSource:
         return gradient
 
     def test_shape(self):
-        from operators.force._source_term import source
+        from tud_lbm.operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
@@ -83,7 +83,7 @@ class TestSource:
         assert src.shape == (NX, NY, NZ, 9, 1)
 
     def test_zero_force_zero_source(self):
-        from operators.force._source_term import source
+        from tud_lbm.operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
@@ -95,7 +95,7 @@ class TestSource:
         np.testing.assert_allclose(np.array(src), 0.0, atol=1e-10)
 
     def test_jittable(self):
-        from operators.force._source_term import source
+        from tud_lbm.operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
@@ -109,7 +109,7 @@ class TestSource:
 
     def test_source_sums_to_zero(self):
         """For a uniform field the source should sum to zero over q."""
-        from operators.force._source_term import source
+        from tud_lbm.operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
@@ -132,7 +132,7 @@ class TestStepSinglePhasePure:
     """``step_single_phase`` advances the state using pure functions."""
 
     def test_increments_t(self):
-        from operators.step import build_step_fn
+        from tud_lbm.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -141,7 +141,7 @@ class TestStepSinglePhasePure:
         assert int(new_state.t) == 1
 
     def test_preserves_shape(self):
-        from operators.step import build_step_fn
+        from tud_lbm.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -153,7 +153,7 @@ class TestStepSinglePhasePure:
         assert new_state.u.shape == state.u.shape
 
     def test_no_nan(self):
-        from operators.step import build_step_fn
+        from tud_lbm.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -164,8 +164,8 @@ class TestStepSinglePhasePure:
         assert not jnp.isnan(new_state.rho).any()
 
     def test_output_is_state(self):
-        from operators.step import build_step_fn
-        from state.state import State
+        from tud_lbm.operators.step import build_step_fn
+        from tud_lbm.pipeline.state import State
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -175,7 +175,7 @@ class TestStepSinglePhasePure:
 
     def test_rest_equilibrium_unchanged(self):
         """At rest equilibrium with periodic BCs, density should be ~1.0."""
-        from operators.step import build_step_fn
+        from tud_lbm.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -186,7 +186,7 @@ class TestStepSinglePhasePure:
 
     def test_mass_conservation(self):
         """Total mass should be conserved through one step."""
-        from operators.step import build_step_fn
+        from tud_lbm.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -199,7 +199,7 @@ class TestStepSinglePhasePure:
 
     def test_multiple_steps_stable(self):
         """5 steps should remain NaN-free and mass-conserving."""
-        from operators.step import build_step_fn
+        from tud_lbm.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -221,7 +221,7 @@ class TestStepMultiphasePure:
     """``step_multiphase`` advances multiphase state using pure functions."""
 
     def test_increments_t(self):
-        from operators.step import build_step_fn
+        from tud_lbm.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
@@ -230,7 +230,7 @@ class TestStepMultiphasePure:
         assert int(new_state.t) == 1
 
     def test_preserves_shape(self):
-        from operators.step import build_step_fn
+        from tud_lbm.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
@@ -241,7 +241,7 @@ class TestStepMultiphasePure:
         assert new_state.rho.shape == state.rho.shape
 
     def test_no_nan(self):
-        from operators.step import build_step_fn
+        from tud_lbm.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
@@ -252,7 +252,7 @@ class TestStepMultiphasePure:
 
     def test_produces_force(self):
         """Multiphase step should produce an interaction force field."""
-        from operators.step import build_step_fn
+        from tud_lbm.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
@@ -293,7 +293,7 @@ class TestRunPure:
     """``run_pure`` executes multiple steps via lax.scan."""
 
     def test_trajectory_mode(self):
-        from runner.run import run
+        from tud_lbm.pipeline.runner import run
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -304,7 +304,7 @@ class TestRunPure:
         assert trajectory.f.shape[0] == 5
 
     def test_final_state_no_nan(self):
-        from runner.run import run
+        from tud_lbm.pipeline.runner import run
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -315,7 +315,7 @@ class TestRunPure:
         assert not jnp.isnan(final_state.rho).any()
 
     def test_multiphase_trajectory(self):
-        from runner.run import run
+        from tud_lbm.pipeline.runner import run
 
         setup = _mp_setup()
         state = init_state(setup)
@@ -327,7 +327,7 @@ class TestRunPure:
 
     def test_save_interval(self):
         """With save_interval > 1, trajectory is subsampled."""
-        from runner.run import run
+        from tud_lbm.pipeline.runner import run
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -340,7 +340,7 @@ class TestRunPure:
 
     def test_mass_conservation_over_trajectory(self):
         """Total mass should be conserved across the entire run."""
-        from runner.run import run
+        from tud_lbm.pipeline.runner import run
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -353,7 +353,7 @@ class TestRunPure:
 
     def test_trajectory_t_increases(self):
         """Each snapshot should have an increasing t."""
-        from runner.run import run
+        from tud_lbm.pipeline.runner import run
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -366,7 +366,7 @@ class TestRunPure:
 
     def test_rest_equilibrium_stable(self):
         """Running 10 steps from rest equilibrium should stay near rho=1."""
-        from runner.run import run
+        from tud_lbm.pipeline.runner import run
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -390,7 +390,7 @@ class TestStepWithBounceBack:
 
     def test_bounce_back_step(self):
         """Step with bounce-back top/bottom runs without error."""
-        from operators.step import build_step_fn
+        from tud_lbm.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         cfg = SimulationConfig(
@@ -414,7 +414,7 @@ class TestStepWithBounceBack:
 
     def test_bounce_back_run(self):
         """run_pure with bounce-back BCs over multiple steps."""
-        from runner.run import run
+        from tud_lbm.pipeline.runner import run
 
         cfg = SimulationConfig(
             grid_shape=(NX, NY),
@@ -445,7 +445,7 @@ class TestLegacyAPIUnchanged:
     """The ``step_single_phase(setup, state)`` functional API works."""
 
     def test_legacy_step_still_works(self):
-        from operators.step import build_step_fn
+        from tud_lbm.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         cfg = SimulationConfig(grid_shape=(NX, NY), tau=0.8, nt=10)

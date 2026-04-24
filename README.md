@@ -99,7 +99,7 @@ tud_lbm example/config_simple.toml
 tud_lbm  # launches interactive parameter prompts
 ```
 
-***
+---
 
 For the full package reference (module-by-module API, operator tables, and architecture details), see the [developer documentation](README.dev.md#package-reference).
 

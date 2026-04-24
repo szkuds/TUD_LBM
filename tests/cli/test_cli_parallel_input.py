@@ -1,8 +1,8 @@
 from __future__ import annotations
 from click.testing import CliRunner
+from config import SimulationConfig
 from config.array_expansion import ArrayParameterSet
-from config.simulation_config import SimulationConfig
-from runner.parallel_runner import SimulationResult
+from pipeline.parallel_runner import SimulationResult
 
 
 def _make_config(results_dir: str, tau: float = 0.8) -> SimulationConfig:
@@ -16,7 +16,7 @@ def _make_config(results_dir: str, tau: float = 0.8) -> SimulationConfig:
 
 
 def test_cli_single_config_uses_single_run(monkeypatch, tmp_path):
-    from cli.cli import main
+    from tud_lbm.cli.cli import main
 
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
@@ -42,7 +42,7 @@ def test_cli_single_config_uses_single_run(monkeypatch, tmp_path):
 
 
 def test_cli_array_config_uses_parallel_sweep(monkeypatch, tmp_path):
-    from cli.cli import main
+    from tud_lbm.cli.cli import main
 
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
@@ -57,7 +57,10 @@ def test_cli_array_config_uses_parallel_sweep(monkeypatch, tmp_path):
     )
 
     monkeypatch.setattr("config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
-    monkeypatch.setattr("config.array_expansion.expand_config", lambda raw: ([config_a, config_b], metadata))
+    monkeypatch.setattr(
+        "config.array_expansion.expand_config",
+        lambda raw: ([config_a, config_b], metadata),
+    )
     monkeypatch.setattr(
         "config.array_expansion.enumerate_configs",
         lambda raw: iter(
@@ -89,7 +92,7 @@ def test_cli_array_config_uses_parallel_sweep(monkeypatch, tmp_path):
 
 
 def test_cli_array_config_dry_run_skips_parallel_execution(monkeypatch, tmp_path):
-    from cli.cli import main
+    from tud_lbm.cli.cli import main
 
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
@@ -104,7 +107,10 @@ def test_cli_array_config_dry_run_skips_parallel_execution(monkeypatch, tmp_path
     )
 
     monkeypatch.setattr("config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
-    monkeypatch.setattr("config.array_expansion.expand_config", lambda raw: ([config_a, config_b], metadata))
+    monkeypatch.setattr(
+        "config.array_expansion.expand_config",
+        lambda raw: ([config_a, config_b], metadata),
+    )
     monkeypatch.setattr(
         "config.array_expansion.enumerate_configs",
         lambda raw: iter(
@@ -130,7 +136,7 @@ def test_cli_array_config_dry_run_skips_parallel_execution(monkeypatch, tmp_path
 
 
 def test_cli_override_updates_scalar_field_before_single_run(monkeypatch, tmp_path):
-    from cli.cli import main
+    from tud_lbm.cli.cli import main
 
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
@@ -170,7 +176,7 @@ def test_cli_override_updates_scalar_field_before_single_run(monkeypatch, tmp_pa
 
 
 def test_cli_override_updates_nested_sweep_field(monkeypatch, tmp_path):
-    from cli.cli import main
+    from tud_lbm.cli.cli import main
 
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
@@ -218,7 +224,7 @@ def test_cli_override_updates_nested_sweep_field(monkeypatch, tmp_path):
 
 
 def test_cli_override_rejects_invalid_value(monkeypatch, tmp_path):
-    from cli.cli import main
+    from tud_lbm.cli.cli import main
 
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
