@@ -26,7 +26,7 @@ from setup.lattice import build_lattice
 
 # ── Shared helpers ───────────────────────────────────────────────────
 
-NX, NY = 8, 8
+NX, NY, NZ = 8, 8, 1
 
 
 @pytest.fixture
@@ -37,8 +37,8 @@ def lattice():
 @pytest.fixture
 def rest_state(lattice):
     """Uniform density=1, velocity=0 populations at equilibrium."""
-    rho = jnp.ones((NX, NY, 1, 1))
-    u = jnp.zeros((NX, NY, 1, 2))
+    rho = jnp.ones((NX, NY, NZ, 1, 1))
+    u = jnp.zeros((NX, NY, NZ, 1, 2))
     # At rest: feq_0 = rho - sum_rest, feq_i = w_i * rho for i>0
     # Actually, compute equilibrium properly
     from operators.equilibrium import build_equilibrium_fn
@@ -279,12 +279,12 @@ class TestComputeEquilibrium:
     def test_rest_state(self, lattice):
         from operators.equilibrium._equilibrium import compute_equilibrium
 
-        rho = jnp.ones((NX, NY, 1, 1))
-        u = jnp.zeros((NX, NY, 1, 2))
+        rho = jnp.ones((NX, NY, NZ, 1, 1))
+        u = jnp.zeros((NX, NY, NZ, 1, 2))
 
         feq = compute_equilibrium(rho, u, lattice)
 
-        assert feq.shape == (NX, NY, 9, 1)
+        assert feq.shape == (NX, NY, NZ, 9, 1)
         # Mass conservation: sum over q should equal rho
         np.testing.assert_allclose(
             np.array(jnp.sum(feq, axis=2, keepdims=True)),
@@ -295,8 +295,8 @@ class TestComputeEquilibrium:
     def test_mass_conservation_with_velocity(self, lattice):
         from operators.equilibrium._equilibrium import compute_equilibrium
 
-        rho = jnp.ones((NX, NY, 1, 1)) * 1.5
-        u = jnp.ones((NX, NY, 1, 2)) * 0.05
+        rho = jnp.ones((NX, NY, NZ, 1, 1)) * 1.5
+        u = jnp.ones((NX, NY, NZ, 1, 2)) * 0.05
 
         feq = compute_equilibrium(rho, u, lattice)
 
@@ -310,21 +310,21 @@ class TestComputeEquilibrium:
     def test_shape_preserved(self, lattice):
         from operators.equilibrium._equilibrium import compute_equilibrium
 
-        rho = jnp.ones((NX, NY, 1, 1))
-        u = jnp.zeros((NX, NY, 1, 2))
+        rho = jnp.ones((NX, NY, NZ, 1, 1))
+        u = jnp.zeros((NX, NY, NZ, 1, 2))
 
         feq = compute_equilibrium(rho, u, lattice)
-        assert feq.shape == (NX, NY, 9, 1)
+        assert feq.shape == (NX, NY, NZ, 9, 1)
 
     def test_jittable(self, lattice):
         from operators.equilibrium._equilibrium import compute_equilibrium
 
-        rho = jnp.ones((NX, NY, 1, 1))
-        u = jnp.zeros((NX, NY, 1, 2))
+        rho = jnp.ones((NX, NY, NZ, 1, 1))
+        u = jnp.zeros((NX, NY, NZ, 1, 2))
 
         jitted_eq = jax.jit(partial(compute_equilibrium, lattice=lattice))
         feq = jitted_eq(rho, u)
-        assert feq.shape == (NX, NY, 9, 1)
+        assert feq.shape == (NX, NY, NZ, 9, 1)
 
 
 # =====================================================================
@@ -348,7 +348,7 @@ class TestComputeMacroscopic:
         from operators.macroscopic._single_phase import compute_macroscopic
 
         key = jax.random.PRNGKey(1)
-        f = jax.random.uniform(key, (NX, NY, 9, 1), minval=0.05)
+        f = jax.random.uniform(key, (NX, NY, NZ, 9, 1), minval=0.05)
 
         rho, _ = compute_macroscopic(f, lattice)
 
@@ -359,21 +359,21 @@ class TestComputeMacroscopic:
         from operators.macroscopic._single_phase import compute_macroscopic
 
         feq, _, _ = rest_state
-        force = jnp.ones((NX, NY, 1, 2)) * 0.001
+        force = jnp.ones((NX, NY, NZ, 1, 2)) * 0.001
 
         result = compute_macroscopic(feq, lattice, force=force)
         assert len(result) == 3
         rho, u_eq, _ = result
-        assert rho.shape == (NX, NY, 1, 1)
-        assert u_eq.shape == (NX, NY, 1, 2)
+        assert rho.shape == (NX, NY, NZ, 1, 1)
+        assert u_eq.shape == (NX, NY, NZ, 1, 2)
 
     def test_shape_preserved(self, lattice, rest_state):
         from operators.macroscopic._single_phase import compute_macroscopic
 
         feq, _, _ = rest_state
         rho, u = compute_macroscopic(feq, lattice)
-        assert rho.shape == (NX, NY, 1, 1)
-        assert u.shape == (NX, NY, 1, 2)
+        assert rho.shape == (NX, NY, NZ, 1, 1)
+        assert u.shape == (NX, NY, NZ, 1, 2)
 
     def test_jittable(self, lattice, rest_state):
         from operators.macroscopic._single_phase import compute_macroscopic
@@ -381,7 +381,7 @@ class TestComputeMacroscopic:
         feq, _, _ = rest_state
         jitted_mac = jax.jit(partial(compute_macroscopic, lattice=lattice))
         rho, _ = jitted_mac(feq)
-        assert rho.shape == (NX, NY, 1, 1)
+        assert rho.shape == (NX, NY, NZ, 1, 1)
 
 
 # =====================================================================
@@ -428,7 +428,7 @@ class TestComputeMacroscopicMultiphase:
 
         mp = self._mp_params()
         gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
-        f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
+        f = jnp.ones((16, 16, 1, 9, 1)) * (1.0 / 9.0)
 
         rho, u_eq, force_total = compute_macroscopic_multiphase(
             f,
@@ -438,9 +438,9 @@ class TestComputeMacroscopicMultiphase:
             laplacian_density=laplacian_field,
         )
 
-        assert rho.shape == (16, 16, 1, 1)
-        assert u_eq.shape == (16, 16, 1, 2)
-        assert force_total.shape == (16, 16, 1, 2)
+        assert rho.shape == (16, 16, 1, 1, 1)
+        assert u_eq.shape == (16, 16, 1, 1, 2)
+        assert force_total.shape == (16, 16, 1, 1, 2)
 
     def test_uniform_field_zero_force(self, lattice):
         """A perfectly uniform density field → zero interaction force."""
@@ -468,7 +468,7 @@ class TestComputeMacroscopicMultiphase:
 
         mp = self._mp_params()
         gradient_standard, laplacian = self._gradient_and_laplacian(lattice)
-        f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
+        f = jnp.ones((16, 16, 1, 9, 1)) * (1.0 / 9.0)
 
         jitted_mp = jax.jit(
             partial(
@@ -480,7 +480,7 @@ class TestComputeMacroscopicMultiphase:
             ),
         )
         rho, _u_eq, _force = jitted_mp(f)
-        assert rho.shape == (16, 16, 1, 1)
+        assert rho.shape == (16, 16, 1, 1, 1)
 
     def test_with_external_force(self, lattice):
         from operators.macroscopic._multiphase import compute_macroscopic_multiphase
@@ -488,7 +488,7 @@ class TestComputeMacroscopicMultiphase:
         mp = self._mp_params()
         gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
         f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
-        force_ext = jnp.ones((16, 16, 1, 2)) * 0.001
+        force_ext = jnp.ones((16, 16, 1, 1, 2)) * 0.001
 
         _rho, _u_eq, force_total = compute_macroscopic_multiphase(
             f,
@@ -520,8 +520,8 @@ class TestApplyBounceBack:
         from operators.boundary._bounce_back import apply_bounce_back
 
         key = jax.random.PRNGKey(10)
-        f_s = jax.random.uniform(key, (NX, NY, 9, 1))
-        f_c = jax.random.uniform(key, (NX, NY, 9, 1)) * 2.0
+        f_s = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
+        f_c = jax.random.uniform(key, (NX, NY, NZ, 9, 1)) * 2.0
 
         f_out = apply_bounce_back(f_s, f_c, lattice, "bottom")
 
@@ -538,8 +538,8 @@ class TestApplyBounceBack:
         from operators.boundary._bounce_back import apply_bounce_back
 
         key = jax.random.PRNGKey(11)
-        f_s = jax.random.uniform(key, (NX, NY, 9, 1))
-        f_c = jax.random.uniform(key, (NX, NY, 9, 1)) * 2.0
+        f_s = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
+        f_c = jax.random.uniform(key, (NX, NY, NZ, 9, 1)) * 2.0
 
         f_out = apply_bounce_back(f_s, f_c, lattice, "top")
 
@@ -553,14 +553,14 @@ class TestApplyBounceBack:
     def test_shape_preserved(self, lattice):
         from operators.boundary._bounce_back import apply_bounce_back
 
-        f = jnp.ones((NX, NY, 9, 1))
+        f = jnp.ones((NX, NY, NZ, 9, 1))
         f_out = apply_bounce_back(f, f, lattice, "bottom")
         assert f_out.shape == f.shape
 
     def test_jittable(self, lattice):
         from operators.boundary._bounce_back import apply_bounce_back
 
-        f = jnp.ones((NX, NY, 9, 1))
+        f = jnp.ones((NX, NY, NZ, 9, 1))
         jitted_bb = jax.jit(
             partial(
                 apply_bounce_back,
@@ -574,7 +574,7 @@ class TestApplyBounceBack:
     def test_unknown_edge_raises(self, lattice):
         from operators.boundary._bounce_back import apply_bounce_back
 
-        f = jnp.ones((NX, NY, 9, 1))
+        f = jnp.ones((NX, NY, NZ, 9, 1))
         with pytest.raises(ValueError, match="Unknown edge"):
             apply_bounce_back(f, f, lattice, "diagonal")
 
@@ -590,14 +590,14 @@ class TestApplySymmetry:
     def test_bottom_edge_shape(self, lattice):
         from operators.boundary._symmetry import apply_symmetry
 
-        f = jnp.ones((NX, NY, 9, 1))
+        f = jnp.ones((NX, NY, NZ, 9, 1))
         f_out = apply_symmetry(f, f, lattice, "bottom")
         assert f_out.shape == f.shape
 
     def test_jittable(self, lattice):
         from operators.boundary._symmetry import apply_symmetry
 
-        f = jnp.ones((NX, NY, 9, 1))
+        f = jnp.ones((NX, NY, NZ, 9, 1))
         jitted_sym = jax.jit(
             partial(
                 apply_symmetry,
@@ -611,7 +611,7 @@ class TestApplySymmetry:
     def test_unknown_edge_raises(self, lattice):
         from operators.boundary._symmetry import apply_symmetry
 
-        f = jnp.ones((NX, NY, 9, 1))
+        f = jnp.ones((NX, NY, NZ, 9, 1))
         with pytest.raises(ValueError, match="Unknown edge"):
             apply_symmetry(f, f, lattice, "diagonal")
 
@@ -628,7 +628,7 @@ class TestApplyPeriodic:
         from operators.boundary._periodic import apply_periodic
 
         key = jax.random.PRNGKey(20)
-        f = jax.random.uniform(key, (NX, NY, 9, 1))
+        f = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
 
         f_out = apply_periodic(f, f, lattice, "top")
 
@@ -664,8 +664,8 @@ class TestEndToEndPureFunctions:
         from operators.macroscopic._single_phase import compute_macroscopic
         from operators.streaming._streaming import stream
 
-        rho = jnp.ones((NX, NY, 1, 1))
-        u = jnp.zeros((NX, NY, 1, 2))
+        rho = jnp.ones((NX, NY, NZ, 1, 1))
+        u = jnp.zeros((NX, NY, NZ, 1, 2))
         f = compute_equilibrium(rho, u, lattice)
         tau = 0.8
 
@@ -693,8 +693,8 @@ class TestEndToEndPureFunctions:
             f_col = collide_bgk(f, feq, tau)
             return stream(f_col, lattice)
 
-        rho = jnp.ones((NX, NY, 1, 1))
-        u = jnp.zeros((NX, NY, 1, 2))
+        rho = jnp.ones((NX, NY, NZ, 1, 1))
+        u = jnp.zeros((NX, NY, NZ, 1, 2))
         f = compute_equilibrium(rho, u, lattice)
 
         jitted_step = jax.jit(one_step, static_argnums=(1,))
@@ -719,8 +719,8 @@ class TestEndToEndPureFunctions:
         }
         bc_fn = build_bc(bc_config, lattice)
 
-        rho = jnp.ones((NX, NY, 1, 1))
-        u = jnp.zeros((NX, NY, 1, 2))
+        rho = jnp.ones((NX, NY, NZ, 1, 1))
+        u = jnp.zeros((NX, NY, NZ, 2, 1))
         f = compute_equilibrium(rho, u, lattice)
         tau = 0.8
 
@@ -747,7 +747,7 @@ class TestBuildBC:
         bc_fn = build_bc(None, lattice)
 
         key = jax.random.PRNGKey(30)
-        f = jax.random.uniform(key, (NX, NY, 9, 1))
+        f = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
 
         # All periodic → identity
         f_out = bc_fn(f, f, None)
@@ -765,8 +765,8 @@ class TestBuildBC:
         bc_fn = build_bc(bc_config, lattice)
 
         key = jax.random.PRNGKey(31)
-        f_s = jax.random.uniform(key, (NX, NY, 9, 1))
-        f_c = jax.random.uniform(key, (NX, NY, 9, 1)) * 2.0
+        f_s = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
+        f_c = jax.random.uniform(key, (NX, NY, NZ, 9, 1)) * 2.0
 
         f_out = bc_fn(f_s, f_c, None)
 
@@ -789,7 +789,7 @@ class TestBuildBC:
         }
         bc_fn = build_bc(bc_config, lattice)
 
-        f = jnp.ones((NX, NY, 9, 1))
+        f = jnp.ones((NX, NY, NZ, 9, 1))
         f_out = bc_fn(f, f, None)
         assert f_out.shape == f.shape
 
@@ -805,7 +805,7 @@ class TestBuildBC:
         }
         bc_fn = build_bc(bc_config, lattice)
 
-        f = jnp.ones((NX, NY, 9, 1))
+        f = jnp.ones((NX, NY, NZ, 9, 1))
         f_out = jax.jit(bc_fn)(f, f, None)
         assert f_out.shape == f.shape
 
@@ -825,8 +825,8 @@ class TestBuildBC:
         }
         bc_fn = build_bc(bc_config, lattice)
 
-        rho = jnp.ones((NX, NY, 1, 1))
-        u = jnp.zeros((NX, NY, 1, 2))
+        rho = jnp.ones((NX, NY, NZ, 1, 1))
+        u = jnp.zeros((NX, NY, NZ, 1, 2))
         f = compute_equilibrium(rho, u, lattice)
         tau = 0.8
 

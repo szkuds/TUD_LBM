@@ -24,7 +24,7 @@ from setup.simulation_setup import build_setup
 # Helpers
 # =====================================================================
 
-NX, NY = 8, 8
+NX, NY, NZ = 8, 8, 1
 
 
 def _sp_setup():
@@ -75,21 +75,21 @@ class TestSource:
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
-        rho = jnp.ones((NX, NY, 1, 1))
-        u = jnp.zeros((NX, NY, 1, 2))
-        force = jnp.ones((NX, NY, 1, 2)) * 0.001
+        rho = jnp.ones((NX, NY, NZ, 1, 1))
+        u = jnp.zeros((NX, NY, NZ, 1, 2))
+        force = jnp.ones((NX, NY, NZ, 1, 2)) * 0.001
 
         src = source(rho, u, force, lattice, gradient=gradient)
-        assert src.shape == (NX, NY, 9, 1)
+        assert src.shape == (NX, NY, NZ, 9, 1)
 
     def test_zero_force_zero_source(self):
         from operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
-        rho = jnp.ones((NX, NY, 1, 1))
-        u = jnp.zeros((NX, NY, 1, 2))
-        force = jnp.zeros((NX, NY, 1, 2))
+        rho = jnp.ones((NX, NY, NZ, 1, 1))
+        u = jnp.zeros((NX, NY, NZ, 1, 2))
+        force = jnp.zeros((NX, NY, NZ, 1, 2))
 
         src = source(rho, u, force, lattice, gradient=gradient)
         np.testing.assert_allclose(np.array(src), 0.0, atol=1e-10)
@@ -99,13 +99,13 @@ class TestSource:
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
-        rho = jnp.ones((NX, NY, 1, 1))
-        u = jnp.zeros((NX, NY, 1, 2))
-        force = jnp.ones((NX, NY, 1, 2)) * 0.001
+        rho = jnp.ones((NX, NY, NZ, 1, 1))
+        u = jnp.zeros((NX, NY, NZ, 1, 2))
+        force = jnp.ones((NX, NY, NZ, 1, 2)) * 0.001
 
         jitted = jax.jit(partial(source, lattice=lattice, gradient=gradient))
         src = jitted(rho, u, force)
-        assert src.shape == (NX, NY, 9, 1)
+        assert src.shape == (NX, NY, NZ, 9, 1)
 
     def test_source_sums_to_zero(self):
         """For a uniform field the source should sum to zero over q."""
@@ -113,9 +113,9 @@ class TestSource:
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
-        rho = jnp.ones((NX, NY, 1, 1))
-        u = jnp.zeros((NX, NY, 1, 2))
-        force = jnp.ones((NX, NY, 1, 2)) * 0.01
+        rho = jnp.ones((NX, NY, NZ, 1, 1))
+        u = jnp.zeros((NX, NY, NZ, 1, 2))
+        force = jnp.ones((NX, NY, NZ, 1, 2)) * 0.01
 
         src = source(rho, u, force, lattice, gradient=gradient)
         # The source should satisfy ∑_i S_i = 0 (mass conservation)
@@ -260,7 +260,7 @@ class TestStepMultiphasePure:
         new_state = step_multiphase(setup, state)
 
         assert new_state.force is not None
-        assert new_state.force.shape == (16, 16, 1, 2)
+        assert new_state.force.shape == (16, 16, 1, 1, 2)
 
 
 # =====================================================================

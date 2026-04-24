@@ -16,7 +16,7 @@ import pytest
 from operators.wetting import build_wetting_fn
 from setup.lattice import build_lattice
 
-NX, NY = 16, 16
+NX, NY, NZ = 16, 16, 1
 
 
 @pytest.fixture(scope="module")
@@ -55,7 +55,7 @@ class TestComputeGradient:
         from operators.differential._gradient import compute_gradient
 
         out = compute_gradient(const_field, lattice.w, lattice.c, periodic_pad)
-        assert out.shape == (NX, NY, 1, 2)
+        assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_constant_field_zero_gradient(self, lattice, const_field, periodic_pad):
         from operators.differential._gradient import compute_gradient
@@ -69,7 +69,7 @@ class TestComputeGradient:
 
         field_2d = jnp.ones((NX, NY))
         out = compute_gradient(field_2d, lattice.w, lattice.c, periodic_pad)
-        assert out.shape == (NX, NY, 1, 2)
+        assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_x_gradient_nonzero_for_x_varying_field(
         self,
@@ -90,7 +90,7 @@ class TestComputeGradient:
 
         jitted = jax.jit(compute_gradient, static_argnames=("pad_mode",))
         out = jitted(const_field, lattice.w, lattice.c, pad_mode=tuple(periodic_pad))
-        assert out.shape == (NX, NY, 1, 2)
+        assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_registered_in_registry(self):
         from registry import get_operator_names
@@ -110,7 +110,7 @@ class TestComputeLaplacian:
         from operators.differential._laplacian import compute_laplacian
 
         out = compute_laplacian(const_field, lattice.w, periodic_pad)
-        assert out.shape == (NX, NY, 1, 1)
+        assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_constant_field_zero_laplacian(self, lattice, const_field, periodic_pad):
         from operators.differential._laplacian import compute_laplacian
@@ -122,7 +122,7 @@ class TestComputeLaplacian:
         from operators.differential._laplacian import compute_laplacian
 
         out = compute_laplacian(jnp.ones((NX, NY)), lattice.w, periodic_pad)
-        assert out.shape == (NX, NY, 1, 1)
+        assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_quadratic_field_nonzero_laplacian(self, lattice, periodic_pad):
         """f(i,j) = i² — Laplacian should be ~2 in the interior."""
@@ -140,7 +140,7 @@ class TestComputeLaplacian:
 
         jitted = jax.jit(compute_laplacian, static_argnames=("pad_mode",))
         out = jitted(const_field, lattice.w, pad_mode=tuple(periodic_pad))
-        assert out.shape == (NX, NY, 1, 1)
+        assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_registered_in_registry(self):
         from registry import get_operator_names
@@ -203,7 +203,7 @@ class TestBuildWettingGradient:
             width=wetting_params["width"],
         )
         out = self._call_wetting(fn, const_field, wetting_params)
-        assert out.shape == (NX, NY, 1, 2)
+        assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_differs_from_plain_gradient_on_nonuniform_field(
         self,
@@ -288,7 +288,7 @@ class TestBuildWettingGradient:
             d_rho_l,
             d_rho_r,
         )
-        assert out.shape == (NX, NY, 1, 2)
+        assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_registered_in_registry(self):
         from registry import get_operator_names

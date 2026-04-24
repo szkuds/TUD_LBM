@@ -31,15 +31,15 @@ class TestInitState:
 
         setup = _single_phase_setup()
         state = init_state(setup)
-        assert state.f.shape == (8, 8, 9, 1)
-        assert state.rho.shape == (8, 8, 1, 1)
+        assert state.f.shape == (8, 8, 1, 9, 1)
+        assert state.rho.shape == (8, 8, 1, 1, 1)
         np.testing.assert_allclose(float(jnp.sum(state.rho)), 64.0, rtol=1e-5)
 
     def test_custom_f(self):
         from runner.run import init_state
 
         setup = _single_phase_setup()
-        f_custom = jnp.ones((8, 8, 9, 1)) * 0.5
+        f_custom = jnp.ones((8, 8, 1, 9, 1)) * 0.5
         state = init_state(setup, f=f_custom)
         np.testing.assert_allclose(state.f, f_custom)
 

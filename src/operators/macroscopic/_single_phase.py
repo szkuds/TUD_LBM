@@ -39,7 +39,7 @@ def compute_macroscopic(
     rho = jnp.sum(f, axis=-2, keepdims=True)  # (nx, ny, nz, 1, 1)
 
     # Momentum — first moment
-    u = jnp.sum(f * lattice.c, axis=-2, keepdims=True) / rho  # (nx, ny, nz, 1, D)
+    u = jnp.sum(f * lattice.c, axis=-2, keepdims=True) / rho  # (nx, ny, nz, 1, d)
 
     if force is not None:
         u_eq = u + force / (2.0 * rho)

@@ -103,8 +103,8 @@ class TestExpandConfig:
         configs, _ = expand_config(config_dict)
 
         assert len(configs) == 2
-        assert configs[0].grid_shape == (64, 64)
-        assert configs[1].grid_shape == (128, 128)
+        assert configs[0].grid_shape == (64, 64, 1)
+        assert configs[1].grid_shape == (128, 128, 1)
 
     def test_multiphase_arrays(self):
         """Multiphase parameters should support arrays."""

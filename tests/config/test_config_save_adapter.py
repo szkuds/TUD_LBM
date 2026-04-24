@@ -35,7 +35,7 @@ class TestTomlAdapterSave:
         adapter.save(cfg, str(dest))
 
         loaded = TomlAdapter().load(str(dest))
-        assert loaded.grid_shape == (16, 16)
+        assert loaded.grid_shape == (16, 16, 1)
         assert loaded.tau == 0.8
         assert loaded.nt == 500
 
@@ -190,6 +190,6 @@ class TestSimulationIOConfigFileType:
         )
         config_path = Path(io.run_dir) / "config.toml"
         loaded = TomlAdapter().load(str(config_path))
-        assert loaded.grid_shape == (8, 8)
+        assert loaded.grid_shape == (8, 8, 1)
         assert loaded.tau == 0.7
         assert loaded.nt == 200
