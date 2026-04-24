@@ -53,10 +53,10 @@ def compute_gradient(
         Gradient field, shape ``(nx, ny, nz, 1, 2)``.
     """
     gp = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
-    return grad_core(gp, w, c)
+    return grad_core_2d(gp, w, c)
 
 
-def grad_core(
+def grad_core_2d(
     padded: jnp.ndarray,
     w: jnp.ndarray,
     c: jnp.ndarray,
@@ -71,7 +71,7 @@ def grad_core(
         c: Lattice velocity vectors, shape ``(2, q)``.
 
     Returns:
-        Gradient field, shape ``(nx, ny, 1, 2)``.
+        Gradient field, shape ``(nx, ny, 1, 1, 2)``.
     """
     # Neighbour slices (D2Q9 directions 1-8; direction 0 cancels out)
     ip1_j0 = padded[2:, 1:-1]  # (i+1, j)
@@ -108,6 +108,7 @@ def grad_core(
 
     nx = padded.shape[0] - 2
     ny = padded.shape[1] - 2
-    out = jnp.zeros((nx, ny, 1, 1, 2))
+    nz = 1  # Pseudo-3D: stencil operates on nz=1, output preserves it
+    out = jnp.zeros((nx, ny, nz, 1, 2))
     out = out.at[:, :, 0, 0, 0].set(gx)
     return out.at[:, :, 0, 0, 1].set(gy)

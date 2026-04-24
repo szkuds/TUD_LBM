@@ -26,7 +26,7 @@ from tud_lbm.lattice.lattice import build_lattice
 
 # ── Shared helpers ───────────────────────────────────────────────────
 
-NX, NY, NZ = 8, 8, 1
+NX, NY, NZ = 8, 8, 1  # Use nz=1 for 2D/3D equivalence verification
 
 
 @pytest.fixture
@@ -287,7 +287,7 @@ class TestComputeEquilibrium:
         assert feq.shape == (NX, NY, NZ, 9, 1)
         # Mass conservation: sum over q should equal rho
         np.testing.assert_allclose(
-            np.array(jnp.sum(feq, axis=2, keepdims=True)),
+            np.array(jnp.sum(feq, axis=3, keepdims=True)),
             np.array(rho),
             atol=1e-6,
         )
@@ -302,7 +302,7 @@ class TestComputeEquilibrium:
 
         # sum_q feq_q = rho everywhere
         np.testing.assert_allclose(
-            np.array(jnp.sum(feq, axis=2, keepdims=True)),
+            np.array(jnp.sum(feq, axis=3, keepdims=True)),
             np.array(rho),
             atol=1e-6,
         )
@@ -352,7 +352,7 @@ class TestComputeMacroscopic:
 
         rho, _ = compute_macroscopic(f, lattice)
 
-        expected_rho = jnp.sum(f, axis=2, keepdims=True)
+        expected_rho = jnp.sum(f, axis=3, keepdims=True)
         np.testing.assert_allclose(np.array(rho), np.array(expected_rho), atol=1e-6)
 
     def test_with_force_returns_three(self, lattice, rest_state):

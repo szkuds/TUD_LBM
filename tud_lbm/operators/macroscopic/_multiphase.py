@@ -94,10 +94,10 @@ def compute_macroscopic_multiphase(
     mu = mu_0 - mp.kappa * lap_rho  # (nx, ny, nz, 1, 1)
 
     # Chemical-potential gradient - always the standard (non-wetting) gradient
-    grad_mu = gradient_standard(mu)  # (nx, ny, 1, 2)
+    grad_mu = gradient_standard(mu)  # (nx, ny, nz, 1, 2)
 
     # F_int = -ρ ∇μ
-    force_int = -rho * grad_mu  # (nx, ny, 1, 2)
+    force_int = -rho * grad_mu  # (nx, ny, nz, 1, 2)
 
     # 4. Total force
     force_total = force_int

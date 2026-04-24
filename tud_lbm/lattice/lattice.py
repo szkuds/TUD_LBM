@@ -4,14 +4,20 @@
 pytree.  All array fields are stored as :mod:`jax.numpy` arrays so they
 can flow through ``jax.jit`` and ``jax.lax.scan`` without conversion.
 
+All lattice arrays are broadcast-compatible with the 5D population layout
+(nx, ny, nz, q, d):
+- Velocity vectors ``c`` have shape ``(1, 1, 1, q, d)``
+- Quadrature weights ``w`` have shape ``(1, 1, 1, q, 1)``
+
 Usage::
 
-    from setup.lattice import build_lattice
+    from tud_lbm.lattice import build_lattice
 
     lattice = build_lattice("D2Q9")
     assert lattice.d == 2
     assert lattice.q == 9
-    assert lattice.w.shape == (9,)
+    assert lattice.c.shape == (1, 1, 1, 9, 2)
+    assert lattice.w.shape == (1, 1, 1, 9, 1)
 """
 
 from __future__ import annotations
@@ -25,20 +31,26 @@ from tud_lbm.registry import lattice_operator
 class Lattice(NamedTuple):
     """Immutable lattice velocity model — valid JAX pytree.
 
+    All arrays are broadcast-compatible with the 5D population layout
+    (nx, ny, nz, q, d). Directional indices are 1D and encode no spatial
+    assumptions (direction -> q index mapping only).
+
     Attributes:
         name: Human-readable identifier, e.g. ``"D2Q9"``.
         d: Number of spatial dimensions.
         q: Number of discrete velocities.
-        c: Velocity vectors, shape ``(d, q)`` — ``jax.Array``.
-        w: Quadrature weights, shape ``(q,)`` — ``jax.Array``.
+        c: Velocity vectors, shape ``(1, 1, 1, q, d)`` — ``jax.Array``.
+        w: Quadrature weights, shape ``(1, 1, 1, q, 1)`` — ``jax.Array``.
         opp_indices: Opposite-direction index for each velocity,
             shape ``(q,)`` — ``jax.Array`` of ints.
         main_indices: Indices of the cardinal (non-diagonal) directions,
-            shape varies — ``jax.Array`` of ints.
-        right_indices: Indices with positive x-component — ``jax.Array``.
-        left_indices: Indices with negative x-component — ``jax.Array``.
-        top_indices: Indices with positive y-component — ``jax.Array``.
-        bottom_indices: Indices with negative y-component — ``jax.Array``.
+            shape ``(m,)`` — ``jax.Array`` of ints.
+        right_indices: Indices with positive x-component, shape ``(nr,)`` — ``jax.Array``.
+        left_indices: Indices with negative x-component, shape ``(nl,)`` — ``jax.Array``.
+        top_indices: Indices with positive y-component, shape ``(nt,)`` — ``jax.Array``.
+        bottom_indices: Indices with negative y-component, shape ``(nb,)`` — ``jax.Array``.
+        front_indices: Indices with positive z-component (3D only), shape ``(nf,)`` — ``jax.Array``.
+        back_indices: Indices with negative z-component (3D only), shape ``(nbk,)`` — ``jax.Array``.
     """
 
     name: str
@@ -52,6 +64,8 @@ class Lattice(NamedTuple):
     left_indices: jnp.ndarray
     top_indices: jnp.ndarray
     bottom_indices: jnp.ndarray
+    front_indices: jnp.ndarray | None = None
+    back_indices: jnp.ndarray | None = None
 
 
 # ── D2Q9 constants (computed once at import time) ────────────────────
@@ -63,7 +77,12 @@ _D2Q9_W = [4 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 36, 1 / 36, 1 / 36, 1 / 36]
 
 @lattice_operator(name="D2Q9", dim=2, q=9)
 def _build_d2q9() -> Lattice:
-    """Construct a D2Q9 :class:`Lattice`."""
+    """Construct a D2Q9 :class:`Lattice`.
+
+    Produces velocity vectors with shape (1, 1, 1, 9, 2) and weights
+    with shape (1, 1, 1, 9, 1) for broadcast compatibility with
+    the 5D population layout (nx, ny, nz, q, d).
+    """
     c_np = jnp.array(list(zip(_D2Q9_CX, _D2Q9_CY, strict=False)))[None, None, None, :, :]  # shape (1, 1, 1, 9, 2)
     w_np = jnp.array(_D2Q9_W)[None, None, None, :, None]  # shape (1, 1, 1, 9, 1)
 
@@ -88,6 +107,8 @@ def _build_d2q9() -> Lattice:
         left_indices=jnp.array(left),
         top_indices=jnp.array(top),
         bottom_indices=jnp.array(bottom),
+        front_indices=None,
+        back_indices=None,
     )
 
 
@@ -121,7 +142,12 @@ _D3Q19_W = [
 
 @lattice_operator(name="D3Q19", dim=3, q=19)
 def _build_d3q19() -> Lattice:
-    """Construct a D3Q19 :class:Lattice."""
+    """Construct a D3Q19 :class:`Lattice`.
+
+    Produces velocity vectors with shape (1, 1, 1, 19, 3) and weights
+    with shape (1, 1, 1, 19, 1) for broadcast compatibility with
+    the 5D population layout (nx, ny, nz, q, d).
+    """
     c_np = jnp.array(list(zip(_D3Q19_CX, _D3Q19_CY, _D3Q19_CZ, strict=False)))[
         None, None, None, :, :
     ]  # shape (1, 1, 1, 19, 3)

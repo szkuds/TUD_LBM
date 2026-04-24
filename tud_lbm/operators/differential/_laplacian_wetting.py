@@ -9,7 +9,7 @@ The base ``_laplacian`` module has zero knowledge of wetting.
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from tud_lbm.operators.differential._laplacian import lap_core
+from tud_lbm.operators.differential._laplacian import lap_core_2d
 from tud_lbm.operators.differential._pad_utils import _apply_stencil_padding
 from tud_lbm.operators.differential._pad_utils import to_2d
 from tud_lbm.operators.wetting import build_wetting_fn
@@ -61,7 +61,7 @@ def build_wetting_laplacian(
         """Wetting-corrected Laplacian of a scalar field.
 
         Args:
-            grid: Scalar field, shape ``(nx, ny, nz 1, 1)`` or ``(nx, ny)``.
+            grid: Scalar field, shape ``(nx, ny, nz, 1, 1)`` or ``(nx, ny)``.
             phi_l: Contact angle (left edge), scalar or 0-d array.
             phi_r: Contact angle (right edge), scalar or 0-d array.
             d_rho_l: Density offset (left edge), scalar or 0-d array.
@@ -78,6 +78,6 @@ def build_wetting_laplacian(
         gp = _apply_wetting(gp, phi_l, phi_r, d_rho_l, d_rho_r)
 
         # Pass FULL padded array to lap_core.
-        return lap_core(gp, w)
+        return lap_core_2d(gp, w)
 
     return _lap

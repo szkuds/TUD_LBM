@@ -46,14 +46,15 @@ class AnalysisPlotOperator(PlotOperator):
 
             rho = np.asarray(snapshot["rho"])
             u = np.asarray(snapshot["u"])
-            vel_mag = np.sqrt(u[..., 0, 0] ** 2 + u[..., 0, 1] ** 2)
-            min_rho = float(np.min(rho))
+            vel_mag = np.sqrt(u[:, :, 0, 0, 0] ** 2 + u[:, :, 0, 0, 1] ** 2)
+            min_rho = float(np.min(rho[:, :, 0, 0, 0]))
             safe_min = min_rho if min_rho > 0 else max(min_rho, 1e-30)
 
             iters.append(step)
             umax_vals.append(float(np.max(vel_mag)))
-            avg_rho_vals.append(float(np.mean(rho)))
-            ratio_vals.append(float(np.max(rho)) / safe_min if safe_min != 0 else np.inf)
+            avg_rho_vals.append(float(np.mean(rho[:, :, 0, 0, 0])))
+            rho_2d = rho[:, :, 0, 0, 0]
+            ratio_vals.append(float(np.max(rho_2d)) / safe_min if safe_min != 0 else np.inf)
 
         if not iters:
             ax.text(

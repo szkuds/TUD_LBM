@@ -18,13 +18,13 @@ from pathlib import Path
 from typing import Any
 import click
 import tomllib
-from config.array_expansion import ArrayParameterSet
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.prompt import Prompt
 from rich.table import Table
 from tud_lbm.config import SimulationConfig
+from tud_lbm.config.array_expansion import ArrayParameterSet
 
 console = Console()
 
@@ -240,12 +240,12 @@ def _apply_overrides(raw_config: dict[str, Any], overrides: tuple[str, ...]) -> 
 
 def _display_operators() -> None:
     """Display all registered operators grouped by kind in Rich tables."""
-    from operators import load_all
+    from operators._loader import auto_load_operators
     from registry import OPERATOR_REGISTRY
     from registry import get_operator_category
     from registry import get_operators
 
-    load_all()
+    auto_load_operators()
 
     categories = sorted(get_operator_category())
 
@@ -339,14 +339,14 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
 
 def _run_simulation(config: SimulationConfig) -> None:
     """Run the simulation with the given configuration."""
-    from config.jax_config import configure_jax
+    from tud_lbm.config.jax_config import configure_jax
 
     configure_jax()
 
-    from runner import init_state
-    from runner import run
-    from setup import build_setup
-    from util.io import SimulationIO
+    from tud_lbm.io import SimulationIO
+    from tud_lbm.pipeline.runner import init_state
+    from tud_lbm.pipeline.runner import run
+    from tud_lbm.pipeline.setup import build_setup
 
     simulation_setup = build_setup(config)
     state = init_state(simulation_setup)
@@ -376,7 +376,7 @@ def _run_simulation(config: SimulationConfig) -> None:
     console.print(f"  Snapshots saved to : {io.data_dir}")
 
     if config.plot_fields:
-        from util.plotting import FigureBuilder
+        from tud_lbm.io.plotting import FigureBuilder
 
         console.print("[dim]Generating plots...[/dim]")
         builder = FigureBuilder(config, io.run_dir)
@@ -416,8 +416,8 @@ def _run_parallel_sweep(
     continue_on_error: bool,
 ) -> list[Any]:
     """Run a parameter sweep in parallel and save a manifest."""
-    from runner.parallel_runner import run_parallel_simulations
-    from runner.parallel_runner import save_sweep_log
+    from tud_lbm.pipeline.parallel_runner import run_parallel_simulations
+    from tud_lbm.pipeline.parallel_runner import save_sweep_log
 
     console.print("[bold green]Starting parallel parameter sweep...[/bold green]")
     console.print(f"[dim]Simulations: {len(configs)}[/dim]")
@@ -459,9 +459,9 @@ def _load_config_from_file(
     overrides: tuple[str, ...],
 ) -> tuple[list[SimulationConfig], SimulationConfig | None, ArrayParameterSet | None, list[dict[str, Any]] | None]:
     """Load and expand a TOML config file; return (configs, config, sweep_metadata, parameters_list)."""
-    from config.adapter_toml import TomlAdapter
-    from config.array_expansion import enumerate_configs
-    from config.array_expansion import expand_config
+    from tud_lbm.config.adapter_toml import TomlAdapter
+    from tud_lbm.config.array_expansion import enumerate_configs
+    from tud_lbm.config.array_expansion import expand_config
 
     console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
     raw_config = TomlAdapter().load_raw(config_path)
@@ -478,7 +478,7 @@ def _load_config_from_file(
 def _load_config_interactive() -> tuple[list[SimulationConfig], SimulationConfig, None, None]:
     """Collect simulation parameters interactively; return the same 4-tuple as _load_config_from_file."""
     # TODO: the interactive mode can be extended further. Plotting is not yet added for example_for_test.
-    from config import SimulationConfig
+    from tud_lbm.config import SimulationConfig
 
     console.print("[cyan]Interactive mode - creating default simulation config[/cyan]")
 

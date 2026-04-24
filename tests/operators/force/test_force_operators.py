@@ -11,7 +11,7 @@ from tud_lbm.operators.force import ForceParams
 from tud_lbm.operators.force import ForceSetup
 from tud_lbm.pipeline.state.state import State
 
-NX, NY = 8, 8
+NX, NY, NZ = 8, 8, 1
 
 
 @pytest.fixture(scope="module")
@@ -22,7 +22,7 @@ def lattice():
 @pytest.fixture(scope="module")
 def sim_config():
     """Minimal all-periodic config for electric force tests."""
-    return SimulationConfig(grid_shape=(NX, NY))
+    return SimulationConfig(grid_shape=(NX, NY, NZ))
 
 
 @pytest.fixture(scope="module")
@@ -39,19 +39,19 @@ def electric_params(lattice, sim_config):
             "voltage_top": 1.0,
             "voltage_bottom": 0.0,
         },
-        (NX, NY),
+        (NX, NY, NZ),
         config=sim_config,
         lattice=lattice,
     )
 
 
 def make_state(lattice, rho_value=1.0, h=None):
-    f = jnp.ones((NX, NY, lattice.q, 1)) * (rho_value / lattice.q)
-    rho = jnp.sum(f, axis=2, keepdims=True)
+    f = jnp.ones((NX, NY, NZ, lattice.q, 1)) * (rho_value / lattice.q)
+    rho = jnp.sum(f, axis=3, keepdims=True)
     return State(
         f=f,
         rho=rho,
-        u=jnp.zeros((NX, NY, 1, lattice.d)),
+        u=jnp.zeros((NX, NY, NZ, 1, lattice.d)),
         t=jnp.array(0),
         h=h,
     )
@@ -68,7 +68,7 @@ def make_electric_setup(lattice, electric_params):
         ),
     )
     return SimpleNamespace(
-        grid_shape=(NX, NY),
+        grid_shape=(NX, NY, NZ),
         lattice=lattice,
         streaming_fn=stream,
         forces=ForceSetup(specs=specs, source_term=lambda *args, **kwargs: None),

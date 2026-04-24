@@ -57,7 +57,7 @@ def collide_bgk(
         f_col = (1 − 1/τ) f + (1/τ) feq [+ (1 − 1/(2τ)) source]
 
     Args:
-        f: Pre-collision populations, shape ``(nx, ny, q, 1)``.
+        f: Pre-collision populations, shape ``(nx, ny, nz, q, 1)``.
         feq: Equilibrium populations, same shape.
         tau: Relaxation time (> 0.5).
         source: Optional source term, same shape.

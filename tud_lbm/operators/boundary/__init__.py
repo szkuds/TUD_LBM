@@ -31,20 +31,24 @@ if TYPE_CHECKING:
 class BCMasks(NamedTuple):
     """Pre-computed boundary-condition masks — valid JAX pytree.
 
-    Each mask is a boolean ``jax.Array`` of shape ``(nx, ny, 1, 1)``
-    that is ``True`` on the corresponding edge row/column.
+    Each mask is a boolean ``jax.Array`` of shape ``(nx, ny, nz, 1, 1)``
+    that is ``True`` on the corresponding edge row/column/plane.
 
     Attributes:
         top: Mask for the top boundary (y = ny-1).
         bottom: Mask for the bottom boundary (y = 0).
         left: Mask for the left boundary (x = 0).
         right: Mask for the right boundary (x = nx-1).
+        front: Mask for the front boundary (z = nz-1).
+        back: Mask for the back boundary (z = 0).
     """
 
     top: jnp.ndarray
     bottom: jnp.ndarray
     left: jnp.ndarray
     right: jnp.ndarray
+    front: jnp.ndarray | None = None
+    back: jnp.ndarray | None = None
 
 
 def build_bc_masks(
@@ -52,23 +56,28 @@ def build_bc_masks(
 ) -> BCMasks:
     """Construct pre-computed boundary-condition masks.
 
-    Each mask is a boolean array of shape ``(nx, ny, 1, 1)`` that is
-    ``True`` on the corresponding edge row/column.
+    Each mask is a boolean array of shape ``(nx, ny, nz, 1, 1)`` that is
+    ``True`` on the corresponding edge row/column/plane.
 
     Args:
-        grid_shape: Spatial dimensions ``(nx, ny, ...)``.
-        bc_config: Boundary-condition mapping (unused for now; reserved
-            for future edge-type encoding).
+        grid_shape: Spatial dimensions ``(nx, ny, nz)``.
 
     Returns:
-        A :class:`BCMasks` NamedTuple.
+        A :class:`BCMasks` NamedTuple with 3D-shaped masks for all 6 faces.
     """
-    nx, ny = grid_shape[:2]
-    top = jnp.zeros((nx, ny, 1, 1), dtype=bool).at[:, -1].set(True)
-    bottom = jnp.zeros((nx, ny, 1, 1), dtype=bool).at[:, 0].set(True)
-    left = jnp.zeros((nx, ny, 1, 1), dtype=bool).at[0, :].set(True)
-    right = jnp.zeros((nx, ny, 1, 1), dtype=bool).at[-1, :].set(True)
-    return BCMasks(top=top, bottom=bottom, left=left, right=right)
+    nx, ny, nz = grid_shape[:3] if len(grid_shape) >= 3 else (*grid_shape[:2], 1)  # noqa: PLR2004
+
+    # Create 3D masks for x-faces (left/right)
+    top = jnp.zeros((nx, ny, nz, 1, 1), dtype=bool).at[:, -1, :].set(True)
+    bottom = jnp.zeros((nx, ny, nz, 1, 1), dtype=bool).at[:, 0, :].set(True)
+    left = jnp.zeros((nx, ny, nz, 1, 1), dtype=bool).at[0, :, :].set(True)
+    right = jnp.zeros((nx, ny, nz, 1, 1), dtype=bool).at[-1, :, :].set(True)
+
+    # Create 3D masks for z-faces (front/back) — optional for 3D
+    front = jnp.zeros((nx, ny, nz, 1, 1), dtype=bool).at[:, :, -1].set(True) if nz > 1 else None
+    back = jnp.zeros((nx, ny, nz, 1, 1), dtype=bool).at[:, :, 0].set(True) if nz > 1 else None
+
+    return BCMasks(top=top, bottom=bottom, left=left, right=right, front=front, back=back)
 
 
 def _get_bc_dispatch() -> dict[str, Callable]:

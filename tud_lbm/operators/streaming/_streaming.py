@@ -94,7 +94,7 @@ def stream(
     populations from persisting before the BC operator runs.
 
     Args:
-        f: Population distributions, shape ``(nx, ny, q, 1)``.
+        f: Population distributions, shape ``(nx, ny, nz, q, 1)``.
         lattice: :class:`~setup.lattice.Lattice` with velocity vectors ``c``.
         bc_config: Boundary-condition config dict, e.g.
             ``{"top": "bounce-back", "bottom": "bounce-back", "left": "periodic", "right": "periodic"}``.
@@ -103,11 +103,13 @@ def stream(
     Returns:
         Post-streaming populations, same shape.
     """
-    axes: tuple[int, ...] = tuple(range(lattice.d))  # grid axes (0, 1)
+    axes: tuple[int, ...] = tuple(range(lattice.d))  # grid axes: 0=x, 1=y, 2=z
 
     # Pre-extract velocity vectors as plain Python ints so they are
     # compile-time constants under JAX tracing.
-    c_np = np.array(lattice.c)  # (d, q) as numpy
+    # lattice.c has shape (1, 1, 1, q, d); extracting [i, :] and flattening
+    # gives us the d-component velocity vector for direction i.
+    c_np = np.array(lattice.c)  # (1, 1, 1, q, d)
 
     # Pre-compute per-edge wall flags (resolved once at trace time).
     wall_left = _has_wall_bc(bc_config, "left")

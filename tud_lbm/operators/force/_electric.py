@@ -27,13 +27,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 import jax.numpy as jnp
-from tud_lbm import Lattice
-from tud_lbm import SimulationConfig
-from tud_lbm import State
-from tud_lbm import force_model
+from tud_lbm.registry import force_model
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from tud_lbm import Lattice
+    from tud_lbm.config import SimulationConfig
+    from tud_lbm.pipeline.state import State
 
 # ══════════════════════════════════════════════════════════════════════
 # Data types

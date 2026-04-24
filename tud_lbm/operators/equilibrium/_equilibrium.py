@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from tud_lbm.lattice.lattice import Lattice
 
 
-@equilibrium_operator(name="standard_equilibrium")
+@equilibrium_operator(name="_wb")
 def compute_equilibrium(
     rho: jnp.ndarray,
     u: jnp.ndarray,

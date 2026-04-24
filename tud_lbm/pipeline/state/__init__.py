@@ -11,13 +11,12 @@ Public API::
     from state import State, WettingState, build_optional_fields, build_extra_state
 """
 
-from typing import Unpack
+from typing import Any
 import jax.numpy as jnp
 from tud_lbm.pipeline.setup import SimulationSetup
 from tud_lbm.pipeline.state._extra_state import _build_extra_state
 from tud_lbm.pipeline.state._extra_state import _update_extra_state
 from tud_lbm.pipeline.state._optional_fields import _build_optional_fields
-from tud_lbm.pipeline.state.extra_state import ExtraStateContext
 from tud_lbm.pipeline.state.state import State
 from tud_lbm.pipeline.state.state import WettingState
 
@@ -62,7 +61,7 @@ def build_optional_fields(
     return _build_optional_fields(setup, nx, ny, nz, d)
 
 
-def build_extra_state(setup: SimulationSetup) -> ExtraStateContext:
+def build_extra_state(setup: SimulationSetup) -> dict[str, Any]:
     """Collect extra State fields initialised by active extra-state plugins.
 
     Args:
@@ -78,8 +77,6 @@ def build_extra_state(setup: SimulationSetup) -> ExtraStateContext:
     return _build_extra_state(setup)
 
 
-def update_extra_state(
-    setup: SimulationSetup, prev_state: State, new_state: State, **context: Unpack[ExtraStateContext]
-) -> State:
+def update_extra_state(setup: SimulationSetup, prev_state: State, new_state: State, **context: dict[str, Any]) -> State:
     """Apply plugin-driven extra-state updates after one step."""
     return _update_extra_state(setup, prev_state, new_state, **context)

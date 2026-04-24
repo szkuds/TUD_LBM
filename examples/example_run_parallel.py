@@ -11,15 +11,12 @@ Configuration is loaded from config_parallel.toml.
 
 import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-
-from config.adapter_toml import TomlAdapter
-from config.array_expansion import enumerate_configs
-from config.array_expansion import expand_config
-from config.jax_config import configure_jax
-from runner.parallel_runner import run_parallel_simulations
-from runner.parallel_runner import save_sweep_log
+from tud_lbm.config.adapter_toml import TomlAdapter
+from tud_lbm.config.array_expansion import enumerate_configs
+from tud_lbm.config.array_expansion import expand_config
+from tud_lbm.config.jax_config import configure_jax
+from tud_lbm.pipeline.parallel_runner import run_parallel_simulations
+from tud_lbm.pipeline.parallel_runner import save_sweep_log
 
 # Configure JAX (64-bit precision, JIT enabled).
 configure_jax()

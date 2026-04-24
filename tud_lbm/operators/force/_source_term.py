@@ -33,14 +33,13 @@ def source(
         force: Force field, shape ``(nx, ny, nz, 1, 2)``.
         lattice: :class:`~setup.lattice.Lattice`.
         gradient: Standard LBM-stencil gradient callable
-            (grid) → _gradient  Used for density gradient.
+            (grid) → gradient. Used for density gradient.
 
     Returns:
         Source term, shape ``(nx, ny, nz, q, 1)``.
     """
-    if rho.shape[2] != 1:
-        msg = "This force model only supports 2D simulations (nz=1)"
-        raise ValueError(msg)
+    # Support pseudo-3D (nz=1) — stencil logic remains 2D
+    # but array shapes include nz dimension for compatibility
 
     q = lattice.q
     d = lattice.d

@@ -35,18 +35,18 @@ def compute_laplacian(
     or close over *pad_mode* in a wrapper.
 
     Args:
-        grid: Scalar field, shape ``(nx, ny, 1, 1)`` or ``(nx, ny)``.
+        grid: Scalar field, shape ``(nx, ny, nz, 1, 1)`` or ``(nx, ny)``.
         w: Lattice weights, shape ``(q,)``.
         pad_mode: Four padding modes ``(right_y, left_y, bottom_x, top_x)``.
 
     Returns:
-        Laplacian field, shape ``(nx, ny, 1, 1)``.
+        Laplacian field, shape ``(nx, ny, nz, 1, 1)``.
     """
     gp = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
-    return lap_core(gp, w)
+    return lap_core_2d(gp, w)
 
 
-def lap_core(
+def lap_core_2d(
     padded: jnp.ndarray,
     w: jnp.ndarray,
 ) -> jnp.ndarray:
@@ -59,7 +59,7 @@ def lap_core(
         w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
 
     Returns:
-        Laplacian field, shape ``(nx, ny, nz, 1, 1)``.
+        Laplacian field, shape ``(nx, ny, 1, 1, 1)``.
     """
     i0 = padded[1:-1, 1:-1]  # centre values
 
@@ -81,5 +81,6 @@ def lap_core(
 
     nx = padded.shape[0] - 2
     ny = padded.shape[1] - 2
-    out = jnp.zeros((nx, ny, 1, 1, 1))
+    nz = 1  # Pseudo-3D: stencil operates on nz=1, output preserves it
+    out = jnp.zeros((nx, ny, nz, 1, 1))
     return out.at[:, :, 0, 0, 0].set(lap)

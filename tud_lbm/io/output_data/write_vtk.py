@@ -21,6 +21,12 @@ class Vtk(OutputWriter):
     def save_data_step(self, iteration: int, data: dict[str, np.ndarray]) -> None:
         """Write output data in VTK format.
 
+        Handles both 2D and 3D scalar/vector fields from the simulation state.
+
+        For 5D state arrays (nx, ny, nz, q, 1):
+        - Scalar fields: Extracted as (nx, ny, nz) via field[..., 0, 0]
+        - Vector fields: Extracted as (nx, ny, nz, d) tuples, padding to 3D
+
         Args:
             iteration: The iteration number.
             data: Dictionary mapping field names to numpy arrays.
@@ -38,11 +44,15 @@ class Vtk(OutputWriter):
         def vtk_ready(a: np.ndarray) -> np.ndarray:
             """Ensure data is in the right shape and memory layout for VTK.
 
+            Extracts spatial dimensions from 5D arrays and ensures 3D output.
+            For (nx, ny, nz, 1, 1) or (nx, ny, nz, 1, d): returns (nx, ny, nz).
+            For 2D (nx, ny, 1, 1): returns (nx, ny, 1) via atleast_3d.
+
             Args:
-                a: Input array.
+                a: Input array (typically 3D or 5D from state fields).
 
             Returns:
-                Contiguous 3D array.
+                Contiguous 3D array suitable for VTK.
             """
             return np.ascontiguousarray(
                 np.atleast_3d(a),

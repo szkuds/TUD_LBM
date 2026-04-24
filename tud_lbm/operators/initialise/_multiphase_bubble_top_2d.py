@@ -32,26 +32,19 @@ def init_multiphase_bubble_top(
     Args:
         nx: Grid size in x.
         ny: Grid size in y.
-        nz: Grid size in z (must be 1).
+        nz: Grid size in z (supports nz=1 for pseudo-3D).
         lattice: :class:`~setup.lattice.Lattice`.
         rho_l: Liquid density.
         rho_v: Vapour density.
         interface_width: Diffuse-interface thickness.
         **kwargs: Additional arguments (ignored).
 
-    Args:
-        nx: Grid size in x.
-        ny: Grid size in y.
-        lattice: :class:`~setup.lattice.Lattice`.
-        rho_l: Liquid density.
-        rho_v: Vapour density.
-        interface_width: Diffuse-interface thickness.
-
     Returns:
-        Initial distribution ``f``, shape ``(nx, ny, q, 1)``.
+        Initial distribution ``f``, shape ``(nx, ny, nz, q, 1)``.
     """
+    # Support pseudo-3D (nz=1) — bubble logic remains 2D
     if nz != 1:
-        msg = "Multiphase bubble initialisation only supports 2D (nz=1)."
+        msg = "Multiphase bubble initialisation supports nz=1 (pseudo-3D) for now."
         raise ValueError(msg)
 
     x, y = jnp.meshgrid(jnp.arange(nx), jnp.arange(ny), indexing="ij")

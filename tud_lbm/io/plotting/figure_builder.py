@@ -44,6 +44,18 @@ class FigureBuilder:
 
         self._data_dir = self.run_dir / "data"
         self._plot_dir = self.run_dir / "plots"
+        self._operators: list = []
+
+        # Guard: plotting only supports 2D simulations (nz=1)
+        nz = getattr(config, "nz", config.grid_shape[2] if len(config.grid_shape) > 2 else 1)  # noqa: PLR2004
+        if nz != 1:
+            warnings.warn(
+                f"Plotting is not supported for 3D simulations (nz={nz}). "
+                "Save your output in VTK format and use ParaView to visualise results.",
+                stacklevel=2,
+            )
+            return  # leave _operators empty, all build() calls become no-ops
+
         self._plot_dir.mkdir(parents=True, exist_ok=True)
 
         requested = self.config.plot_fields
@@ -51,7 +63,6 @@ class FigureBuilder:
             requested = list(get_operators("plotting").keys())
 
         all_ops = get_operators("plotting")
-        self._operators: list = []
         for name in requested:
             entry = all_ops.get(name)
             if entry is None:

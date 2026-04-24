@@ -10,7 +10,7 @@ knowledge of wetting.
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from tud_lbm.operators.differential._gradient import grad_core
+from tud_lbm.operators.differential._gradient import grad_core_2d
 from tud_lbm.operators.differential._pad_utils import _apply_stencil_padding
 from tud_lbm.operators.differential._pad_utils import to_2d
 from tud_lbm.operators.wetting import build_wetting_fn
@@ -64,6 +64,6 @@ def build_wetting_gradient(
         gp = _apply_wetting(gp, phi_l, phi_r, d_rho_l, d_rho_r)
 
         # Pass FULL padded array to grad_core.
-        return grad_core(gp, w, c)
+        return grad_core_2d(gp, w, c)
 
     return _grad

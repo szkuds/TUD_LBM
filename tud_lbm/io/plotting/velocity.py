@@ -41,8 +41,8 @@ class VelocityPlotOperator(PlotOperator):
             timestep: Current simulation timestep for display in title.
         """
         u = np.asarray(data["u"])
-        ux = u[..., 0, 0].T
-        uy = u[..., 0, 1].T
+        ux = u[:, :, 0, 0, 0].T
+        uy = u[:, :, 0, 0, 1].T
         mag = np.sqrt(ux**2 + uy**2)
 
         im = ax.imshow(mag, origin="lower", aspect="equal", cmap="plasma")

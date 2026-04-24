@@ -39,7 +39,7 @@ class ForceParams(NamedTuple):
     Attributes:
         name: Registry key, e.g. ``"gravity_force"``.
         compute_fn: Pure function ``(state, precomputed, lattice) → jnp.ndarray``
-            of shape ``(nx, ny, 1, d)``.
+            of shape ``(nx, ny, nz, 1, d)``.
             Returns the force contribution for this physics.
         precomputed: Optional pre-computed data (e.g. gravity template array).
     """
@@ -95,9 +95,10 @@ def build_forces(
 
     - ``build(params, grid_shape, config, lattice)`` → precomputed data (or None)
     - ``compute(state, precomputed, **kwargs)`` → force array
+
     Args:
         config: A validated configuration object with ``*_force`` fields.
-        grid_shape: Spatial dimensions, e.g. ``(64, 64)``.
+        grid_shape: Spatial dimensions, e.g. ``(64, 64, 1)`` or ``(64, 64, 32)`` for (nx, ny, nz).
         lattice: The simulation lattice.
 
     Returns:

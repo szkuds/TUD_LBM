@@ -51,9 +51,9 @@ def init_from_file(
     rho = jnp.array(data["rho"])
     u = jnp.array(data["u"])
     if rho.shape != (nx, ny, nz, 1, 1):
-        msg = f"Expected rho shape ({nx}, {ny}, 1, 1), got {rho.shape}"
+        msg = f"Expected rho shape ({nx}, {ny}, {nz}, 1, 1), got {rho.shape}"
         raise ValueError(msg)
     if u.shape != (nx, ny, nz, 1, 2):
-        msg = f"Expected u shape ({nx}, {ny}, 1, 2), got {u.shape}"
+        msg = f"Expected u shape ({nx}, {ny}, {nz}, 1, 2), got {u.shape}"
         raise ValueError(msg)
     return equilibrium_fn(rho, u, lattice)

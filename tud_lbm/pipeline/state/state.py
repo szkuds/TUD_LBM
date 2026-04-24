@@ -14,9 +14,9 @@ Usage::
     from state.state import State
 
     state = State(
-        f=jnp.zeros((64, 64, 9, 1)),
-        rho=jnp.ones((64, 64, 1, 1)),
-        u=jnp.zeros((64, 64, 1, 2)),
+        f=jnp.zeros((64, 64, 1, 9, 1)),
+        rho=jnp.ones((64, 64, 1, 1, 1)),
+        u=jnp.zeros((64, 64, 1, 1, 2)),
         t=jnp.array(0),
     )
 """
@@ -66,13 +66,13 @@ class State(NamedTuple):
     """Complete dynamic simulation state — the *carry* in ``lax.scan``.
 
     Attributes:
-        f: Population distributions, shape ``(nx, ny, q, 1)``.
-        rho: Density field, shape ``(nx, ny, 1, 1)``.
-        u: Velocity field, shape ``(nx, ny, 1, d)``.
+        f: Population distributions, shape ``(nx, ny, nz, q, 1)``.
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
+        u: Velocity field, shape ``(nx, ny, nz, 1, d)``.
         t: Current timestep — scalar ``jax.Array``.
-        force: Interaction / body force field (optional).
-        force_ext: External force field (optional).
-        h: Electric potential field (optional).
+        force: Interaction / body force field (optional), shape ``(nx, ny, nz, 1, d)``.
+        force_ext: External force field (optional), shape ``(nx, ny, nz, 1, d)``.
+        h: Electric potential field (optional), shape ``(nx, ny, nz, q, 1)``.
         wetting: Dynamic wetting state (``None`` for non-wetting runs).
     """
 

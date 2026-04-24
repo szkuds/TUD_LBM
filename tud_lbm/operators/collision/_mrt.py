@@ -49,7 +49,7 @@ def collide_mrt(
     """MRT collision using the D2Q9 moment transformation matrix.
 
     Args:
-        f: Pre-collision populations, shape ``(nx, ny, q, 1)``.
+        f: Pre-collision populations, shape ``(nx, ny, nz, q, 1)``.
         feq: Equilibrium populations, same shape.
         tau: Relaxation time (used to build *k_diag* default if not supplied).
         source: Optional source term, same shape.

@@ -9,7 +9,7 @@ Example:
     from operators.initialise import build_initialise_fn
 
     init = build_initialise_fn("standard")
-    f = init(64, 64, lattice, density=1.0)
+    f = init(64, 64, 1, lattice, density=1.0)  # (nx, ny, nz)
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
 
     Returns:
         A callable satisfying the InitialiserOperator protocol.
-        Can be called as: operator(nx, ny, lattice, **kwargs) -> f
+        Can be called as: operator(nx, ny, nz, lattice, **kwargs) -> f
 
     Raises:
         ValueError: If scheme is not registered.
@@ -41,7 +41,7 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
     Examples:
         >>> from operators.initialise import build_initialise_fn
         >>> init = build_initialise_fn("standard")
-        >>> f = init(64, 64, lattice, density=1.0)
+        >>> f = init(64, 64, 1, lattice, density=1.0)
     """
     return build_operator("initialise", scheme)
 

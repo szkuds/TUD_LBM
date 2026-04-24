@@ -24,8 +24,8 @@ class _BaseForceOperator(PlotOperator):
         timestep: int,
     ) -> None:
         force = np.asarray(data[self.field_name])
-        fx = force[..., 0, 0].T
-        fy = force[..., 0, 1].T
+        fx = force[:, :, 0, 0, 0].T
+        fy = force[:, :, 0, 1, 0].T
         mag = np.sqrt(fx**2 + fy**2)
         im = ax.imshow(mag, origin="lower", aspect="equal", cmap="cividis")
         ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="|F|")

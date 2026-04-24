@@ -247,8 +247,9 @@ class TestSimulationConfigValidation:
     def test_invalid_grid_shape_raises(self):
         from tud_lbm.config.simulation_config import SimulationConfig
 
-        with pytest.raises(ValueError, match="at least 2 dimensions"):
-            SimulationConfig(grid_shape=(8,))
+        # 1D grids should be promoted to 3D (nx, 1, 1), so this should NOT raise
+        config = SimulationConfig(grid_shape=(8,))
+        assert config.grid_shape == (8, 1, 1)
 
     def test_negative_grid_dimension_raises(self):
         from tud_lbm.config.simulation_config import SimulationConfig
@@ -712,11 +713,11 @@ class TestLatticeOn8x8Grid:
         nx, ny, nz = 8, 8, 1
         f = jnp.zeros((nx, ny, nz, lat.q, 1))
         # Put a pulse in direction 1 (cx=1, cy=0)
-        f = f.at[3, 3, 1, 1, 0].set(1.0)
+        f = f.at[3, 3, 0, 1, 0].set(1.0)
         # Roll direction 1
         i = 1
-        shift = (int(lat.c[0, 0, 0, 0, i]), int(lat.c[0, 0, 0, 1, i]))
+        shift = (int(lat.c[0, 0, 0, i, 0]), int(lat.c[0, 0, 0, i, 1]))
         f_rolled = jnp.roll(f[:, :, :, i, :], shift=shift, axis=(0, 1))
         # Should have moved to (4, 3)
-        assert float(f_rolled[4, 3, 1, 0]) == 1.0
-        assert float(f_rolled[3, 3, 1, 0]) == 0.0
+        assert float(f_rolled[4, 3, 0, 0]) == 1.0
+        assert float(f_rolled[3, 3, 0, 0]) == 0.0

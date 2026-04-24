@@ -36,22 +36,18 @@ def compute_equilibrium(
     """Compute the well-balanced equilibrium distribution.
 
     Args:
-        rho: Density field, shape ``(nx, ny, 1, 1)``.
-        u: Velocity field, shape ``(nx, ny, 1, 2)``.
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
+        u: Velocity field, shape ``(nx, ny, nz, 1, 2)``.
         lattice: :class:`~setup.lattice.Lattice` with weights ``w``
             and velocity vectors ``c``.
 
     Returns:
-        Equilibrium populations ``feq``, shape ``(nx, ny, q, 1)``.
+        Equilibrium populations ``feq``, shape ``(nx, ny, nz, q, 1)``.
     """
+    cu = jnp.sum(lattice.c * u, axis=-1, keepdims=True)  # (nx, ny, nz, q, 1)
     u2 = jnp.sum(u**2, axis=-1, keepdims=True)  # (nx, ny, nz, 1, 1)
 
-    cu = jnp.sum(u * lattice.c, axis=-1, keepdims=True)  # (nx, ny, nz, 1, d)
+    feq_rest = lattice.w[..., 1:, :] * rho * (3.0 * cu[..., 1:, :] + 4.5 * cu[..., 1:, :] ** 2 - 1.5 * u2)
+    f0 = rho - jnp.sum(feq_rest, axis=-2, keepdims=True)  # (nx, ny, nz, 1, 1)
 
-    feq = lattice.w * rho * (3.0 * cu + 4.5 * cu**2 - 1.5 * u2)  # (nx, ny, nz, q, 1)
-
-    # Rest direction via mass conservation
-    _rho = jnp.sum(feq[:, :, :, :, :], axis=-2, keepdims=True)
-    f_sum = jnp.sum(feq[:, :, :, 1:, :], axis=-2, keepdims=True)
-
-    return feq.at[:, :, :, :, :].set(_rho - f_sum)
+    return jnp.concatenate([f0, feq_rest], axis=-2)  # (nx, ny, nz, q, 1)

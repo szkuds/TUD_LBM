@@ -32,15 +32,15 @@ def periodic_pad():
 
 @pytest.fixture(scope="module")
 def const_field():
-    """Uniform field of 1.0, shape (NX, NY, 1, 1)."""
-    return jnp.ones((NX, NY, 1, 1))
+    """Uniform field of 1.0, shape (NX, NY, NZ, 1, 1)."""
+    return jnp.ones((NX, NY, NZ, 1, 1))
 
 
 @pytest.fixture(scope="module")
 def linear_x_field():
     """f(i,j) = i, so df/dx = 1, df/dy = 0 (periodic wrap)."""
     xs = jnp.arange(NX, dtype=jnp.float32)
-    return jnp.broadcast_to(xs[:, None, None, None], (NX, NY, 1, 1))
+    return jnp.broadcast_to(xs[:, None, None, None, None], (NX, NY, NZ, 1, 1))
 
 
 # =====================================================================
@@ -129,7 +129,7 @@ class TestComputeLaplacian:
         from tud_lbm.operators.differential._laplacian import compute_laplacian
 
         xs = jnp.arange(NX, dtype=jnp.float32)
-        field = (xs**2)[:, None, None, None] * jnp.ones((NX, NY, 1, 1))
+        field = (xs**2)[:, None, None, None, None] * jnp.ones((NX, NY, NZ, 1, 1))
         out = compute_laplacian(field, lattice.w, periodic_pad)
         # Interior (avoid periodic wrap artefacts at boundaries)
         lap_interior = np.array(out[2:-2, 2:-2, 0, 0])
@@ -231,7 +231,7 @@ class TestBuildWettingGradient:
         ys = jnp.linspace(0, 1, NY)
         taper_y = 0.5 * (1.0 + jnp.tanh((0.5 - ys) / 0.15))
         rho_2d = rho_v + (droplet_x[:, None] - rho_v) * taper_y[None, :]
-        rho = rho_2d[:, :, None, None]
+        rho = rho_2d[:, :, None, None, None]
 
         plain = compute_gradient(rho, lattice.w, lattice.c, wetting_pad)
         wetting_fn = build_wetting_gradient(

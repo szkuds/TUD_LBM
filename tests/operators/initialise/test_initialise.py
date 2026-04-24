@@ -14,7 +14,7 @@ from tud_lbm.lattice.lattice import build_lattice
 from tud_lbm.operators.initialise import build_initialise_fn
 from tud_lbm.registry import get_operators
 
-NX, NY = 16, 16
+NX, NY, NZ = 16, 16, 1  # nz=1 for 2D/3D equivalence verification
 
 
 @pytest.fixture
@@ -53,27 +53,27 @@ class TestInitStandard:
     """``init_standard`` produces correct shapes and densities."""
 
     def test_shape(self, lattice):
-        f = build_initialise_fn("standard")(NX, NY, lattice)
-        assert f.shape == (NX, NY, 9, 1)
+        f = build_initialise_fn("standard")(NX, NY, NZ, lattice)
+        assert f.shape == (NX, NY, NZ, 9, 1)
 
     def test_density_default(self, lattice):
-        f = build_initialise_fn("standard")(NX, NY, lattice, density=1.0)
-        rho = jnp.sum(f, axis=2, keepdims=True)
+        f = build_initialise_fn("standard")(NX, NY, NZ, lattice, density=1.0)
+        rho = jnp.sum(f, axis=3, keepdims=True)
         np.testing.assert_allclose(np.array(rho), 1.0, atol=1e-12)
 
     def test_density_custom(self, lattice):
-        f = build_initialise_fn("standard")(NX, NY, lattice, density=2.5)
-        rho = jnp.sum(f, axis=2, keepdims=True)
+        f = build_initialise_fn("standard")(NX, NY, NZ, lattice, density=2.5)
+        rho = jnp.sum(f, axis=3, keepdims=True)
         np.testing.assert_allclose(np.array(rho), 2.5, atol=1e-12)
 
     def test_jittable(self, lattice):
         from functools import partial
 
         fn = build_initialise_fn("standard")
-        # lattice contains string (name) — close over it; nx, ny are static
-        jitted = jax.jit(partial(fn, lattice=lattice), static_argnums=(0, 1))
-        f = jitted(NX, NY)
-        assert f.shape == (NX, NY, 9, 1)
+        # lattice contains string (name) — close over it; nx, ny, nz are static
+        jitted = jax.jit(partial(fn, lattice=lattice), static_argnums=(0, 1, 2))
+        f = jitted(NX, NY, NZ)
+        assert f.shape == (NX, NY, NZ, 9, 1)
 
 
 # =====================================================================
@@ -87,7 +87,7 @@ _MULTIPHASE_TYPES = [
 
 
 class TestMultiphaseInitShape:
-    """All multiphase initialisers produce (nx, ny, q, 1) arrays."""
+    """All multiphase initialisers produce (nx, ny, nz, q, 1) arrays."""
 
     @pytest.mark.parametrize("init_type", _MULTIPHASE_TYPES)
     def test_shape(self, lattice, init_type):
@@ -95,6 +95,7 @@ class TestMultiphaseInitShape:
         f = fn(
             NX,
             NY,
+            NZ,
             lattice,
             rho_l=1.0,
             rho_v=0.33,
@@ -102,7 +103,7 @@ class TestMultiphaseInitShape:
             centres=[[0.5, 0.5]],
             radii=[0.2],
         )
-        assert f.shape == (NX, NY, 9, 1)
+        assert f.shape == (NX, NY, NZ, 9, 1)
 
     @pytest.mark.parametrize("init_type", _MULTIPHASE_TYPES)
     def test_density_range(self, lattice, init_type):
@@ -111,6 +112,7 @@ class TestMultiphaseInitShape:
         f = fn(
             NX,
             NY,
+            NZ,
             lattice,
             rho_l=1.0,
             rho_v=0.33,
@@ -118,7 +120,7 @@ class TestMultiphaseInitShape:
             centres=[[0.5, 0.5]],
             radii=[0.2],
         )
-        rho = jnp.sum(f, axis=2, keepdims=True)
+        rho = jnp.sum(f, axis=3, keepdims=True)
         assert float(jnp.min(rho)) >= 0.33 - 0.01
         assert float(jnp.max(rho)) <= 1.0 + 0.01
 
@@ -137,8 +139,8 @@ class TestWettingInitShape:
     @pytest.mark.parametrize("init_type", _WETTING_TYPES)
     def test_shape(self, lattice, init_type):
         fn = build_initialise_fn(init_type)
-        f = fn(NX, NY, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
-        assert f.shape == (NX, NY, 9, 1)
+        f = fn(NX, NY, NZ, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
+        assert f.shape == (NX, NY, NZ, 9, 1)
 
 
 # =====================================================================
@@ -154,6 +156,7 @@ class TestMassConservation:
         f = fn(
             32,
             32,
+            NZ,
             lattice,
             rho_l=1.0,
             rho_v=0.33,
@@ -161,17 +164,18 @@ class TestMassConservation:
             centres=[[0.5, 0.5]],
             radii=[0.2],
         )
-        rho = jnp.sum(f, axis=2, keepdims=True)
+        rho = jnp.sum(f, axis=3, keepdims=True)
         total_mass = float(jnp.sum(rho))
         # Mass must be positive and between rho_v * N and rho_l * N
-        assert total_mass > 0.33 * 32 * 32
-        assert total_mass < 1.0 * 32 * 32
+        assert total_mass > 0.33 * 32 * 32 * NZ
+        assert total_mass < 1.0 * 32 * 32 * NZ
 
     def test_droplet_mass_positive(self, lattice):
         fn = build_initialise_fn("multiphase_bubbles")
         f = fn(
             32,
             32,
+            NZ,
             lattice,
             rho_l=1.0,
             rho_v=0.33,
@@ -180,10 +184,10 @@ class TestMassConservation:
             radii=[0.2],
             dispersed="liquid",
         )
-        rho = jnp.sum(f, axis=2, keepdims=True)
+        rho = jnp.sum(f, axis=3, keepdims=True)
         total_mass = float(jnp.sum(rho))
-        assert total_mass > 0.33 * 32 * 32
-        assert total_mass < 1.0 * 32 * 32
+        assert total_mass > 0.33 * 32 * 32 * NZ
+        assert total_mass < 1.0 * 32 * 32 * NZ
 
 
 # =====================================================================
@@ -199,6 +203,7 @@ class TestMultiphaseBubbles:
         f = fn(
             32,
             32,
+            NZ,
             lattice,
             rho_l=1.0,
             rho_v=0.33,
@@ -206,7 +211,7 @@ class TestMultiphaseBubbles:
             centres=[[0.25, 0.5], [0.75, 0.5]],
             radii=[0.12, 0.12],
         )
-        assert f.shape == (32, 32, 9, 1)
+        assert f.shape == (32, 32, NZ, 9, 1)
 
     def test_invalid_dispersed_raises(self, lattice):
         fn = build_initialise_fn("multiphase_bubbles")
@@ -214,6 +219,7 @@ class TestMultiphaseBubbles:
             fn(
                 32,
                 32,
+                NZ,
                 lattice,
                 rho_l=1.0,
                 rho_v=0.33,
@@ -229,6 +235,7 @@ class TestMultiphaseBubbles:
             fn(
                 32,
                 32,
+                NZ,
                 lattice,
                 rho_l=1.0,
                 rho_v=0.33,
@@ -243,6 +250,7 @@ class TestMultiphaseBubbles:
             fn(
                 32,
                 32,
+                NZ,
                 lattice,
                 rho_l=1.0,
                 rho_v=0.33,
@@ -256,6 +264,7 @@ class TestMultiphaseBubbles:
         f = fn(
             32,
             32,
+            NZ,
             lattice,
             rho_l=1.0,
             rho_v=0.33,
