@@ -119,14 +119,14 @@ class TestDictAdapter:
         adapter = DictAdapter()
         cfg = adapter.load(d)
         assert isinstance(cfg, SimulationConfig)
-        assert cfg.grid_shape == (8, 8)
+        assert cfg.grid_shape == (8, 8, 1)
         assert cfg.tau == 0.8
 
     def test_from_dict_convenience(self):
         from tud_lbm.config import from_dict
 
         cfg = from_dict({"grid_shape": [16, 16], "tau": 0.7, "nt": 10})
-        assert cfg.grid_shape == (16, 16)
+        assert cfg.grid_shape == (16, 16, 1)
 
     def test_validation_error(self):
         from tud_lbm.config import from_dict

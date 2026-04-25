@@ -107,13 +107,13 @@ def _equilibrium_h(
     ``hi_eq_i = w_i * U``
 
     Args:
-        potential: Macroscopic potential, shape ``(nx, ny, 1, 1)``.
-        w: Lattice weights, shape ``(q,)``.
+        potential: Macroscopic potential, shape ``(nx, ny, nz, 1, 1)``.
+        w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
 
     Returns:
-        Equilibrium ``hi``, shape ``(nx, ny, q, 1)``.
+        Equilibrium ``hi``, shape ``(nx, ny, nz, q, 1)``.
     """
-    return w[None, None, :, None] * potential
+    return w * potential
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -174,41 +174,56 @@ class ElectricForceModule:
             **kwargs: Additional arguments (ignored).
 
         Returns:
-            Electric force field, shape ``(nx, ny, 1, 2)``.
+            Electric force field, shape ``(nx, ny, nz, 1, d)``.
         """
         grad = precomputed.gradient_standard
 
-        rho_2d = jnp.sum(state.f, axis=2)[:, :, 0]
+        # Sum over q-axis (axis 3) to get density; extract z-slice to 2D
+        rho_3d = jnp.sum(state.f, axis=3, keepdims=True)  # (nx, ny, nz, 1, 1)
+        rho_2d = rho_3d[:, :, 0, 0, 0]  # (nx, ny) - squeeze all singleton dims
         epsilon_2d = _rho_to_phi(
             rho_2d,
             precomputed.permittivity_liquid,
             precomputed.permittivity_vapour,
         )
 
-        potential_2d = jnp.sum(state.h, axis=2)[:, :, 0]
+        # Sum over q-axis for potential; extract z-slice to 2D
+        potential_3d = jnp.sum(state.h, axis=3, keepdims=True)  # (nx, ny, nz, 1, 1)
+        potential_3d_for_grad = potential_3d[:, :, :1, :, :]  # (nx, ny, 1, 1, 1) - take z slice for gradient
 
         # Gradient of potential → electric field
-        grad_potential = grad(potential_2d[:, :, None, None])
-        du_dx = grad_potential[:, :, 0, 0]
-        du_dy = grad_potential[:, :, 0, 1]
+        grad_potential = grad(potential_3d_for_grad)  # input: (nx, ny, 1, 1, 1) → output: (nx, ny, 1, 1, 2)
+        du_dx = grad_potential[:, :, 0, 0, 0]
+        du_dy = grad_potential[:, :, 0, 0, 1]
         ex = -du_dx
         ey = -du_dy
 
-        # Gradient of permittivity
-        grad_eps = grad(epsilon_2d[:, :, None, None])
-        deps_dx = grad_eps[:, :, 0, 0]
-        deps_dy = grad_eps[:, :, 0, 1]
+        # Gradient of permittivity - broadcast epsilon to (nx, ny, 1, 1, 1)
+        epsilon_3d = epsilon_2d[:, :, None, None, None]  # (nx, ny, 1, 1, 1)
+        grad_eps = grad(epsilon_3d)  # input: (nx, ny, 1, 1, 1) → output: (nx, ny, 1, 1, 2)
+        deps_dx = grad_eps[:, :, 0, 0, 0]
+        deps_dy = grad_eps[:, :, 0, 0, 1]
 
         # Divergence of (epsilon * E):  d(eps*ex)/dx + d(eps*ey)/dy
         eps_ex = epsilon_2d * ex
         eps_ey = epsilon_2d * ey
-        grad_eps_ex = grad(eps_ex[:, :, None, None])
-        grad_eps_ey = grad(eps_ey[:, :, None, None])
-        d_eps_ex_dx = grad_eps_ex[:, :, 0, 0]
-        d_eps_ey_dy = grad_eps_ey[:, :, 0, 1]
+
+        # Broadcast for gradient
+        eps_ex_3d = eps_ex[:, :, None, None, None]  # (nx, ny, 1, 1, 1)
+        eps_ey_3d = eps_ey[:, :, None, None, None]  # (nx, ny, 1, 1, 1)
+
+        grad_eps_ex = grad(eps_ex_3d)  # input: (nx, ny, 1, 1, 1) → output: (nx, ny, 1, 1, 2)
+        grad_eps_ey = grad(eps_ey_3d)  # input: (nx, ny, 1, 1, 1) → output: (nx, ny, 1, 1, 2)
+        d_eps_ex_dx = grad_eps_ex[:, :, 0, 0, 0]
+        d_eps_ey_dy = grad_eps_ey[:, :, 0, 0, 1]
         rho_e = -(d_eps_ex_dx + d_eps_ey_dy)
 
         e2 = ex * ex + ey * ey
         fx = rho_e * ex - 0.5 * e2 * deps_dx
         fy = rho_e * ey - 0.5 * e2 * deps_dy
-        return jnp.concatenate([fx[:, :, None, None], fy[:, :, None, None]], axis=-1)
+
+        # Reshape to (nx, ny, nz, 1, 2) for 3D compatibility
+        # fx, fy have shape (nx, ny), add 3 dims to get (nx, ny, 1, 1, 1)
+        fx_expanded = fx[:, :, None, None, None]
+        fy_expanded = fy[:, :, None, None, None]
+        return jnp.concatenate([fx_expanded, fy_expanded], axis=-1)

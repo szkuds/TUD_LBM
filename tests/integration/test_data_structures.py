@@ -485,10 +485,10 @@ class TestBuildSetup:
         setup = build_setup(cfg)
 
         assert setup.bc_masks is not None
-        assert setup.bc_masks.top.shape == (8, 8, 1, 1)
-        assert setup.bc_masks.bottom.shape == (8, 8, 1, 1)
-        assert setup.bc_masks.left.shape == (8, 8, 1, 1)
-        assert setup.bc_masks.right.shape == (8, 8, 1, 1)
+        assert setup.bc_masks.top.shape == (8, 8, 1, 1, 1)
+        assert setup.bc_masks.bottom.shape == (8, 8, 1, 1, 1)
+        assert setup.bc_masks.left.shape == (8, 8, 1, 1, 1)
+        assert setup.bc_masks.right.shape == (8, 8, 1, 1, 1)
 
     def test_bc_masks_correct_edges(self):
         """BCMasks mark the correct boundary rows/columns."""
@@ -595,10 +595,10 @@ class TestBuildBCMasks:
         from tud_lbm.operators.boundary import build_bc_masks
 
         masks = build_bc_masks((16, 32))
-        assert masks.top.shape == (16, 32, 1, 1)
-        assert masks.bottom.shape == (16, 32, 1, 1)
-        assert masks.left.shape == (16, 32, 1, 1)
-        assert masks.right.shape == (16, 32, 1, 1)
+        assert masks.top.shape == (16, 32, 1, 1, 1)
+        assert masks.bottom.shape == (16, 32, 1, 1, 1)
+        assert masks.left.shape == (16, 32, 1, 1, 1)
+        assert masks.right.shape == (16, 32, 1, 1, 1)
 
     def test_mask_counts(self):
         """Each edge mask should have exactly one row/column of True."""

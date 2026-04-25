@@ -38,10 +38,10 @@ def _apply_stencil_padding(
 def to_2d(grid: jnp.ndarray) -> jnp.ndarray:
     """Squeeze ``(nx, ny, nz, 1, 1)`` → ``(nx, ny)``; no-op if already 2-D."""
     _grid_ndim_5d = 5
-    if grid.ndim not in (2, _grid_ndim_5d):
-        msg = f"Expected 2-D or 5-D grid, got shape {grid.shape}"
+    if grid.ndim is not _grid_ndim_5d:
+        msg = f"Expected 5-D grid, got shape {grid.shape}"
         raise ValueError(msg)
-    if grid.shape[2] != 1:
+    if grid.ndim == _grid_ndim_5d and grid.shape[2] != 1:
         msg = f"Expected singleton nz dimension, got shape {grid.shape}"
         raise ValueError(msg)
     return grid[:, :, 0, 0, 0] if grid.ndim == _grid_ndim_5d else grid

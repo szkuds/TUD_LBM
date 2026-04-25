@@ -273,4 +273,4 @@ class TestMultiphaseBubbles:
             radii=[0.2],
             dispersed="liquid",
         )
-        assert f.shape == (32, 32, 9, 1)
+        assert f.shape == (32, 32, 1, 9, 1)

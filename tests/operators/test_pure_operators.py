@@ -450,7 +450,7 @@ class TestComputeMacroscopicMultiphase:
         gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
         # Uniform density = rho_l
         rho_0 = mp.rho_l
-        f = jnp.ones((16, 16, 9, 1)) * (rho_0 / 9.0)
+        f = jnp.ones((16, 16, 1, 9, 1)) * (rho_0 / 9.0)
 
         _, _, force_total = compute_macroscopic_multiphase(
             f,
@@ -487,7 +487,7 @@ class TestComputeMacroscopicMultiphase:
 
         mp = self._mp_params()
         gradient_standard, laplacian_field = self._gradient_and_laplacian(lattice)
-        f = jnp.ones((16, 16, 9, 1)) * (1.0 / 9.0)
+        f = jnp.ones((16, 16, 1, 9, 1)) * (1.0 / 9.0)
         force_ext = jnp.ones((16, 16, 1, 1, 2)) * 0.001
 
         _rho, _u_eq, force_total = compute_macroscopic_multiphase(
@@ -720,7 +720,7 @@ class TestEndToEndPureFunctions:
         bc_fn = build_bc(bc_config, lattice)
 
         rho = jnp.ones((NX, NY, NZ, 1, 1))
-        u = jnp.zeros((NX, NY, NZ, 2, 1))
+        u = jnp.zeros((NX, NY, NZ, 1, 2))
         f = compute_equilibrium(rho, u, lattice)
         tau = 0.8
 

@@ -89,7 +89,7 @@ def run_single_simulation(
         :class:`SimulationResult` with status and output path.
     """
     import time
-    from config.jax_config import configure_jax
+    from tud_lbm.config.jax_config import configure_jax
     from tud_lbm.io import SimulationIO
     from tud_lbm.pipeline.runner import init_state
     from tud_lbm.pipeline.runner import run
@@ -289,7 +289,7 @@ def print_result_line(result: SimulationResult, completed: int, total: int) -> N
 
 def generate_plots(results: list[SimulationResult], *, verbose: bool) -> None:
     """Generate plots for all successful simulations that request them."""
-    from util.plotting import FigureBuilder
+    from tud_lbm.io.plotting import FigureBuilder
 
     for result in results:
         if result.status != "success" or not result.config.plot_fields:

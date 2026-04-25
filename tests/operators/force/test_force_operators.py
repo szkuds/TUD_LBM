@@ -86,25 +86,25 @@ class TestGravityForce:
     def test_template_shape(self, lattice, sim_config):
         from tud_lbm.operators.force._gravity import GravityForceModule
 
-        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice)
-        assert template.shape == (NX, NY, 1, 2)
+        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=sim_config, lattice=lattice)
+        assert template.shape == (NX, NY, NZ, 1, 2)
 
     def test_vertical_gravity(self, lattice, sim_config):
         from tud_lbm.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build(
             {"force_g": 0.001, "inclination_angle_deg": 0.0},
-            (NX, NY),
+            (NX, NY, NZ),
             config=sim_config,
             lattice=lattice,
         )
         np.testing.assert_allclose(
-            float(template[0, 0, 0, 0]),
+            float(template[0, 0, 0, 0, 0]),
             0.0,
             atol=1e-10,
         )
         np.testing.assert_allclose(
-            float(template[0, 0, 0, 1]),
+            float(template[0, 0, 0, 0, 1]),
             0.001,
             atol=1e-10,
         )
@@ -114,17 +114,17 @@ class TestGravityForce:
 
         template = GravityForceModule.build(
             {"force_g": 0.001, "inclination_angle_deg": 90.0},
-            (NX, NY),
+            (NX, NY, NZ),
             config=sim_config,
             lattice=lattice,
         )
         np.testing.assert_allclose(
-            float(template[0, 0, 0, 0]),
+            float(template[0, 0, 0, 0, 0]),
             -0.001,
             atol=1e-10,
         )
         np.testing.assert_allclose(
-            float(template[0, 0, 0, 1]),
+            float(template[0, 0, 0, 0, 1]),
             0.0,
             atol=1e-10,
         )
@@ -132,15 +132,15 @@ class TestGravityForce:
     def test_compute_gravity_force_shape(self, lattice, sim_config):
         from tud_lbm.operators.force._gravity import GravityForceModule
 
-        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice)
+        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=sim_config, lattice=lattice)
         state = make_state(lattice, rho_value=1.0)
         force = GravityForceModule.compute(state, template)
-        assert force.shape == (NX, NY, 1, 2)
+        assert force.shape == (NX, NY, NZ, 1, 2)
 
     def test_compute_gravity_force_value(self, lattice, sim_config):
         from tud_lbm.operators.force._gravity import GravityForceModule
 
-        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice)
+        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=sim_config, lattice=lattice)
         state = make_state(lattice, rho_value=2.0)
         force = GravityForceModule.compute(state, template)
         expected = -template * 2.0
@@ -153,10 +153,10 @@ class TestGravityForce:
     def test_jittable(self, lattice, sim_config):
         from tud_lbm.operators.force._gravity import GravityForceModule
 
-        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY), config=sim_config, lattice=lattice)
+        template = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=sim_config, lattice=lattice)
         state = make_state(lattice, rho_value=1.0)
         force = jax.jit(lambda s: GravityForceModule.compute(s, template))(state)
-        assert force.shape == (NX, NY, 1, 2)
+        assert force.shape == (NX, NY, NZ, 1, 2)
 
 
 # =====================================================================
@@ -177,7 +177,7 @@ class TestElectricParams:
                 "conductivity_liquid": 0.01,
                 "conductivity_vapour": 0.001,
             },
-            (NX, NY),
+            (NX, NY, NZ),
             config=sim_config,
             lattice=lattice,
         )
@@ -194,7 +194,7 @@ class TestElectricParams:
                 "conductivity_liquid": 0.01,
                 "conductivity_vapour": 0.001,
             },
-            (NX, NY),
+            (NX, NY, NZ),
             config=sim_config,
             lattice=lattice,
         )
@@ -222,7 +222,7 @@ class TestElectricExtraStateInit:
 
         setup = make_electric_setup(lattice, electric_params)
         hi = ElectricExtraStatePlugin.init_state(setup)["h"]
-        assert hi.shape == (NX, NY, 9, 1)
+        assert hi.shape == (NX, NY, NZ, 9, 1)
 
     def test_linear_profile(self, lattice, sim_config):
         from tud_lbm.operators.force._electric import ElectricForceModule
@@ -237,20 +237,20 @@ class TestElectricExtraStateInit:
                 "voltage_top": 1.0,
                 "voltage_bottom": 0.0,
             },
-            (NX, NY),
+            (NX, NY, NZ),
             config=sim_config,
             lattice=lattice,
         )
         setup = make_electric_setup(lattice, params)
         hi = ElectricExtraStatePlugin.init_state(setup)["h"]
-        potential = jnp.sum(hi, axis=2, keepdims=True)
+        potential = jnp.sum(hi, axis=3, keepdims=True)
         np.testing.assert_allclose(
-            float(potential[0, 0, 0, 0]),
+            float(potential[0, 0, 0, 0, 0]),
             0.0,
             atol=1e-10,
         )
         np.testing.assert_allclose(
-            float(potential[0, -1, 0, 0]),
+            float(potential[0, -1, 0, 0, 0]),
             1.0,
             atol=1e-10,
         )
@@ -273,7 +273,7 @@ class TestComputeElectricForce:
         state = make_state(lattice, rho_value=1.0, h=hi)
 
         force = ElectricForceModule.compute(state, electric_params)
-        assert force.shape == (NX, NY, 1, 2)
+        assert force.shape == (NX, NY, NZ, 1, 2)
 
     def test_zero_voltage_zero_force(self, lattice, sim_config):
         from tud_lbm.operators.force._electric import ElectricForceModule
@@ -288,7 +288,7 @@ class TestComputeElectricForce:
                 "voltage_top": 0.0,
                 "voltage_bottom": 0.0,
             },
-            (NX, NY),
+            (NX, NY, NZ),
             config=sim_config,
             lattice=lattice,
         )
@@ -309,7 +309,7 @@ class TestComputeElectricForce:
 
         jitted = jax.jit(lambda s: ElectricForceModule.compute(s, electric_params))
         force = jitted(state)
-        assert force.shape == (NX, NY, 1, 2)
+        assert force.shape == (NX, NY, NZ, 1, 2)
 
 
 # =====================================================================

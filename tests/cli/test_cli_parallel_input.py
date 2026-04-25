@@ -58,11 +58,11 @@ def test_cli_array_config_uses_parallel_sweep(monkeypatch, tmp_path):
 
     monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
     monkeypatch.setattr(
-        "config.array_expansion.expand_config",
+        "tud_lbm.config.array_expansion.expand_config",
         lambda raw: ([config_a, config_b], metadata),
     )
     monkeypatch.setattr(
-        "config.array_expansion.enumerate_configs",
+        "tud_lbm.config.array_expansion.enumerate_configs",
         lambda raw: iter(
             [
                 (0, {"tau": 0.6}, config_a),
@@ -108,11 +108,11 @@ def test_cli_array_config_dry_run_skips_parallel_execution(monkeypatch, tmp_path
 
     monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
     monkeypatch.setattr(
-        "config.array_expansion.expand_config",
+        "tud_lbm.config.array_expansion.expand_config",
         lambda raw: ([config_a, config_b], metadata),
     )
     monkeypatch.setattr(
-        "config.array_expansion.enumerate_configs",
+        "tud_lbm.config.array_expansion.enumerate_configs",
         lambda raw: iter(
             [
                 (0, {"tau": 0.6}, config_a),
@@ -191,7 +191,7 @@ def test_cli_override_updates_nested_sweep_field(monkeypatch, tmp_path):
     captured = {"raw": None}
 
     monkeypatch.setattr(
-        "config.adapter_toml.TomlAdapter.load_raw",
+        "tud_lbm.config.adapter_toml.TomlAdapter.load_raw",
         lambda self, path: {"gravity_force": {"force_g": 5e-7, "inclination_angle_deg": 50}},
     )
 
@@ -201,11 +201,11 @@ def test_cli_override_updates_nested_sweep_field(monkeypatch, tmp_path):
 
     monkeypatch.setattr("tud_lbm.config.array_expansion.expand_config", _fake_expand)
     monkeypatch.setattr(
-        "config.array_expansion.enumerate_configs",
+        "tud_lbm.config.array_expansion.enumerate_configs",
         lambda raw: iter([(0, {"gravity_force.inclination_angle_deg": 50}, config_a)] * 2),
     )
     monkeypatch.setattr(
-        "cli.cli._run_parallel_sweep",
+        "tud_lbm.cli.cli._run_parallel_sweep",
         lambda configs, parameters_list, **kwargs: [SimulationResult(index=0, config=config_a, status="success")],
     )
 

@@ -11,7 +11,6 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
 
 # =====================================================================
 # Helpers — build a synthetic droplet rho field
@@ -21,6 +20,7 @@ import pytest
 def _droplet_rho(
     nx: int,
     ny: int,
+    nz: int,
     rho_l: float,
     rho_v: float,
     centre_x: float | None = None,
@@ -41,10 +41,10 @@ def _droplet_rho(
 
     dist = jnp.sqrt((x - centre_x) ** 2 + y**2)
     rho_2d = jnp.where(dist < radius, rho_l, rho_v)
-    return rho_2d[:, :, None, None]
+    return rho_2d[:, :, None, None, None]
 
 
-NX, NY = 64, 32
+NX, NY, NZ = 64, 32, 1
 RHO_L, RHO_V = 1.0, 0.33
 RHO_MEAN = (RHO_L + RHO_V) / 2.0
 
@@ -60,7 +60,7 @@ class TestComputeContactAngle:
     def test_returns_two_scalars(self):
         from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
 
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
         assert ca_l.shape == ()
         assert ca_r.shape == ()
@@ -68,7 +68,7 @@ class TestComputeContactAngle:
     def test_angles_in_reasonable_range(self):
         from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
 
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
         # A semicircular droplet should give angles roughly around 90°
         assert 30.0 < float(ca_l) < 150.0
@@ -78,14 +78,14 @@ class TestComputeContactAngle:
         """A droplet centred on the grid should give equal left/right angles."""
         from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
 
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V, centre_x=NX / 2.0)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V, centre_x=NX / 2.0)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
         np.testing.assert_allclose(float(ca_l), float(ca_r), atol=2.0)
 
     def test_jittable(self):
         from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
 
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         jitted = jax.jit(partial(compute_contact_angle, rho_mean=RHO_MEAN))
         ca_l, ca_r = jitted(rho)
         assert not jnp.isnan(ca_l)
@@ -104,7 +104,7 @@ class TestComputeContactLineLocation:
         from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
         from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
 
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
         cll_l, cll_r = compute_contact_line_location(rho, ca_l, ca_r, RHO_MEAN)
         assert cll_l.shape == ()
@@ -114,7 +114,7 @@ class TestComputeContactLineLocation:
         from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
         from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
 
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
         cll_l, cll_r = compute_contact_line_location(rho, ca_l, ca_r, RHO_MEAN)
         assert float(cll_l) < float(cll_r)
@@ -123,7 +123,7 @@ class TestComputeContactLineLocation:
         from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
         from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
 
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
 
         jitted = jax.jit(partial(compute_contact_line_location, rho_mean=RHO_MEAN))
@@ -190,8 +190,6 @@ class TestWettingParamsHelpers:
 
 class TestOptimiseSingleParam:
     """Inner optimisation loop."""
-
-    pytestmark = pytest.mark.skipif(True, reason="optax package required for hysteresis wetting (optional dependency)")
 
     def test_reduces_loss(self):
         import optax
@@ -263,8 +261,6 @@ class TestOptimiseSingleParam:
 class TestUpdateWettingState:
     """Top-level ``update_wetting_state`` integration tests."""
 
-    pytestmark = pytest.mark.skipif(True, reason="optax package required for hysteresis wetting (optional dependency)")
-
     @staticmethod
     def _make_setup():
         from tud_lbm.config.simulation_config import SimulationConfig
@@ -309,8 +305,8 @@ class TestUpdateWettingState:
         from tud_lbm.pipeline.state import WettingState
 
         setup = self._make_setup()
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
-        f_bc = jnp.ones((NX, NY, 9, 1)) * (1.0 / 9.0)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
+        f_bc = jnp.ones((NX, NY, NZ, 9, 1)) * (1.0 / 9.0)
         wetting = self._make_wetting_state()
 
         new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
@@ -321,8 +317,8 @@ class TestUpdateWettingState:
         from tud_lbm.operators.wetting.hysteresis import update_wetting_state
 
         setup = self._make_setup()
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
-        f_bc = jnp.ones((NX, NY, 9, 1)) * (1.0 / 9.0)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
+        f_bc = jnp.ones((NX, NY, NZ, 9, 1)) * (1.0 / 9.0)
         wetting = self._make_wetting_state()
 
         new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
@@ -344,8 +340,8 @@ class TestUpdateWettingState:
         from tud_lbm.operators.wetting.hysteresis import update_wetting_state
 
         setup = self._make_setup()
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
-        f_bc = jnp.ones((NX, NY, 9, 1)) * (1.0 / 9.0)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
+        f_bc = jnp.ones((NX, NY, NZ, 9, 1)) * (1.0 / 9.0)
         wetting = self._make_wetting_state()
 
         new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
@@ -356,8 +352,8 @@ class TestUpdateWettingState:
         from tud_lbm.operators.wetting.hysteresis import update_wetting_state
 
         setup = self._make_setup()
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
-        f_bc = jnp.ones((NX, NY, 9, 1)) * (1.0 / 9.0)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
+        f_bc = jnp.ones((NX, NY, NZ, 9, 1)) * (1.0 / 9.0)
         wetting = self._make_wetting_state()
 
         new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
@@ -371,8 +367,8 @@ class TestUpdateWettingState:
         from tud_lbm.pipeline.state import WettingState
 
         setup = self._make_setup()
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
-        f_bc = jnp.ones((NX, NY, 9, 1)) * (1.0 / 9.0)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
+        f_bc = jnp.ones((NX, NY, NZ, 9, 1)) * (1.0 / 9.0)
         wetting = self._make_wetting_state()
 
         new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
@@ -389,8 +385,6 @@ class TestUpdateWettingState:
 
 class TestStepMultiphaseWithWetting:
     """``step_multiphase`` correctly propagates WettingState."""
-
-    pytestmark = pytest.mark.skipif(True, reason="optax package required for hysteresis wetting (optional dependency)")
 
     @staticmethod
     def _setup_and_state():
@@ -420,8 +414,8 @@ class TestStepMultiphaseWithWetting:
         setup = build_setup(cfg)
 
         # Initialise with a droplet so compute_contact_angle finds an interface
-        rho = _droplet_rho(NX, NY, RHO_L, RHO_V)
-        u = jnp.zeros((NX, NY, 1, 2))
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
+        u = jnp.zeros((NX, NY, NZ, 1, 2))
         lattice = setup.lattice
         feq = compute_equilibrium(rho, u, lattice)
         state = init_state(setup, f=feq)

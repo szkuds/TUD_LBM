@@ -63,14 +63,6 @@ class TestComputeGradient:
         out = compute_gradient(const_field, lattice.w, lattice.c, periodic_pad)
         np.testing.assert_allclose(np.array(out), 0.0, atol=1e-5)
 
-    def test_2d_input_accepted(self, lattice, periodic_pad):
-        """Also accepts a bare (nx, ny) array."""
-        from tud_lbm.operators.differential._gradient import compute_gradient
-
-        field_2d = jnp.ones((NX, NY))
-        out = compute_gradient(field_2d, lattice.w, lattice.c, periodic_pad)
-        assert out.shape == (NX, NY, NZ, 1, 2)
-
     def test_x_gradient_nonzero_for_x_varying_field(
         self,
         lattice,
@@ -121,7 +113,7 @@ class TestComputeLaplacian:
     def test_2d_input_accepted(self, lattice, periodic_pad):
         from tud_lbm.operators.differential._laplacian import compute_laplacian
 
-        out = compute_laplacian(jnp.ones((NX, NY)), lattice.w, periodic_pad)
+        out = compute_laplacian(jnp.ones((NX, NY, NZ, 1, 1)), lattice.w, periodic_pad)
         assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_quadratic_field_nonzero_laplacian(self, lattice, periodic_pad):

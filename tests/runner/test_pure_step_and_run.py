@@ -29,7 +29,7 @@ NX, NY, NZ = 8, 8, 1
 
 def _sp_setup():
     """Build a tiny single-phase SimulationSetup."""
-    cfg = SimulationConfig(grid_shape=(NX, NY), tau=0.8, nt=10)
+    cfg = SimulationConfig(grid_shape=(NX, NY, NZ), tau=0.8, nt=10)
     return build_setup(cfg)
 
 
@@ -119,7 +119,7 @@ class TestSource:
 
         src = source(rho, u, force, lattice, gradient=gradient)
         # The source should satisfy ∑_i S_i = 0 (mass conservation)
-        src_sum = jnp.sum(src, axis=2)
+        src_sum = jnp.sum(src, axis=-2)
         np.testing.assert_allclose(np.array(src_sum), 0.0, atol=1e-6)
 
 
@@ -417,7 +417,7 @@ class TestStepWithBounceBack:
         from tud_lbm.pipeline.runner import run
 
         cfg = SimulationConfig(
-            grid_shape=(NX, NY),
+            grid_shape=(NX, NY, NZ),
             tau=0.8,
             nt=5,
             bc_config={

@@ -72,7 +72,7 @@ class TestPlottingOperatorsShapeHandling:
         )
 
         # Create dummy data with correct shapes: (nx, ny, nz, q, d)
-        rho_data = np.random.Generator(100, 100, 1, 9, 1)
+        rho_data = np.ones((100, 100, 1, 9, 1))
         data = {"rho": rho_data}
 
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -8,9 +8,9 @@ Public API::
 
 from __future__ import annotations
 from typing import Any
-from config.adapter_toml import TomlAdapter
 from tud_lbm.config.simulation_config import SimulationConfig
 from tud_lbm.io.readers import DictAdapter
+from .adapter_toml import TomlAdapter
 
 
 def from_toml(path: str) -> SimulationConfig:

@@ -5,7 +5,6 @@ wetting parameter injection via :func:`_make_wetting_shims`.
 """
 
 import jax.numpy as jnp
-import pytest
 from tud_lbm.config.adapter_toml import TomlAdapter
 from tud_lbm.config.simulation_config import SimulationConfig
 from tud_lbm.operators.step import build_step_fn
@@ -14,7 +13,11 @@ from tud_lbm.pipeline.runner import init_state
 from tud_lbm.pipeline.setup import build_setup
 from tud_lbm.pipeline.state import WettingState
 
-NX, NY = 16, 16
+(
+    NX,
+    NY,
+    NZ,
+) = 16, 16, 1
 
 # Build the step function
 step_multiphase = build_step_fn("multiphase")
@@ -24,7 +27,7 @@ def _wetting_setup():
     """Build a tiny wetting SimulationSetup with hysteresis."""
     cfg = SimulationConfig(
         sim_type="multiphase",
-        grid_shape=(NX, NY),
+        grid_shape=(NX, NY, NZ),
         tau=0.99,
         nt=3,
         eos="double-well",
@@ -59,7 +62,7 @@ def _wetting_setup_no_hysteresis():
     """Build a tiny wetting SimulationSetup without hysteresis."""
     cfg = SimulationConfig(
         sim_type="multiphase",
-        grid_shape=(NX, NY),
+        grid_shape=(NX, NY, NZ),
         tau=0.99,
         nt=3,
         eos="double-well",
@@ -107,11 +110,11 @@ class TestMakeWettingShims:
         gradient, _ = _make_wetting_differential_ops(setup, state.wetting)
 
         # Create a dummy grid
-        grid = jnp.ones((NX, NY, 1, 1))
+        grid = jnp.ones((NX, NY, NZ, 1, 1))
 
         # Should work with just grid argument
         result = gradient(grid)
-        assert result.shape == (NX, NY, 1, 2)  # gradient output shape
+        assert result.shape == (NX, NY, NZ, 1, 2)  # gradient output shape
         assert not jnp.isnan(result).any()
 
     def test_laplacian_shim_signature(self):
@@ -121,21 +124,17 @@ class TestMakeWettingShims:
         _, laplacian = _make_wetting_differential_ops(setup, state.wetting)
 
         # Create a dummy grid
-        grid = jnp.ones((NX, NY, 1, 1))
+        grid = jnp.ones((NX, NY, NZ, 1, 1))
 
         # Should work with just grid argument
         result = laplacian(grid)
-        assert result.shape == (NX, NY, 1, 1)  # laplacian output shape
+        assert result.shape == (NX, NY, NZ, 1, 1)  # laplacian output shape
         assert not jnp.isnan(result).any()
 
 
 class TestStepWetting:
     """Tests for step_wetting function."""
 
-    @pytest.mark.skipif(
-        True,  # optax not installed - required for hysteresis
-        reason="optax package required for hysteresis wetting (optional dependency)",
-    )
     def test_step_wetting_increments_time(self):
         """One step should increment t by 1."""
         setup = _wetting_setup()
@@ -143,10 +142,6 @@ class TestStepWetting:
         new_state = step_multiphase(setup, state)
         assert int(new_state.t) == 1
 
-    @pytest.mark.skipif(
-        True,  # optax not installed - required for hysteresis
-        reason="optax package required for hysteresis wetting (optional dependency)",
-    )
     def test_step_wetting_preserves_shapes(self):
         """All fields should have consistent shapes after step."""
         setup = _wetting_setup()
@@ -157,10 +152,6 @@ class TestStepWetting:
         assert new_state.rho.shape == state.rho.shape
         assert new_state.u.shape == state.u.shape
 
-    @pytest.mark.skipif(
-        True,  # optax not installed - required for hysteresis
-        reason="optax package required for hysteresis wetting (optional dependency)",
-    )
     def test_step_wetting_no_nan(self):
         """No NaN values should appear in the output."""
         setup = _wetting_setup()
@@ -171,10 +162,6 @@ class TestStepWetting:
         assert not jnp.isnan(new_state.rho).any()
         assert not jnp.isnan(new_state.u).any()
 
-    @pytest.mark.skipif(
-        True,  # optax not installed - required for hysteresis
-        reason="optax package required for hysteresis wetting (optional dependency)",
-    )
     def test_step_wetting_preserves_wetting_state_structure(self):
         """Wetting state should remain a WettingState after step."""
         setup = _wetting_setup()
@@ -186,10 +173,6 @@ class TestStepWetting:
         assert hasattr(new_state.wetting, "phi_left")
         assert hasattr(new_state.wetting, "phi_right")
 
-    @pytest.mark.skipif(
-        True,  # optax not installed - required for hysteresis
-        reason="optax package required for hysteresis wetting (optional dependency)",
-    )
     def test_step_wetting_jittable(self):
         """step_multiphase should be jittable with static_argnums=0."""
         setup = _wetting_setup()
@@ -219,10 +202,6 @@ class TestStepWetting:
         assert not jnp.isnan(state.f).any()
         assert not jnp.isnan(state.rho).any()
 
-    @pytest.mark.skipif(
-        True,  # optax not installed - required for hysteresis
-        reason="optax package required for hysteresis wetting (optional dependency)",
-    )
     def test_step_wetting_with_hysteresis(self):
         """step_multiphase with hysteresis should update wetting parameters."""
         setup = _wetting_setup()
@@ -274,10 +253,6 @@ class TestStepWetting:
         # step_fn should be step_multiphase
         assert setup.step_fn is not None
 
-    @pytest.mark.skipif(
-        True,  # optax not installed - required for hysteresis
-        reason="optax package required for hysteresis wetting (optional dependency)",
-    )
     def test_wetting_and_wetting_hysteresis_both_register(self):
         """Both wetting and wetting+hysteresis should use step_multiphase."""
         setup_wetting = _wetting_setup_no_hysteresis()
@@ -297,14 +272,10 @@ class TestStepWetting:
 class TestComplexConfig:
     """Integration test for config_complex.toml workflow."""
 
-    @pytest.mark.skipif(
-        True,  # optax not installed - required for hysteresis
-        reason="optax package required for hysteresis wetting (optional dependency)",
-    )
     def test_complex_config(self):
         """Test complex config with wetting_hysteresis."""
         adapter = TomlAdapter()
-        cfg = adapter.load("examples/config_complex.toml")
+        cfg = adapter.load("/Users/sbszkudlarek/PycharmProjects/TUD_LBM/examples/config_complex.toml")
         assert cfg.sim_type is not None
 
         setup = build_setup(cfg)
