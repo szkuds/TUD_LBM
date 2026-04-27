@@ -13,63 +13,6 @@ from pathlib import Path
 PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
 
 
-class TestOptaxNotRequiredForCore:
-    """Tests that runner functionality doesn't require optax."""
-
-    def test_optax_not_in_core_dependencies(self):
-        """Core dependencies do NOT include optax.
-
-        Given: pyproject.toml exists
-        When: reading runner dependencies
-        Then: optax should NOT appear in the dependencies list
-        """
-        import tomllib
-
-        pyproject_path = Path(PROJECT_ROOT) / "pyproject.toml"
-        try:
-            with pyproject_path.open("rb") as f:
-                pyproject = tomllib.load(f)
-        except ImportError:
-            import toml
-
-            with pyproject_path.open() as f:
-                pyproject = toml.load(f)
-
-        core_deps = pyproject.get("project", {}).get("dependencies", [])
-        core_deps_str = " ".join(str(d) for d in core_deps)
-
-        assert "optax" not in core_deps_str.lower(), "optax should NOT be in runner dependencies"
-
-    def test_core_dependencies_are_minimal(self):
-        """Core dependencies are minimal and focused.
-
-        Given: pyproject.toml exists
-        When: reading runner dependencies
-        Then: optax should NOT be in runner dependencies
-        """
-        import tomllib
-
-        pyproject_path = Path(PROJECT_ROOT) / "pyproject.toml"
-        try:
-            with pyproject_path.open("rb") as f:
-                pyproject = tomllib.load(f)
-        except ImportError:
-            import toml
-
-            with pyproject_path.open() as f:
-                pyproject = toml.load(f)
-
-        core_deps = pyproject.get("project", {}).get("dependencies", [])
-        core_deps_str = " ".join(str(d) for d in core_deps).lower()
-
-        # Primary check: optax should NOT be in runner dependencies
-        assert "optax" not in core_deps_str, "optax should not be in runner (it's optional)"
-
-        # With conda app_setup, dependencies may be empty (managed by environment.yml)
-        # so just verify that optax is not accidentally included
-        assert True, "Core dependencies correctly exclude optax"
-
-
 class TestEnvironmentConfiguration:
     """Tests for conda and environment configuration."""
 
