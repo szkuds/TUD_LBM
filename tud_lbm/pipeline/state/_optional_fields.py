@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 
 if TYPE_CHECKING:
-    from setup.simulation_setup import SimulationSetup
+    from tud_lbm.pipeline.setup import SimulationSetup
 
 
 def _build_optional_fields(
