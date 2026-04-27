@@ -4,6 +4,7 @@ Tests for :func:`operators.step.step_multiphase` and the dynamic
 wetting parameter injection via :func:`_make_wetting_shims`.
 """
 
+from pathlib import Path
 import jax.numpy as jnp
 from tud_lbm.config.adapter_toml import TomlAdapter
 from tud_lbm.config.simulation_config import SimulationConfig
@@ -275,7 +276,9 @@ class TestComplexConfig:
     def test_complex_config(self):
         """Test complex config with wetting_hysteresis."""
         adapter = TomlAdapter()
-        cfg = adapter.load("/Users/sbszkudlarek/PycharmProjects/TUD_LBM/examples/config_complex.toml")
+        root = next(p for p in Path(__file__).parents if (p / "pyproject.toml").exists())
+        config_path = root / "examples" / "config_complex.toml"
+        cfg = adapter.load(str(config_path))
         assert cfg.sim_type is not None
 
         setup = build_setup(cfg)

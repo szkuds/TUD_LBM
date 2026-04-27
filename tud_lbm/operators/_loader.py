@@ -8,7 +8,6 @@ without maintaining brittle import lists.
 from __future__ import annotations
 import importlib
 import pkgutil
-from contextlib import suppress
 
 
 def auto_load_operators(package_name: str) -> None:
@@ -24,13 +23,11 @@ def auto_load_operators(package_name: str) -> None:
         from operators._loader import auto_load_operators
         auto_load_operators('operators.collision')
     """
-    with suppress(ImportError):
-        module = importlib.import_module(package_name)
-        if not hasattr(module, "__path__"):
-            return
-        package_path = module.__path__[0]
-        for _, module_name, is_pkg in pkgutil.iter_modules([package_path]):
-            if not module_name.startswith("_") or is_pkg:
-                continue
-            with suppress(ImportError):
-                importlib.import_module(f"{package_name}.{module_name}")
+    module = importlib.import_module(package_name)
+    if not hasattr(module, "__path__"):
+        return
+    package_path = module.__path__[0]
+    for _, module_name, is_pkg in pkgutil.iter_modules([package_path]):
+        if not module_name.startswith("_") or is_pkg:
+            continue
+        importlib.import_module(f"{package_name}.{module_name}")

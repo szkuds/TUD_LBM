@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 from tud_lbm.operators.differential._laplacian import lap_core_2d
 from tud_lbm.operators.differential._pad_utils import _apply_stencil_padding
 from tud_lbm.operators.differential._pad_utils import to_2d
-from tud_lbm.operators.wetting import build_wetting_fn
 from tud_lbm.registry import register_operator
 
 if TYPE_CHECKING:
@@ -47,6 +46,8 @@ def build_wetting_laplacian(
     Returns:
         ``lap(grid, phi_l, phi_r, d_rho_l, d_rho_r) → (nx, ny, nz, 1, 1)``
     """
+    from tud_lbm.operators.wetting import build_wetting_fn
+
     _pad_mode = tuple(pad_mode)
     _build_wetting_applicator = build_wetting_fn("applicator")
     _apply_wetting = _build_wetting_applicator(rho_l, rho_v, width, bc_config)
