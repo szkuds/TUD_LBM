@@ -32,7 +32,7 @@ author = "Sacha Szkudlarek"
 # built documents.
 #
 # The short X.Y version.
-version = "0.0.4"
+version = "0.2.0"
 # The full version, including alpha/beta/rc tags.
 release = version
 
