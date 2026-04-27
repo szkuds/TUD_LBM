@@ -69,7 +69,7 @@ todo_include_todos = False
 
 # -- Use autoapi.extension to generate API docs -----------------
 
-autoapi_dirs = ["../src"]
+autoapi_dirs = ["../tud_lbm"]
 autoapi_options = [
     "members",
     "undoc-members",
