@@ -17,7 +17,7 @@ Use registry.get_operators(category) to retrieve implementations.
 
 from __future__ import annotations
 import pkgutil
-from operators._loader import auto_load_operators
+from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.protocols import BoundaryOperator
 from tud_lbm.operators.protocols import CollisionOperator
 from tud_lbm.operators.protocols import DifferentialOperator

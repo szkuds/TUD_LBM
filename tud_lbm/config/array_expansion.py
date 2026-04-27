@@ -25,9 +25,9 @@ from dataclasses import dataclass
 from itertools import product
 from typing import TYPE_CHECKING
 from typing import Any
-from config.simulation_config import SimulationConfig
-from config.simulation_config import get_array_eligible_fields
-from config.simulation_config import get_nested_sweepable_fields
+from tud_lbm.config.simulation_config import SimulationConfig
+from tud_lbm.config.simulation_config import get_array_eligible_fields
+from tud_lbm.config.simulation_config import get_nested_sweepable_fields
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
