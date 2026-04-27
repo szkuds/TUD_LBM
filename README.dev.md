@@ -127,7 +127,7 @@ make doctest
 
 ## Operator registry & architecture
 
-All operators (collision schemes, macroscopic solvers, forces, boundary conditions, lattice models, initialisers, …) are registered in a **single global registry** (`OPERATOR_REGISTRY` in `src/registry.py`) at import time via decorators.  The registry supports both **pure functions** and **classes** as targets.  Adding a new operator requires only the decorator — no factory, config, or CLI code changes.
+All operators (collision schemes, macroscopic solvers, forces, boundary conditions, lattice models, initialisers, …) are registered in a **single global registry** (`OPERATOR_REGISTRY` in `src/registry.py`) at import time via decorators. The registry supports both **pure functions** and **classes** as targets. Adding a new operator requires only the decorator — no factory, config, or CLI code changes.
 
 **Pure function example (preferred):**
 
@@ -178,7 +178,6 @@ This section describes how to make a release in 3 parts:
 1. making a release on GitHub
 
 ### (1/3) Preparation
-
 
 1. Verify that the information in [`CITATION.cff`](CITATION.cff) is correct.
 1. Make sure the [version has been updated](#versioning).
@@ -241,8 +240,6 @@ python -m twine upload dist/*
 
 Don't forget to also make a [release on GitHub](https://github.com/szkuds/tud_lbm/releases/new).GitHub-Zenodo integration will also trigger Zenodo into making a snapshot of your repository and sticking a DOI on it.
 
-
-
 ## Package Reference
 
 The codebase is organised into seven top-level packages. Each section below lists the modules, their public classes, and a summary drawn from the source docstrings.
@@ -251,30 +248,30 @@ The codebase is organised into seven top-level packages. Each section below list
 
 The configuration package provides the primary user-facing interface for setting up simulations.
 
-| Module | Public API | Description |
-|--------|-----------|-------------|
-| `simulation_setup` | `SimulationSetup` | **Single public entry point** for configuring a simulation. A flat, validated dataclass that holds all physics, time-stepping, boundary-condition, initialisation, and I/O parameters. Multiphase fields are optional and only validated when `sim_type="multiphase"`. |
-| `registry` | `register_operator`, `get_operators`, `OPERATOR_REGISTRY` | Global operator registry. Every operator registers itself via the `@register_operator` class decorator. Per-kind look-ups (e.g. "all collision operators") are derived dynamically — adding a new operator only requires defining the class with a `name` attribute and applying the decorator. |
-| `adapter_base` | `ConfigAdapter`, `get_adapter` | Abstract base class for configuration file adapters. `load(path)` reads a file into a `SimulationConfig`; `save(config, path)` writes one back. The shared `build_sections(config)` helper provides a format-agnostic nested dict that any adapter's `save()` can serialise directly. Use `get_adapter()` to dispatch by file extension. |
-| `adapter_toml` | `TomlAdapter` | Reads and writes `.toml` configuration files. Supports `[simulation_type]`, `[multiphase]`, `[[force]]`, `[boundary_conditions]`, and `[output]` tables. |
-| `dir_config` | `BASE_RESULTS_DIR` | Directory configuration constants. Default base directory for storing simulation results (`~/TUD_LBM_data/results`). |
-| `jax_config` | `configure_jax`, `ENABLE_X64`, `DISABLE_JIT` | Centralised JAX configuration. Call `configure_jax()` at the start of your script to apply 64-bit precision and JIT settings. |
-| `saving_config` | `DEFAULT_SAVE_FIELDS`, `AVAILABLE_FIELDS`, `FORCE_REGISTRY` | Saving configuration constants. Defines default fields to save (`rho`, `u`) and all available fields (`rho`, `u`, `force`, `force_ext`, `f`, `h`). |
+| Module             | Public API                                                  | Description                                                                                                                                                                                                                                                                                                                              |
+| ------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `simulation_setup` | `SimulationSetup`                                           | **Single public entry point** for configuring a simulation. A flat, validated dataclass that holds all physics, time-stepping, boundary-condition, initialisation, and I/O parameters. Multiphase fields are optional and only validated when `sim_type="multiphase"`.                                                                   |
+| `registry`         | `register_operator`, `get_operators`, `OPERATOR_REGISTRY`   | Global operator registry. Every operator registers itself via the `@register_operator` class decorator. Per-kind look-ups (e.g. "all collision operators") are derived dynamically — adding a new operator only requires defining the class with a `name` attribute and applying the decorator.                                          |
+| `adapter_base`     | `ConfigAdapter`, `get_adapter`                              | Abstract base class for configuration file adapters. `load(path)` reads a file into a `SimulationConfig`; `save(config, path)` writes one back. The shared `build_sections(config)` helper provides a format-agnostic nested dict that any adapter's `save()` can serialise directly. Use `get_adapter()` to dispatch by file extension. |
+| `adapter_toml`     | `TomlAdapter`                                               | Reads and writes `.toml` configuration files. Supports `[simulation_type]`, `[multiphase]`, `[[force]]`, `[boundary_conditions]`, and `[output]` tables.                                                                                                                                                                                 |
+| `dir_config`       | `BASE_RESULTS_DIR`                                          | Directory configuration constants. Default base directory for storing simulation results (`~/TUD_LBM_data/results`).                                                                                                                                                                                                                     |
+| `jax_config`       | `configure_jax`, `ENABLE_X64`, `DISABLE_JIT`                | Centralised JAX configuration. Call `configure_jax()` at the start of your script to apply 64-bit precision and JIT settings.                                                                                                                                                                                                            |
+| `saving_config`    | `DEFAULT_SAVE_FIELDS`, `AVAILABLE_FIELDS`, `FORCE_REGISTRY` | Saving configuration constants. Defines default fields to save (`rho`, `u`) and all available fields (`rho`, `u`, `force`, `force_ext`, `f`, `h`).                                                                                                                                                                                       |
 
 #### `SimulationSetup` Fields
 
-| Group | Fields | Defaults |
-|-------|--------|----------|
-| **Identity** | `sim_type`, `simulation_name` | `"single_phase"`, `None` |
-| **Lattice & Grid** | `lattice_type`, `grid_shape` | `"D2Q9"`, `(64, 64)` |
-| **Time Stepping** | `nt`, `tau` | `1000`, `1.0` |
-| **Collision** | `collision_scheme`, `k_diag` | `"bgk"`, `None` |
-| **Boundary Conditions** | `bc_config` | Periodic on all edges |
-| **Force** | `force_enabled`, `force_obj` | `False`, `None` |
-| **Initialisation** | `init_type`, `init_dir` | `"standard"`, `None` |
-| **Output / IO** | `results_dir`, `save_interval`, `skip_interval`, `save_fields` | `~/TUD_LBM_data/results`, `100`, `0`, `None` |
-| **Multiphase** | `eos`, `kappa`, `rho_l`, `rho_v`, `interface_width`, `bubble`, `rho_ref`, `g` | All `None`/`False` |
-| **Extensible** | `extra` | `{}` |
+| Group                   | Fields                                                                        | Defaults                                     |
+| ----------------------- | ----------------------------------------------------------------------------- | -------------------------------------------- |
+| **Identity**            | `sim_type`, `simulation_name`                                                 | `"single_phase"`, `None`                     |
+| **Lattice & Grid**      | `lattice_type`, `grid_shape`                                                  | `"D2Q9"`, `(64, 64)`                         |
+| **Time Stepping**       | `nt`, `tau`                                                                   | `1000`, `1.0`                                |
+| **Collision**           | `collision_scheme`, `k_diag`                                                  | `"bgk"`, `None`                              |
+| **Boundary Conditions** | `bc_config`                                                                   | Periodic on all edges                        |
+| **Force**               | `force_enabled`, `force_obj`                                                  | `False`, `None`                              |
+| **Initialisation**      | `init_type`, `init_dir`                                                       | `"standard"`, `None`                         |
+| **Output / IO**         | `results_dir`, `save_interval`, `skip_interval`, `save_fields`                | `~/TUD_LBM_data/results`, `100`, `0`, `None` |
+| **Multiphase**          | `eos`, `kappa`, `rho_l`, `rho_v`, `interface_width`, `bubble`, `rho_ref`, `g` | All `None`/`False`                           |
+| **Extensible**          | `extra`                                                                       | `{}`                                         |
 
 ---
 
@@ -282,12 +279,12 @@ The configuration package provides the primary user-facing interface for setting
 
 Composes the factory, time-loop runner, and I/O handler into a single entry point.
 
-| Module | Public API | Description |
-|--------|-----------|-------------|
-| `run` | `Run` | **Top-level entry point.** Accepts a `SimulationSetup`, creates the simulation via the factory, sets up I/O, and delegates to `SimulationRunner`. Call `Run(setup).run()` to execute. |
-| `simulation_factory` | `SimulationFactory` | Factory that creates simulation instances from a `SimulationSetup`. Uses the global operator registry to resolve `sim_type` to the correct simulation class. |
-| `simulation_runner` | `SimulationRunner` | Owns the time-stepping loop, NaN checking, and data saving. Delegates field initialisation and per-step updates to the simulation object, and persistence to the I/O handler. |
-| `step_result` | `StepResult` | Standardised dataclass returned from each timestep. Contains: `f` (distribution function), `rho` (density), `u` (velocity), `force`, `force_ext`, and `h` (electric potential) — all optional except `f`. |
+| Module               | Public API          | Description                                                                                                                                                                                               |
+| -------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run`                | `Run`               | **Top-level entry point.** Accepts a `SimulationSetup`, creates the simulation via the factory, sets up I/O, and delegates to `SimulationRunner`. Call `Run(setup).run()` to execute.                     |
+| `simulation_factory` | `SimulationFactory` | Factory that creates simulation instances from a `SimulationSetup`. Uses the global operator registry to resolve `sim_type` to the correct simulation class.                                              |
+| `simulation_runner`  | `SimulationRunner`  | Owns the time-stepping loop, NaN checking, and data saving. Delegates field initialisation and per-step updates to the simulation object, and persistence to the I/O handler.                             |
+| `step_result`        | `StepResult`        | Standardised dataclass returned from each timestep. Contains: `f` (distribution function), `rho` (density), `u` (velocity), `force`, `force_ext`, and `h` (electric potential) — all optional except `f`. |
 
 ---
 
@@ -295,11 +292,11 @@ Composes the factory, time-loop runner, and I/O handler into a single entry poin
 
 Each simulation type orchestrates the complete LBM workflow (operator setup, field initialisation, time-stepping).
 
-| Module | Class | Registry Name | Description |
-|--------|-------|---------------|-------------|
-| `base` | `BaseSimulation` | — | Abstract base class. Provides shared helpers `_make_initialiser()` and `_make_boundary_condition()` that resolve operators from the registry. Defines the abstract interface: `setup_operators()`, `initialise_fields()`, `run_timestep()`. |
-| `single_phase` | `SinglePhaseSimulation` | `"single_phase"` | Single-phase LBM simulation. Sets up collision, streaming, macroscopic, and boundary-condition operators. Supports optional external forces. |
-| `multiphase` | `MultiphaseSimulation` | `"multiphase"` | Multiphase (two-phase) LBM simulation. Adds equation-of-state handling, surface tension (`kappa`), wetting detection, and selects between `UpdateMultiphase` and `UpdateMultiphaseHysteresis` based on config. |
+| Module         | Class                   | Registry Name    | Description                                                                                                                                                                                                                                 |
+| -------------- | ----------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`         | `BaseSimulation`        | —                | Abstract base class. Provides shared helpers `_make_initialiser()` and `_make_boundary_condition()` that resolve operators from the registry. Defines the abstract interface: `setup_operators()`, `initialise_fields()`, `run_timestep()`. |
+| `single_phase` | `SinglePhaseSimulation` | `"single_phase"` | Single-phase LBM simulation. Sets up collision, streaming, macroscopic, and boundary-condition operators. Supports optional external forces.                                                                                                |
+| `multiphase`   | `MultiphaseSimulation`  | `"multiphase"`   | Multiphase (two-phase) LBM simulation. Adds equation-of-state handling, surface tension (`kappa`), wetting detection, and selects between `UpdateMultiphase` and `UpdateMultiphaseHysteresis` based on config.                              |
 
 ---
 
@@ -309,111 +306,111 @@ All operators register themselves via `@register_operator(kind)` and are resolve
 
 #### Collision Models (`collision_models`)
 
-| Class | Registry Name | Description |
-|-------|---------------|-------------|
-| `CollisionBase` | — | Abstract base class for collision operators. Provides shared lattice and grid setup. |
-| `CollisionBGK` | `"bgk"` | Bhatnagar–Gross–Krook (BGK) single-relaxation-time collision operator. |
-| `CollisionMRT` | `"mrt"` | Multiple-Relaxation-Time (MRT) collision operator. Uses a moment transformation matrix for D2Q9. |
+| Class           | Registry Name | Description                                                                                      |
+| --------------- | ------------- | ------------------------------------------------------------------------------------------------ |
+| `CollisionBase` | —             | Abstract base class for collision operators. Provides shared lattice and grid setup.             |
+| `CollisionBGK`  | `"bgk"`       | Bhatnagar–Gross–Krook (BGK) single-relaxation-time collision operator.                           |
+| `CollisionMRT`  | `"mrt"`       | Multiple-Relaxation-Time (MRT) collision operator. Uses a moment transformation matrix for D2Q9. |
 
 #### Equilibrium (`equilibrium`)
 
-| Class | Registry Name | Description |
-|-------|---------------|-------------|
-| `EquilibriumWB` | `"wb"` | Weight-based equilibrium distribution function. Computes the discrete equilibrium from density and velocity using lattice weights. |
+| Class           | Registry Name | Description                                                                                                                        |
+| --------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `EquilibriumWB` | `"wb"`        | Weight-based equilibrium distribution function. Computes the discrete equilibrium from density and velocity using lattice weights. |
 
 #### Streaming (`stream`)
 
-| Class | Registry Name | Description |
-|-------|---------------|-------------|
-| `Streaming` | `"standard"` | Standard streaming operator. Propagates populations along lattice velocity directions using array rolls. |
+| Class       | Registry Name | Description                                                                                              |
+| ----------- | ------------- | -------------------------------------------------------------------------------------------------------- |
+| `Streaming` | `"standard"`  | Standard streaming operator. Propagates populations along lattice velocity directions using array rolls. |
 
 #### Macroscopic (`macroscopic`)
 
-| Class | Registry Name | Description |
-|-------|---------------|-------------|
-| `Macroscopic` | `"standard"` | Calculates macroscopic density and velocity fields from the population distribution. |
-| `MacroscopicMultiphaseDW` | `"double-well"` | Multiphase macroscopic operator using the double-well equation of state. Computes chemical potential, gradient, and Laplacian terms for the interparticle force. |
-| `MacroscopicMultiphaseCS` | `"carnahan-starling"` | Multiphase macroscopic operator using the Carnahan–Starling equation of state. Inherits from `MacroscopicMultiphaseDW` and overrides the EOS. |
+| Class                     | Registry Name         | Description                                                                                                                                                      |
+| ------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Macroscopic`             | `"standard"`          | Calculates macroscopic density and velocity fields from the population distribution.                                                                             |
+| `MacroscopicMultiphaseDW` | `"double-well"`       | Multiphase macroscopic operator using the double-well equation of state. Computes chemical potential, gradient, and Laplacian terms for the interparticle force. |
+| `MacroscopicMultiphaseCS` | `"carnahan-starling"` | Multiphase macroscopic operator using the Carnahan–Starling equation of state. Inherits from `MacroscopicMultiphaseDW` and overrides the EOS.                    |
 
 #### Boundary Conditions (`boundary_condition`)
 
-| Class | Registry Name | Description |
-|-------|---------------|-------------|
-| `BoundaryConditionBase` | — | Abstract base class. Provides common grid, lattice, and validation for all BC operators. |
-| `BoundaryCondition` | `"standard"` | **Composite dispatcher.** Inspects `bc_config` at construction time, resolves per-edge BC operators from the registry, and chains their `__call__` methods. No hardcoded type map needed. |
-| `BounceBackBoundaryCondition` | `"bounce-back"` | Half-way bounce-back rule. Replaces each incoming distribution at the wall by its opposite-direction counterpart from the post-collision state. |
-| `PeriodicBoundaryCondition` | `"periodic"` | No-op operator. Periodicity is handled by the streaming step; this exists so users can explicitly request `"periodic"` in configs. |
-| `SymmetryBoundaryCondition` | `"symmetry"` | Mirror-symmetry rule. Replaces each incoming distribution at the wall by the mirrored distribution from the post-collision state. |
-| `WettingBoundaryCondition` | `"wetting"` | Wetting boundary (bounce-back variant). Registered as `"wetting"` so that config files using `bottom = "wetting"` resolve via the registry. |
+| Class                         | Registry Name   | Description                                                                                                                                                                               |
+| ----------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BoundaryConditionBase`       | —               | Abstract base class. Provides common grid, lattice, and validation for all BC operators.                                                                                                  |
+| `BoundaryCondition`           | `"standard"`    | **Composite dispatcher.** Inspects `bc_config` at construction time, resolves per-edge BC operators from the registry, and chains their `__call__` methods. No hardcoded type map needed. |
+| `BounceBackBoundaryCondition` | `"bounce-back"` | Half-way bounce-back rule. Replaces each incoming distribution at the wall by its opposite-direction counterpart from the post-collision state.                                           |
+| `PeriodicBoundaryCondition`   | `"periodic"`    | No-op operator. Periodicity is handled by the streaming step; this exists so users can explicitly request `"periodic"` in configs.                                                        |
+| `SymmetryBoundaryCondition`   | `"symmetry"`    | Mirror-symmetry rule. Replaces each incoming distribution at the wall by the mirrored distribution from the post-collision state.                                                         |
+| `WettingBoundaryCondition`    | `"wetting"`     | Wetting boundary (bounce-back variant). Registered as `"wetting"` so that config files using `bottom = "wetting"` resolve via the registry.                                               |
 
 #### Force (`force`)
 
-| Class | Registry Name | Description                                                                                                                      |
-|-------|---------------|----------------------------------------------------------------------------------------------------------------------------------|
-| `Force` | — | Abstract base class for all forces. Holds a force array of shape `(nx, ny, 1, d)`.                                               |
-| `CompositeForce` | `"composite"` | Combines multiple force fields by superposition. Allows gravitational, electrical, and other forces to work together.            |
+| Class                    | Registry Name          | Description                                                                                                                      |
+| ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `Force`                  | —                      | Abstract base class for all forces. Holds a force array of shape `(nx, ny, 1, d)`.                                               |
+| `CompositeForce`         | `"composite"`          | Combines multiple force fields by superposition. Allows gravitational, electrical, and other forces to work together.            |
 | `GravityForceMultiphase` | `"gravity_multiphase"` | Constant gravitational force across the grid, supporting inclined domains via `inclination_angle_deg`.                           |
-| `ElectricForce` | `"electric"` | Electrical force with electric potential distribution. Solves for the electric potential using a separate distribution function. |
-| `SourceTerm` | `"source_term"` | Forcing source term for incorporating body forces into the collision step.                                                       |
+| `ElectricForce`          | `"electric"`           | Electrical force with electric potential distribution. Solves for the electric potential using a separate distribution function. |
+| `SourceTerm`             | `"source_term"`        | Forcing source term for incorporating body forces into the collision step.                                                       |
 
 #### Initialisation (`initialise`)
 
-| Class | Registry Name | Description |
-|-------|---------------|-------------|
-| `InitialisationBase` | — | Abstract base class. Provides common grid, lattice, and equilibrium setup. Subclasses override `__call__` to produce the initial distribution function. |
-| `StandardInitialisation` | `"standard"` | Uniform density and velocity field. Returns the equilibrium distribution for single-phase simulations. |
-| `InitialiseMultiphaseBubble` | `"multiphase_bubble"` | Low-density bubble in the domain centre surrounded by liquid (smooth `tanh` profile). |
-| `InitialiseMultiphaseBubbleBot` | `"multiphase_bubble_bot"` | Low-density bubble near the bottom of the domain surrounded by liquid. |
-| `InitialiseMultiphaseBubbleBubble` | `"multiphase_bubble_bubble"` | Two low-density bubbles side-by-side surrounded by liquid. |
-| `InitialiseMultiphaseDroplet` | `"multiphase_droplet"` | High-density droplet in the domain centre surrounded by vapour. |
-| `InitialiseMultiphaseDropletTop` | `"multiphase_droplet_top"` | High-density droplet near the top of the domain surrounded by vapour. |
-| `InitialiseMultiphaseDropletVariableRadius` | `"multiphase_droplet_variable_radius"` | High-density droplet with user-specified radius. |
-| `InitialiseMultiphaseLateralBubble` | `"multiphase_lateral_bubble"` | Two low-density bubbles stacked vertically surrounded by liquid. |
-| `InitialiseWetting` | `"wetting"` | Droplet at the bottom wall for wetting simulations (smooth `tanh` profile centred horizontally). |
-| `InitialiseWettingChemicalStep` | `"wetting_chemical_step"` | Droplet at the bottom wall with a chemical step. The droplet is offset horizontally. |
-| `InitialiseFromFile` | `"init_from_file"` | Loads `rho` and `u` from a saved `.npz` file and reconstructs the equilibrium distribution. |
+| Class                                       | Registry Name                          | Description                                                                                                                                             |
+| ------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `InitialisationBase`                        | —                                      | Abstract base class. Provides common grid, lattice, and equilibrium setup. Subclasses override `__call__` to produce the initial distribution function. |
+| `StandardInitialisation`                    | `"standard"`                           | Uniform density and velocity field. Returns the equilibrium distribution for single-phase simulations.                                                  |
+| `InitialiseMultiphaseBubble`                | `"multiphase_bubble"`                  | Low-density bubble in the domain centre surrounded by liquid (smooth `tanh` profile).                                                                   |
+| `InitialiseMultiphaseBubbleBot`             | `"multiphase_bubble_bot"`              | Low-density bubble near the bottom of the domain surrounded by liquid.                                                                                  |
+| `InitialiseMultiphaseBubbleBubble`          | `"multiphase_bubble_bubble"`           | Two low-density bubbles side-by-side surrounded by liquid.                                                                                              |
+| `InitialiseMultiphaseDroplet`               | `"multiphase_droplet"`                 | High-density droplet in the domain centre surrounded by vapour.                                                                                         |
+| `InitialiseMultiphaseDropletTop`            | `"multiphase_droplet_top"`             | High-density droplet near the top of the domain surrounded by vapour.                                                                                   |
+| `InitialiseMultiphaseDropletVariableRadius` | `"multiphase_droplet_variable_radius"` | High-density droplet with user-specified radius.                                                                                                        |
+| `InitialiseMultiphaseLateralBubble`         | `"multiphase_lateral_bubble"`          | Two low-density bubbles stacked vertically surrounded by liquid.                                                                                        |
+| `InitialiseWetting`                         | `"wetting"`                            | Droplet at the bottom wall for wetting simulations (smooth `tanh` profile centred horizontally).                                                        |
+| `InitialiseWettingChemicalStep`             | `"wetting_chemical_step"`              | Droplet at the bottom wall with a chemical step. The droplet is offset horizontally.                                                                    |
+| `InitialiseFromFile`                        | `"init_from_file"`                     | Loads `rho` and `u` from a saved `.npz` file and reconstructs the equilibrium distribution.                                                             |
 
 #### Differential (`differential`)
 
-| Class | Registry Name | Description |
-|-------|---------------|-------------|
-| `Gradient` | `"gradient"` | Computes the spatial gradient of a scalar field using central finite differences with configurable padding modes for boundary conditions. |
-| `Laplacian` | `"laplacian"` | Computes the Laplacian of a scalar field using the 9-point isotropic stencil with configurable padding modes. |
+| Class       | Registry Name | Description                                                                                                                               |
+| ----------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `Gradient`  | `"gradient"`  | Computes the spatial gradient of a scalar field using central finite differences with configurable padding modes for boundary conditions. |
+| `Laplacian` | `"laplacian"` | Computes the Laplacian of a scalar field using the 9-point isotropic stencil with configurable padding modes.                             |
 
 #### Wetting (`wetting`)
 
-| Class | Registry Name | Description |
-|-------|---------------|-------------|
-| `ContactAngle` | `"contact_angle"` | Calculates contact angles (left and right) from a density field. |
+| Class                 | Registry Name             | Description                                                                     |
+| --------------------- | ------------------------- | ------------------------------------------------------------------------------- |
+| `ContactAngle`        | `"contact_angle"`         | Calculates contact angles (left and right) from a density field.                |
 | `ContactLineLocation` | `"contact_line_location"` | Calculates contact line locations (left and right) from density and angle data. |
 
 ---
 
 ### `simulation_domain` — Grid & Lattice
 
-| Module | Class | Description |
-|--------|-------|-------------|
-| `grid.grid` | `Grid` | Simulation domain grid. Stores shape and dimension, providing edge extraction utilities. Supports 2D `(nx, ny)` and 3D `(nx, ny, nz)` grids. |
+| Module            | Class     | Description                                                                                                                                                          |
+| ----------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `grid.grid`       | `Grid`    | Simulation domain grid. Stores shape and dimension, providing edge extraction utilities. Supports 2D `(nx, ny)` and 3D `(nx, ny, nz)` grids.                         |
 | `lattice.lattice` | `Lattice` | Lattice velocity model. Constructs lattice velocities (`c`), weights (`w`), opposite indices, and directional index sets for a given lattice type (`D2Q9`, `D3Q19`). |
 
 ---
 
 ### `update_timestep` — Per-Step Update Operators
 
-| Class | Registry Name | Description |
-|-------|---------------|-------------|
-| `Update` | `"single_phase"` | Full single-phase LBM timestep: equilibrium → collision → streaming → boundary conditions → macroscopic. |
-| `UpdateMultiphase` | `"multiphase"` | Full multiphase LBM timestep. Extends `Update` with interparticle-force computation via the macroscopic EOS operator. |
+| Class                        | Registry Name             | Description                                                                                                                                                 |
+| ---------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Update`                     | `"single_phase"`          | Full single-phase LBM timestep: equilibrium → collision → streaming → boundary conditions → macroscopic.                                                    |
+| `UpdateMultiphase`           | `"multiphase"`            | Full multiphase LBM timestep. Extends `Update` with interparticle-force computation via the macroscopic EOS operator.                                       |
 | `UpdateMultiphaseHysteresis` | `"multiphase_hysteresis"` | Multiphase timestep with contact angle hysteresis. Extends `UpdateMultiphase` with advancing/receding contact angle enforcement and parameter optimisation. |
 
 ---
 
 ### `util` — I/O & Plotting Utilities
 
-| Module | Description |
-|--------|-------------|
-| `io` | `SimulationIO` — handles saving timestep data (`.npz` files), configuration snapshots (via `config_file_type`, defaults to `.toml`), and directory management. |
-| `plotting` | Post-processing plotting utilities. Loads simulation results and configuration from run directories for visualisation. |
+| Module     | Description                                                                                                                                                    |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `io`       | `SimulationIO` — handles saving timestep data (`.npz` files), configuration snapshots (via `config_file_type`, defaults to `.toml`), and directory management. |
+| `plotting` | Post-processing plotting utilities. Loads simulation results and configuration from run directories for visualisation.                                         |
 
 ---
 
@@ -423,12 +420,12 @@ All operators register themselves via `@register_operator(kind)` and are resolve
 tud_lbm [CONFIG_PATH] [--no-prompt] [--dry-run] [--list-simulation_operators]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `CONFIG_PATH` | Optional path to a `.toml` configuration file. If omitted, launches interactive mode. |
-| `--no-prompt` | Skip interactive prompts and use defaults for missing values. |
-| `--dry-run` | Parse configuration and display summary without running the simulation. |
-| `--list-simulation_operators` | List all registered operators and exit. |
+| Option                        | Description                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------- |
+| `CONFIG_PATH`                 | Optional path to a `.toml` configuration file. If omitted, launches interactive mode. |
+| `--no-prompt`                 | Skip interactive prompts and use defaults for missing values.                         |
+| `--dry-run`                   | Parse configuration and display summary without running the simulation.               |
+| `--list-simulation_operators` | List all registered operators and exit.                                               |
 
 ---
 

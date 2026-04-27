@@ -15,11 +15,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from config.adapter_toml import TomlAdapter
-from config.array_expansion import enumerate_configs
-from config.array_expansion import expand_config
+from config.array_expansion import enumerate_configs, expand_config
 from config.jax_config import configure_jax
-from runner.parallel_runner import run_parallel_simulations
-from runner.parallel_runner import save_sweep_log
+from runner.parallel_runner import run_parallel_simulations, save_sweep_log
 
 # Configure JAX (64-bit precision, JIT enabled).
 configure_jax()
@@ -52,7 +50,9 @@ def run_parallel_sweep():
     # Optional: Enumerate and display each configuration before execution
     print("\n✓ Configuration details:")
     for idx, params, cfg in enumerate_configs(config_dict):
-        params_str = ", ".join(f"{k}={v}" for k, v in params.items()) if params else "(base)"
+        params_str = (
+            ", ".join(f"{k}={v}" for k, v in params.items()) if params else "(base)"
+        )
         print(f"  [{idx}] {params_str}")
         print(f"      grid: {cfg.grid_shape}, tau: {cfg.tau}, nt: {cfg.nt}")
 

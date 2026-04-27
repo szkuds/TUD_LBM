@@ -26,16 +26,16 @@ Acceptance criteria
 
 import sys
 from pathlib import Path
+
 import numpy as np
 import pytest
 
 # Ensure src/ is importable
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from config.simulation_config import SimulationConfig
-from runner.run import init_state
-from runner.run import run
-from setup.simulation_setup import build_setup
+from tud_lbm.config.simulation_config import SimulationConfig
+from tud_lbm.pipeline.runner import init_state, run
+from tud_lbm.pipeline.setup import build_setup
 
 # ── Test parameters ──────────────────────────────────────────────────
 
@@ -149,7 +149,9 @@ def test_poiseuille_symmetry(poiseuille_simulation):
     ux_norm = ux_mean / (ux_mean.max() + 1e-30)
     symmetry_error = np.max(np.abs(ux_norm - ux_norm[::-1]))
 
-    assert symmetry_error < 0.01, f"Profile asymmetry {symmetry_error:.4f} exceeds 1% tolerance"
+    assert (
+        symmetry_error < 0.01
+    ), f"Profile asymmetry {symmetry_error:.4f} exceeds 1% tolerance"
 
 
 @pytest.mark.integration
