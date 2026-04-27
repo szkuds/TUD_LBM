@@ -214,9 +214,6 @@ def run_parallel_simulations(
     results: list[SimulationResult] = []
     futures_to_idx: dict[Any, int] = {}
 
-    if verbose:
-        pass
-
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         # Submit all jobs
         for idx, (config, params) in enumerate(zip(configs, parameters_list, strict=False)):

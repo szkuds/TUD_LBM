@@ -240,12 +240,12 @@ def _apply_overrides(raw_config: dict[str, Any], overrides: tuple[str, ...]) -> 
 
 def _display_operators() -> None:
     """Display all registered operators grouped by kind in Rich tables."""
-    from operators._loader import auto_load_operators
-    from registry import OPERATOR_REGISTRY
-    from registry import get_operator_category
-    from registry import get_operators
+    from tud_lbm.operators import load_all
+    from tud_lbm.registry import OPERATOR_REGISTRY
+    from tud_lbm.registry import get_operator_category
+    from tud_lbm.registry import get_operators
 
-    auto_load_operators()
+    load_all()
 
     categories = sorted(get_operator_category())
 

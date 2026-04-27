@@ -21,7 +21,6 @@ class TestPlottingOperatorsShapeHandling:
             nt=100,
         )
 
-        # Create dummy data: (nx, ny, nz, q, d) for rho where q=9 (D2Q9), d=1 (scalar)
         rho_data = np.ones((100, 100, 1, 9, 1))
         data = {"rho": rho_data}
 
@@ -31,8 +30,6 @@ class TestPlottingOperatorsShapeHandling:
         fig, ax = plt.subplots()
         try:
             op(ax, data, timestep=0)
-            # If we get here without error, the shape was correct
-            assert True
         finally:
             plt.close(fig)
 
@@ -57,8 +54,6 @@ class TestPlottingOperatorsShapeHandling:
         fig, ax = plt.subplots()
         try:
             op(ax, data, timestep=0)
-            # If we get here without error, the shape was correct
-            assert True
         finally:
             plt.close(fig)
 

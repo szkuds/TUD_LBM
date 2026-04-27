@@ -180,4 +180,3 @@ def test_poiseuille_runtime(poiseuille_simulation):
     """
     # The fixture has already run successfully; this test documents
     # the performance requirement.
-    assert True

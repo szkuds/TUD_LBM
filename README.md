@@ -38,7 +38,7 @@ Install `uv` by following the official instructions for your platform:
 ```console
 git clone git@github.com:szkuds/tud_lbm.git
 cd tud_lbm
-uv venv --python 3.10
+uv venv --python 3.14
 source .venv/bin/activate
 uv pip install .
 python -c "import tud_lbm"
@@ -49,7 +49,7 @@ python -c "import tud_lbm"
 ```console
 git clone git@github.com:szkuds/tud_lbm.git
 cd tud_lbm
-uv venv --python 3.10
+uv venv --python 3.14
 .venv\Scripts\activate
 uv pip install .
 python -c "import tud_lbm"
