@@ -6,18 +6,14 @@ each save_interval via jax.debug.callback, then plotted post-run.
 Configuration is loaded from config_simple.toml.
 """
 
-import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "src"))
-
 from tud_lbm.config.adapter_toml import TomlAdapter
 from tud_lbm.config.jax_config import configure_jax
-from tud_lbm.io import SimulationIO
-from tud_lbm.io.plotting import FigureBuilder
+from tud_lbm.io.plotting.figure_builder import FigureBuilder
+from tud_lbm.io.save import SimulationIO
 from tud_lbm.pipeline.runner import init_state
 from tud_lbm.pipeline.runner import run
-from tud_lbm.pipeline.simulation_setup import build_setup
+from tud_lbm.pipeline.setup import build_setup
 
 # Configure JAX (64-bit precision, JIT enabled).
 configure_jax()
@@ -38,6 +34,7 @@ def run_and_save():
         base_dir=config.results_dir,
         config=config,
         simulation_name=config.simulation_name,
+        output_format=config.output_format,
     )
 
     # Stream snapshots to disk while the lax.scan loop runs.

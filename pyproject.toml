@@ -142,7 +142,7 @@ extend-immutable-calls = ["array_field"]
 "tud_lbm/util/plotting/__init__.py" = ["I001"]
 "tud_lbm/util/plotting/base.py" = ["ARG002"]
 "tud_lbm/pipeline/setup.py" = ["PLC0415", "RUF002"]
-"tud_lbm/pipeline/__init__.py" = ["PLC0415"]  # was src/setup/__init__.py — verify this path
+"tud_lbm/pipeline/__init__.py" = ["PLC0415"]
 "tud_lbm/runner/parallel_runner.py" = ["PLC0415", "ARG001", "LOG015", "G004"]
 "tud_lbm/operators/protocols.py" = ["ANN401", "RUF002"]
 "tud_lbm/operators/macroscopic/_multiphase.py" = ["RUF002", "RUF003"]
@@ -165,7 +165,7 @@ no-lines-before = [
 current_version = "0.0.2"
 
 [[tool.bumpversion.files]]
-filename = "src/__init__.py"
+filename = "tud_lbm/__init__.py"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"

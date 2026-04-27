@@ -438,7 +438,7 @@ class TestExampleFiles:
         assert bundle.is_multiphase
         assert bundle.grid_shape == (201, 201, 1)
         assert bundle.kappa == 0.017
-        assert bundle.save_interval == 400
+        assert bundle.save_interval == 10
         assert bundle.force_enabled is True
         assert bundle.gravity_force == {
             "force_g": 2e-6,
