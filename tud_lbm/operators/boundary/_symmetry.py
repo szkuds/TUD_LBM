@@ -31,7 +31,7 @@ def _apply_bottom_symmetry(
     for k in range(len(top_indices)):
         dst = top_indices[k]
         src = bot_indices[k]
-        f_streamed = f_streamed.at[:, 0, dst, 0].set(f_collision[:, 0, src, 0])
+        f_streamed = f_streamed.at[:, 0, 0, dst, 0].set(f_collision[:, 0, 0, src, 0])
     return f_streamed
 
 
@@ -45,13 +45,13 @@ def _apply_top_symmetry(
     for k in range(len(bot_indices)):
         dst = bot_indices[k]
         src = top_indices[k]
-        src_vals = f_collision[:, -1, src, 0]
+        src_vals = f_collision[:, -1, 0, src, 0]
         # Diagonal components need a roll correction for streaming shift
         if k == DIAGONAL_1_IDX:
             src_vals = jnp.roll(src_vals, 1, axis=0)
         elif k == DIAGONAL_2_IDX:
             src_vals = jnp.roll(src_vals, -1, axis=0)
-        f_streamed = f_streamed.at[:, -1, dst, 0].set(src_vals)
+        f_streamed = f_streamed.at[:, -1, 0, dst, 0].set(src_vals)
     return f_streamed
 
 
@@ -65,7 +65,7 @@ def _apply_left_symmetry(
     for k in range(len(right_indices)):
         dst = right_indices[k]
         src = left_indices[k]
-        f_streamed = f_streamed.at[0, :, dst, 0].set(f_collision[0, :, src, 0])
+        f_streamed = f_streamed.at[0, :, 0, dst, 0].set(f_collision[0, :, 0, src, 0])
     return f_streamed
 
 
@@ -79,7 +79,7 @@ def _apply_right_symmetry(
     for k in range(len(left_indices)):
         dst = left_indices[k]
         src = right_indices[k]
-        f_streamed = f_streamed.at[-1, :, dst, 0].set(f_collision[-1, :, src, 0])
+        f_streamed = f_streamed.at[-1, :, 0, dst, 0].set(f_collision[-1, :, 0, src, 0])
     return f_streamed
 
 

@@ -530,8 +530,8 @@ class TestApplyBounceBack:
         opp = np.array(lattice.opp_indices)
         for idx in np.array(lattice.top_indices):
             np.testing.assert_allclose(
-                np.array(f_out[:, 0, idx, 0]),
-                np.array(f_c[:, 0, opp[idx], 0]),
+                np.array(f_out[:, 0, 0, idx, 0]),
+                np.array(f_c[:, 0, 0, opp[idx], 0]),
             )
 
     def test_top_edge(self, lattice):
@@ -546,8 +546,8 @@ class TestApplyBounceBack:
         opp = np.array(lattice.opp_indices)
         for idx in np.array(lattice.bottom_indices):
             np.testing.assert_allclose(
-                np.array(f_out[:, -1, idx, 0]),
-                np.array(f_c[:, -1, opp[idx], 0]),
+                np.array(f_out[:, -1, 0, idx, 0]),
+                np.array(f_c[:, -1, 0, opp[idx], 0]),
             )
 
     def test_shape_preserved(self, lattice):

@@ -11,4 +11,7 @@
     <orderEntry type="jdk" jdkName="Python 3.14 (TUD_LBM)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
+  <component name="TestRunnerService">
+    <option name="PROJECT_TEST_RUNNER" value="py.test" />
+  </component>
 </module>
