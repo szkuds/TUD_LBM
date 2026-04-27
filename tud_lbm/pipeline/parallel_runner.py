@@ -215,7 +215,6 @@ def run_parallel_simulations(
     futures_to_idx: dict[Any, int] = {}
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all jobs
         for idx, (config, params) in enumerate(zip(configs, parameters_list, strict=False)):
             future = executor.submit(
                 run_single_simulation,
@@ -240,8 +239,9 @@ def run_parallel_simulations(
     generate_plots(results, verbose=verbose)
 
     if verbose:
-        sum(1 for r in results if r.status == "success")
-        sum(1 for r in results if r.status == "failed")
+        n_success = sum(1 for r in results if r.status == "success")
+        n_failed = sum(1 for r in results if r.status == "failed")
+        print(f"Completed {n_configs} simulations: {n_success} succeeded, {n_failed} failed.")
 
     return results
 
