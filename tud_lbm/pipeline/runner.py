@@ -151,6 +151,7 @@ def run(
 
     # ── Streaming I/O mode ───────────────────────────────────────
     if io_handler is not None:
+        from tud_lbm.pipeline.io_callbacks import _state_to_numpy
         from tud_lbm.pipeline.io_callbacks import make_save_callback
 
         do_save = make_save_callback(
@@ -170,6 +171,12 @@ def run(
             scan_body_io,
             initial_state,
             jnp.arange(nt),
+        )
+
+        final_t = int(final_state.t)
+        io_handler.save_data_step(
+            final_t,
+            _state_to_numpy(final_state, fields=save_fields, t=final_t),
         )
         return final_state, None
 

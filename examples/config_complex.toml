@@ -5,13 +5,19 @@ type = "multiphase"
 grid_shape = [201, 101]
 lattice_type = "D2Q9"
 tau = 0.99
-nt = 1000
-init_type = "wetting_chem_step"
+nt = 2000
+init_type = "init_from_file"
+init_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_test/2026-04-29/08-17-09_Test chemical step simulation/data/timestep_18000.npz"
+
+[initialisation]
+centres = [[0.34, 0]]
+radii = [0.25]
+dispersed = "liquid"
 
 [multiphase]
-kappa = 0.017
+kappa = 0.04
 rho_l = 1.0
-rho_v = 0.33
+rho_v = 0.001
 interface_width = 5
 eos = "double-well"
 
@@ -28,20 +34,28 @@ d_rho_left = 0.0
 d_rho_right = 0.0
 
 [hysteresis]
-ca_advancing = 90.0
-ca_receding = 80.0
+#ca_advancing = 90.0
+#ca_receding = 80.0
 learning_rate = 0.05
 max_iterations = 10
+
+[chemical_step]
+chemical_step_location = 0.5
+chemical_step_edge = "bottom"
+ca_advancing_pre_step = 120
+ca_receding_pre_step = 100
+ca_advancing_post_step = 70
+ca_receding_post_step = 50
 
 # ─── Forces (each force is its own section, named by physics) ───────
 #
 # Any section whose name ends in "_force" is automatically discovered,
 # constructed via the operator registry, and summed into the total
-# external force. No [[force]] array-of-tables, no "type" key needed.
+# external force.
 
-[gravity_force]
-force_g = 5e-7
-inclination_angle_deg = 50
+[gravity_masked_force]
+force_g = 1e-6
+inclination_angle_deg = 0
 
 # To add a second force, just add another section:
 #
@@ -53,4 +67,4 @@ inclination_angle_deg = 50
 [output]
 results_dir = "~/TUD_LBM_data/results"
 save_fields = ["rho", "u"]
-plot_fields = ["density", "velocity", "analysis"]
+plot_fields = ["density", "velocity"]

@@ -35,6 +35,7 @@ _SECTION_ALIAS_MAP = {
     "boundary_conditions": "bc_config",
     "wetting": "wetting_config",
     "hysteresis": "hysteresis_config",
+    "chemical_step": "chemical_step_config",
 }
 
 

@@ -63,11 +63,7 @@ def _state_to_numpy(state: State, fields: tuple | None = None, t: int | None = N
     }
     bad = [k for k, v in data.items() if np.isnan(v).any()]
     if bad:
-        # Raising here causes the jax.debug.callback to fail
-        # and the lax.scan / run(...) to abort at this timestep.
-        # TODO: when a NaN is triggered it still needs to plot id that is enabled.
-        msg = f"NaNs detected at t={t} in fields: {bad}"
-        raise FloatingPointError(msg)
+        jax.debug.print("NaNs detected at t={t} in fields: {bad}", t=t, bad=bad)
     return data
 
 

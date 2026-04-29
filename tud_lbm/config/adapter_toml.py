@@ -93,7 +93,7 @@ class TomlAdapter(ConfigAdapter):
                 raise TypeError(msg)
             sim_table[key] = dict(value)
 
-    def load_raw(self, path: str) -> dict[str, Any]:
+    def load_raw(self, path: str) -> dict[str, Any]:  # noqa: C901
         """Parse *path* and return raw configuration dict.
 
         Unlike :meth:`load`, this returns the raw config dict without
@@ -152,6 +152,8 @@ class TomlAdapter(ConfigAdapter):
             sim_table["wetting_config"] = dict(raw["wetting"])
         if "hysteresis" in raw:
             sim_table["hysteresis_config"] = dict(raw["hysteresis"])
+        if "chemical_step" in raw:
+            sim_table["chemical_step_config"] = dict(raw["chemical_step"])
 
         if "initialisation" in raw:
             sim_table["initialisation"] = dict(raw["initialisation"])

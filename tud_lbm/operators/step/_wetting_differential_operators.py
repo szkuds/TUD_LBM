@@ -35,14 +35,33 @@ def _make_wetting_differential_ops(setup: SimulationSetup, wetting_state: Wettin
     """
     # Extract live wetting parameters from the state
     _resolve_wetting_fields = build_wetting_fn("resolve_wetting_fields")
-    phi_l, phi_r, d_rho_l, d_rho_r = _resolve_wetting_fields(
-        {
-            "phi_l": wetting_state.phi_left,
-            "phi_r": wetting_state.phi_right,
-            "d_rho_l": wetting_state.d_rho_left,
-            "d_rho_r": wetting_state.d_rho_right,
-        },
-    )
+    # Build a mapping that includes both legacy scalar keys and the new
+    # per-region pre/post keys so resolve_wetting_fields can choose the
+    # most specific available layout.
+    mapping = {
+        "phi_l": wetting_state.phi_left,
+        "phi_r": wetting_state.phi_right,
+        "d_rho_l": wetting_state.d_rho_left,
+        "d_rho_r": wetting_state.d_rho_right,
+        "phi_left_pre": getattr(wetting_state, "phi_left_pre", None),
+        "phi_left_post": getattr(wetting_state, "phi_left_post", None),
+        "d_rho_left_pre": getattr(wetting_state, "d_rho_left_pre", None),
+        "d_rho_left_post": getattr(wetting_state, "d_rho_left_post", None),
+        "phi_right_pre": getattr(wetting_state, "phi_right_pre", None),
+        "phi_right_post": getattr(wetting_state, "phi_right_post", None),
+        "d_rho_right_pre": getattr(wetting_state, "d_rho_right_pre", None),
+        "d_rho_right_post": getattr(wetting_state, "d_rho_right_post", None),
+    }
+
+    # If a chemical step is configured, pass spatial info so resolver builds
+    # per-column arrays split at step_x.
+    csc = setup.config.chemical_step_config
+    if csc is not None:
+        nx = setup.config.grid_shape[0]
+        step_x = float(csc["chemical_step_location"]) * nx
+        phi_l, phi_r, d_rho_l, d_rho_r = _resolve_wetting_fields(mapping, nx=nx, step_x=step_x)
+    else:
+        phi_l, phi_r, d_rho_l, d_rho_r = _resolve_wetting_fields(mapping)
 
     def wetting_gradient_density(grid: jnp.ndarray) -> jnp.ndarray:
         """Gradient shim that injects live wetting parameters."""

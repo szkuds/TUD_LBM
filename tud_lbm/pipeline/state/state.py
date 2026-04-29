@@ -54,10 +54,19 @@ class WettingState(NamedTuple):
     d_rho_right: jnp.ndarray
     phi_left: jnp.ndarray
     phi_right: jnp.ndarray
+    # New per-region parameters (pre/post) for compatibility with chemical-step
     ca_left: jnp.ndarray
     ca_right: jnp.ndarray
     cll_left: jnp.ndarray
     cll_right: jnp.ndarray
+    d_rho_left_pre: jnp.ndarray | None = None
+    d_rho_left_post: jnp.ndarray | None = None
+    phi_left_pre: jnp.ndarray | None = None
+    phi_left_post: jnp.ndarray | None = None
+    d_rho_right_pre: jnp.ndarray | None = None
+    d_rho_right_post: jnp.ndarray | None = None
+    phi_right_pre: jnp.ndarray | None = None
+    phi_right_post: jnp.ndarray | None = None
     opt_state_left: Any = None  # optax optimizer state (pytree)
     opt_state_right: Any = None  # optax optimizer state (pytree)
 

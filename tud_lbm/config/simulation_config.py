@@ -28,6 +28,8 @@ ARRAY_ELIGIBLE: str = "array_eligible"
 NESTED_SWEEPABLE: str = "nested_sweepable"
 MIN_GRID_DIMENSIONS: int = 2
 MIN_TAU_VALUE: float = 0.5
+# Threshold for distinguishing advancing contact angle behaviour in chemical step
+CA_THRESHOLD: float = 90.0
 
 
 def array_field(
@@ -155,15 +157,23 @@ class SimulationConfig:
         metadata={CONFIG_SECTION: "boundary_conditions"},
     )
 
-    # ── Wetting model (promoted to first-class section) ──────────
+    # ── Wetting model ──────────
     wetting_config: dict[str, Any] | None = array_field(default=None, section="wetting", nested_sweepable=True)
 
-    # ── Hysteresis model (promoted to first-class section) ───────
+    # ── Hysteresis model ───────
     hysteresis_config: dict[str, Any] | None = array_field(default=None, section="hysteresis", nested_sweepable=True)
+
+    # ── Chemical step model ───────
+    chemical_step_config: dict[str, Any] | None = array_field(
+        default=None, section="chemical_step", nested_sweepable=True
+    )
 
     # ── Forces (each force is its own field, named by physics) ───
     gravity_force: dict[str, Any] | None = array_field(default=None, section="gravity_force", nested_sweepable=True)
     electric_force: dict[str, Any] | None = array_field(default=None, section="electric_force", nested_sweepable=True)
+    gravity_masked_force: dict[str, Any] | None = array_field(
+        default=None, section="gravity_masked_force", nested_sweepable=True
+    )
     # ── Initialisation ───────────────────────────────────────────
     init_type: str = "standard"
     init_dir: str | None = None
@@ -203,12 +213,49 @@ class SimulationConfig:
         self._validate_common()
         if self.sim_type == "multiphase":
             self._validate_multiphase()
+        if self.chemical_step_config is not None:
+            self._validate_chemical_step()
 
     def _normalize(self) -> None:
         object.__setattr__(self, "grid_shape", _normalize_sequence(self.grid_shape))
         object.__setattr__(self, "output_format", _first_if_list(self.output_format))
         if isinstance(self.output_format, str):
             object.__setattr__(self, "output_format", self.output_format.lower())
+
+    def _validate_chemical_step(self) -> None:
+        """Validate chemical_step_config for consistency between levers.
+
+        Ensures that the advancing contact angle, phi seed factor and d_rho
+        displacement are consistent and warns when both phi and d_rho are
+        active as they produce opposing optimisation gradients.
+        """
+        csc = self.chemical_step_config
+        for side in ("pre", "post"):
+            ca_adv = float(csc[f"ca_advancing_{side}_step"])
+            phi = float(csc.get(f"phi_{side}_step", 1.0))
+            d_rho = float(csc.get(f"d_rho_{side}_step", 0.0))
+
+            if ca_adv > CA_THRESHOLD and phi > 1.0:
+                msg = (
+                    f"chemical_step {side}_step: ca_advancing={ca_adv}\u00b0 requires a "
+                    f"hydrophobic seed but phi={phi}>1 with d_rho=0 is hydrophilic."
+                )
+                raise ValueError(msg)
+            if ca_adv < CA_THRESHOLD and d_rho > 0.0:
+                msg = (
+                    f"chemical_step {side}_step: ca_advancing={ca_adv}\u00b0 requires a "
+                    f"hydrophilic seed but d_rho={d_rho}>0 with phi=1 is hydrophobic."
+                )
+                raise ValueError(msg)
+            if phi > 1.0 and d_rho > 0.0:
+                import warnings
+
+                warnings.warn(
+                    f"chemical_step {side}_step: phi={phi}>1 and d_rho={d_rho}>0 are "
+                    "both active — levers oppose each other, optimiser gradients will "
+                    "be ambiguous.",
+                    stacklevel=3,
+                )
 
     def _apply_defaults(self) -> None:
         if self.save_interval == 0:

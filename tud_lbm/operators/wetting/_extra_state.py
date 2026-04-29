@@ -51,10 +51,77 @@ class WettingExtraStatePlugin:
 
         return {
             "wetting": WettingState(
+                # legacy scalar fields (kept for compatibility)
                 d_rho_left=jnp.array(_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.05)),
                 d_rho_right=jnp.array(_cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.05)),
                 phi_left=jnp.array(_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.2)),
                 phi_right=jnp.array(_cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.2)),
+                # New per-region pre/post values. Prefer explicit pre/post keys,
+                # otherwise fall back to legacy scalar values.
+                d_rho_left_pre=jnp.array(
+                    _cfg_value(
+                        wetting_cfg,
+                        "d_rho_left_pre",
+                        "d_rho_l_pre",
+                        default=_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.05),
+                    )
+                ),
+                d_rho_left_post=jnp.array(
+                    _cfg_value(
+                        wetting_cfg,
+                        "d_rho_left_post",
+                        "d_rho_l_post",
+                        default=_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.05),
+                    )
+                ),
+                phi_left_pre=jnp.array(
+                    _cfg_value(
+                        wetting_cfg,
+                        "phi_left_pre",
+                        "phi_l_pre",
+                        default=_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.2),
+                    )
+                ),
+                phi_left_post=jnp.array(
+                    _cfg_value(
+                        wetting_cfg,
+                        "phi_left_post",
+                        "phi_l_post",
+                        default=_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.2),
+                    )
+                ),
+                d_rho_right_pre=jnp.array(
+                    _cfg_value(
+                        wetting_cfg,
+                        "d_rho_right_pre",
+                        "d_rho_r_pre",
+                        default=_cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.05),
+                    )
+                ),
+                d_rho_right_post=jnp.array(
+                    _cfg_value(
+                        wetting_cfg,
+                        "d_rho_right_post",
+                        "d_rho_r_post",
+                        default=_cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.05),
+                    )
+                ),
+                phi_right_pre=jnp.array(
+                    _cfg_value(
+                        wetting_cfg,
+                        "phi_right_pre",
+                        "phi_r_pre",
+                        default=_cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.2),
+                    )
+                ),
+                phi_right_post=jnp.array(
+                    _cfg_value(
+                        wetting_cfg,
+                        "phi_right_post",
+                        "phi_r_post",
+                        default=_cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.2),
+                    )
+                ),
                 ca_left=ca_left,
                 ca_right=ca_right,
                 cll_left=cll_left,

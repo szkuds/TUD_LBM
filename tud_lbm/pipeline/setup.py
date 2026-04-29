@@ -131,7 +131,7 @@ class SimulationSetup(NamedTuple):
     streaming_fn: StreamingOperator | None = None
     bc_fn: BoundaryOperator | None = None
     initial_f_fn: InitialPopulationOperator[..., jnp.ndarray] | None = None
-    multiphase_step: MultiphaseParams[..., jnp.ndarray] | None = None
+    multiphase_step: StepOperator[..., jnp.ndarray] | None = None
 
 
 # ── Main factory ─────────────────────────────────────────────────────

@@ -32,7 +32,7 @@ def load_all() -> None:
     """Import every operator subpackage to trigger registry registration."""
     for _, subpkg_name, is_pkg in pkgutil.iter_modules(__path__):
         if is_pkg:
-            auto_load_operators(f"operators.{subpkg_name}")
+            auto_load_operators(f"tud_lbm.operators.{subpkg_name}")
 
 
 __all__ = [

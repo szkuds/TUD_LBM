@@ -11,7 +11,14 @@ if TYPE_CHECKING:
 class WettingParams(NamedTuple):
     """Optimisable wetting boundary parameters used across wetting operators."""
 
-    d_rho_left: jnp.ndarray
-    d_rho_right: jnp.ndarray
-    phi_left: jnp.ndarray
-    phi_right: jnp.ndarray
+    # Per-region (pre/post) parameters for left/bottom contact line
+    d_rho_left_pre: jnp.ndarray
+    d_rho_left_post: jnp.ndarray
+    phi_left_pre: jnp.ndarray
+    phi_left_post: jnp.ndarray
+
+    # Per-region (pre/post) parameters for right/top contact line
+    d_rho_right_pre: jnp.ndarray
+    d_rho_right_post: jnp.ndarray
+    phi_right_pre: jnp.ndarray
+    phi_right_post: jnp.ndarray
