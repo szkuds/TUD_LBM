@@ -25,9 +25,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
+import jax.numpy as jnp
 
 if TYPE_CHECKING:
-    import jax.numpy as jnp
     from tud_lbm.operators.protocols import ExtraState
 
 
@@ -69,6 +69,9 @@ class WettingState(NamedTuple):
     phi_right_post: jnp.ndarray | None = None
     opt_state_left: Any = None  # optax optimizer state (pytree)
     opt_state_right: Any = None  # optax optimizer state (pytree)
+    # True on the first step after the contact line crossed the chemical step
+    step_crossed_left: jnp.ndarray = jnp.array(False)
+    step_crossed_right: jnp.ndarray = jnp.array(False)
 
 
 class State(NamedTuple):

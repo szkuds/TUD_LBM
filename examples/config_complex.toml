@@ -1,70 +1,81 @@
-# ─── Core simulation parameters ─────────────────────────────────────
 [simulation_type]
-simulation_name = "Test complex simulation"
-type = "multiphase"
-grid_shape = [201, 101]
+simulation_name = "Test chemical step simulation"
 lattice_type = "D2Q9"
+grid_shape = [
+    201,
+    101,
+    1,
+]
+nt = 20000
 tau = 0.99
-nt = 2000
+collision_scheme = "bgk"
 init_type = "init_from_file"
-init_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_test/2026-04-29/08-17-09_Test chemical step simulation/data/timestep_18000.npz"
-
-[initialisation]
-centres = [[0.34, 0]]
-radii = [0.25]
-dispersed = "liquid"
-
-[multiphase]
-kappa = 0.04
-rho_l = 1.0
-rho_v = 0.001
-interface_width = 5
-eos = "double-well"
+init_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_test/2026-04-29/21-50-36_Test chemical step simulation/data/timestep_20000.npz"
+save_interval = 30
+skip_interval = 1
+type = "multiphase"
 
 [boundary_conditions]
 left = "periodic"
 right = "periodic"
 top = "bounce-back"
 bottom = "wetting"
-
-[wetting]
-phi_left = 1.2
-phi_right = 1.2
-d_rho_left = 0.0
-d_rho_right = 0.0
-
-[hysteresis]
-#ca_advancing = 90.0
-#ca_receding = 80.0
-learning_rate = 0.05
-max_iterations = 10
+front = "periodic"
+back = "periodic"
 
 [chemical_step]
 chemical_step_location = 0.5
 chemical_step_edge = "bottom"
-ca_advancing_pre_step = 120
-ca_receding_pre_step = 100
-ca_advancing_post_step = 70
-ca_receding_post_step = 50
-
-# ─── Forces (each force is its own section, named by physics) ───────
-#
-# Any section whose name ends in "_force" is automatically discovered,
-# constructed via the operator registry, and summed into the total
-# external force.
+ca_advancing_pre_step = 120.0
+ca_receding_pre_step = 100.0
+phi_pre_step = 1.0
+d_rho_pre_step = 0.05
+ca_advancing_post_step = 70.0
+ca_receding_post_step = 50.0
+phi_post_step = 1.2
+d_rho_post_step = 0.0
 
 [gravity_masked_force]
-force_g = 1e-6
-inclination_angle_deg = 0
+force_g = 1e-06
+inclination_angle_deg = 60
 
-# To add a second force, just add another section:
-#
-# [electric_force]
-# voltage_top    = 1.0
-# voltage_bottom = 0.0
+[hysteresis]
+learning_rate = 0.05
+max_iterations = 10
 
-# ─── Output / IO ────────────────────────────────────────────────────
+[initialisation]
+centres = [
+    [
+        0.34,
+        0,
+    ],
+]
+radii = [
+    0.3,
+]
+dispersed = "liquid"
+
+[multiphase]
+eos = "double-well"
+kappa = 0.04
+rho_l = 1.0
+rho_v = 0.001
+interface_width = 5
+
 [output]
-results_dir = "~/TUD_LBM_data/results"
-save_fields = ["rho", "u"]
-plot_fields = ["density", "velocity"]
+results_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_test"
+save_fields = [
+    "rho",
+    "u",
+]
+plot_fields = [
+    "density",
+    "velocity",
+]
+output_format = "numpy"
+
+[wetting]
+phi_left = 1.0
+phi_right = 1.0
+d_rho_left = 0.05
+d_rho_right = 0.05

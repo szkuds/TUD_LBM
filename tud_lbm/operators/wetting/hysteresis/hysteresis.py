@@ -136,7 +136,7 @@ def _optimise_single_param(
 
 
 @wetting_operator(name="hysteresis")
-def update_wetting_state(
+def update_wetting_state(  # noqa: PLR0915
     wetting: WettingState,
     rho: jnp.ndarray,
     setup: SimulationSetup,
@@ -194,13 +194,26 @@ def update_wetting_state(
         rho_mean,
     )
 
+    # Detect a chemical step crossing event this timestep. This records
+    # when the previous (stored) contact-line was on the pre-step side
+    # and the current measured contact-line is on/over the step.
+    csc = setup.config.chemical_step_config
+    if csc is not None:
+        nx = setup.config.grid_shape[0]
+        step_x = csc["chemical_step_location"] * nx
+        left_just_crossed = (wetting.cll_left < step_x) & (cll_left >= step_x)
+        right_just_crossed = (wetting.cll_right < step_x) & (cll_right >= step_x)
+    else:
+        left_just_crossed = jnp.array(False)
+        right_just_crossed = jnp.array(False)
+
     # 2. Hysteresis window parameters
     hc = setup.config.hysteresis_config
     csc = setup.config.chemical_step_config
     if csc is not None:
         # step_x in lattice units
         nx = setup.config.grid_shape[0]
-        step_x = float(csc["chemical_step_location"]) * nx
+        step_x = csc["chemical_step_location"] * nx
 
         # select angles per side based on contact-line position vs step
         ca_adv_left = jnp.where(cll_left < step_x, csc["ca_advancing_pre_step"], csc["ca_advancing_post_step"])
@@ -219,23 +232,60 @@ def update_wetting_state(
     in_window_left = (ca_left >= ca_rec_left) & (ca_left <= ca_adv_left)
     in_window_right = (ca_right >= ca_rec_right) & (ca_right <= ca_adv_right)
 
+    # If the contact-line just crossed the chemical step this timestep,
+    # temporarily force the 'in-window' predicate to False so the
+    # optimiser targets the contact angle (CA) and moves the CL away
+    # from the pre-step position instead of pinning back to it.
+    in_window_left = in_window_left & ~left_just_crossed
+    in_window_right = in_window_right & ~right_just_crossed
+
     # 3. Current optimisable parameters
     # Build optimisable parameter bundle from the wetting state.
     # Prefer per-region pre/post values when present; fall back to legacy
     # scalar fields for backward compatibility.
-    def _or(v_new, v_old):  # noqa: ANN001, ANN202
-        return v_new if v_new is not None else v_old
+    # 3. Current optimisable parameters.
+    # B-frozen: the *active* region (whichever pre/post the CL currently sits
+    # over) warm-starts from the previous step's optimised value. The
+    # *inactive* region snaps back to the chemical_step config seed every
+    # step — the optimiser has zero physical gradient through it (no CL
+    # there), and the mask in 5.1 also zeros that gradient explicitly.
+    if csc is not None:
+        nx = setup.config.grid_shape[0]
+        step_x = csc["chemical_step_location"] * nx
 
-    params = WettingParams(
-        d_rho_left_pre=_or(getattr(wetting, "d_rho_left_pre", None), wetting.d_rho_left),
-        d_rho_left_post=_or(getattr(wetting, "d_rho_left_post", None), wetting.d_rho_left),
-        phi_left_pre=_or(getattr(wetting, "phi_left_pre", None), wetting.phi_left),
-        phi_left_post=_or(getattr(wetting, "phi_left_post", None), wetting.phi_left),
-        d_rho_right_pre=_or(getattr(wetting, "d_rho_right_pre", None), wetting.d_rho_right),
-        d_rho_right_post=_or(getattr(wetting, "d_rho_right_post", None), wetting.d_rho_right),
-        phi_right_pre=_or(getattr(wetting, "phi_right_pre", None), wetting.phi_right),
-        phi_right_post=_or(getattr(wetting, "phi_right_post", None), wetting.phi_right),
-    )
+        phi_pre_seed = jnp.array(csc.get("phi_pre_step", 1.0))
+        phi_post_seed = jnp.array(csc.get("phi_post_step", 1.0))
+        d_rho_pre_seed = jnp.array(csc.get("d_rho_pre_step", 0.0))
+        d_rho_post_seed = jnp.array(csc.get("d_rho_post_step", 0.0))
+
+        left_pre_active = cll_left < step_x
+        right_pre_active = cll_right < step_x
+
+        params = WettingParams(
+            phi_left_pre=jnp.where(left_pre_active, wetting.phi_left_pre, phi_pre_seed),
+            phi_left_post=jnp.where(left_pre_active, phi_post_seed, wetting.phi_left_post),
+            d_rho_left_pre=jnp.where(left_pre_active, wetting.d_rho_left_pre, d_rho_pre_seed),
+            d_rho_left_post=jnp.where(left_pre_active, d_rho_post_seed, wetting.d_rho_left_post),
+            phi_right_pre=jnp.where(right_pre_active, wetting.phi_right_pre, phi_pre_seed),
+            phi_right_post=jnp.where(right_pre_active, phi_post_seed, wetting.phi_right_post),
+            d_rho_right_pre=jnp.where(right_pre_active, wetting.d_rho_right_pre, d_rho_pre_seed),
+            d_rho_right_post=jnp.where(right_pre_active, d_rho_post_seed, wetting.d_rho_right_post),
+        )
+    else:
+        # No chem step: warm start everything; "_pre" and "_post" are the
+        # same logical wall, but they remain in lock-step because nothing
+        # else writes them differently.
+        left_pre_active = right_pre_active = jnp.array(True)
+        params = WettingParams(
+            phi_left_pre=wetting.phi_left_pre,
+            phi_left_post=wetting.phi_left_post,
+            d_rho_left_pre=wetting.d_rho_left_pre,
+            d_rho_left_post=wetting.d_rho_left_post,
+            phi_right_pre=wetting.phi_right_pre,
+            phi_right_post=wetting.phi_right_post,
+            d_rho_right_pre=wetting.d_rho_right_pre,
+            d_rho_right_post=wetting.d_rho_right_post,
+        )
 
     try:
         import optax  # lazy import — optional dependency
@@ -280,19 +330,33 @@ def update_wetting_state(
         return jnp.where(in_window_right, _cost_cll(wetting.cll_right, cll_r), _cost_ca(ca_target_right, ca_r))
 
     def left_mask(g: WettingParams) -> WettingParams:
-        return g._replace(
-            phi_right_pre=jnp.zeros_like(g.phi_right_pre),
-            phi_right_post=jnp.zeros_like(g.phi_right_post),
-            d_rho_right_pre=jnp.zeros_like(g.d_rho_right_pre),
-            d_rho_right_post=jnp.zeros_like(g.d_rho_right_post),
+        z = jnp.zeros_like
+        return WettingParams(
+            # left side: only the active region passes through
+            phi_left_pre=jnp.where(left_pre_active, g.phi_left_pre, z(g.phi_left_pre)),
+            phi_left_post=jnp.where(left_pre_active, z(g.phi_left_post), g.phi_left_post),
+            d_rho_left_pre=jnp.where(left_pre_active, g.d_rho_left_pre, z(g.d_rho_left_pre)),
+            d_rho_left_post=jnp.where(left_pre_active, z(g.d_rho_left_post), g.d_rho_left_post),
+            # right side: all zero
+            phi_right_pre=z(g.phi_right_pre),
+            phi_right_post=z(g.phi_right_post),
+            d_rho_right_pre=z(g.d_rho_right_pre),
+            d_rho_right_post=z(g.d_rho_right_post),
         )
 
     def right_mask(g: WettingParams) -> WettingParams:
-        return g._replace(
-            phi_left_pre=jnp.zeros_like(g.phi_left_pre),
-            phi_left_post=jnp.zeros_like(g.phi_left_post),
-            d_rho_left_pre=jnp.zeros_like(g.d_rho_left_pre),
-            d_rho_left_post=jnp.zeros_like(g.d_rho_left_post),
+        z = jnp.zeros_like
+        return WettingParams(
+            # left side: all zero
+            phi_left_pre=z(g.phi_left_pre),
+            phi_left_post=z(g.phi_left_post),
+            d_rho_left_pre=z(g.d_rho_left_pre),
+            d_rho_left_post=z(g.d_rho_left_post),
+            # right side: only the active region passes through
+            phi_right_pre=jnp.where(right_pre_active, g.phi_right_pre, z(g.phi_right_pre)),
+            phi_right_post=jnp.where(right_pre_active, z(g.phi_right_post), g.phi_right_post),
+            d_rho_right_pre=jnp.where(right_pre_active, g.d_rho_right_pre, z(g.d_rho_right_pre)),
+            d_rho_right_post=jnp.where(right_pre_active, z(g.d_rho_right_post), g.d_rho_right_post),
         )
 
     # --- 5.2: optimise left side, then right side ---
@@ -300,7 +364,6 @@ def update_wetting_state(
     new_params, _ = _optimise_single_param(right_objective, p1, right_mask, optimiser, max_iter, loss_tol)
 
     # 6. Return updated wetting state
-    # Write back both legacy scalar fields and new per-region fields.
     return wetting._replace(
         d_rho_left=new_params.d_rho_left_pre,
         d_rho_right=new_params.d_rho_right_pre,
@@ -318,6 +381,11 @@ def update_wetting_state(
         ca_right=ca_right,
         cll_left=cll_left,
         cll_right=cll_right,
+        # Crossing-event flags: true for exactly the step where the CL crossed
+        # the chemical step location, then reset on subsequent steps unless
+        # re-triggered.
+        step_crossed_left=left_just_crossed,
+        step_crossed_right=right_just_crossed,
     )
 
 

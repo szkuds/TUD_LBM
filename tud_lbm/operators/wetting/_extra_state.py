@@ -49,6 +49,21 @@ class WettingExtraStatePlugin:
             rho_mean,
         )
 
+        # When a chemical step config is present, seed per-region pre/post
+        # values from that config. Otherwise fall back to wetting_cfg values
+        # or the legacy defaults.
+        csc = getattr(setup.config, "chemical_step_config", None)
+        if csc is not None:
+            phi_pre = jnp.array(float(csc.get("phi_pre_step", 1.0)))
+            phi_post = jnp.array(float(csc.get("phi_post_step", 1.0)))
+            d_rho_pre = jnp.array(float(csc.get("d_rho_pre_step", 0.0)))
+            d_rho_post = jnp.array(float(csc.get("d_rho_post_step", 0.0)))
+        else:
+            # Default to left-side wetting config values when no chemical step
+            # seed is provided. Use the helper to resolve config keys.
+            phi_pre = phi_post = jnp.array(_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.2))
+            d_rho_pre = d_rho_post = jnp.array(_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.05))
+
         return {
             "wetting": WettingState(
                 # legacy scalar fields (kept for compatibility)
@@ -56,78 +71,24 @@ class WettingExtraStatePlugin:
                 d_rho_right=jnp.array(_cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.05)),
                 phi_left=jnp.array(_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.2)),
                 phi_right=jnp.array(_cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.2)),
-                # New per-region pre/post values. Prefer explicit pre/post keys,
-                # otherwise fall back to legacy scalar values.
-                d_rho_left_pre=jnp.array(
-                    _cfg_value(
-                        wetting_cfg,
-                        "d_rho_left_pre",
-                        "d_rho_l_pre",
-                        default=_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.05),
-                    )
-                ),
-                d_rho_left_post=jnp.array(
-                    _cfg_value(
-                        wetting_cfg,
-                        "d_rho_left_post",
-                        "d_rho_l_post",
-                        default=_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.05),
-                    )
-                ),
-                phi_left_pre=jnp.array(
-                    _cfg_value(
-                        wetting_cfg,
-                        "phi_left_pre",
-                        "phi_l_pre",
-                        default=_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.2),
-                    )
-                ),
-                phi_left_post=jnp.array(
-                    _cfg_value(
-                        wetting_cfg,
-                        "phi_left_post",
-                        "phi_l_post",
-                        default=_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.2),
-                    )
-                ),
-                d_rho_right_pre=jnp.array(
-                    _cfg_value(
-                        wetting_cfg,
-                        "d_rho_right_pre",
-                        "d_rho_r_pre",
-                        default=_cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.05),
-                    )
-                ),
-                d_rho_right_post=jnp.array(
-                    _cfg_value(
-                        wetting_cfg,
-                        "d_rho_right_post",
-                        "d_rho_r_post",
-                        default=_cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.05),
-                    )
-                ),
-                phi_right_pre=jnp.array(
-                    _cfg_value(
-                        wetting_cfg,
-                        "phi_right_pre",
-                        "phi_r_pre",
-                        default=_cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.2),
-                    )
-                ),
-                phi_right_post=jnp.array(
-                    _cfg_value(
-                        wetting_cfg,
-                        "phi_right_post",
-                        "phi_r_post",
-                        default=_cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.2),
-                    )
-                ),
+                # Per-region pre/post values seeded from chemical_step_config when present.
+                d_rho_left_pre=d_rho_pre,
+                d_rho_left_post=d_rho_post,
+                phi_left_pre=phi_pre,
+                phi_left_post=phi_post,
+                d_rho_right_pre=d_rho_pre,
+                d_rho_right_post=d_rho_post,
+                phi_right_pre=phi_pre,
+                phi_right_post=phi_post,
                 ca_left=ca_left,
                 ca_right=ca_right,
                 cll_left=cll_left,
                 cll_right=cll_right,
                 opt_state_left=None,
                 opt_state_right=None,
+                # Crossing-event flags: false at initialization
+                step_crossed_left=jnp.array(False),
+                step_crossed_right=jnp.array(False),
             ),
         }
 
