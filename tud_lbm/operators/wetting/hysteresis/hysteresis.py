@@ -240,8 +240,8 @@ def update_wetting_state(
     delta_cll_left = cll_left_tplus1 - wetting.cll_left
     delta_cll_right = cll_right_tplus1 - wetting.cll_right
 
-    advancing_left = delta_cll_left > 0.0
-    advancing_right = delta_cll_right < 0.0
+    advancing_left = delta_cll_left < 0.0
+    advancing_right = delta_cll_right > 0.0
 
     ca_target_left = jnp.where(advancing_left, ca_adv_left, ca_rec_left)
     ca_target_right = jnp.where(advancing_right, ca_adv_right, ca_rec_right)
@@ -377,8 +377,8 @@ def update_wetting_state_chemical_step(
     delta_cll_left = cll_left_tplus1 - wetting.cll_left
     delta_cll_right = cll_right_tplus1 - wetting.cll_right
 
-    advancing_left = delta_cll_left > 0.0
-    advancing_right = delta_cll_right < 0.0
+    advancing_left = delta_cll_left < 0.0
+    advancing_right = delta_cll_right > 0.0
 
     ca_target_left = jnp.where(advancing_left, ca_adv_left, ca_rec_left)
     ca_target_right = jnp.where(advancing_right, ca_adv_right, ca_rec_right)

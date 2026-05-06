@@ -306,10 +306,9 @@ class TestUpdateWettingState:
 
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
-        f_bc = jnp.ones((NX, NY, NZ, 9, 1)) * (1.0 / 9.0)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
+        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
         assert isinstance(new_wetting, WettingState)
 
     def test_ca_fields_updated(self):
@@ -318,10 +317,9 @@ class TestUpdateWettingState:
 
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
-        f_bc = jnp.ones((NX, NY, NZ, 9, 1)) * (1.0 / 9.0)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
+        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
         # ca_left and ca_right should reflect the actual droplet angles
         # measured by compute_contact_angle (not the initial placeholder)
         expected_ca_l, expected_ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -341,10 +339,9 @@ class TestUpdateWettingState:
 
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
-        f_bc = jnp.ones((NX, NY, NZ, 9, 1)) * (1.0 / 9.0)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
+        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
         # CLL should reflect actual droplet footprint
         assert float(new_wetting.cll_left) < float(new_wetting.cll_right)
 
@@ -353,10 +350,9 @@ class TestUpdateWettingState:
 
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
-        f_bc = jnp.ones((NX, NY, NZ, 9, 1)) * (1.0 / 9.0)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
+        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
         assert 0.0 <= float(new_wetting.d_rho_left) <= 0.2
         assert 0.0 <= float(new_wetting.d_rho_right) <= 0.2
         assert 1.0 <= float(new_wetting.phi_left) <= 1.5
@@ -368,10 +364,9 @@ class TestUpdateWettingState:
 
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
-        f_bc = jnp.ones((NX, NY, NZ, 9, 1)) * (1.0 / 9.0)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, f_bc)
+        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
         for field_name in WettingState._fields[:8]:  # skip opt_state
             val = getattr(new_wetting, field_name)
             if val is not None:
