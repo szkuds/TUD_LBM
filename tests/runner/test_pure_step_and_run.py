@@ -365,7 +365,7 @@ class TestRunPure:
         np.testing.assert_array_equal(ts, np.arange(1, 6))
 
     def test_rest_equilibrium_stable(self):
-        """Running 10 steps from rest equilibrium should stay near rho=1."""
+        """Running 10 steps from rest equilibrium should stay near rho_t_plus1=1."""
         from tud_lbm.pipeline.runner import run
 
         setup = _sp_setup()

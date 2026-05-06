@@ -162,7 +162,7 @@ def run(
         )
 
         @jax.jit
-        def scan_body_io(state: State, t: int) -> State:
+        def scan_body_io(state: State, t: int) -> tuple[State, None]:
             new_state = setup.step_fn(setup, state)
             do_save(new_state, t)
             return new_state, None
@@ -182,7 +182,7 @@ def run(
 
     # ── In-memory trajectory mode ────────────────────────────────
     @jax.jit
-    def scan_body(state: State, _t: int) -> State:
+    def scan_body(state: State, _t: int) -> tuple[State, State]:
         new_state = setup.step_fn(setup, state)
         return new_state, new_state
 

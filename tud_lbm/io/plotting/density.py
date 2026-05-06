@@ -30,7 +30,7 @@ class DensityPlotOperator(PlotOperator):
         """Render the density field as a 2D color map."""
         rho = np.asarray(data["rho"])[:, :, 0, 0, 0].T
         use_log_scale = False
-        if self.config.sim_type == "multiphase":
+        if "multiphase" in self.config.sim_type:
             rho_l = self.config.rho_l
             rho_v = self.config.rho_v
             if rho_l and rho_v and rho_v != 0:

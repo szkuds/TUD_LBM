@@ -130,7 +130,7 @@ class TestMultiphaseInitShape:
 # =====================================================================
 
 
-_WETTING_TYPES = ["wetting", "wetting_chem_step"]
+_WETTING_TYPES = ["wetting_t", "wetting_chem_step"]
 
 
 class TestWettingInitShape:
@@ -149,7 +149,7 @@ class TestWettingInitShape:
 
 
 class TestMassConservation:
-    """Total mass is conserved (equals sum of rho over the domain)."""
+    """Total mass is conserved (equals sum of rho_t_plus1 over the domain)."""
 
     def test_bubble_mass_positive(self, lattice):
         fn = build_initialise_fn("multiphase_bubbles")

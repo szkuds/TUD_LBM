@@ -55,9 +55,9 @@ class TestParseOverrideArgument:
         assert value == [0.6, 0.7, 0.8]
 
     def test_parse_array_of_strings(self):
-        path, value = _parse_override_argument('fields=["rho", "u", "f"]')
+        path, value = _parse_override_argument('fields=["rho_t_plus1", "u", "f"]')
         assert path == "fields"
-        assert value == ["rho", "u", "f"]
+        assert value == ["rho_t_plus1", "u", "f"]
 
     def test_parse_dotted_path(self):
         path, value = _parse_override_argument("gravity_force.force_g=5e-7")
@@ -129,7 +129,7 @@ class TestNormalizeOverridePath:
         assert result == ["bc_config", "top"]
 
     def test_wetting_mapped_to_wetting_config(self):
-        result = _normalize_override_path("wetting.contact_angle")
+        result = _normalize_override_path("wetting_t.contact_angle")
         assert result == ["wetting_config", "contact_angle"]
 
     def test_hysteresis_mapped_to_hysteresis_config(self):
@@ -277,8 +277,8 @@ class TestApplyOverrides:
 
     def test_apply_mixed_scalar_and_array_overrides(self):
         raw = {"tau": 0.6}
-        _apply_overrides(raw, ("nt=500", 'fields=["rho", "u"]'))
-        assert raw == {"tau": 0.6, "nt": 500, "fields": ["rho", "u"]}
+        _apply_overrides(raw, ("nt=500", 'fields=["rho_t_plus1", "u"]'))
+        assert raw == {"tau": 0.6, "nt": 500, "fields": ["rho_t_plus1", "u"]}
 
     def test_apply_overrides_reject_invalid_value(self):
         raw = {}

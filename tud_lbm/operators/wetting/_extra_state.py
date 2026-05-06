@@ -36,59 +36,29 @@ class WettingExtraStatePlugin:
             return {}
 
         f_init = setup.initial_f_fn()
-        rho_init = jnp.sum(f_init, axis=2, keepdims=True)
+        rho_init = jnp.sum(f_init, axis=-2, keepdims=True)
 
         mp = setup.multiphase_params
         rho_mean = 0.5 * (mp.rho_l + mp.rho_v) if mp is not None else 1.0
 
-        ca_left, ca_right = compute_contact_angle(rho_init, rho_mean)
+        ca_left, ca_right = compute_contact_angle(rho_init, jnp.array(rho_mean))
         cll_left, cll_right = compute_contact_line_location(
             rho_init,
             ca_left,
             ca_right,
-            rho_mean,
+            jnp.array(rho_mean),
         )
-
-        # When a chemical step config is present, seed per-region pre/post
-        # values from that config. Otherwise fall back to wetting_cfg values
-        # or the legacy defaults.
-        csc = getattr(setup.config, "chemical_step_config", None)
-        if csc is not None:
-            phi_pre = jnp.array(float(csc.get("phi_pre_step", 1.0)))
-            phi_post = jnp.array(float(csc.get("phi_post_step", 1.0)))
-            d_rho_pre = jnp.array(float(csc.get("d_rho_pre_step", 0.0)))
-            d_rho_post = jnp.array(float(csc.get("d_rho_post_step", 0.0)))
-        else:
-            # Default to left-side wetting config values when no chemical step
-            # seed is provided. Use the helper to resolve config keys.
-            phi_pre = phi_post = jnp.array(_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.2))
-            d_rho_pre = d_rho_post = jnp.array(_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.05))
 
         return {
             "wetting": WettingState(
-                # legacy scalar fields (kept for compatibility)
-                d_rho_left=jnp.array(_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.05)),
-                d_rho_right=jnp.array(_cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.05)),
-                phi_left=jnp.array(_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.2)),
-                phi_right=jnp.array(_cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.2)),
-                # Per-region pre/post values seeded from chemical_step_config when present.
-                d_rho_left_pre=d_rho_pre,
-                d_rho_left_post=d_rho_post,
-                phi_left_pre=phi_pre,
-                phi_left_post=phi_post,
-                d_rho_right_pre=d_rho_pre,
-                d_rho_right_post=d_rho_post,
-                phi_right_pre=phi_pre,
-                phi_right_post=phi_post,
+                phi_left=wetting_cfg["phi_left"],
+                phi_right=wetting_cfg["phi_right"],
+                d_rho_left=wetting_cfg["d_rho_left"],
+                d_rho_right=wetting_cfg["d_rho_right"],
                 ca_left=ca_left,
                 ca_right=ca_right,
                 cll_left=cll_left,
                 cll_right=cll_right,
-                opt_state_left=None,
-                opt_state_right=None,
-                # Crossing-event flags: false at initialization
-                step_crossed_left=jnp.array(False),
-                step_crossed_right=jnp.array(False),
             ),
         }
 
@@ -106,7 +76,6 @@ class WettingExtraStatePlugin:
             prev_state.wetting,
             new_state.rho,
             setup,
-            prev_state.f,
-            force_ext=context.get("force_ext"),
+            trial_step_fn=context.get("trial_step_fn"),
         )
         return new_state._replace(wetting=updated_wetting)

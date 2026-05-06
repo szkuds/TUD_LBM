@@ -67,7 +67,7 @@ class TestTudLbmStructure:
             "boundary",
             "differential",
             "force",
-            "wetting",
+            "wetting_t",
             "initialise",
         ]
         for sub in subcategories:

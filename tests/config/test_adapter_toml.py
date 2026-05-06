@@ -42,7 +42,7 @@ MULTIPHASE_TOML = textwrap.dedent("""\
     tau = 0.99
     nt = 20000
     save_interval = 2000
-    init_type = "wetting"
+    init_type = "wetting_t"
 
     [multiphase]
     kappa = 0.017
@@ -55,7 +55,7 @@ MULTIPHASE_TOML = textwrap.dedent("""\
     left = "periodic"
     right = "periodic"
     top = "symmetry"
-    bottom = "wetting"
+    bottom = "wetting_t"
 
     [boundary_conditions.wetting_params]
     phi_left = 1.0
@@ -80,7 +80,7 @@ MULTIPHASE_WITH_FORCE_TOML = textwrap.dedent("""\
     tau = 0.99
     nt = 2000
     save_interval = 200
-    init_type = "wetting"
+    init_type = "wetting_t"
 
     [multiphase]
     kappa = 0.017
@@ -236,7 +236,7 @@ class TestTomlAdapterMultiphase:
     def test_runner_config(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
         assert bundle.save_interval == 2000
-        assert bundle.init_type == "wetting"
+        assert bundle.init_type == "wetting_t"
         assert bundle.simulation_name == "Test complex simulation_type"
 
     def test_boundary_conditions_parsed(self, multiphase_toml_file):
@@ -244,7 +244,7 @@ class TestTomlAdapterMultiphase:
         bc = bundle.bc_config
         assert bc is not None
         assert bc["left"] == "periodic"
-        assert bc["bottom"] == "wetting"
+        assert bc["bottom"] == "wetting_t"
         assert bc["top"] == "symmetry"
 
     def test_wetting_params_nested(self, multiphase_toml_file):

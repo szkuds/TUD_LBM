@@ -132,13 +132,19 @@ class TomlAdapter(ConfigAdapter):
             sim_table["grid_shape"] = tuple(sim_table["grid_shape"])
 
         # ── Validate sim_type ────────────────────────────────────────
-        valid_types = ("single_phase", "multiphase")
+        valid_types = (
+            "single_phase",
+            "multiphase",
+            "multiphase_wetting",
+            "multiphase_hysteresis",
+            "multiphase_chemical_step",
+        )
         if sim_type not in valid_types:
             msg = f"Unknown simulation type '{sim_type}'. Expected one of: {', '.join(valid_types)}."
             raise ValueError(msg)
 
         # ── Merge [multiphase] table (for multiphase simulations) ────
-        if sim_type == "multiphase":
+        if "multiphase" in sim_type:
             multiphase_table = raw.get("multiphase", {})
             sim_table.update(multiphase_table)
 

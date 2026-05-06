@@ -50,7 +50,6 @@ if TYPE_CHECKING:
     from tud_lbm.operators.protocols import MacroscopicOperator
     from tud_lbm.operators.protocols import StepOperator
     from tud_lbm.operators.protocols import StreamingOperator
-    from tud_lbm.pipeline.state.state import WettingState
 
 
 class SimulationSetup(NamedTuple):
@@ -80,6 +79,14 @@ class SimulationSetup(NamedTuple):
             Wetting-corrected when applicable.
         laplacian_density: Laplacian of density ``∇²ρ`` in chemical-potential computation.
             Wetting-corrected when applicable.
+        gradient_density_wetting: Parametric density gradient for hysteresis optimisation.
+            Only populated when both wetting_config and hysteresis_config are present.
+            Signature: ``(grid, phi_l, phi_r, d_rho_l, d_rho_r) -> result``.
+            ``None`` for non-hysteresis cases.
+        laplacian_density_wetting: Parametric Laplacian of density for hysteresis optimisation.
+            Only populated when both wetting_config and hysteresis_config are present.
+            Signature: ``(grid, phi_l, phi_r, d_rho_l, d_rho_r) -> result``.
+            ``None`` for non-hysteresis cases.
         step_fn: The unbound step operator resolved from the registry,
             implementing :class:`~operators.protocols.StepOperator`.
             Signature: ``(setup, state) → state_next``.
@@ -94,9 +101,7 @@ class SimulationSetup(NamedTuple):
         macroscopic_fn: Pre-built macroscopic operator, resolved at setup time.
         streaming_fn: Pre-built streaming operator, resolved at setup time.
         bc_fn: Pre-built boundary-condition operator, resolved at setup time.
-        multiphase_step: Optional setup-bound multiphase trial-step callable.
-            Signature:
-            ``(f_t, force_ext=None, wetting=None, gradient_density=None, laplacian_density=None) -> f_out``.
+        initial_f_fn: Pre-built initial population function, resolved at setup time.
     """
 
     # ── Core references ──
@@ -118,6 +123,8 @@ class SimulationSetup(NamedTuple):
     gradient_standard: DifferentialOperator | None = None
     gradient_density: DifferentialOperator | None = None
     laplacian_density: DifferentialOperator | None = None
+    gradient_density_wetting: DifferentialOperator | None = None
+    laplacian_density_wetting: DifferentialOperator | None = None
 
     # ── Step function (unbound: (setup, state) -> State) ──
     step_fn: StepOperator | None = None
@@ -131,7 +138,6 @@ class SimulationSetup(NamedTuple):
     streaming_fn: StreamingOperator | None = None
     bc_fn: BoundaryOperator | None = None
     initial_f_fn: InitialPopulationOperator[..., jnp.ndarray] | None = None
-    multiphase_step: StepOperator[..., jnp.ndarray] | None = None
 
 
 # ── Main factory ─────────────────────────────────────────────────────
@@ -151,7 +157,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         ValueError: If wetting configuration is present but sim_type is not "multiphase".
     """
     # ── Validation: wetting config requires multiphase sim_type ──
-    if config.wetting_config is not None and config.sim_type != "multiphase":
+    if config.wetting_config is not None and "multiphase" not in config.sim_type:
         msg = (
             f"Wetting configuration present but sim_type is '{config.sim_type}'. "
             "Wetting requires sim_type = 'multiphase'. "
@@ -178,15 +184,17 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     bc_masks = build_bc_masks(tuple(config.grid_shape))
 
     # Build multiphase params if applicable (multiphase runs with optional wetting)
-    mp_params = build_multiphase_params(config) if config.sim_type == "multiphase" else None
+    mp_params = build_multiphase_params(config) if "multiphase" in config.sim_type else None
 
     # Build force specs
     force_setup = build_forces(config, tuple(config.grid_shape), lattice)
     # Convert to None if no forces are present
     forces = force_setup if force_setup.specs else None
 
-    # Build differential operators
-    gradient_standard, gradient_density, laplacian_density = build_diff_ops(config, mp_params, lattice)
+    # Build differential operators (returns 5-tuple: standard, density, laplacian, raw_density, raw_laplacian)
+    gradient_standard, gradient_density, laplacian_density, gradient_density_wetting, laplacian_density_wetting = (
+        build_diff_ops(config, mp_params, lattice)
+    )
 
     # Resolve step operator from registry
     step_fn = build_step_fn(config.sim_type)
@@ -197,7 +205,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     streaming_fn = build_streaming_fn("standard")
     macroscopic_fn = (
         build_macroscopic_fn(mp_params.eos)  # EOS-aware for multiphase
-        if config.sim_type == "multiphase"
+        if "multiphase" in config.sim_type
         else build_macroscopic_fn("standard")  # single-phase
     )
     bc_fn = build_bc(config.bc_config, lattice)
@@ -226,7 +234,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
             config.grid_shape[0], config.grid_shape[1], config.grid_shape[2], lattice, **kw
         )
 
-    setup = SimulationSetup(
+    return SimulationSetup(
         config=config,
         lattice=lattice,
         grid_shape=tuple(config.grid_shape),
@@ -239,6 +247,8 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         gradient_standard=gradient_standard,
         gradient_density=gradient_density,
         laplacian_density=laplacian_density,
+        gradient_density_wetting=gradient_density_wetting,
+        laplacian_density_wetting=laplacian_density_wetting,
         step_fn=step_fn,
         wetting_fn=wetting_fn,
         extra_state_plugins=extra_state_plugins,
@@ -249,27 +259,3 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         bc_fn=bc_fn,
         initial_f_fn=_initial_f_fn,
     )
-
-    if config.sim_type == "multiphase":
-        from tud_lbm.operators.step._multiphase import multiphase_step
-
-        def _multiphase_step_bound(
-            f_t: jnp.ndarray,
-            *,
-            force_ext: jnp.ndarray | None = None,
-            wetting: WettingState = None,
-            gradient_density: DifferentialOperator = None,
-            laplacian_density: DifferentialOperator = None,
-        ) -> jnp.ndarray:
-            return multiphase_step(
-                setup,
-                f_t,
-                force_ext=force_ext,
-                wetting=wetting,
-                gradient_density=gradient_density,
-                laplacian_density=laplacian_density,
-            )
-
-        setup = setup._replace(multiphase_step=_multiphase_step_bound)
-
-    return setup

@@ -22,7 +22,7 @@ class TestPlottingOperatorsShapeHandling:
         )
 
         rho_data = np.ones((100, 100, 1, 9, 1))
-        data = {"rho": rho_data}
+        data = {"rho_t_plus1": rho_data}
 
         op = DensityPlotOperator(config)
         assert op.is_available(data)
@@ -68,7 +68,7 @@ class TestPlottingOperatorsShapeHandling:
 
         # Create dummy data with correct shapes: (nx, ny, nz, q, d)
         rho_data = np.ones((100, 100, 1, 9, 1))
-        data = {"rho": rho_data}
+        data = {"rho_t_plus1": rho_data}
 
         with tempfile.TemporaryDirectory() as tmpdir:
             builder = FigureBuilder(config, run_dir=tmpdir)

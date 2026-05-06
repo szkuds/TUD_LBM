@@ -15,7 +15,7 @@ Design
 ~~~~~~
 ``update_wetting_state`` is the top-level entry point.  It:
 
-1. Measures contact angles and contact-line locations from ``rho``.
+1. Measures contact angles and contact-line locations from ``rho_t_plus1``.
 2. Checks whether each side is inside the hysteresis window.
 3. Builds per-side objectives (CLL-pin or CA-target, selected via
    ``jnp.where``).
@@ -35,12 +35,13 @@ import jax.numpy as jnp
 from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
 from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
 from tud_lbm.operators.wetting._params import WettingParams
-from tud_lbm.pipeline.state.state import WettingState
 from tud_lbm.registry import wetting_operator
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from tud_lbm.pipeline.setup import SimulationSetup
+    from tud_lbm.pipeline.state.state import WettingState
+
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -54,25 +55,21 @@ def _clamp_params(params: WettingParams) -> WettingParams:
     realistic wetting conditions.
     """
     return WettingParams(
-        d_rho_left_pre=jnp.clip(params.d_rho_left_pre, 0.0, 0.2),
-        d_rho_left_post=jnp.clip(params.d_rho_left_post, 0.0, 0.2),
-        phi_left_pre=jnp.clip(params.phi_left_pre, 1.0, 1.5),
-        phi_left_post=jnp.clip(params.phi_left_post, 1.0, 1.5),
-        d_rho_right_pre=jnp.clip(params.d_rho_right_pre, 0.0, 0.2),
-        d_rho_right_post=jnp.clip(params.d_rho_right_post, 0.0, 0.2),
-        phi_right_pre=jnp.clip(params.phi_right_pre, 1.0, 1.5),
-        phi_right_post=jnp.clip(params.phi_right_post, 1.0, 1.5),
+        phi_left=jnp.clip(params.phi_left, 1.0, 1.5),
+        phi_right=jnp.clip(params.phi_right, 1.0, 1.5),
+        d_rho_left=jnp.clip(params.d_rho_left, 0.0, 0.2),
+        d_rho_right=jnp.clip(params.d_rho_right, 0.0, 0.2),
     )
 
 
 def _cost_cll(cll_target: jnp.ndarray, cll_current: jnp.ndarray) -> jnp.ndarray:
     """Squared error for CLL pinning — smooth gradient everywhere."""
-    return (cll_target - cll_current) ** 2
+    return jnp.abs(cll_target - cll_current)
 
 
 def _cost_ca(ca_target: jnp.ndarray, ca_current: jnp.ndarray) -> jnp.ndarray:
     """Squared error for CA targeting — smooth gradient everywhere."""
-    return (ca_target - ca_current) ** 2
+    return jnp.abs(ca_target - ca_current)
 
 
 # ── Generic optimisation routine ─────────────────────────────────────
@@ -84,7 +81,6 @@ def _optimise_single_param(
     grad_mask_fn: Callable[[WettingParams], WettingParams],
     optimiser: object,
     max_iterations: int,
-    loss_tol: float = 1e-6,
 ) -> tuple[WettingParams, jnp.ndarray]:
     """Run an ``optax`` optimisation loop with masked gradients.
 
@@ -111,8 +107,8 @@ def _optimise_single_param(
     initial_loss = objective_fn(initial_params)
 
     def cond_fn(carry: tuple) -> jnp.ndarray:
-        _params, _opt_state, loss, iteration = carry
-        return (iteration < max_iterations) & (loss > loss_tol)
+        _params, _opt_state, _loss, iteration = carry
+        return iteration < max_iterations
 
     def body_fn(carry: tuple) -> tuple:
         params, opt_state, _loss, iteration = carry
@@ -135,15 +131,29 @@ def _optimise_single_param(
 # ── Top-level entry point ────────────────────────────────────────────
 
 
+def _get_hysteresis_window_chemical_step(setup: SimulationSetup, cll: jnp.ndarray) -> tuple[WettingParams, jnp.ndarray]:
+    """Return (ca_advancing, ca_receding) based on CLL position relative to chemical step."""
+    step_x = setup.config.chemical_step_config["chemical_step_location"] * setup.config.grid_shape[0]
+    return jax.lax.cond(
+        cll < step_x,
+        lambda: (
+            setup.config.chemical_step_config["ca_advancing_pre_step"],
+            setup.config.chemical_step_config["ca_receding_pre_step"],
+        ),
+        lambda: (
+            setup.config.chemical_step_config["ca_advancing_post_step"],
+            setup.config.chemical_step_config["ca_receding_post_step"],
+        ),
+    )
+
+
 @wetting_operator(name="hysteresis")
-def update_wetting_state(  # noqa: PLR0915
+def update_wetting_state(
     wetting: WettingState,
-    rho: jnp.ndarray,
+    rho_t_plus1: jnp.ndarray,
     setup: SimulationSetup,
-    f_t: jnp.ndarray,
     *,
-    evaluate_fn: Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]] | None = None,
-    force_ext: jnp.ndarray | None = None,
+    trial_step_fn: Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray]] | None = None,
 ) -> WettingState:
     """Pure JAX update of wetting / hysteresis parameters.
 
@@ -161,23 +171,19 @@ def update_wetting_state(  # noqa: PLR0915
     Per-side advancing/receding direction is inferred from the sign of
     the contact-line displacement between the previous and current
     timestep: the left side is advancing when ``cll_left`` decreases
-    (moves in -x), and the right side is advancing when ``cll_right``
+    (moves in -x), and the right side is advancing when ``cll_right_tplus1``
     increases (moves in +x).
 
     Args:
         wetting: Current :class:`WettingState`.
-        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
+        rho_t_plus1: Density field, shape ``(nx, ny, nz, 1, 1)``.
         setup: :class:`~setup.simulation_setup.SimulationSetup`
             (closed-over, not traced).
         f_t: Pre-step populations, shape ``(nx, ny, nz, q, 1)``.
-        evaluate_fn: Optional callable
-            ``(WettingParams) → (ca_l, ca_r, cll_l, cll_r)``
-            used by the inner optimiser.  If ``None``, a default is
-            built from the pure-function operators.
-        force_ext: External force field, shape ``(nx, ny, nz, 1, 2)``
-            or ``None``.  Passed to the multiphase macroscopic function
-            inside the default evaluate_fn so that interparticle forces
-            are not double-counted.
+        force_tot: Total force from the current step (optional).
+        trial_step_fn: Callable ``(WettingParams) → (f_out, rho_out)``
+            that evaluates a single multiphase physics pass with trial
+            wetting parameters. Required; no default is provided.
 
     Returns:
         Updated :class:`WettingState`.
@@ -186,106 +192,31 @@ def update_wetting_state(  # noqa: PLR0915
     rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
 
     # 1. Measure current contact angles and contact-line locations
-    ca_left, ca_right = compute_contact_angle(rho, rho_mean)
-    cll_left, cll_right = compute_contact_line_location(
-        rho,
-        ca_left,
-        ca_right,
-        rho_mean,
+    ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean))
+    cll_left_tplus1, cll_right_tplus1 = compute_contact_line_location(
+        rho_t_plus1,
+        ca_left_tplus1,
+        ca_right_tplus1,
+        jnp.array(rho_mean),
     )
-
-    # Detect a chemical step crossing event this timestep. This records
-    # when the previous (stored) contact-line was on the pre-step side
-    # and the current measured contact-line is on/over the step.
-    csc = setup.config.chemical_step_config
-    if csc is not None:
-        nx = setup.config.grid_shape[0]
-        step_x = csc["chemical_step_location"] * nx
-        left_just_crossed = (wetting.cll_left < step_x) & (cll_left >= step_x)
-        right_just_crossed = (wetting.cll_right < step_x) & (cll_right >= step_x)
-    else:
-        left_just_crossed = jnp.array(False)
-        right_just_crossed = jnp.array(False)
 
     # 2. Hysteresis window parameters
     hc = setup.config.hysteresis_config
-    csc = setup.config.chemical_step_config
-    if csc is not None:
-        # step_x in lattice units
-        nx = setup.config.grid_shape[0]
-        step_x = csc["chemical_step_location"] * nx
-
-        # select angles per side based on contact-line position vs step
-        ca_adv_left = jnp.where(cll_left < step_x, csc["ca_advancing_pre_step"], csc["ca_advancing_post_step"])
-        ca_rec_left = jnp.where(cll_left < step_x, csc["ca_receding_pre_step"], csc["ca_receding_post_step"])
-        ca_adv_right = jnp.where(cll_right < step_x, csc["ca_advancing_pre_step"], csc["ca_advancing_post_step"])
-        ca_rec_right = jnp.where(cll_right < step_x, csc["ca_receding_pre_step"], csc["ca_receding_post_step"])
-    else:
-        # No chemical step: both sides use the same advancing/receding thresholds
-        ca_adv_left = ca_adv_right = hc["ca_advancing"]
-        ca_rec_left = ca_rec_right = hc["ca_receding"]
-
+    ca_adv_left = ca_adv_right = hc["ca_advancing"]
+    ca_rec_left = ca_rec_right = hc["ca_receding"]
     lr = hc.get("learning_rate", 0.01)
     max_iter = hc.get("max_iterations", 20)
-    loss_tol = hc.get("loss_tolerance", 1e-6)
-
-    in_window_left = (ca_left >= ca_rec_left) & (ca_left <= ca_adv_left)
-    in_window_right = (ca_right >= ca_rec_right) & (ca_right <= ca_adv_right)
-
-    # If the contact-line just crossed the chemical step this timestep,
-    # temporarily force the 'in-window' predicate to False so the
-    # optimiser targets the contact angle (CA) and moves the CL away
-    # from the pre-step position instead of pinning back to it.
-    in_window_left = in_window_left & ~left_just_crossed
-    in_window_right = in_window_right & ~right_just_crossed
+    in_window_left = (ca_left_tplus1 >= ca_rec_left) & (ca_left_tplus1 <= ca_adv_left)
+    in_window_right = (ca_right_tplus1 >= ca_rec_right) & (ca_right_tplus1 <= ca_adv_right)
 
     # 3. Current optimisable parameters
-    # Build optimisable parameter bundle from the wetting state.
-    # Prefer per-region pre/post values when present; fall back to legacy
-    # scalar fields for backward compatibility.
-    # 3. Current optimisable parameters.
-    # B-frozen: the *active* region (whichever pre/post the CL currently sits
-    # over) warm-starts from the previous step's optimised value. The
-    # *inactive* region snaps back to the chemical_step config seed every
-    # step — the optimiser has zero physical gradient through it (no CL
-    # there), and the mask in 5.1 also zeros that gradient explicitly.
-    if csc is not None:
-        nx = setup.config.grid_shape[0]
-        step_x = csc["chemical_step_location"] * nx
-
-        phi_pre_seed = jnp.array(csc.get("phi_pre_step", 1.0))
-        phi_post_seed = jnp.array(csc.get("phi_post_step", 1.0))
-        d_rho_pre_seed = jnp.array(csc.get("d_rho_pre_step", 0.0))
-        d_rho_post_seed = jnp.array(csc.get("d_rho_post_step", 0.0))
-
-        left_pre_active = cll_left < step_x
-        right_pre_active = cll_right < step_x
-
-        params = WettingParams(
-            phi_left_pre=jnp.where(left_pre_active, wetting.phi_left_pre, phi_pre_seed),
-            phi_left_post=jnp.where(left_pre_active, phi_post_seed, wetting.phi_left_post),
-            d_rho_left_pre=jnp.where(left_pre_active, wetting.d_rho_left_pre, d_rho_pre_seed),
-            d_rho_left_post=jnp.where(left_pre_active, d_rho_post_seed, wetting.d_rho_left_post),
-            phi_right_pre=jnp.where(right_pre_active, wetting.phi_right_pre, phi_pre_seed),
-            phi_right_post=jnp.where(right_pre_active, phi_post_seed, wetting.phi_right_post),
-            d_rho_right_pre=jnp.where(right_pre_active, wetting.d_rho_right_pre, d_rho_pre_seed),
-            d_rho_right_post=jnp.where(right_pre_active, d_rho_post_seed, wetting.d_rho_right_post),
-        )
-    else:
-        # No chem step: warm start everything; "_pre" and "_post" are the
-        # same logical wall, but they remain in lock-step because nothing
-        # else writes them differently.
-        left_pre_active = right_pre_active = jnp.array(True)
-        params = WettingParams(
-            phi_left_pre=wetting.phi_left_pre,
-            phi_left_post=wetting.phi_left_post,
-            d_rho_left_pre=wetting.d_rho_left_pre,
-            d_rho_left_post=wetting.d_rho_left_post,
-            phi_right_pre=wetting.phi_right_pre,
-            phi_right_post=wetting.phi_right_post,
-            d_rho_right_pre=wetting.d_rho_right_pre,
-            d_rho_right_post=wetting.d_rho_right_post,
-        )
+    # Build parameter bundle from scalar fields on wetting for optimisation.
+    params = WettingParams(
+        phi_left=wetting.phi_left,
+        phi_right=wetting.phi_right,
+        d_rho_left=wetting.d_rho_left,
+        d_rho_right=wetting.d_rho_right,
+    )
 
     try:
         import optax  # lazy import — optional dependency
@@ -296,22 +227,24 @@ def update_wetting_state(  # noqa: PLR0915
         ) from err
     optimiser = optax.adam(lr)
 
-    # 4. Build evaluate_fn if not supplied
-    if evaluate_fn is None:
-        evaluate_fn = _build_default_evaluate_fn(
-            setup,
-            f_t,
-            force_ext,
-            rho_mean,
-        )
+    # 4. Create wrapper that converts trial_step_fn to evaluate_fn
+    # trial_step_fn returns (f_out, rho_out); we need (ca_l, ca_r, cll_l, cll_r)
+    def evaluate_fn(params: WettingParams) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        """Evaluate trial parameters by running trial step and measuring contact properties."""
+        _, rho_out = trial_step_fn(params)
+        ca_l, ca_r = compute_contact_angle(rho_out, jnp.array(rho_mean))
+        cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, jnp.array(rho_mean))
+        return ca_l, ca_r, cll_l, cll_r
 
-    # 5. Choose CA target as the nearest hysteresis window edge.
-    # The old delta-CLL rule moved the target based on inferred motion
-    # direction; instead we drag the target towards the closer edge of
-    # the hysteresis window. This composes cleanly with the
-    # chemical-step thresholds computed above.
-    ca_target_left = jnp.where(ca_left < ca_rec_left, ca_rec_left, ca_adv_left)
-    ca_target_right = jnp.where(ca_right < ca_rec_right, ca_rec_right, ca_adv_right)
+    # 5. Infer advancing/receding direction from contact-line displacement
+    delta_cll_left = cll_left_tplus1 - wetting.cll_left
+    delta_cll_right = cll_right_tplus1 - wetting.cll_right
+
+    advancing_left = delta_cll_left > 0.0
+    advancing_right = delta_cll_right < 0.0
+
+    ca_target_left = jnp.where(advancing_left, ca_adv_left, ca_rec_left)
+    ca_target_right = jnp.where(advancing_right, ca_adv_right, ca_rec_right)
 
     # --- 5.1: per-side objectives ---
 
@@ -319,7 +252,7 @@ def update_wetting_state(  # noqa: PLR0915
         ca_l, _, cll_l, _ = evaluate_fn(p)
         # Use the pre-step contact-line location recorded in `wetting` as
         # the pin target. The previous implementation used `cll_left`
-        # measured from the post-step rho, which makes the argmin
+        # measured from the post-step rho_t_plus1, which makes the argmin
         # trivial and the pin a no-op.
         return jnp.where(in_window_left, _cost_cll(wetting.cll_left, cll_l), _cost_ca(ca_target_left, ca_l))
 
@@ -332,131 +265,164 @@ def update_wetting_state(  # noqa: PLR0915
     def left_mask(g: WettingParams) -> WettingParams:
         z = jnp.zeros_like
         return WettingParams(
-            # left side: only the active region passes through
-            phi_left_pre=jnp.where(left_pre_active, g.phi_left_pre, z(g.phi_left_pre)),
-            phi_left_post=jnp.where(left_pre_active, z(g.phi_left_post), g.phi_left_post),
-            d_rho_left_pre=jnp.where(left_pre_active, g.d_rho_left_pre, z(g.d_rho_left_pre)),
-            d_rho_left_post=jnp.where(left_pre_active, z(g.d_rho_left_post), g.d_rho_left_post),
-            # right side: all zero
-            phi_right_pre=z(g.phi_right_pre),
-            phi_right_post=z(g.phi_right_post),
-            d_rho_right_pre=z(g.d_rho_right_pre),
-            d_rho_right_post=z(g.d_rho_right_post),
+            phi_left=g.phi_left,
+            phi_right=z(g.phi_right),
+            d_rho_left=g.d_rho_left,
+            d_rho_right=z(g.d_rho_right),
         )
 
     def right_mask(g: WettingParams) -> WettingParams:
         z = jnp.zeros_like
         return WettingParams(
-            # left side: all zero
-            phi_left_pre=z(g.phi_left_pre),
-            phi_left_post=z(g.phi_left_post),
-            d_rho_left_pre=z(g.d_rho_left_pre),
-            d_rho_left_post=z(g.d_rho_left_post),
-            # right side: only the active region passes through
-            phi_right_pre=jnp.where(right_pre_active, g.phi_right_pre, z(g.phi_right_pre)),
-            phi_right_post=jnp.where(right_pre_active, z(g.phi_right_post), g.phi_right_post),
-            d_rho_right_pre=jnp.where(right_pre_active, g.d_rho_right_pre, z(g.d_rho_right_pre)),
-            d_rho_right_post=jnp.where(right_pre_active, z(g.d_rho_right_post), g.d_rho_right_post),
+            phi_left=z(g.phi_left),
+            phi_right=g.phi_right,
+            d_rho_left=z(g.d_rho_left),
+            d_rho_right=g.d_rho_right,
         )
 
     # --- 5.2: optimise left side, then right side ---
-    p1, _ = _optimise_single_param(left_objective, params, left_mask, optimiser, max_iter, loss_tol)
-    new_params, _ = _optimise_single_param(right_objective, p1, right_mask, optimiser, max_iter, loss_tol)
+    p1, _ = _optimise_single_param(left_objective, params, left_mask, optimiser, max_iter)
+    new_params, _ = _optimise_single_param(right_objective, p1, right_mask, optimiser, max_iter)
 
     # 6. Return updated wetting state
     return wetting._replace(
-        d_rho_left=new_params.d_rho_left_pre,
-        d_rho_right=new_params.d_rho_right_pre,
-        phi_left=new_params.phi_left_pre,
-        phi_right=new_params.phi_right_pre,
-        d_rho_left_pre=new_params.d_rho_left_pre,
-        d_rho_left_post=new_params.d_rho_left_post,
-        phi_left_pre=new_params.phi_left_pre,
-        phi_left_post=new_params.phi_left_post,
-        d_rho_right_pre=new_params.d_rho_right_pre,
-        d_rho_right_post=new_params.d_rho_right_post,
-        phi_right_pre=new_params.phi_right_pre,
-        phi_right_post=new_params.phi_right_post,
-        ca_left=ca_left,
-        ca_right=ca_right,
-        cll_left=cll_left,
-        cll_right=cll_right,
-        # Crossing-event flags: true for exactly the step where the CL crossed
-        # the chemical step location, then reset on subsequent steps unless
-        # re-triggered.
-        step_crossed_left=left_just_crossed,
-        step_crossed_right=right_just_crossed,
+        phi_left=new_params.phi_left,
+        phi_right=new_params.phi_right,
+        d_rho_left=new_params.d_rho_left,
+        d_rho_right=new_params.d_rho_right,
+        ca_left=ca_left_tplus1,
+        ca_right=ca_right_tplus1,
+        cll_left=cll_left_tplus1,
+        cll_right=cll_right_tplus1,
     )
 
 
-# ── Default evaluate_fn builder ──────────────────────────────────────
-
-
-def _build_default_evaluate_fn(
+def update_wetting_state_chemical_step(
+    wetting: WettingState,
+    rho: jnp.ndarray,
     setup: SimulationSetup,
-    f_t: jnp.ndarray,
-    force_ext: jnp.ndarray | None,
-    rho_mean: jnp.ndarray,
-) -> Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
-    """Build ``evaluate_fn(params) → (ca_l, ca_r, cll_l, cll_r)``.
+    *,
+    trial_step_fn: Callable[[WettingParams], jnp.ndarray],
+) -> WettingState:
+    """Hysteresis update where CA targets are determined per-side by chemical step position.
 
-    Delegates the full LBM trial step to ``setup.multiphase_step``,
-    overriding only the wetting differential operators so that
-    ``jax.value_and_grad`` can differentiate through the param → shim
-    → step → CA/CLL chain.
+    Identical to update_wetting_state except (ca_advancing, ca_receding) for each
+    side is selected by comparing that side's contact-line location against the
+    chemical step position, rather than using a single global hysteresis window.
+
+    Args:
+        wetting: Current WettingState. wetting.cll_left and wetting.cll_right
+                 are used to determine which region each contact line occupies.
+        rho: Post-step density field.
+        setup: SimulationSetup. Must carry chemical_step_config with keys:
+               chemical_step_location, ca_advancing_pre_step, ca_receding_pre_step,
+               ca_advancing_post_step, ca_receding_post_step.
+        f_bc: Post-BC populations (used as trial-step seed).
+        force: Total force field.
+        trial_step_fn: Callable (WettingParams) -> (f_out, rho_out).
+                       Provided by the step function via partial application.
+
+    Returns:
+        Updated WettingState with optimised wetting parameters and measured CA/CLL.
     """
-    from tud_lbm.operators.step._wetting_differential_operators import _make_wetting_differential_ops
+    # Determine per-side CA windows from CLL position relative to chemical step
+    ca_adv_left, ca_rec_left = _get_hysteresis_window_chemical_step(setup, wetting.cll_left)
+    ca_adv_right, ca_rec_right = _get_hysteresis_window_chemical_step(setup, wetting.cll_right)
 
+    mp = setup.multiphase_params
+    rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
+
+    # 1. Measure current contact angles and contact-line locations
+    ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho, jnp.array(rho_mean))
+    cll_left_tplus1, cll_right_tplus1 = compute_contact_line_location(
+        rho,
+        ca_left_tplus1,
+        ca_right_tplus1,
+        jnp.array(rho_mean),
+    )
+
+    # 2. Hysteresis window parameters (using per-side CA values from chemical step)
+    hc = setup.config.hysteresis_config
+    lr = hc.get("learning_rate", 0.01)
+    max_iter = hc.get("max_iterations", 20)
+    in_window_left = (ca_left_tplus1 >= ca_rec_left) & (ca_left_tplus1 <= ca_adv_left)
+    in_window_right = (ca_right_tplus1 >= ca_rec_right) & (ca_right_tplus1 <= ca_adv_right)
+
+    # 3. Current optimisable parameters
+    params = WettingParams(
+        phi_left=wetting.phi_left,
+        phi_right=wetting.phi_right,
+        d_rho_left=wetting.d_rho_left,
+        d_rho_right=wetting.d_rho_right,
+    )
+
+    try:
+        import optax  # lazy import — optional dependency
+    except ImportError as err:
+        msg = "The 'optax' package is required for hysteresis wetting.\nInstall it with:  pip install optax"
+        raise ImportError(
+            msg,
+        ) from err
+    optimiser = optax.adam(lr)
+
+    # 4. Create wrapper that converts trial_step_fn to evaluate_fn
     def evaluate_fn(params: WettingParams) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        if setup.config.wetting_config is not None:
-            # Build a temporary WettingState that provides both the legacy
-            # scalar fields (phi_left/phi_right, d_rho_left/d_rho_right) as
-            # well as the new per-region pre/post entries. Optimisers work
-            # on the expanded WettingParams but the downstream shims still
-            # read the legacy scalar fields, so populate both from params.
-            temp_wetting = WettingState(
-                # legacy scalar fields — choose the 'pre' values as the
-                # representative scalar for the trial step.
-                d_rho_left=params.d_rho_left_pre,
-                d_rho_right=params.d_rho_right_pre,
-                phi_left=params.phi_left_pre,
-                phi_right=params.phi_right_pre,
-                # new per-region fields
-                d_rho_left_pre=params.d_rho_left_pre,
-                d_rho_left_post=params.d_rho_left_post,
-                phi_left_pre=params.phi_left_pre,
-                phi_left_post=params.phi_left_post,
-                d_rho_right_pre=params.d_rho_right_pre,
-                d_rho_right_post=params.d_rho_right_post,
-                phi_right_pre=params.phi_right_pre,
-                phi_right_post=params.phi_right_post,
-                ca_left=jnp.zeros(()),
-                ca_right=jnp.zeros(()),
-                cll_left=jnp.zeros(()),
-                cll_right=jnp.zeros(()),
-            )
-            gradient_density, laplacian_density = _make_wetting_differential_ops(
-                setup,
-                temp_wetting,
-            )
-        else:
-            gradient_density = setup.gradient_density
-            laplacian_density = setup.laplacian_density
-
-        if setup.multiphase_step is None:
-            msg = "Multiphase hysteresis requires setup.multiphase_step to be configured."
-            raise ValueError(msg)
-
-        f_out = setup.multiphase_step(
-            f_t,
-            force_ext=force_ext,
-            gradient_density=gradient_density,
-            laplacian_density=laplacian_density,
-        )
-
-        rho_out = jnp.sum(f_out, axis=-2, keepdims=True)
-        ca_l, ca_r = compute_contact_angle(rho_out, rho_mean)
-        cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, rho_mean)
+        """Evaluate trial parameters by running trial step and measuring contact properties."""
+        _, rho_out = trial_step_fn(params)
+        ca_l, ca_r = compute_contact_angle(rho_out, jnp.array(rho_mean))
+        cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, jnp.array(rho_mean))
         return ca_l, ca_r, cll_l, cll_r
 
-    return evaluate_fn
+    # 5. Infer advancing/receding direction from contact-line displacement
+    delta_cll_left = cll_left_tplus1 - wetting.cll_left
+    delta_cll_right = cll_right_tplus1 - wetting.cll_right
+
+    advancing_left = delta_cll_left > 0.0
+    advancing_right = delta_cll_right < 0.0
+
+    ca_target_left = jnp.where(advancing_left, ca_adv_left, ca_rec_left)
+    ca_target_right = jnp.where(advancing_right, ca_adv_right, ca_rec_right)
+
+    # --- 5.1: per-side objectives ---
+
+    def left_objective(p: WettingParams) -> jnp.ndarray:
+        ca_l, _, cll_l, _ = evaluate_fn(p)
+        return jnp.where(in_window_left, _cost_cll(wetting.cll_left, cll_l), _cost_ca(ca_target_left, ca_l))
+
+    def right_objective(p: WettingParams) -> jnp.ndarray:
+        _, ca_r, _, cll_r = evaluate_fn(p)
+        return jnp.where(in_window_right, _cost_cll(wetting.cll_right, cll_r), _cost_ca(ca_target_right, ca_r))
+
+    def left_mask(g: WettingParams) -> WettingParams:
+        z = jnp.zeros_like
+        return WettingParams(
+            phi_left=g.phi_left,
+            phi_right=z(g.phi_right),
+            d_rho_left=g.d_rho_left,
+            d_rho_right=z(g.d_rho_right),
+        )
+
+    def right_mask(g: WettingParams) -> WettingParams:
+        z = jnp.zeros_like
+        return WettingParams(
+            phi_left=z(g.phi_left),
+            phi_right=g.phi_right,
+            d_rho_left=z(g.d_rho_left),
+            d_rho_right=g.d_rho_right,
+        )
+
+    # --- 5.2: optimise left side, then right side ---
+    p1, _ = _optimise_single_param(left_objective, params, left_mask, optimiser, max_iter)
+    new_params, _ = _optimise_single_param(right_objective, p1, right_mask, optimiser, max_iter)
+
+    # 6. Return updated wetting state
+    return wetting._replace(
+        phi_left=new_params.phi_left,
+        phi_right=new_params.phi_right,
+        d_rho_left=new_params.d_rho_left,
+        d_rho_right=new_params.d_rho_right,
+        ca_left=ca_left_tplus1,
+        ca_right=ca_right_tplus1,
+        cll_left=cll_left_tplus1,
+        cll_right=cll_right_tplus1,
+    )

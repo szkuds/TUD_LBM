@@ -41,7 +41,7 @@ def test_layout_5():
 def test_build_calls_savefig(plotting_run_dir, simple_config):
     builder = FigureBuilder(simple_config, plotting_run_dir)
     data = {
-        "rho": np.ones((16, 16, 1, 1)),
+        "rho_t_plus1": np.ones((16, 16, 1, 1)),
         "u": np.zeros((16, 16, 1, 2)),
     }
     path = builder.build(data, timestep=100)
@@ -52,7 +52,7 @@ def test_build_calls_savefig(plotting_run_dir, simple_config):
 def test_build_skips_unavailable_operators(plotting_run_dir):
     config = SimulationConfig(plot_fields=["density", "force"])
     builder = FigureBuilder(config, plotting_run_dir)
-    data = {"rho": np.ones((8, 8, 1, 1))}
+    data = {"rho_t_plus1": np.ones((8, 8, 1, 1))}
     path = builder.build(data, timestep=5)
     assert path is not None
     assert path.exists()

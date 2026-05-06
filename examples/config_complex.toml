@@ -9,9 +9,8 @@ grid_shape = [
 nt = 20000
 tau = 0.99
 collision_scheme = "bgk"
-init_type = "init_from_file"
-init_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_test/2026-04-29/21-50-36_Test chemical step simulation/data/timestep_20000.npz"
-save_interval = 30
+init_type = "multiphase_bubbles"
+init_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_test/2026-05-04/13-30-21_Test chemical step simulation/data/timestep_12000.npz"
 skip_interval = 1
 type = "multiphase"
 
@@ -46,7 +45,7 @@ max_iterations = 10
 [initialisation]
 centres = [
     [
-        0.34,
+        0.3,
         0,
     ],
 ]

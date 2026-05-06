@@ -136,15 +136,15 @@ class TestStreamingIO:
             nt=4,
             save_interval=2,
             io_handler=io,
-            save_fields=("rho",),
+            save_fields=("rho_t_plus1",),
         )
 
         files = sorted(p.name for p in Path(io.data_dir).iterdir())
         assert len(files) >= 1
 
-        # Check that the npz only contains 'rho'
+        # Check that the npz only contains 'rho_t_plus1'
         data = np.load(str(Path(io.data_dir) / files[0]))
-        assert "rho" in data.files
+        assert "rho_t_plus1" in data.files
         assert "f" not in data.files
         assert "u" not in data.files
 

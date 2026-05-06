@@ -1,10 +1,9 @@
-"""Multiphase LBM wetting_t/hysteresis simulation example_for_test.
+"""Single-phase LBM simulation example_for_test using the functional API.
 
-Uses the streaming I/O path to write snapshots to disk during the
-``jax.lax.scan`` loop via ``jax.debug.callback``, then plots them
-post-run using the registered plot operators.
+Demonstrates the streaming I/O mode — snapshots are saved to disk at
+each save_interval via jax.debug.callback, then plotted post-run.
 
-Configuration is loaded from config_complex.toml.
+Configuration is loaded from config_simple.toml.
 """
 
 from pathlib import Path
@@ -20,26 +19,27 @@ from tud_lbm.pipeline.setup import build_setup
 configure_jax()
 
 
-def wetting_hysteresis_simulation():
-    """Run a multiphase wetting_t simulation with streaming I/O + plotting."""
+def run_and_save():
+    """Run a simulation, stream snapshots to disk, then plot them."""
     # Load configuration from TOML file.
-    config_path = Path(__file__).parent / "config_complex.toml"
+    config_path = Path(__file__).parent / "config_multiphase_wetting.toml"
     adapter = TomlAdapter()
     config = adapter.load(str(config_path))
 
-    simulation_setup = build_setup(config)
-    state = init_state(simulation_setup)
+    setup = build_setup(config)
+    state = init_state(setup)
 
-    # Create the I/O handler — makes the timestamped run directory.
+    # Create the I/O handler — this makes the timestamped run directory.
     io = SimulationIO(
         base_dir=config.results_dir,
         config=config,
         simulation_name=config.simulation_name,
+        output_format=config.output_format,
     )
 
-    # Stream snapshots to disk during the lax.scan loop.
+    # Stream snapshots to disk while the lax.scan loop runs.
     final_state, _ = run(
-        simulation_setup,
+        setup,
         state,
         nt=config.nt,
         save_interval=config.save_interval,
@@ -47,7 +47,7 @@ def wetting_hysteresis_simulation():
         save_fields=tuple(config.save_fields) if config.save_fields else None,
     )
 
-    # Render one composite PNG per saved snapshot.
+    # Generate one PNG per saved snapshot.
     builder = FigureBuilder(config=config, run_dir=io.run_dir)
     builder.build_all()
 
@@ -55,4 +55,4 @@ def wetting_hysteresis_simulation():
 
 
 if __name__ == "__main__":
-    wetting_hysteresis_simulation()
+    run_and_save()

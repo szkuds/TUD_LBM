@@ -5,7 +5,7 @@ Public API: build_wetting_fn()
 Implementation modules (_contact_angle.py, _contact_line.py, hysteresis.py)
 are internal; use the factory to access.
 
-Utility helpers (build_wetting_applicator, resolve_wetting_fields) and the
+Utility helpers (build_wetting_applicator) and the
 WettingParams data class are re-exported for convenience.
 
 Example:
@@ -25,6 +25,7 @@ from .hysteresis import _cost_ca
 from .hysteresis import _cost_cll
 from .hysteresis import _optimise_single_param
 from .hysteresis import update_wetting_state
+from .hysteresis import update_wetting_state_chemical_step
 
 if TYPE_CHECKING:
     from tud_lbm.operators.protocols import HysteresisOperator
@@ -64,4 +65,5 @@ __all__ = [
     "_optimise_single_param",
     "build_wetting_fn",
     "update_wetting_state",
+    "update_wetting_state_chemical_step",
 ]

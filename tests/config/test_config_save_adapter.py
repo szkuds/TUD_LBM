@@ -89,14 +89,14 @@ class TestTomlAdapterSave:
         cfg = SimulationConfig(
             grid_shape=(8, 8),
             results_dir="/tmp/my_results",
-            save_fields=["rho", "u"],
+            save_fields=["rho_t_plus1", "u"],
         )
         adapter = TomlAdapter()
         dest = tmp_path / "config.toml"
         adapter.save(cfg, str(dest))
 
         loaded = TomlAdapter().load(str(dest))
-        assert loaded.save_fields == ["rho", "u"]
+        assert loaded.save_fields == ["rho_t_plus1", "u"]
 
     def test_save_creates_parent_dirs(self, tmp_path):
         """save() should create parent directories if they don't exist."""

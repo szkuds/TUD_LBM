@@ -6,12 +6,84 @@ Not registered in the operator registry; imported directly by siblings.
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+import jax.numpy as jnp
 
 if TYPE_CHECKING:
-    import jax.numpy as jnp
     from tud_lbm.operators.protocols import DifferentialOperator
     from tud_lbm.pipeline.setup import SimulationSetup
     from tud_lbm.pipeline.state.state import State
+
+
+def _multiphase_pipeline(
+    setup: SimulationSetup,
+    f_t: jnp.ndarray,
+    force_ext: jnp.ndarray | None,
+    gradient_density: DifferentialOperator,
+    laplacian_density: DifferentialOperator,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Run one multiphase physics pass — the single canonical implementation.
+
+    This function encapsulates the core multiphase LBM pipeline:
+    1. Compute macroscopic fields (rho, u) from populations
+    2. Apply common step (equilibrium → collision → streaming → BCs)
+    3. Recompute macroscopic fields from updated populations
+
+    This is the single place where multiphase physics runs. All step functions
+    and trial steps (hysteresis, etc.) route through here.
+
+    Args:
+        setup: Closed-over :class:`~tud_lbm.pipeline.setup.SimulationSetup`.
+        f_t: Current population distribution, shape ``(nx, ny, nz, q, 1)``.
+        force_ext: External force field, shape ``(nx, ny, nz, 1, 2)`` or ``None``.
+        gradient_density: Density gradient closure ``(grid) -> result``.
+            Used in source term and passed to common step.
+        laplacian_density: Laplacian of density closure ``(grid) -> result``.
+            Used in macroscopic computation.
+
+    Returns:
+        ``(f_out, rho, u, force_tot)`` where:
+        - ``f_out``: Post-BC populations, shape ``(nx, ny, nz, q, 1)``
+        - ``rho``: Updated density field
+        - ``u``: Updated velocity field
+        - ``force_tot``: Total interaction force (or None if no forces)
+    """
+    from tud_lbm.pipeline.state.state import State
+
+    lattice = setup.lattice
+
+    # 1. Compute macroscopic fields from current populations
+    rho, u, force_tot = setup.macroscopic_fn(
+        f_t,
+        lattice,
+        setup.multiphase_params,
+        force_ext,
+        gradient_standard=setup.gradient_standard,
+        laplacian_density=laplacian_density,
+    )
+
+    # 2. Create temporary state for common step
+    temp_state = State(
+        f=f_t,
+        rho=rho,
+        u=u,
+        t=jnp.array(0),
+        wetting=None,
+    )
+
+    # 3. Apply common step (equilibrium → collision → streaming → BCs)
+    next_state = _apply_common_step(setup, temp_state, rho, u, force_tot, gradient_density=gradient_density)
+
+    # 4. Recompute macroscopic fields from updated populations (for next step)
+    rho_next, u_next, _ = setup.macroscopic_fn(
+        next_state.f,
+        lattice,
+        setup.multiphase_params,
+        force_ext=force_ext,
+        gradient_standard=setup.gradient_standard,
+        laplacian_density=laplacian_density,
+    )
+
+    return next_state.f, rho_next, u_next, force_tot
 
 
 def _apply_common_step(

@@ -150,10 +150,10 @@ class TestWettingState:
         from tud_lbm.pipeline.state import WettingState
 
         return WettingState(
-            d_rho_left=jnp.array(0.1),
-            d_rho_right=jnp.array(0.1),
             phi_left=jnp.array(0.5),
             phi_right=jnp.array(0.5),
+            d_rho_left=jnp.array(0.1),
+            d_rho_right=jnp.array(0.1),
             ca_left=jnp.array(90.0),
             ca_right=jnp.array(90.0),
             cll_left=jnp.array(10.0),
@@ -454,11 +454,11 @@ class TestBuildSetup:
         from tud_lbm.config.simulation_config import SimulationConfig
         from tud_lbm.pipeline.setup import build_setup
 
-        cfg = SimulationConfig(grid_shape=(8, 8), save_fields=["f", "rho"])
+        cfg = SimulationConfig(grid_shape=(8, 8), save_fields=["f", "rho_t_plus1"])
         setup = build_setup(cfg)
 
         assert isinstance(setup.config.save_fields, list)
-        assert setup.config.save_fields == ["f", "rho"]
+        assert setup.config.save_fields == ["f", "rho_t_plus1"]
 
     def test_bc_config_preserved(self):
         from tud_lbm.config.simulation_config import SimulationConfig

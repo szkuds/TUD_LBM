@@ -530,7 +530,7 @@ class TestNestedSweepHysteresisConfig:
         assert "hysteresis_config.ca_receding" in meta.field_names
 
     def test_cross_axis_with_wetting_and_tau(self):
-        """Three-way sweep: tau × wetting phi_left × hysteresis ca_advancing."""
+        """Three-way sweep: tau × wetting_t phi_left × hysteresis ca_advancing."""
         cfg = _base_multiphase(
             tau=[0.9, 0.99],
             wetting_config={

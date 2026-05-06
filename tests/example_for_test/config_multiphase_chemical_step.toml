@@ -1,0 +1,56 @@
+# Test config for step_multiphase_hysteresis_chemical_step
+# Triggers: sim_type="multiphase" + [wetting] + [hysteresis] + [chemical_step]
+# Hysteresis window is spatially varying: pre/post step angles differ across the step location.
+
+[simulation_type]
+simulation_name = "test_multiphase_hysteresis_chemical_step"
+type = "multiphase_hysteresis_chemical_step"
+grid_shape = [64, 64]
+lattice_type = "D2Q9"
+tau = 0.99
+nt = 10
+init_type = "multiphase_droplet"
+
+[initialisation]
+centres = [[0.34, 0.25]]
+radii = [0.2]
+dispersed = "liquid"
+
+[multiphase]
+kappa = 0.017
+rho_l = 1.0
+rho_v = 0.33
+interface_width = 4
+eos = "double-well"
+
+[boundary_conditions]
+left = "periodic"
+right = "periodic"
+top = "bounce-back"
+bottom = "wetting"
+
+[wetting]
+phi_left = 1.0
+phi_right = 1.0
+d_rho_left = 0.05
+d_rho_right = 0.05
+
+[hysteresis]
+learning_rate = 0.01
+max_iterations = 5
+
+[chemical_step]
+chemical_step_location = 0.5
+chemical_step_edge = "bottom"
+ca_advancing_pre_step = 120.0
+ca_receding_pre_step = 100.0
+phi_pre_step = 1.0
+d_rho_pre_step = 0.05
+ca_advancing_post_step = 70.0
+ca_receding_post_step = 50.0
+phi_post_step = 1.2
+d_rho_post_step = 0.0
+
+[output]
+results_dir = "~/TUD_LBM_data/test_runs"
+save_fields = ["rho", "u"]

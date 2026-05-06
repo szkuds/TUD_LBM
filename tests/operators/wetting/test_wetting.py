@@ -1,7 +1,7 @@
 """Tests for:
-- ``operators.wetting.contact_angle.compute_contact_angle``
-- ``operators.wetting.contact_line.compute_contact_line_location``
-- ``operators.wetting.hysteresis`` (WettingParams, clamp, cost fns,
+- ``operators.wetting_t.contact_angle.compute_contact_angle``
+- ``operators.wetting_t.contact_line.compute_contact_line_location``
+- ``operators.wetting_t.hysteresis`` (WettingParams, clamp, cost fns,
 optimise routines, update_wetting_state)
 - Wiring into ``step_multiphase`` via ``WettingState``.
 """
@@ -13,7 +13,7 @@ import jax.numpy as jnp
 import numpy as np
 
 # =====================================================================
-# Helpers — build a synthetic droplet rho field
+# Helpers — build a synthetic droplet rho_t_plus1 field
 # =====================================================================
 
 
@@ -290,10 +290,10 @@ class TestUpdateWettingState:
         from tud_lbm.pipeline.state import WettingState
 
         return WettingState(
-            d_rho_left=jnp.array(0.05),
-            d_rho_right=jnp.array(0.05),
             phi_left=jnp.array(1.2),
             phi_right=jnp.array(1.2),
+            d_rho_left=jnp.array(0.05),
+            d_rho_right=jnp.array(0.05),
             ca_left=jnp.array(90.0),
             ca_right=jnp.array(90.0),
             cll_left=jnp.array(16.0),
@@ -379,7 +379,7 @@ class TestUpdateWettingState:
 
 
 # =====================================================================
-# step_multiphase with wetting
+# step_multiphase with wetting_t
 # =====================================================================
 
 
@@ -422,10 +422,10 @@ class TestStepMultiphaseWithWetting:
 
         # Attach a WettingState
         wetting = WettingState(
-            d_rho_left=jnp.array(0.05),
-            d_rho_right=jnp.array(0.05),
             phi_left=jnp.array(1.2),
             phi_right=jnp.array(1.2),
+            d_rho_left=jnp.array(0.05),
+            d_rho_right=jnp.array(0.05),
             ca_left=jnp.array(90.0),
             ca_right=jnp.array(90.0),
             cll_left=jnp.array(16.0),
@@ -471,10 +471,10 @@ class TestStepMultiphaseWithWetting:
             "cll_right",
         ):
             val = getattr(new_state.wetting, field_name)
-            assert not jnp.isnan(val).any(), f"NaN in wetting.{field_name}"
+            assert not jnp.isnan(val).any(), f"NaN in wetting_t.{field_name}"
 
     def test_without_wetting_state_unchanged(self):
-        """When wetting is None, step should not fail."""
+        """When wetting_t is None, step should not fail."""
         from tud_lbm.config.simulation_config import SimulationConfig
         from tud_lbm.operators.step import build_step_fn
         from tud_lbm.pipeline.runner import init_state

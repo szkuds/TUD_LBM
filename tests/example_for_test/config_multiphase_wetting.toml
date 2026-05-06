@@ -1,0 +1,40 @@
+# Test config for step_multiphase_wetting
+# Triggers: sim_type="multiphase" + [wetting], no [hysteresis], no [chemical_step]
+# Wetting params are fixed at setup time and never updated.
+
+[simulation_type]
+simulation_name = "test_multiphase_wetting"
+type = "multiphase_wetting"
+grid_shape = [64, 64]
+lattice_type = "D2Q9"
+tau = 0.99
+nt = 1000
+init_type = "multiphase_bubbles"
+
+[initialisation]
+centres = [[0.5, 0.0]]
+radii = [0.2]
+dispersed = "liquid"
+
+[multiphase]
+kappa = 0.017
+rho_l = 1.0
+rho_v = 0.33
+interface_width = 4
+eos = "double-well"
+
+[boundary_conditions]
+left = "periodic"
+right = "periodic"
+top = "bounce-back"
+bottom = "wetting"
+
+[wetting]
+phi_left = 1.2
+phi_right = 1.2
+d_rho_left = 0.0
+d_rho_right = 0.0
+
+[output]
+results_dir = "~/TUD_LBM_data/test_runs"
+save_fields = ["rho", "u"]

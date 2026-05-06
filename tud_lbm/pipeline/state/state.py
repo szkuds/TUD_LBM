@@ -23,11 +23,10 @@ Usage::
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from typing import Any
 from typing import NamedTuple
-import jax.numpy as jnp
 
 if TYPE_CHECKING:
+    import jax.numpy as jnp
     from tud_lbm.operators.protocols import ExtraState
 
 
@@ -38,40 +37,24 @@ class WettingState(NamedTuple):
     state can flow through ``jax.lax.scan`` as part of the carry.
 
     Attributes:
-        d_rho_left: Density offset parameter (left contact line).
-        d_rho_right: Density offset parameter (right contact line).
         phi_left: Wetting potential parameter (left).
         phi_right: Wetting potential parameter (right).
+        d_rho_left: Density offset parameter (left contact line).
+        d_rho_right: Density offset parameter (right contact line).
         ca_left: Current contact angle — left.
         ca_right: Current contact angle — right.
         cll_left: Contact-line location — left.
         cll_right: Contact-line location — right.
-        opt_state_left: ``optax`` optimizer state (left) — a valid pytree.
-        opt_state_right: ``optax`` optimizer state (right) — a valid pytree.
     """
 
-    d_rho_left: jnp.ndarray
-    d_rho_right: jnp.ndarray
     phi_left: jnp.ndarray
     phi_right: jnp.ndarray
-    # New per-region parameters (pre/post) for compatibility with chemical-step
+    d_rho_left: jnp.ndarray
+    d_rho_right: jnp.ndarray
     ca_left: jnp.ndarray
     ca_right: jnp.ndarray
     cll_left: jnp.ndarray
     cll_right: jnp.ndarray
-    d_rho_left_pre: jnp.ndarray | None = None
-    d_rho_left_post: jnp.ndarray | None = None
-    phi_left_pre: jnp.ndarray | None = None
-    phi_left_post: jnp.ndarray | None = None
-    d_rho_right_pre: jnp.ndarray | None = None
-    d_rho_right_post: jnp.ndarray | None = None
-    phi_right_pre: jnp.ndarray | None = None
-    phi_right_post: jnp.ndarray | None = None
-    opt_state_left: Any = None  # optax optimizer state (pytree)
-    opt_state_right: Any = None  # optax optimizer state (pytree)
-    # True on the first step after the contact line crossed the chemical step
-    step_crossed_left: jnp.ndarray = jnp.array(False)
-    step_crossed_right: jnp.ndarray = jnp.array(False)
 
 
 class State(NamedTuple):
