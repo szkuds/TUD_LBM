@@ -17,6 +17,8 @@ from . import analysis as _analysis_mod  # noqa: F401
 from . import density as _density_mod  # noqa: F401
 from . import force as _force_mod  # noqa: F401
 from . import velocity as _velocity_mod  # noqa: F401
+from .animator import Animator
+from .base import AnalysisPlot
 from .base import PlotOperator
 from .figure_builder import FigureBuilder
 
@@ -43,4 +45,16 @@ def visualise(run_dir: str, skip: int = 0) -> None:
     builder.build_all(skip=skip)
 
 
-__all__ = ["FigureBuilder", "PlotOperator", "visualise"]
+def animate(run_dir: str, output: str | None = None, fps: int = 10) -> None:
+    """Animation entry point for a run directory."""
+    from tud_lbm.config import from_dict
+
+    with Path(run_dir + "/config.json").open() as _fh:
+        raw = json.load(_fh)
+
+    config = from_dict(raw)
+    animator = Animator(config=config, run_dir=run_dir, fps=fps)
+    animator.create(output)
+
+
+__all__ = ["AnalysisPlot", "FigureBuilder", "PlotOperator", "animate", "visualise"]

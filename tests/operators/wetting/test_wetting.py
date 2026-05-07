@@ -173,14 +173,14 @@ class TestWettingParamsHelpers:
     def test_cost_cll(self):
         from tud_lbm.operators.wetting.hysteresis import _cost_cll
 
-        # squared error: (5 - 3)^2 = 4
-        assert float(_cost_cll(jnp.array(5.0), jnp.array(3.0))) == 4.0
+        # Expected absolute difference is 2.
+        assert float(_cost_cll(jnp.array(5.0), jnp.array(3.0))) == 2.0
 
     def test_cost_ca(self):
         from tud_lbm.operators.wetting.hysteresis import _cost_ca
 
-        # squared error: (90 - 85)^2 = 25
-        assert float(_cost_ca(jnp.array(90.0), jnp.array(85.0))) == 25.0
+        # Expected absolute difference is 5.
+        assert float(_cost_ca(jnp.array(90.0), jnp.array(85.0))) == 5.0
 
 
 # =====================================================================
@@ -196,11 +196,11 @@ class TestOptimiseSingleParam:
         from tud_lbm.operators.wetting.hysteresis import WettingParams
         from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
 
-        # Simple quadratic objective: minimise (d_rho_left - 0.1)^2
+        # Simple quadratic objective: minimise (d_rho_left - 0.1)
         target = 0.1
 
         def objective(p):
-            return (p.d_rho_left - target) ** 2
+            return jnp.abs(p.d_rho_left - target)
 
         def mask_fn(g):
             return WettingParams(
@@ -217,7 +217,7 @@ class TestOptimiseSingleParam:
             phi_right=jnp.array(1.2),
         )
         opt = optax.adam(0.01)
-        _p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50, 1e-10)
+        _p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50)
         initial_loss = float(objective(p0))
         assert float(loss_final) < initial_loss
 
@@ -227,7 +227,7 @@ class TestOptimiseSingleParam:
         from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
 
         def objective(p):
-            return (p.d_rho_left - 0.1) ** 2
+            return jnp.abs(p.d_rho_left - 0.1)
 
         def mask_fn(g):
             return WettingParams(
@@ -247,7 +247,7 @@ class TestOptimiseSingleParam:
 
         @jax.jit
         def run_opt(initial_params):
-            return _optimise_single_param(objective, initial_params, mask_fn, opt, 10, 1e-10)
+            return _optimise_single_param(objective, initial_params, mask_fn, opt, 10)
 
         _p_final, loss = run_opt(p0)
         assert not jnp.isnan(loss)

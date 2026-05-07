@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 import numpy as np
 from tud_lbm.registry import get_operators
+from . import analysis as _analysis_mod  # noqa: F401
 
 if TYPE_CHECKING:
     import os
@@ -44,7 +45,11 @@ class FigureBuilder:
 
         self._data_dir = self.run_dir / "data"
         self._plot_dir = self.run_dir / "plots"
-        self._operators: list = []
+        self._analysis_dir = self._plot_dir / "analysis"
+        self._field_operators: list = []
+        self._analysis_operators: list = []
+        # Backward-compatible alias used in existing tests.
+        self._operators = self._field_operators
 
         # Guard: plotting only supports 2D simulations (nz=1)
         nz = getattr(config, "nz", config.grid_shape[2] if len(config.grid_shape) > 2 else 1)  # noqa: PLR2004
@@ -54,24 +59,103 @@ class FigureBuilder:
                 "Save your output in VTK format and use ParaView to visualise results.",
                 stacklevel=2,
             )
-            return  # leave _operators empty, all build() calls become no-ops
+            return  # leave operator lists empty, all build() calls become no-ops
 
         self._plot_dir.mkdir(parents=True, exist_ok=True)
 
         requested = self.config.plot_fields
         if not requested:
+            # Default: only enable field plotting operators (density, velocity, force).
+            # Analysis operators (max_velocity, contact_angles, etc.) must be explicitly
+            # requested via plot_fields in the [output] section of the config.
             requested = list(get_operators("plotting").keys())
 
         all_ops = get_operators("plotting")
+        all_analysis_ops = get_operators("analysis")
         for name in requested:
             entry = all_ops.get(name)
-            if entry is None:
-                warnings.warn(
-                    f"No plot operator registered for '{name}'. Available: {list(all_ops.keys())}",
-                    stacklevel=2,
-                )
+            if entry is not None:
+                self._field_operators.append(entry.target(self.config, data_dir=self._data_dir))
                 continue
-            self._operators.append(entry.target(self.config, data_dir=self._data_dir))
+
+            analysis_entry = all_analysis_ops.get(name)
+            if analysis_entry is not None:
+                self._analysis_operators.append(analysis_entry.target())
+                continue
+
+            known = sorted(set(all_ops.keys()) | set(all_analysis_ops.keys()))
+            warnings.warn(
+                f"No plot operator registered for '{name}'. Available: {known}",
+                stacklevel=2,
+            )
+
+    def _sorted_timed_files(self) -> list[tuple[int, Path]]:
+        timed_files: list[tuple[int, Path]] = []
+        for fp in self._data_dir.glob("*.npz"):
+            timestep = self._extract_timestep(fp.stem)
+            if timestep is not None:
+                timed_files.append((timestep, fp))
+        timed_files.sort(key=lambda item: item[0])
+        return timed_files
+
+    @property
+    def data_dir(self) -> Path:
+        """Directory containing timestep ``.npz`` files."""
+        return self._data_dir
+
+    @property
+    def plot_dir(self) -> Path:
+        """Directory where generated plots are written."""
+        return self._plot_dir
+
+    @property
+    def field_operators(self) -> list:
+        """Configured field plot operators."""
+        return self._field_operators
+
+    @property
+    def analysis_operators(self) -> list:
+        """Configured analysis plot operators."""
+        return self._analysis_operators
+
+    def sorted_timed_files(self) -> list[tuple[int, Path]]:
+        """Return ``(timestep, path)`` pairs sorted by timestep."""
+        return self._sorted_timed_files()
+
+    def build_analysis(self) -> list[Path]:
+        """Build standalone analysis figures from all saved snapshots."""
+        if not self._analysis_operators or not self._data_dir.exists():
+            return []
+
+        files = [fp for _, fp in self._sorted_timed_files()]
+        if not files:
+            return []
+
+        self._analysis_dir.mkdir(parents=True, exist_ok=True)
+        saved: list[Path] = []
+        for op in self._analysis_operators:
+            fig, ax = plt.subplots(1, 1, figsize=(7, 4.5), squeeze=False)
+            try:
+                precomputed = op.compute(files)
+                op.render(ax[0][0], precomputed)
+            except Exception as exc:  # noqa: BLE001
+                ax[0][0].set_title(f"{op.name} - ERROR")
+                ax[0][0].text(
+                    0.5,
+                    0.5,
+                    str(exc),
+                    ha="center",
+                    va="center",
+                    transform=ax[0][0].transAxes,
+                    fontsize=8,
+                    color="red",
+                )
+            plt.tight_layout()
+            out_path = self._analysis_dir / f"{op.name}.png"
+            fig.savefig(out_path, dpi=self.dpi)
+            plt.close(fig)
+            saved.append(out_path)
+        return saved
 
     def build(
         self,
@@ -80,7 +164,7 @@ class FigureBuilder:
         filename: str | None = None,
     ) -> Path | None:
         """Render one timestep figure and save it to disk."""
-        active_ops = [op for op in self._operators if op.is_available(data)]
+        active_ops = [op for op in self._field_operators if op.is_available(data)]
         if not active_ops:
             warnings.warn(
                 f"FigureBuilder: no operators have data at t={timestep}.",
@@ -132,24 +216,19 @@ class FigureBuilder:
         if not self._data_dir.exists():
             return []
 
-        timed_files: list[tuple[int, Path]] = []
-        for fp in self._data_dir.glob("*.npz"):
-            timestep = self._extract_timestep(fp.stem)
-            if timestep is not None:
-                timed_files.append((timestep, fp))
-
-        timed_files.sort(key=lambda item: item[0])
-        files = [fp for _, fp in timed_files]
+        files = [fp for _, fp in self._sorted_timed_files()]
         saved: list[Path] = []
         for fp in files[skip:]:
             timestep = self._extract_timestep(fp.stem)
             if timestep is None:
                 continue
-            raw = np.load(fp)
-            data = {key: raw[key] for key in raw.files}
+            with np.load(fp) as raw:
+                data = {key: raw[key] for key in raw.files}
             path = self.build(data, timestep)
             if path is not None:
                 saved.append(path)
+
+        self.build_analysis()
         return saved
 
     @staticmethod
@@ -167,3 +246,8 @@ class FigureBuilder:
         ncols = math.ceil(math.sqrt(n))
         nrows = math.ceil(n / ncols)
         return ncols, nrows
+
+    @staticmethod
+    def layout(n: int) -> tuple[int, int]:
+        """Public wrapper for selecting a compact subplot layout."""
+        return FigureBuilder._layout(n)

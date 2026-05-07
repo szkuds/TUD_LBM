@@ -53,9 +53,7 @@ def step_multiphase_hysteresis_chemical_step(setup: SimulationSetup, state: Stat
         state.wetting,
         rho,
         setup,
-        f_out,
-        force_tot,
-        trial_step_fn=partial(_trial_step, setup, state.f, force_ext),
+        trial_step_fn=partial(_trial_step, setup, f_out, force_ext),
     )
 
     # 5. Assemble new state

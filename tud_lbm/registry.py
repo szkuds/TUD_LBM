@@ -275,6 +275,15 @@ def plotting_operator(
     return register_operator("plotting", name=name, **meta)
 
 
+def analysis_operator(
+    *,
+    name: str | None = None,
+    **meta: object,
+) -> Callable[[_OT], _OT]:
+    """Register an analysis plotting operator (kind ``"analysis"``)."""
+    return register_operator("analysis", name=name, **meta)
+
+
 def extra_state_plugin(
     *,
     name: str | None = None,

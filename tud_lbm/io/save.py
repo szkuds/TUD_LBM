@@ -43,6 +43,9 @@ class SimulationIO:
 
         if config:
             self.save_config(config)
+            from tud_lbm.io.physical_parameters import write_physical_parameters
+
+            write_physical_parameters(config, Path(self.run_dir) / "physical_parameters.txt")
 
         self.save_data_step = output_writers[output_format].save_data_step.__get__(self, type(self))
 

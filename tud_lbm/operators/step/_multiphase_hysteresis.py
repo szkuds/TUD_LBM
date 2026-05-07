@@ -143,5 +143,5 @@ def step_multiphase_hysteresis(setup: SimulationSetup, state: State) -> State:
         setup,
         state,
         new_state,
-        trial_step_fn=partial(_trial_step, setup, state.f, force_ext),
+        trial_step_fn=partial(_trial_step, setup, f_out, force_ext),
     )

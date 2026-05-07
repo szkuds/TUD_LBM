@@ -15,7 +15,7 @@ class WettingParams(NamedTuple):
     Used only for non-chemical-step simulations. Chemical step cases are extended with per-region pre/post variants.
     """
 
-    phi_left: jnp.ndarray
-    phi_right: jnp.ndarray
     d_rho_left: jnp.ndarray
     d_rho_right: jnp.ndarray
+    phi_left: jnp.ndarray
+    phi_right: jnp.ndarray

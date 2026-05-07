@@ -41,8 +41,8 @@ def test_layout_5():
 def test_build_calls_savefig(plotting_run_dir, simple_config):
     builder = FigureBuilder(simple_config, plotting_run_dir)
     data = {
-        "rho_t_plus1": np.ones((16, 16, 1, 1)),
-        "u": np.zeros((16, 16, 1, 2)),
+        "rho": np.ones((16, 16, 1, 1, 1)),
+        "u": np.zeros((16, 16, 1, 1, 2)),
     }
     path = builder.build(data, timestep=100)
     assert path is not None
@@ -52,7 +52,7 @@ def test_build_calls_savefig(plotting_run_dir, simple_config):
 def test_build_skips_unavailable_operators(plotting_run_dir):
     config = SimulationConfig(plot_fields=["density", "force"])
     builder = FigureBuilder(config, plotting_run_dir)
-    data = {"rho_t_plus1": np.ones((8, 8, 1, 1))}
+    data = {"rho": np.ones((8, 8, 1, 1, 1))}
     path = builder.build(data, timestep=5)
     assert path is not None
     assert path.exists()
@@ -71,19 +71,25 @@ def test_density_operator_registered():
 def test_velocity_operator_registered():
     names = get_operator_names("plotting")
     assert "velocity" in names
-    assert "analysis" in names
+
+
+def test_analysis_operators_registered():
+    names = get_operator_names("analysis")
+    assert "max_velocity" in names
+    assert "density_ratio" in names
+    assert "avg_density" in names
 
 
 def test_build_all_creates_one_figure_per_snapshot(plotting_run_dir, simple_config):
     np.savez(
         plotting_run_dir / "data" / "timestep_10.npz",
-        rho=np.ones((6, 6, 1, 1)),
-        u=np.zeros((6, 6, 1, 2)),
+        rho=np.ones((6, 6, 1, 1, 1)),
+        u=np.zeros((6, 6, 1, 1, 2)),
     )
     np.savez(
         plotting_run_dir / "data" / "timestep_20.npz",
-        rho=np.ones((6, 6, 1, 1)),
-        u=np.zeros((6, 6, 1, 2)),
+        rho=np.ones((6, 6, 1, 1, 1)),
+        u=np.zeros((6, 6, 1, 1, 2)),
     )
 
     builder = FigureBuilder(simple_config, plotting_run_dir)
@@ -92,11 +98,38 @@ def test_build_all_creates_one_figure_per_snapshot(plotting_run_dir, simple_conf
     assert all(path.exists() for path in saved)
 
 
+def test_build_analysis_writes_analysis_plots(plotting_run_dir):
+    np.savez(
+        plotting_run_dir / "data" / "timestep_10.npz",
+        rho=np.ones((6, 6, 1, 1, 1)),
+        u=np.zeros((6, 6, 1, 1, 2)),
+        ca_left=np.array(80.0),
+        ca_right=np.array(100.0),
+        cll_left=np.array(2.0),
+        cll_right=np.array(5.0),
+    )
+    np.savez(
+        plotting_run_dir / "data" / "timestep_20.npz",
+        rho=np.ones((6, 6, 1, 1, 1)) * 2,
+        u=np.ones((6, 6, 1, 1, 2)) * 0.1,
+        ca_left=np.array(81.0),
+        ca_right=np.array(99.0),
+        cll_left=np.array(2.5),
+        cll_right=np.array(5.4),
+    )
+
+    config = SimulationConfig(plot_fields=["max_velocity", "avg_density", "contact_angles_pair"])
+    builder = FigureBuilder(config, plotting_run_dir)
+    written = builder.build_analysis()
+    assert len(written) == 3
+    assert all(path.exists() for path in written)
+
+
 def test_visualise_accepts_run_directory(plotting_run_dir: str):
     np.savez(
         plotting_run_dir / "data" / "timestep_1.npz",
-        rho=np.ones((6, 6, 1, 1)),
-        u=np.zeros((6, 6, 1, 2)),
+        rho=np.ones((6, 6, 1, 1, 1)),
+        u=np.zeros((6, 6, 1, 1, 2)),
     )
     (plotting_run_dir / "config.json").write_text(
         '{"simulation_name": "demo", "plot_fields": ["density", "velocity"]}',

@@ -4,6 +4,8 @@ from __future__ import annotations
 import tempfile
 import warnings
 from pathlib import Path
+from unittest.mock import MagicMock
+import numpy as np
 from tud_lbm.config import SimulationConfig
 from tud_lbm.io.plotting import FigureBuilder
 
@@ -134,3 +136,32 @@ class TestFigureBuilderGuardFor3D:
             # plot directory should have been created
             plot_dir = Path(tmpdir) / "plots"
             assert plot_dir.exists()
+
+
+def test_build_all_calls_build_analysis_once(tmp_path):
+    run_dir = tmp_path / "run"
+    data_dir = run_dir / "data"
+    data_dir.mkdir(parents=True)
+    np.savez(data_dir / "timestep_1.npz", rho=np.ones((4, 4, 1, 1, 1)), u=np.zeros((4, 4, 1, 1, 2)))
+    np.savez(data_dir / "timestep_2.npz", rho=np.ones((4, 4, 1, 1, 1)), u=np.zeros((4, 4, 1, 1, 2)))
+
+    config = SimulationConfig(plot_fields=["density", "max_velocity"])
+    builder = FigureBuilder(config, run_dir=run_dir)
+    builder.build_analysis = MagicMock(return_value=[])
+
+    builder.build_all()
+    builder.build_analysis.assert_called_once()
+
+
+def test_build_field_only_does_not_create_analysis_dir(tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True)
+    config = SimulationConfig(plot_fields=["density"])
+    builder = FigureBuilder(config, run_dir=run_dir)
+
+    data = {"rho": np.ones((8, 8, 1, 1, 1))}
+    out = builder.build(data, timestep=0)
+
+    assert out is not None
+    assert out.exists()
+    assert not (run_dir / "plots" / "analysis").exists()

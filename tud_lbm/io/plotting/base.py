@@ -39,3 +39,21 @@ class PlotOperator(ABC):
     def is_available(self, data: dict[str, np.ndarray]) -> bool:  # noqa: ARG002
         """Whether this operator has enough data to render."""
         return True
+
+
+class AnalysisPlot(ABC):
+    """Base class for analysis plots computed from saved snapshot history."""
+
+    name: str
+
+    @abstractmethod
+    def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
+        """Compute time-series arrays from snapshot files."""
+
+    @abstractmethod
+    def render(self, ax: matplotlib.axes.Axes, precomputed: dict[str, np.ndarray]) -> None:
+        """Render the full analysis plot from precomputed arrays."""
+
+    def update(self, ax: matplotlib.axes.Axes, files: list[Path]) -> None:
+        """Render analysis for a prefix of snapshot files (animation-friendly)."""
+        self.render(ax, self.compute(files))

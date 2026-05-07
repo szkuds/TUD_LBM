@@ -8,10 +8,10 @@ type = "multiphase_hysteresis"
 grid_shape = [256, 64]
 lattice_type = "D2Q9"
 tau = 0.99
-nt = 5000
-#init_type = "multiphase_bubbles"
-init_type = "init_from_file"
-init_dir = "/Users/sbszkudlarek/TUD_LBM_data/test_runs/2026-05-06/22-46-14_test_multiphase_hysteresis/data/timestep_1000.npz"
+nt = 100
+init_type = "multiphase_bubbles"
+#init_type = "init_from_file"
+#init_dir = "/Users/sbszkudlarek/TUD_LBM_data/test_runs/2026-05-07/08-09-00_test_multiphase_hysteresis/data/timestep_2000.npz"
 
 [initialisation]
 centres = [[0.5, 0.0]]
@@ -41,7 +41,7 @@ d_rho_right = 0.0
 ca_advancing = 120.0
 ca_receding = 100.0
 learning_rate = 0.01
-max_iterations = 20
+max_iterations = 10
 
 [gravity_masked_force]
 force_g = 5e-06
@@ -50,3 +50,4 @@ inclination_angle_deg = 60
 [output]
 results_dir = "~/TUD_LBM_data/test_runs"
 save_fields = ["rho", "u"]
+plot_fields = ["density", "velocity", "contact_angles_pair", "contact_line_speeds_pair"]
