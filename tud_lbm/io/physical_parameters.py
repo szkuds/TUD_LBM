@@ -75,6 +75,17 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     if config.g is not None:
         lines.append(_row("g (gravity):", config.g))
 
+    has_params = all(x is not None for x in (config.kappa, config.interface_width, config.rho_l, config.rho_v))
+    if has_params and config.interface_width != 0:
+        dr = float(config.rho_l) - float(config.rho_v)
+        gamma = (2.0 / 3.0) * (float(config.kappa) / float(config.interface_width)) * (dr**2)
+        lines.append(_row("gamma (surface tension):", f"{gamma:.6g}  [2/3·(κ/W)·(Δρ)²]"))
+
+        if config.g is not None:
+            length = config.grid_shape[0]  # Using x-dimension as characteristic length
+            bo = (dr * float(config.g) * (length**2)) / gamma
+            lines.append(_row("Bo (Bond number):", f"{bo:.6g}  [Δρ·g·L²/gamma, L={length}]"))
+
 
 def _add_key_value_section(lines: list[str], title: str, values: dict | None) -> None:
     if not values:
