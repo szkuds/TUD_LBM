@@ -63,8 +63,40 @@ def _add_collision_section(lines: list[str], config: SimulationConfig) -> None:
     lines.append(_row("nu (kinematic viscosity):", f"{_nu(tau):.6g}  [cs2*(tau-0.5)]"))
 
 
+def _get_setup_contact_line_length(config: SimulationConfig) -> float | None:
+    """Calculate the distance between the two contact lines at setup."""
+    init = config.initialisation
+    if not init or not isinstance(init, dict):
+        return None
+    try:
+        centres = init.get("centres", [])
+        radii = init.get("radii", [])
+        if not centres or not radii:
+            return None
+
+        nx = float(config.grid_shape[0])
+        ny = float(config.grid_shape[1])
+        min_dim = min(nx, ny)
+
+        fx, fy = float(centres[0][0]), float(centres[0][1])
+        r = float(radii[0])
+
+        _r = r * min_dim
+        # Compute distance to the closest bounding wall (0, nx) or (0, ny)
+        dist_x = min(fx * nx, (1.0 - fx) * nx)
+        dist_y = min(fy * ny, (1.0 - fy) * ny)
+        wall_dist = min(dist_x, dist_y)
+
+        val = _r**2 - wall_dist**2
+        if val > 0:
+            return 2.0 * (val**0.5)
+    except (IndexError, ValueError, TypeError):
+        pass
+    return None
+
+
 def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
-    if config.sim_type != "multiphase":
+    if "multiphase" not in config.sim_type:
         return
     lines.append(_section("Multiphase"))
     lines.append(_row("EOS:", config.eos or "-"))
@@ -77,14 +109,31 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
 
     has_params = all(x is not None for x in (config.kappa, config.interface_width, config.rho_l, config.rho_v))
     if has_params and config.interface_width != 0:
-        dr = float(config.rho_l) - float(config.rho_v)
-        gamma = (2.0 / 3.0) * (float(config.kappa) / float(config.interface_width)) * (dr**2)
-        lines.append(_row("gamma (surface tension):", f"{gamma:.6g}  [2/3·(κ/W)·(Δρ)²]"))
+        drho = float(config.rho_l) - float(config.rho_v)
+        gamma = (2.0 / 3.0) * (float(config.kappa) / float(config.interface_width)) * (drho**2)
+        lines.append(_row("gamma (surface tension):", f"{gamma:.6g}  [2/3(κ/W)(Δρ)²]"))
 
+        # Try to find gravity either from config.g or force configurations
+        g_val = None
         if config.g is not None:
-            length = config.grid_shape[0]  # Using x-dimension as characteristic length
-            bo = (dr * float(config.g) * (length**2)) / gamma
-            lines.append(_row("Bo (Bond number):", f"{bo:.6g}  [Δρ·g·L²/gamma, L={length}]"))
+            g_val = float(config.g)
+        else:
+            for force_name in ("gravity_force", "gravity_masked_force"):
+                force_dict = getattr(config, force_name, None)
+                if force_dict and isinstance(force_dict, dict) and "force_g" in force_dict:
+                    g_val = float(force_dict["force_g"])
+                    break
+
+        if g_val is not None:
+            cl_length = _get_setup_contact_line_length(config)
+            if cl_length is not None:
+                length = cl_length
+                bo = (drho * g_val * (length**2)) / gamma
+                lines.append(_row("Bo (Bond number):", f"{bo:.6g}  [ΔρgL²/gamma, L={length:.4g} (contact line)]"))
+            else:
+                length = float(config.grid_shape[0])  # Fallback to x-dimension
+                bo = (drho * g_val * (length**2)) / gamma
+                lines.append(_row("Bo (Bond number):", f"{bo:.6g}  [ΔρgL²/gamma, L={length} (grid_x)]"))
 
 
 def _add_key_value_section(lines: list[str], title: str, values: dict | None) -> None:

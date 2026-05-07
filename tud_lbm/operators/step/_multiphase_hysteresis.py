@@ -18,6 +18,7 @@ from tud_lbm.registry import update_timestep_operator
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
+    from jax import Array
     from tud_lbm.operators.protocols import DifferentialOperator
     from tud_lbm.operators.wetting._params import WettingParams
     from tud_lbm.pipeline.setup import SimulationSetup
@@ -64,11 +65,12 @@ def _trial_step(
     force_ext: jnp.ndarray,
     params: WettingParams,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """One multiphase pass with candidate wetting parameters.
+    """One or more multiphase passes with candidate wetting parameters.
 
     Called by the hysteresis optimiser to evaluate trial parameter sets.
-    Runs a single multiphase physics pass with the given wetting parameters,
+    Runs a multiphase physics pass with the given wetting parameters,
     returning the post-step populations and density field.
+    Multiple steps can be taken per trial to strengthen the optimizer response.
 
     Args:
         setup: :class:`~tud_lbm.pipeline.setup.SimulationSetup`.
@@ -91,7 +93,19 @@ def _trial_step(
             grid, params.phi_left, params.phi_right, params.d_rho_left, params.d_rho_right
         )
 
-    f_out, rho, _u, _force_tot = _multiphase_pipeline(setup, f_t, force_ext, grad, lap)
+    num_steps: int = setup.config.hysteresis_config.get("trial_steps", 2)
+
+    def body_fn(carry_f: jnp.ndarray, _) -> tuple[Array, Array]:  # noqa: ANN001
+        f_next, rho_next, _u, _force_tot = _multiphase_pipeline(setup, carry_f, force_ext, grad, lap)
+        return f_next, rho_next
+
+    import jax
+
+    f_out, rho_out_all = jax.lax.scan(body_fn, f_t, None, length=num_steps)
+
+    # We only need the rho from the last trial step
+    rho = rho_out_all[-1] if num_steps > 1 else rho_out_all[0]
+
     return f_out, rho
 
 

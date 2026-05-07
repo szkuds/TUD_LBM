@@ -9,7 +9,7 @@ grid_shape = [64, 64]
 lattice_type = "D2Q9"
 tau = 0.99
 nt = 10
-init_type = "multiphase_droplet"
+init_type = "multiphase_bubbles"
 
 [initialisation]
 centres = [[0.34, 0.25]]

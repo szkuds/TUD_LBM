@@ -63,13 +63,17 @@ def _clamp_params(params: WettingParams) -> WettingParams:
 
 
 def _cost_cll(cll_target: jnp.ndarray, cll_current: jnp.ndarray) -> jnp.ndarray:
-    """Squared error for CLL pinning — smooth gradient everywhere."""
-    return jnp.abs(cll_target - cll_current)
+    """Huber loss for CLL pinning — smooth gradient near zero, linear elsewhere."""
+    err = jnp.abs(cll_target - cll_current)
+    delta = 0.5
+    return jnp.where(err < delta, 0.5 * err**2, delta * (err - 0.5 * delta))
 
 
 def _cost_ca(ca_target: jnp.ndarray, ca_current: jnp.ndarray) -> jnp.ndarray:
-    """Squared error for CA targeting — smooth gradient everywhere."""
-    return jnp.abs(ca_target - ca_current)
+    """Huber loss for CA targeting — smooth gradient near zero, linear elsewhere."""
+    err = jnp.abs(ca_target - ca_current)
+    delta = 5.0  # Degrees
+    return jnp.where(err < delta, 0.5 * err**2, delta * (err - 0.5 * delta))
 
 
 # ── Generic optimisation routine ─────────────────────────────────────
@@ -200,12 +204,14 @@ def update_wetting_state(
     hc = setup.config.hysteresis_config
     ca_adv_left = ca_adv_right = hc["ca_advancing"]
     ca_rec_left = ca_rec_right = hc["ca_receding"]
-    lr = hc.get("learning_rate", 0.01)
-    max_iter = hc.get("max_iterations", 20)
     in_window_left = (ca_left_tplus1 >= ca_rec_left) & (ca_left_tplus1 <= ca_adv_left)
     in_window_right = (ca_right_tplus1 >= ca_rec_right) & (ca_right_tplus1 <= ca_adv_right)
     above_window_left = ca_left_tplus1 > ca_adv_left
     above_window_right = ca_right_tplus1 > ca_adv_right
+
+    lr_default = hc.get("learning_rate", 0.01)
+    lr = jnp.where(above_window_right | above_window_left, hc.get("learning_rate_above", 0.05), lr_default)
+    max_iter = hc.get("max_iterations_above", 50) if hc.get("max_iterations_above") else hc.get("max_iterations", 50)
 
     # 3. Current optimisable parameters
     # Build parameter bundle from scalar fields on wetting for optimisation.
@@ -225,6 +231,12 @@ def update_wetting_state(
         ) from err
     optimiser = optax.adam(lr)
 
+    k_advance = hc.get("k_advance", 0.05)
+    # Left side (moves left [-x] when advancing)
+    cll_target_adv_left = wetting.cll_left - (ca_left_tplus1 - ca_adv_left) * k_advance
+    # Right side (moves right [+x] when advancing)
+    cll_target_adv_right = wetting.cll_right + (ca_right_tplus1 - ca_adv_right) * k_advance
+
     # 4. Create wrapper that converts trial_step_fn to evaluate_fn
     # trial_step_fn returns (f_out, rho_out); we need (ca_l, ca_r, cll_l, cll_r)
     def evaluate_fn(params: WettingParams) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
@@ -238,13 +250,17 @@ def update_wetting_state(
 
     def left_objective(p: WettingParams) -> jnp.ndarray:
         ca_l, _, cll_l, _ = evaluate_fn(p)
-        ca_target = jnp.where(above_window_left, ca_adv_left, ca_rec_left)
-        return jnp.where(in_window_left, _cost_cll(wetting.cll_left, cll_l), _cost_ca(ca_target, ca_l))
+        cost_in = _cost_cll(wetting.cll_left, cll_l)
+        cost_below = _cost_ca(ca_rec_left, ca_l)
+        cost_above = _cost_cll(cll_target_adv_left, cll_l) + _cost_ca(ca_adv_left, ca_l)
+        return jnp.where(in_window_left, cost_in, jnp.where(above_window_left, cost_above, cost_below))
 
     def right_objective(p: WettingParams) -> jnp.ndarray:
         _, ca_r, _, cll_r = evaluate_fn(p)
-        ca_target = jnp.where(above_window_right, ca_adv_right, ca_rec_right)
-        return jnp.where(in_window_right, _cost_cll(wetting.cll_right, cll_r), _cost_ca(ca_target, ca_r))
+        cost_in = _cost_cll(wetting.cll_right, cll_r)
+        cost_below = _cost_ca(ca_rec_right, ca_r)
+        cost_above = _cost_cll(cll_target_adv_right, cll_r) + _cost_ca(ca_adv_right, ca_r)
+        return jnp.where(in_window_right, cost_in, jnp.where(above_window_right, cost_above, cost_below))
 
     def left_mask(g: WettingParams) -> WettingParams:
         z = jnp.zeros_like
@@ -327,12 +343,14 @@ def update_wetting_state_chemical_step(
 
     # 2. Hysteresis window parameters (using per-side CA values from chemical step)
     hc = setup.config.hysteresis_config
-    lr = hc.get("learning_rate", 0.01)
-    max_iter = hc.get("max_iterations", 20)
     in_window_left = (ca_left_tplus1 >= ca_rec_left) & (ca_left_tplus1 <= ca_adv_left)
     in_window_right = (ca_right_tplus1 >= ca_rec_right) & (ca_right_tplus1 <= ca_adv_right)
     above_window_left = ca_left_tplus1 > ca_adv_left
     above_window_right = ca_right_tplus1 > ca_adv_right
+
+    lr_default = hc.get("learning_rate", 0.01)
+    lr = jnp.where(above_window_right | above_window_left, hc.get("learning_rate_above", 0.05), lr_default)
+    max_iter = hc.get("max_iterations_above", 50) if hc.get("max_iterations_above") else hc.get("max_iterations", 50)
 
     # 3. Current optimisable parameters
     params = WettingParams(
@@ -351,6 +369,10 @@ def update_wetting_state_chemical_step(
         ) from err
     optimiser = optax.adam(lr)
 
+    k_advance = hc.get("k_advance", 0.05)
+    cll_target_adv_left = wetting.cll_left - (ca_left_tplus1 - ca_adv_left) * k_advance
+    cll_target_adv_right = wetting.cll_right + (ca_right_tplus1 - ca_adv_right) * k_advance
+
     # 4. Create wrapper that converts trial_step_fn to evaluate_fn
     def evaluate_fn(params: WettingParams) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """Evaluate trial parameters by running trial step and measuring contact properties."""
@@ -363,13 +385,17 @@ def update_wetting_state_chemical_step(
 
     def left_objective(p: WettingParams) -> jnp.ndarray:
         ca_l, _, cll_l, _ = evaluate_fn(p)
-        ca_target = jnp.where(above_window_left, ca_adv_left, ca_rec_left)
-        return jnp.where(in_window_left, _cost_cll(wetting.cll_left, cll_l), _cost_ca(ca_target, ca_l))
+        cost_in = _cost_cll(wetting.cll_left, cll_l)
+        cost_below = _cost_ca(ca_rec_left, ca_l)
+        cost_above = _cost_cll(cll_target_adv_left, cll_l) + _cost_ca(ca_adv_left, ca_l)
+        return jnp.where(in_window_left, cost_in, jnp.where(above_window_left, cost_above, cost_below))
 
     def right_objective(p: WettingParams) -> jnp.ndarray:
         _, ca_r, _, cll_r = evaluate_fn(p)
-        ca_target = jnp.where(above_window_right, ca_adv_right, ca_rec_right)
-        return jnp.where(in_window_right, _cost_cll(wetting.cll_right, cll_r), _cost_ca(ca_target, ca_r))
+        cost_in = _cost_cll(wetting.cll_right, cll_r)
+        cost_below = _cost_ca(ca_rec_right, ca_r)
+        cost_above = _cost_cll(cll_target_adv_right, cll_r) + _cost_ca(ca_adv_right, ca_r)
+        return jnp.where(in_window_right, cost_in, jnp.where(above_window_right, cost_above, cost_below))
 
     def left_mask(g: WettingParams) -> WettingParams:
         z = jnp.zeros_like

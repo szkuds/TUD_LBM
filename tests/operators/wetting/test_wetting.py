@@ -173,14 +173,14 @@ class TestWettingParamsHelpers:
     def test_cost_cll(self):
         from tud_lbm.operators.wetting.hysteresis import _cost_cll
 
-        # Expected absolute difference is 2.
-        assert float(_cost_cll(jnp.array(5.0), jnp.array(3.0))) == 2.0
+        # Expected Huber loss for err=2.0, delta=0.5 -> 0.875
+        assert float(_cost_cll(jnp.array(5.0), jnp.array(3.0))) == 0.875
 
     def test_cost_ca(self):
         from tud_lbm.operators.wetting.hysteresis import _cost_ca
 
-        # Expected absolute difference is 5.
-        assert float(_cost_ca(jnp.array(90.0), jnp.array(85.0))) == 5.0
+        # Expected Huber loss for err=5.0, delta=5.0 -> 12.5
+        assert float(_cost_ca(jnp.array(90.0), jnp.array(85.0))) == 12.5
 
 
 # =====================================================================

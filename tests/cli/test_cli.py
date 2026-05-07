@@ -305,9 +305,9 @@ class TestCLIEdgeCases:
         assert value == "test_sim-2024"
 
     def test_override_with_unicode_string(self):
-        path, value = _parse_override_argument('title="Simulation α"')  # noqa: RUF001
+        path, value = _parse_override_argument('title="Simulation α"')
         assert path == "title"
-        assert value == "Simulation α"  # noqa: RUF001
+        assert value == "Simulation α"
 
     def test_override_with_negative_number(self):
         path, value = _parse_override_argument("offset=-0.5")
