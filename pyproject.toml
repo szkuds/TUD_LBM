@@ -163,6 +163,7 @@ extend-immutable-calls = ["array_field"]
 "tud_lbm/operators/collision/_bgk.py"             = ["RUF002"]
 "tud_lbm/util/io.py"                              = ["ANN002"]
 "tud_lbm/pipeline/**"                             = ["T201"]
+"tud_lbm/operators/wetting/hysteresis/hysteresis.py" = ["C901", "PLR0915"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tud_lbm"]

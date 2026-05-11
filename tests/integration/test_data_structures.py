@@ -454,11 +454,11 @@ class TestBuildSetup:
         from tud_lbm.config.simulation_config import SimulationConfig
         from tud_lbm.pipeline.setup import build_setup
 
-        cfg = SimulationConfig(grid_shape=(8, 8), save_fields=["f", "rho_t_plus1"])
+        cfg = SimulationConfig(grid_shape=(8, 8), save_fields=["f", "rho"])
         setup = build_setup(cfg)
 
         assert isinstance(setup.config.save_fields, list)
-        assert setup.config.save_fields == ["f", "rho_t_plus1"]
+        assert setup.config.save_fields == ["f", "rho"]
 
     def test_bc_config_preserved(self):
         from tud_lbm.config.simulation_config import SimulationConfig

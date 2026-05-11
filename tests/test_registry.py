@@ -156,14 +156,14 @@ class TestRegistryPopulated:
         expected = {
             "standard",
             "multiphase_bubbles",
-            "wetting_t",
+            "wetting",
             "wetting_chem_step",
             "init_from_file",
         }
         assert names >= expected
 
     def test_wetting_registered(self):
-        names = get_operator_names("wetting_t")
+        names = get_operator_names("wetting")
         assert names >= {"contact_angle", "contact_line_location", "hysteresis"}
 
     def test_differential_registered(self):
@@ -176,7 +176,7 @@ class TestRegistryPopulated:
 
     def test_extra_state_registered(self):
         names = get_operator_names("extra_state")
-        assert names >= {"electric", "wetting_t"}
+        assert names >= {"electric", "wetting"}
 
 
 # =====================================================================

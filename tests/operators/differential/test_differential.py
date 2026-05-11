@@ -161,7 +161,7 @@ class TestBuildWettingGradient:
         }
 
     def _call_wetting(self, fn, grid, params):
-        """Invoke the wetting_t closure with only dynamic params (static ones baked in)."""
+        """Invoke the wetting closure with only dynamic params (static ones baked in)."""
         return fn(
             grid,
             params["phi_l"],
@@ -206,7 +206,7 @@ class TestBuildWettingGradient:
         from tud_lbm.operators.differential._gradient import compute_gradient
         from tud_lbm.operators.differential._gradient_wetting import build_wetting_gradient
 
-        # Pad modes matching bottom=wetting_t, top=bounce-back, left/right=periodic
+        # Pad modes matching bottom=wetting, top=bounce-back, left/right=periodic
         wetting_pad = ("wrap", "edge", "edge", "wrap")
 
         rho_l = wetting_params["rho_l"]
@@ -214,7 +214,7 @@ class TestBuildWettingGradient:
 
         # Droplet on the bottom wall: liquid in the center, vapour at the sides.
         # The tanh along x creates an interface that intersects the bottom row,
-        # which is exactly where the wetting_t modification acts.
+        # which is exactly where the wetting modification acts.
         xs = jnp.linspace(-1, 1, NX)
         droplet_x = 0.5 * (rho_l + rho_v) + 0.5 * (rho_l - rho_v) * (
             jnp.tanh((xs + 0.4) / 0.15) - jnp.tanh((xs - 0.4) / 0.15) - 1.0
@@ -231,7 +231,7 @@ class TestBuildWettingGradient:
             lattice.c,
             wetting_pad,
             bc_config={
-                "bottom": "wetting_t",
+                "bottom": "wetting",
                 "top": "bounce-back",
                 "left": "periodic",
                 "right": "periodic",
@@ -260,7 +260,7 @@ class TestBuildWettingGradient:
         np.testing.assert_array_equal(np.array(out), np.array(out2))
 
     def test_chemical_step_variant(self, lattice, periodic_pad, const_field):
-        """build_wetting_gradient with resolved chemical-step wetting_t fields."""
+        """build_wetting_gradient with resolved chemical-step wetting fields."""
         from tud_lbm.operators.differential._gradient_wetting import build_wetting_gradient
 
         params_array = {
@@ -294,17 +294,17 @@ class TestBuildWettingGradient:
 
 
 # =====================================================================
-# wetting_t helpers
+# wetting helpers
 # =====================================================================
 
 
 class TestWettingUtil:
-    """Tests for the refactored wetting_t utility architecture.
+    """Tests for the refactored wetting utility architecture.
 
     Covers:
     - resolve_wetting_fields (scalar and chemical-step layouts)
     - Ghost-cell reconstruction correctness (_reconstruct_ghost_row)
-    - Interface wetting_t modification (_apply_wetting_modification)
+    - Interface wetting modification (_apply_wetting_modification)
     - Per-edge application via build_wetting_applicator
     - Corner handling with periodic vs non-periodic perpendicular BCs
     """
@@ -442,8 +442,8 @@ class TestWettingUtil:
     # --- Per-edge application via build_wetting_applicator -----------------
 
     def test_bottom_wetting_changes_bottom_ghost_row(self):
-        """Bottom-only wetting_t should modify the bottom ghost row."""
-        bc = {"bottom": "wetting_t", "top": "bounce-back"}
+        """Bottom-only wetting should modify the bottom ghost row."""
+        bc = {"bottom": "wetting", "top": "bounce-back"}
         _build_wetting_applicator = build_wetting_fn("applicator")
         fn = _build_wetting_applicator(rho_l=1.0, rho_v=0.1, width=4, bc_config=bc)
         gp = jnp.ones((NX + 2, NY + 2)) * 0.5
@@ -453,8 +453,8 @@ class TestWettingUtil:
         assert not np.allclose(bottom, 0.5)
 
     def test_top_wetting_only(self):
-        """Top-only wetting_t should modify only the top ghost row."""
-        bc = {"bottom": "bounce-back", "top": "wetting_t"}
+        """Top-only wetting should modify only the top ghost row."""
+        bc = {"bottom": "bounce-back", "top": "wetting"}
         _build_wetting_applicator = build_wetting_fn("applicator")
         fn = _build_wetting_applicator(rho_l=1.0, rho_v=0.1, width=4, bc_config=bc)
         gp = jnp.ones((NX + 2, NY + 2)) * 0.5
@@ -466,10 +466,10 @@ class TestWettingUtil:
         assert not np.allclose(top, 0.5)
 
     def test_left_right_wetting_uses_transpose(self):
-        """Left/right wetting_t should modify the left/right ghost columns."""
+        """Left/right wetting should modify the left/right ghost columns."""
         bc = {
-            "left": "wetting_t",
-            "right": "wetting_t",
+            "left": "wetting",
+            "right": "wetting",
             "bottom": "bounce-back",
             "top": "bounce-back",
         }
@@ -501,7 +501,7 @@ class TestWettingUtil:
 
         # Periodic perpendicular (default for unspecified edges)
         _build_wetting_applicator = build_wetting_fn("applicator")
-        fn_periodic = _build_wetting_applicator(rho_l=1.0, rho_v=0.1, width=4, bc_config={"bottom": "wetting_t"})
+        fn_periodic = _build_wetting_applicator(rho_l=1.0, rho_v=0.1, width=4, bc_config={"bottom": "wetting"})
 
         # Non-periodic perpendicular (bounce-back on left/right)
         fn_nonperiodic = _build_wetting_applicator(
@@ -509,7 +509,7 @@ class TestWettingUtil:
             rho_v=0.1,
             width=4,
             bc_config={
-                "bottom": "wetting_t",
+                "bottom": "wetting",
                 "left": "bounce-back",
                 "right": "bounce-back",
             },

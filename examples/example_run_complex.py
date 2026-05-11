@@ -1,4 +1,4 @@
-"""Multiphase LBM wetting_t/hysteresis simulation example_for_test.
+"""Multiphase LBM wetting/hysteresis simulation example_for_test.
 
 Uses the streaming I/O path to write snapshots to disk during the
 ``jax.lax.scan`` loop via ``jax.debug.callback``, then plots them
@@ -21,7 +21,7 @@ configure_jax()
 
 
 def wetting_hysteresis_simulation():
-    """Run a multiphase wetting_t simulation with streaming I/O + plotting."""
+    """Run a multiphase wetting simulation with streaming I/O + plotting."""
     # Load configuration from TOML file.
     config_path = Path(__file__).parent / "config_complex.toml"
     adapter = TomlAdapter()

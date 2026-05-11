@@ -130,7 +130,7 @@ class TestMultiphaseInitShape:
 # =====================================================================
 
 
-_WETTING_TYPES = ["wetting_t", "wetting_chem_step"]
+_WETTING_TYPES = ["wetting", "wetting_chem_step"]
 
 
 class TestWettingInitShape:

@@ -13,8 +13,11 @@ purely in how setup.gradient_density and setup.laplacian_density are constructed
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+import jax.numpy as jnp
 from tud_lbm.operators.force import compute_total_force_ext
 from tud_lbm.operators.step._common import _multiphase_pipeline
+from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
+from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
 from tud_lbm.pipeline.state import update_extra_state
 from tud_lbm.registry import update_timestep_operator
 
@@ -56,6 +59,19 @@ def step_multiphase_wetting(setup: SimulationSetup, state: State) -> State:
         setup.laplacian_density,
     )
 
+    updated_wetting = state.wetting
+    if state.wetting is not None:
+        mp = setup.multiphase_params
+        rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
+        ca_left, ca_right = compute_contact_angle(rho, jnp.array(rho_mean))
+        cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, jnp.array(rho_mean))
+        updated_wetting = state.wetting._replace(
+            ca_left=ca_left,
+            ca_right=ca_right,
+            cll_left=cll_left,
+            cll_right=cll_right,
+        )
+
     # 3. Create new state with updated fields
     _new_state = state._replace(
         f=f_out,
@@ -63,8 +79,8 @@ def step_multiphase_wetting(setup: SimulationSetup, state: State) -> State:
         u=u,
         force=force_tot,
         t=state.t + 1,
+        wetting=updated_wetting,
     )
 
     # 4. Update extra state (plugins: electric potential, etc.)
-    # Note: Wetting plugin is NOT active for this case (no state.wetting)
     return update_extra_state(setup, state, _new_state, force_ext=force_ext)

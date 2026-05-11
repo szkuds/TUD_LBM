@@ -129,7 +129,7 @@ class TestNormalizeOverridePath:
         assert result == ["bc_config", "top"]
 
     def test_wetting_mapped_to_wetting_config(self):
-        result = _normalize_override_path("wetting_t.contact_angle")
+        result = _normalize_override_path("wetting.contact_angle")
         assert result == ["wetting_config", "contact_angle"]
 
     def test_hysteresis_mapped_to_hysteresis_config(self):

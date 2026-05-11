@@ -153,7 +153,7 @@ class ElectricForceModule:
         """
         from tud_lbm.operators.differential import build_diff_ops
 
-        gradient_standard, _, _ = build_diff_ops(config, mp_params=None, lattice=lattice)
+        gradient_standard, _, _, _, _ = build_diff_ops(config, mp_params=None, lattice=lattice)
         return ElectricParams(**params, gradient_standard=gradient_standard)
 
     @staticmethod

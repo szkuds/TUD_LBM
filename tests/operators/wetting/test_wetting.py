@@ -1,7 +1,7 @@
 """Tests for:
-- ``operators.wetting_t.contact_angle.compute_contact_angle``
-- ``operators.wetting_t.contact_line.compute_contact_line_location``
-- ``operators.wetting_t.hysteresis`` (WettingParams, clamp, cost fns,
+- ``operators.wetting.contact_angle.compute_contact_angle``
+- ``operators.wetting.contact_line.compute_contact_line_location``
+- ``operators.wetting.hysteresis`` (WettingParams, clamp, cost fns,
 optimise routines, update_wetting_state)
 - Wiring into ``step_multiphase`` via ``WettingState``.
 """
@@ -166,7 +166,7 @@ class TestWettingParamsHelpers:
         )
         clamped = _clamp_params(p)
         np.testing.assert_allclose(float(clamped.d_rho_left), 0.0, atol=1e-6)
-        np.testing.assert_allclose(float(clamped.d_rho_right), 0.2, atol=1e-6)
+        np.testing.assert_allclose(float(clamped.d_rho_right), 0.25, atol=1e-6)
         np.testing.assert_allclose(float(clamped.phi_left), 1.0, atol=1e-6)
         np.testing.assert_allclose(float(clamped.phi_right), 1.5, atol=1e-6)
 
@@ -353,8 +353,8 @@ class TestUpdateWettingState:
         wetting = self._make_wetting_state()
 
         new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
-        assert 0.0 <= float(new_wetting.d_rho_left) <= 0.2
-        assert 0.0 <= float(new_wetting.d_rho_right) <= 0.2
+        assert 0.0 <= float(new_wetting.d_rho_left) <= 0.25
+        assert 0.0 <= float(new_wetting.d_rho_right) <= 0.25
         assert 1.0 <= float(new_wetting.phi_left) <= 1.5
         assert 1.0 <= float(new_wetting.phi_right) <= 1.5
 
@@ -372,9 +372,160 @@ class TestUpdateWettingState:
             if val is not None:
                 assert not jnp.isnan(val).any(), f"NaN in {field_name}"
 
+    def test_optimises_inside_window_outside_dead_zone(self, monkeypatch):
+        import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
+        from tud_lbm.config.simulation_config import SimulationConfig
+        from tud_lbm.pipeline.setup import build_setup
+
+        cfg = SimulationConfig(
+            sim_type="multiphase",
+            grid_shape=(NX, NY),
+            tau=0.99,
+            nt=5,
+            eos="double-well",
+            kappa=0.017,
+            rho_l=RHO_L,
+            rho_v=RHO_V,
+            interface_width=4,
+            hysteresis_config={
+                "ca_advancing": 120.0,
+                "ca_receding": 60.0,
+                "ca_dead_zone": 0.5,
+                "learning_rate": 0.05,
+                "max_iterations": 10,
+            },
+        )
+        setup = build_setup(cfg)
+        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float32)
+        wetting = self._make_wetting_state()._replace(cll_right=jnp.array(60.0))
+
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_angle",
+            lambda rho_in, rho_mean: (jnp.array(90.0), jnp.array(90.0)),
+        )
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_line_location",
+            lambda rho_in, ca_l, ca_r, rho_mean: (jnp.array(40.0), 40.0 + 10.0 * jnp.mean(rho_in)),
+        )
+
+        def trial_step_fn(params):
+            rho_out = jnp.full_like(rho, params.phi_right)
+            return rho, rho_out
+
+        new_wetting = hysteresis_module.update_wetting_state(wetting, rho, setup, trial_step_fn=trial_step_fn)
+
+        assert not np.isclose(float(new_wetting.phi_right), float(wetting.phi_right))
+        assert float(new_wetting.phi_right) > float(wetting.phi_right)
+
+    def test_skips_only_in_dead_zone(self, monkeypatch):
+        import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
+        from tud_lbm.config.simulation_config import SimulationConfig
+        from tud_lbm.pipeline.setup import build_setup
+
+        cfg = SimulationConfig(
+            sim_type="multiphase",
+            grid_shape=(NX, NY),
+            tau=0.99,
+            nt=5,
+            eos="double-well",
+            kappa=0.017,
+            rho_l=RHO_L,
+            rho_v=RHO_V,
+            interface_width=4,
+            hysteresis_config={
+                "ca_advancing": 120.0,
+                "ca_receding": 60.0,
+                "ca_dead_zone": 0.5,
+                "learning_rate": 0.05,
+                "max_iterations": 10,
+            },
+        )
+        setup = build_setup(cfg)
+        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float32)
+        wetting = self._make_wetting_state()._replace(cll_right=jnp.array(60.0))
+
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_angle",
+            lambda rho_in, rho_mean: (jnp.array(90.0), jnp.array(120.2)),
+        )
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_line_location",
+            lambda rho_in, ca_l, ca_r, rho_mean: (jnp.array(40.0), jnp.array(52.0)),
+        )
+
+        def trial_step_fn(params):
+            rho_out = jnp.full_like(rho, params.phi_right)
+            return rho, rho_out
+
+        new_wetting = hysteresis_module.update_wetting_state(wetting, rho, setup, trial_step_fn=trial_step_fn)
+
+        np.testing.assert_allclose(float(new_wetting.phi_right), float(wetting.phi_right), atol=1e-6)
+
+    def test_chemical_step_optimises_inside_window_outside_dead_zone(self, monkeypatch):
+        import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
+        from tud_lbm.config.simulation_config import SimulationConfig
+        from tud_lbm.pipeline.setup import build_setup
+
+        cfg = SimulationConfig(
+            sim_type="multiphase",
+            grid_shape=(NX, NY),
+            tau=0.99,
+            nt=5,
+            eos="double-well",
+            kappa=0.017,
+            rho_l=RHO_L,
+            rho_v=RHO_V,
+            interface_width=4,
+            hysteresis_config={
+                "ca_advancing": 120.0,
+                "ca_receding": 60.0,
+                "ca_dead_zone": 0.5,
+                "learning_rate": 0.05,
+                "max_iterations": 10,
+            },
+            chemical_step_config={
+                "chemical_step_location": 0.5,
+                "ca_advancing_pre_step": 120.0,
+                "ca_receding_pre_step": 60.0,
+                "ca_advancing_post_step": 120.0,
+                "ca_receding_post_step": 60.0,
+            },
+        )
+        setup = build_setup(cfg)
+        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float32)
+        wetting = self._make_wetting_state()._replace(cll_right=jnp.array(60.0))
+
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_angle",
+            lambda rho_in, rho_mean: (jnp.array(90.0), jnp.array(90.0)),
+        )
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_line_location",
+            lambda rho_in, ca_l, ca_r, rho_mean: (jnp.array(40.0), 40.0 + 10.0 * jnp.mean(rho_in)),
+        )
+
+        def trial_step_fn(params):
+            rho_out = jnp.full_like(rho, params.phi_right)
+            return rho, rho_out
+
+        new_wetting = hysteresis_module.update_wetting_state_chemical_step(
+            wetting,
+            rho,
+            setup,
+            trial_step_fn=trial_step_fn,
+        )
+
+        assert not np.isclose(float(new_wetting.phi_right), float(wetting.phi_right))
+
 
 # =====================================================================
-# step_multiphase with wetting_t
+# step_multiphase with wetting
 # =====================================================================
 
 
@@ -466,10 +617,10 @@ class TestStepMultiphaseWithWetting:
             "cll_right",
         ):
             val = getattr(new_state.wetting, field_name)
-            assert not jnp.isnan(val).any(), f"NaN in wetting_t.{field_name}"
+            assert not jnp.isnan(val).any(), f"NaN in wetting.{field_name}"
 
     def test_without_wetting_state_unchanged(self):
-        """When wetting_t is None, step should not fail."""
+        """When wetting is None, step should not fail."""
         from tud_lbm.config.simulation_config import SimulationConfig
         from tud_lbm.operators.step import build_step_fn
         from tud_lbm.pipeline.runner import init_state

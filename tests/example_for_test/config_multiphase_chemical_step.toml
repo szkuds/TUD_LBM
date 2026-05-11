@@ -32,8 +32,8 @@ bottom = "wetting"
 [wetting]
 phi_left = 1.0
 phi_right = 1.0
-d_rho_left = 0.05
-d_rho_right = 0.05
+d_rho_left = 0.0
+d_rho_right = 0.0
 
 [hysteresis]
 learning_rate = 0.01
