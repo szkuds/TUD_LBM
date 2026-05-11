@@ -523,6 +523,46 @@ class TestUpdateWettingState:
 
         assert not np.isclose(float(new_wetting.phi_right), float(wetting.phi_right))
 
+    def test_setup_selects_chemical_step_wetting_operator(self):
+        from tud_lbm.config.simulation_config import SimulationConfig
+        from tud_lbm.pipeline.setup import build_setup
+
+        cfg = SimulationConfig(
+            sim_type="multiphase_hysteresis_chemical_step",
+            grid_shape=(NX, NY),
+            tau=0.99,
+            nt=5,
+            eos="double-well",
+            kappa=0.017,
+            rho_l=RHO_L,
+            rho_v=RHO_V,
+            interface_width=4,
+            wetting_config={
+                "phi_left": 1.2,
+                "phi_right": 1.2,
+                "d_rho_left": 0.05,
+                "d_rho_right": 0.05,
+            },
+            hysteresis_config={
+                "ca_advancing": 120.0,
+                "ca_receding": 60.0,
+                "learning_rate": 0.01,
+                "max_iterations": 5,
+            },
+            chemical_step_config={
+                "chemical_step_location": 0.5,
+                "ca_advancing_pre_step": 120.0,
+                "ca_receding_pre_step": 60.0,
+                "ca_advancing_post_step": 90.0,
+                "ca_receding_post_step": 50.0,
+            },
+        )
+
+        setup = build_setup(cfg)
+
+        assert setup.wetting_fn is not None
+        assert setup.wetting_fn.__name__ == "update_wetting_state_chemical_step"
+
 
 # =====================================================================
 # step_multiphase with wetting

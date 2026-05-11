@@ -12,7 +12,7 @@ collision_scheme = "bgk"
 init_type = "multiphase_bubbles"
 init_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_test/2026-05-04/13-30-21_Test chemical step simulation/data/timestep_12000.npz"
 skip_interval = 1
-type = "multiphase"
+type = "multiphase_hysteresis_chemical_step"
 
 [boundary_conditions]
 left = "periodic"

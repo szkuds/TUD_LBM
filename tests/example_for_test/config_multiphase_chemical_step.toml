@@ -5,15 +5,17 @@
 [simulation_type]
 simulation_name = "test_multiphase_hysteresis_chemical_step"
 type = "multiphase_hysteresis_chemical_step"
-grid_shape = [64, 64]
+grid_shape = [256, 64]
 lattice_type = "D2Q9"
 tau = 0.99
-nt = 10
-init_type = "multiphase_bubbles"
+nt = 5000
+#init_type = "multiphase_bubbles"
+init_type = "init_from_file"
+init_dir = "/Users/sbszkudlarek/TUD_LBM_data/test_runs/2026-05-11/15-53-45_test_multiphase_wetting/data/timestep_50000.npz"
 
 [initialisation]
-centres = [[0.34, 0.25]]
-radii = [0.2]
+centres = [[0.33, 0]]
+radii = [0.3]
 dispersed = "liquid"
 
 [multiphase]

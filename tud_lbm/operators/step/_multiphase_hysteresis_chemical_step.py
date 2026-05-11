@@ -14,7 +14,6 @@ from tud_lbm.operators.force import compute_total_force_ext
 from tud_lbm.operators.step._common import _multiphase_pipeline
 from tud_lbm.operators.step._multiphase_hysteresis import _make_wetting_ops
 from tud_lbm.operators.step._multiphase_hysteresis import _trial_step
-from tud_lbm.operators.wetting.hysteresis import update_wetting_state_chemical_step
 from tud_lbm.pipeline.state import update_extra_state
 from tud_lbm.registry import update_timestep_operator
 
@@ -48,23 +47,20 @@ def step_multiphase_hysteresis_chemical_step(setup: SimulationSetup, state: Stat
     # 3. Run multiphase physics kernel
     f_out, rho, u, force_tot = _multiphase_pipeline(setup, state.f, force_ext, grad, lap)
 
-    # 4. Optimise wetting parameters via chemical-step hysteresis
-    new_wetting = update_wetting_state_chemical_step(
-        state.wetting,
-        rho,
-        setup,
-        trial_step_fn=partial(_trial_step, setup, f_out, force_ext),
-    )
-
-    # 5. Assemble new state
+    # 4. Assemble new state (wetting updated by plugin via setup.wetting_fn)
     new_state = state._replace(
         f=f_out,
         rho=rho,
         u=u,
         force=force_tot,
-        wetting=new_wetting,
         t=state.t + 1,
     )
 
-    # 6. Update extra state (plugins)
-    return update_extra_state(setup, state, new_state, force_ext=force_ext)
+    # 5. Update extra state — trial_step_fn forwarded so wetting plugin can run optimiser
+    return update_extra_state(
+        setup,
+        state,
+        new_state,
+        force_ext=force_ext,
+        trial_step_fn=partial(_trial_step, setup, f_out, force_ext),
+    )

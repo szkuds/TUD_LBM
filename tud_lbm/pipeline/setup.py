@@ -213,7 +213,10 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     # Build wetting function if both wetting and hysteresis configs are present
     wetting_fn = None
     if config.wetting_config is not None and config.hysteresis_config is not None:
-        wetting_fn = build_wetting_fn("hysteresis")
+        wetting_scheme = (
+            "chemical_step_hysteresis" if config.sim_type == "multiphase_hysteresis_chemical_step" else "hysteresis"
+        )
+        wetting_fn = build_wetting_fn(wetting_scheme)
 
     extra_state_plugins = tuple(
         cast("ExtraStatePlugin", entry.target)

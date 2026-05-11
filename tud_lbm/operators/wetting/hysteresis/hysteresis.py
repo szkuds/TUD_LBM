@@ -238,7 +238,6 @@ def update_wetting_state(
         jnp.array(rho_mean),
     )
 
-    # Change A — drift signals
     # Forward drift = CL moved in its "advancing" direction since last step.
     # Right side: advancing = rightward = cll increased.
     # Left side:  advancing = leftward  = cll decreased.
@@ -254,7 +253,7 @@ def update_wetting_state(
     above_window_left = ca_left_tplus1 > ca_adv_left
     above_window_right = ca_right_tplus1 > ca_adv_right
 
-    # Change B — active-parameter flags
+    # Active-parameter flags
     phi_active_right = _phi_is_active(in_window_right, above_window_right, forward_drift_right)
     phi_active_left = _phi_is_active(in_window_left, above_window_left, forward_drift_left)
 
@@ -262,7 +261,7 @@ def update_wetting_state(
     lr = jnp.where(above_window_right | above_window_left, hc.get("learning_rate_above", 0.05), lr_default)
     max_iter = hc.get("max_iterations_above", 50) if hc.get("max_iterations_above") else hc.get("max_iterations", 50)
 
-    # Change C — snap inactive parameters to their neutral values before optimisation.
+    # Snap inactive parameters to their neutral values before optimisation.
     phi_left_init = jnp.where(phi_active_left, wetting.phi_left, _PHI_NEUTRAL)
     phi_right_init = jnp.where(phi_active_right, wetting.phi_right, _PHI_NEUTRAL)
     d_rho_left_init = jnp.where(phi_active_left, _D_RHO_NEUTRAL, wetting.d_rho_left)
@@ -293,7 +292,7 @@ def update_wetting_state(
         cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, jnp.array(rho_mean))
         return ca_l, ca_r, cll_l, cll_r
 
-    # --- 5.1: per-side objectives (Change E — cost_above uses CA-only loss) ---
+    # --- 5.1: per-side objectives (cost_above uses CA-only loss) ---
 
     def left_objective(p: WettingParams) -> jnp.ndarray:
         ca_l, _, cll_l, _ = evaluate_fn(p)
@@ -345,7 +344,7 @@ def update_wetting_state(
             d_rho_right=z(g.d_rho_right),
         )
 
-    # --- 5.2: single-branch optimisers (Change D) — parameter chosen by physics ---
+    # --- 5.2: single-branch optimisers — parameter chosen by physics ---
 
     def _opt_left(p: WettingParams) -> WettingParams:
         return jax.lax.cond(
@@ -363,7 +362,7 @@ def update_wetting_state(
             p,
         )
 
-    # Change F — unconditional optimisation; no dead-zone skip
+    # Unconditional optimisation
     new_params_left = _opt_left(params)
     new_params = _opt_right(new_params_left)
 
@@ -399,6 +398,7 @@ def update_wetting_state(
     )
 
 
+@wetting_operator(name="chemical_step_hysteresis")
 def update_wetting_state_chemical_step(
     wetting: WettingState,
     rho_t_plus1: jnp.ndarray,
