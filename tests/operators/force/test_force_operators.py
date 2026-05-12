@@ -159,6 +159,32 @@ class TestGravityForce:
         assert force.shape == (NX, NY, NZ, 1, 2)
 
 
+class TestGravityMaskedForce:
+    """GravityForceModule with phase mask based on rho_v/rho_l references."""
+
+    def test_compute_matches_masked_formula(self, lattice):
+        from tud_lbm.operators.force._gravity_masked import GravityForceModule
+
+        cfg = SimpleNamespace(rho_l=1.0, rho_v=0.5)
+        precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=cfg, lattice=lattice)
+        state = make_state(lattice, rho_value=0.75)
+        force = GravityForceModule.compute(state, precomputed)
+
+        rho = jnp.sum(state.f, axis=-2, keepdims=True)
+        mask = jnp.clip((rho - cfg.rho_v) / (cfg.rho_l - cfg.rho_v), 0.0, 1.0)
+        expected = -precomputed.template * rho * mask
+        np.testing.assert_allclose(np.array(force), np.array(expected), atol=1e-12)
+
+    def test_compute_without_phase_refs_matches_single_phase(self, lattice):
+        from tud_lbm.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=None, lattice=lattice)
+        state = make_state(lattice, rho_value=1.2)
+        force = GravityForceModule.compute(state, precomputed)
+        expected = -precomputed.template * 1.2
+        np.testing.assert_allclose(np.array(force), np.array(expected), atol=1e-12)
+
+
 # =====================================================================
 # Electric params
 # =====================================================================
