@@ -14,7 +14,7 @@ except ImportError:
 
 
 def test_package_cli_import_is_callable():
-    from tud_lbm.cli import cli
+    from tud_lbm.cli.cli import cli
 
     assert callable(cli)
     assert not isinstance(cli, ModuleType)

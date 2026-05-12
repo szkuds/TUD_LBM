@@ -95,6 +95,42 @@ def _get_setup_contact_line_length(config: SimulationConfig) -> float | None:
     return None
 
 
+def _resolve_gravity_value(config: SimulationConfig) -> float | None:
+    """Resolve gravity from config.g or known force dictionaries."""
+    if config.g is not None:
+        return float(config.g)
+
+    for force_name in ("gravity_force", "gravity_masked_force"):
+        force_dict = getattr(config, force_name, None)
+        if force_dict and isinstance(force_dict, dict) and "force_g" in force_dict:
+            return float(force_dict["force_g"])
+    return None
+
+
+def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, float] | None:
+    """Return (drho, gamma) when multiphase parameters are available and valid."""
+    has_params = all(x is not None for x in (config.kappa, config.interface_width, config.rho_l, config.rho_v))
+    if not has_params or config.interface_width == 0:
+        return None
+
+    drho = float(config.rho_l) - float(config.rho_v)
+    gamma = (2.0 / 3.0) * (float(config.kappa) / float(config.interface_width)) * (drho**2)
+    return drho, gamma
+
+
+def _format_bond_number_row(config: SimulationConfig, drho: float, gamma: float, g_val: float) -> str:
+    """Build Bond-number row with contact-line length or grid-x fallback."""
+    cl_length = _get_setup_contact_line_length(config)
+    if cl_length is not None:
+        length = cl_length
+        bo = (drho * g_val * (length**2)) / gamma
+        return _row("Bo (Bond number):", f"{bo:.6g}  [ΔρgL²/gamma, L={length:.4g} (contact line)]")
+
+    length = float(config.grid_shape[0])
+    bo = (drho * g_val * (length**2)) / gamma
+    return _row("Bo (Bond number):", f"{bo:.6g}  [ΔρgL²/gamma, L={length} (grid_x)]")
+
+
 def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     if "multiphase" not in config.sim_type:
         return
@@ -107,33 +143,17 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     if config.g is not None:
         lines.append(_row("g (gravity):", config.g))
 
-    has_params = all(x is not None for x in (config.kappa, config.interface_width, config.rho_l, config.rho_v))
-    if has_params and config.interface_width != 0:
-        drho = float(config.rho_l) - float(config.rho_v)
-        gamma = (2.0 / 3.0) * (float(config.kappa) / float(config.interface_width)) * (drho**2)
-        lines.append(_row("gamma (surface tension):", f"{gamma:.6g}  [2/3(κ/W)(Δρ)²]"))
+    derived = _derive_multiphase_parameters(config)
+    if derived is None:
+        return
+    drho, gamma = derived
+    lines.append(_row("gamma (surface tension):", f"{gamma:.6g}  [2/3(κ/W)(Δρ)²]"))
 
-        # Try to find gravity either from config.g or force configurations
-        g_val = None
-        if config.g is not None:
-            g_val = float(config.g)
-        else:
-            for force_name in ("gravity_force", "gravity_masked_force"):
-                force_dict = getattr(config, force_name, None)
-                if force_dict and isinstance(force_dict, dict) and "force_g" in force_dict:
-                    g_val = float(force_dict["force_g"])
-                    break
+    g_val = _resolve_gravity_value(config)
+    if g_val is None:
+        return
 
-        if g_val is not None:
-            cl_length = _get_setup_contact_line_length(config)
-            if cl_length is not None:
-                length = cl_length
-                bo = (drho * g_val * (length**2)) / gamma
-                lines.append(_row("Bo (Bond number):", f"{bo:.6g}  [ΔρgL²/gamma, L={length:.4g} (contact line)]"))
-            else:
-                length = float(config.grid_shape[0])  # Fallback to x-dimension
-                bo = (drho * g_val * (length**2)) / gamma
-                lines.append(_row("Bo (Bond number):", f"{bo:.6g}  [ΔρgL²/gamma, L={length} (grid_x)]"))
+    lines.append(_format_bond_number_row(config, drho, gamma, g_val))
 
 
 def _add_key_value_section(lines: list[str], title: str, values: dict | None) -> None:

@@ -15,6 +15,45 @@ _NDIM_3D = 3
 _NDIM_4D = 4
 _NDIM_5D = 5
 
+_X_LABEL_TIMESTEP = "Timestep"
+_EMPTY_DATA_TEXT = "No data"
+_REQUIRES_PREFIX = "(Requires: "
+_CONTACT_ANGLE_Y_LABEL = "Contact angle (deg)"
+_CONTACT_ANGLES_TITLE = "Contact angles vs timestep"
+_CONTACT_LINE_SPEEDS_TITLE = "Contact-line speeds vs timestep"
+_CONTACT_LINE_SPEED_Y_LABEL = "d(cll)/dt"
+_COLOR_TAB_BLUE = "tab:blue"
+_COLOR_TAB_PURP = "tab:purple"
+_COLOR_TAB_RED = "tab:red"
+
+
+def _empty_data_message(required_keys: tuple[str, ...] | None = None) -> str:
+    msg = _EMPTY_DATA_TEXT
+    if required_keys:
+        msg += f"\n{_REQUIRES_PREFIX}{', '.join(required_keys)})"
+    return msg
+
+
+def _set_empty_state(
+    ax: matplotlib.axes.Axes,
+    *,
+    title: str,
+    ylabel: str,
+    required_keys: tuple[str, ...] | None = None,
+) -> None:
+    ax.text(
+        0.5,
+        0.5,
+        _empty_data_message(required_keys),
+        ha="center",
+        va="center",
+        transform=ax.transAxes,
+        fontsize=9,
+    )
+    ax.set_title(title)
+    ax.set_xlabel(_X_LABEL_TIMESTEP)
+    ax.set_ylabel(ylabel)
+
 
 def _parse_timestep(stem: str) -> int | None:
     try:
@@ -76,22 +115,16 @@ def _render_scatter(
     *,
     title: str,
     ylabel: str,
-    color: str = "tab:blue",
+    color: str = _COLOR_TAB_BLUE,
     ylog: bool = False,
     required_keys: tuple[str, ...] | None = None,
 ) -> None:
     ax.clear()
     if len(iters) == 0:
-        msg = "No data"
-        if required_keys:
-            msg += f"\n(Requires: {', '.join(required_keys)})"
-        ax.text(0.5, 0.5, msg, ha="center", va="center", transform=ax.transAxes, fontsize=9)
-        ax.set_title(title)
-        ax.set_xlabel("Timestep")
-        ax.set_ylabel(ylabel)
+        _set_empty_state(ax, title=title, ylabel=ylabel, required_keys=required_keys)
         return
     ax.scatter(iters, values, s=16, alpha=0.8, color=color, edgecolors="none")
-    ax.set_xlabel("Timestep")
+    ax.set_xlabel(_X_LABEL_TIMESTEP)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
     ax.grid(True, alpha=0.3)
@@ -102,7 +135,7 @@ def _render_scatter(
 class _BaseAnalysisPlot(AnalysisPlot):
     title: str
     ylabel: str
-    color: str = "tab:blue"
+    color: str = _COLOR_TAB_BLUE
     ylog: bool = False
     required_keys: tuple[str, ...] = ()
 
@@ -126,7 +159,7 @@ class MaxVelocityPlot(_BaseAnalysisPlot):
     name = "max_velocity"
     title = "Maximum velocity vs timestep"
     ylabel = "max(|u|)"
-    color = "tab:blue"
+    color = _COLOR_TAB_BLUE
     required_keys = ("u",)
 
     def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
@@ -182,8 +215,8 @@ class ContactAngleLeftPlot(_BaseAnalysisPlot):
 
     name = "contact_angle_left"
     title = "Left contact angle vs timestep"
-    ylabel = "Contact angle (deg)"
-    color = "tab:purple"
+    ylabel = _CONTACT_ANGLE_Y_LABEL
+    color = _COLOR_TAB_PURP
     required_keys = ("ca_left",)
 
     def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
@@ -199,8 +232,8 @@ class ContactAngleRightPlot(_BaseAnalysisPlot):
 
     name = "contact_angle_right"
     title = "Right contact angle vs timestep"
-    ylabel = "Contact angle (deg)"
-    color = "tab:red"
+    ylabel = _CONTACT_ANGLE_Y_LABEL
+    color = _COLOR_TAB_RED
     required_keys = ("ca_right",)
 
     def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
@@ -271,18 +304,18 @@ class ContactAnglesPairPlot(AnalysisPlot):
         ax.clear()
         iters = precomputed["iters"]
         if len(iters) == 0:
-            msg = "No data"
-            msg += f"\n(Requires: {', '.join(self.required_keys)})"
-            ax.text(0.5, 0.5, msg, ha="center", va="center", transform=ax.transAxes, fontsize=9)
-            ax.set_title("Contact angles vs timestep")
-            ax.set_xlabel("Timestep")
-            ax.set_ylabel("Contact angle (deg)")
+            _set_empty_state(
+                ax,
+                title=_CONTACT_ANGLES_TITLE,
+                ylabel=_CONTACT_ANGLE_Y_LABEL,
+                required_keys=self.required_keys,
+            )
             return
-        ax.scatter(iters, precomputed["left"], s=16, color="tab:purple", alpha=0.8, edgecolors="none", label="Left")
-        ax.scatter(iters, precomputed["right"], s=16, color="tab:red", alpha=0.8, edgecolors="none", label="Right")
-        ax.set_title("Contact angles vs timestep")
-        ax.set_xlabel("Timestep")
-        ax.set_ylabel("Contact angle (deg)")
+        ax.scatter(iters, precomputed["left"], s=16, color=_COLOR_TAB_PURP, alpha=0.8, edgecolors="none", label="Left")
+        ax.scatter(iters, precomputed["right"], s=16, color=_COLOR_TAB_RED, alpha=0.8, edgecolors="none", label="Right")
+        ax.set_title(_CONTACT_ANGLES_TITLE)
+        ax.set_xlabel(_X_LABEL_TIMESTEP)
+        ax.set_ylabel(_CONTACT_ANGLE_Y_LABEL)
         ax.grid(True, alpha=0.3)
         ax.legend(loc="best", fontsize=8)
 
@@ -308,17 +341,17 @@ class ContactLineSpeedsPairPlot(AnalysisPlot):
         left = precomputed["left"]
         right = precomputed["right"]
         if len(iters) == 0:
-            msg = "No data"
-            msg += f"\n(Requires: {', '.join(self.required_keys)})"
-            ax.text(0.5, 0.5, msg, ha="center", va="center", transform=ax.transAxes, fontsize=9)
-            ax.set_title("Contact-line speeds vs timestep")
-            ax.set_xlabel("Timestep")
-            ax.set_ylabel("d(cll)/dt")
+            _set_empty_state(
+                ax,
+                title=_CONTACT_LINE_SPEEDS_TITLE,
+                ylabel=_CONTACT_LINE_SPEED_Y_LABEL,
+                required_keys=self.required_keys,
+            )
             return
         ax.scatter(iters[: len(left)], left, s=16, color="tab:brown", alpha=0.8, edgecolors="none", label="Left")
         ax.scatter(iters[: len(right)], right, s=16, color="tab:pink", alpha=0.8, edgecolors="none", label="Right")
-        ax.set_title("Contact-line speeds vs timestep")
-        ax.set_xlabel("Timestep")
-        ax.set_ylabel("d(cll)/dt")
+        ax.set_title(_CONTACT_LINE_SPEEDS_TITLE)
+        ax.set_xlabel(_X_LABEL_TIMESTEP)
+        ax.set_ylabel(_CONTACT_LINE_SPEED_Y_LABEL)
         ax.grid(True, alpha=0.3)
         ax.legend(loc="best", fontsize=8)
