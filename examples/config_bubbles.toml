@@ -18,7 +18,7 @@ eos = "double-well"
 [initialisation]
 centres = [[0.5, 0.5], [0.25, 0.5]]
 radii = [0.15, 0.10]
-dispersed = "vapour"
+dispersed = "liquid"
 
 #[boundary_conditions]
 #left   = "periodic"
@@ -45,7 +45,7 @@ dispersed = "vapour"
 # external force. No [[force]] array-of-tables, no "type" key needed.
 
 [gravity_force]
-force_g = 5e-7
+force_g = 0
 inclination_angle_deg = 90
 
 # To add a second force, just add another section:
@@ -58,4 +58,4 @@ inclination_angle_deg = 90
 [output]
 results_dir = "~/TUD_LBM_data/results"
 save_fields = ["rho", "u"]
-plot_fields = ["density", "velocity", "analysis"]
+plot_fields = ["density", "velocity"]

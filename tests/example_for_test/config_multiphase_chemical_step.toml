@@ -1,37 +1,26 @@
-# Test config for step_multiphase_hysteresis_chemical_step
-# Triggers: sim_type="multiphase" + [hysteresis] + [chemical_step]
-# Hysteresis window is spatially varying: pre/post step angles differ across the step location.
-
 [simulation_type]
-simulation_name = "test_multiphase_hysteresis_chemical_step"
-type = "multiphase_hysteresis_chemical_step"
-grid_shape = [256, 64]
+simulation_name = "multiphase_hysteresis_chemical_step"
 lattice_type = "D2Q9"
+grid_shape = [
+    256,
+    64,
+    1,
+]
+nt = 25000
 tau = 0.99
-nt = 500
+collision_scheme = "bgk"
 init_type = "multiphase_bubbles"
-
-[initialisation]
-centres = [[0.23, 0]]
-radii = [0.5]
-dispersed = "liquid"
-
-[multiphase]
-kappa = 0.017
-rho_l = 1.0
-rho_v = 0.33
-interface_width = 4
-eos = "double-well"
+save_interval = 500
+skip_interval = 0
+type = "multiphase_hysteresis_chemical_step"
 
 [boundary_conditions]
 left = "periodic"
 right = "periodic"
 top = "bounce-back"
 bottom = "wetting"
-
-[hysteresis]
-learning_rate = 0.01
-max_iterations = 5
+front = "periodic"
+back = "periodic"
 
 [chemical_step]
 chemical_step_location = 0.5
@@ -42,10 +31,48 @@ ca_advancing_post_step = 70.0
 ca_receding_post_step = 50.0
 
 [gravity_masked_force]
-force_g = 5e-06
+force_g = 1e-06
 inclination_angle_deg = 60
 
+[hysteresis]
+learning_rate = 0.01
+max_iterations = 5
+
+[initialisation]
+centres = [
+    [
+        0.23,
+        0,
+    ],
+]
+radii = [
+    0.5,
+]
+dispersed = "liquid"
+
+[multiphase]
+eos = "double-well"
+kappa = 0.017
+rho_l = 1.0
+rho_v = 0.001
+interface_width = 5
+
 [output]
-results_dir = "~/TUD_LBM_data/test_runs"
-save_fields = ["rho", "u"]
-plot_fields = ["density", "velocity", "contact_angles_pair", "contact_line_speeds_pair"]
+results_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_simulation"
+save_fields = [
+    "rho",
+    "u",
+]
+plot_fields = [
+    "density",
+    "velocity",
+    "contact_angles_pair",
+    "contact_line_speeds_pair",
+]
+output_format = "numpy"
+
+[wetting]
+phi_left = 1.0
+phi_right = 1.0
+d_rho_left = 0.0
+d_rho_right = 0.0

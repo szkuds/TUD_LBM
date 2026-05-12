@@ -12,21 +12,21 @@ nt = 50000
 init_type = "multiphase_bubbles"
 
 [initialisation]
-centres = [[0.33, 0]]
-radii = [0.3]
+centres = [[0.3, 0]]
+radii = [0.5]
 dispersed = "liquid"
 
 [multiphase]
 kappa = 0.017
 rho_l = 1.0
-rho_v = 0.33
-interface_width = 4
+rho_v = 0.001
+interface_width = 5
 eos = "double-well"
 
 [boundary_conditions]
 left = "periodic"
 right = "periodic"
-top = "bounce-back"
+top = "symmetry"
 bottom = "wetting"
 
 [wetting]
@@ -38,4 +38,4 @@ d_rho_right = 0.05
 [output]
 results_dir = "~/TUD_LBM_data/test_runs"
 save_fields = ["rho", "u"]
-plot_fields = ["density", "velocity", "contact_angles_pair", "contact_line_speeds_pair"]
+plot_fields = ["density", "velocity"]

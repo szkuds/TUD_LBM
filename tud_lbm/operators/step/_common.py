@@ -117,7 +117,7 @@ def _apply_common_step(
     feq = setup.equilibrium_fn(rho, u, lattice)
 
     # 4. Collision (with or without source term)
-    if force_tot is not None and setup.forces is not None:
+    if force_tot is not None:
         # Use provided gradient_density if available (for wetting), else use setup default
         grad = gradient_density if gradient_density is not None else setup.gradient_density
         src = setup.forces.source_term(rho, u, force_tot, lattice, gradient=grad)

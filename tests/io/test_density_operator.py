@@ -18,7 +18,8 @@ def test_density_operator_uses_log_scale_for_large_multiphase_ratio():
         interface_width=2,
     )
     op = DensityPlotOperator(cfg)
-    data = {"rho": np.abs(np.random.Generator(8, 8, 1, 1, 1)) + 1e-3}
+    rng = np.random.default_rng(123)
+    data = {"rho": np.abs(rng.random((8, 8, 1, 1, 1))) + 1e-3}
 
     fig, ax = plt.subplots()
     try:

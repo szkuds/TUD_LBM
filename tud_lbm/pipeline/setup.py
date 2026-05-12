@@ -187,9 +187,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     mp_params = build_multiphase_params(config) if "multiphase" in config.sim_type else None
 
     # Build force specs
-    force_setup = build_forces(config, tuple(config.grid_shape), lattice)
-    # Convert to None if no forces are present
-    forces = force_setup if force_setup.specs else None
+    forces = build_forces(config, tuple(config.grid_shape), lattice)
 
     # Build differential operators (returns 5-tuple: standard, density, laplacian, raw_density, raw_laplacian)
     gradient_standard, gradient_density, laplacian_density, gradient_density_wetting, laplacian_density_wetting = (
