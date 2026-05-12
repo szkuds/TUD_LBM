@@ -8,14 +8,15 @@ type = "multiphase_hysteresis_chemical_step"
 grid_shape = [256, 64]
 lattice_type = "D2Q9"
 tau = 0.99
-nt = 5000
-#init_type = "multiphase_bubbles"
-init_type = "init_from_file"
-init_dir = "/Users/sbszkudlarek/TUD_LBM_data/test_runs/2026-05-11/15-53-45_test_multiphase_wetting/data/timestep_50000.npz"
+nt = 50000
+save_interval = 500
+init_type = "multiphase_bubbles"
+#init_type = "init_from_file"
+#init_dir = "/Users/sbszkudlarek/TUD_LBM_data/test_runs/2026-05-11/15-53-45_test_multiphase_wetting/data/timestep_50000.npz"
 
 [initialisation]
-centres = [[0.33, 0]]
-radii = [0.3]
+centres = [[0.23, 0]]
+radii = [0.5]
 dispersed = "liquid"
 
 [multiphase]
@@ -53,6 +54,11 @@ ca_receding_post_step = 50.0
 phi_post_step = 1.2
 d_rho_post_step = 0.0
 
+[gravity_masked_force]
+force_g = 5e-06
+inclination_angle_deg = 60
+
 [output]
 results_dir = "~/TUD_LBM_data/test_runs"
 save_fields = ["rho", "u"]
+plot_fields = ["density", "velocity", "contact_angles_pair", "contact_line_speeds_pair"]
