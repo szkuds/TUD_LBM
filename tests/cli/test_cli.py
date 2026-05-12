@@ -1,6 +1,7 @@
 """Tests for CLI helper functions and edge cases."""
 
 from __future__ import annotations
+from types import ModuleType
 import pytest
 
 try:
@@ -10,6 +11,14 @@ try:
     from tud_lbm.cli.cli import _set_nested_override
 except ImportError:
     pytest.skip("click or rich dependency not installed", allow_module_level=True)
+
+
+def test_package_cli_import_is_callable():
+    from tud_lbm.cli import cli
+
+    assert callable(cli)
+    assert not isinstance(cli, ModuleType)
+
 
 # =========================================================================
 # _parse_override_argument Tests
