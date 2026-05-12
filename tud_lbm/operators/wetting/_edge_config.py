@@ -33,6 +33,6 @@ def _resolve_wetting_edges(
                 edge,
                 bc_config.get(perp_start, "periodic") == "periodic",
                 bc_config.get(perp_end, "periodic") == "periodic",
-            )
+            ),
         )
     return edges

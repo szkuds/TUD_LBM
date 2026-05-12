@@ -1,10 +1,12 @@
+"""Input/Output handler for simulation management and logging."""
+
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
+from datetime import timezone
 from pathlib import Path
-
+from typing import Any
 from tud_lbm.config.simulation_config import SimulationConfig
-
 from .output_data import output_writers
 
 
@@ -42,14 +44,12 @@ class SimulationIO:
         if config:
             self.save_config(config)
 
-        self.save_data_step = output_writers[output_format].save_data_step.__get__(
-            self, type(self)
-        )
+        self.save_data_step = output_writers[output_format].save_data_step.__get__(self, type(self))
 
     def _setup_logging(self) -> None:
-        """Configure root logger so everything printed to the console is
-        also written to <run_dir>/simulation.log. Existing handlers are
-        cleared to avoid duplicate lines when multiple simulations run
+        """Configure root logger so everything printed to the console is also written to <run_dir>/simulation.log.
+
+        Existing handlers are cleared to avoid duplicate lines when multiple simulations run
         in the same Python interpreter (e.g. test suites).
         """
         log_file = str(Path(self.run_dir) / "simulation.log")
@@ -77,13 +77,13 @@ class SimulationIO:
 
         # 3. Mirror *all* prints to the same log file
         class _Tee:
-            def __init__(self, *streams):
+            def __init__(self, *streams: Any) -> None:  # noqa: ANN401
                 self._streams = streams
 
-            def write(self, msg):
+            def write(self, msg: str) -> None:
                 [s.write(msg) for s in self._streams]
 
-            def flush(self):
+            def flush(self) -> None:
                 [s.flush() for s in self._streams]
 
         logfile_stream = Path(log_file).open("a", buffering=1)  # noqa: SIM115
@@ -94,15 +94,12 @@ class SimulationIO:
         """Creates a unique, timestamped directory for a single simulation run."""
         timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d/%H-%M-%S")
         base = Path(self.base_dir)
-        suffix = (
-            f"{timestamp}_{self.simulation_name}" if self.simulation_name else timestamp
-        )
+        suffix = f"{timestamp}_{self.simulation_name}" if self.simulation_name else timestamp
         run_dir = base / suffix
         run_dir.mkdir(parents=True, exist_ok=True)
-        print(f"Created results directory: {run_dir}")
         return str(run_dir)
 
-    def save_config(self, config: SimulationConfig):
+    def save_config(self, config: SimulationConfig) -> None:
         """Save the simulation configuration to the run directory.
 
         Accepts  a :class:`SimulationConfig`.
@@ -117,5 +114,3 @@ class SimulationIO:
         dest = Path(self.run_dir) / f"config{self.config_file_type}"
         adapter = get_adapter(str(dest))
         adapter.save(config, str(dest))
-
-        print(f"Configuration saved to {dest}")

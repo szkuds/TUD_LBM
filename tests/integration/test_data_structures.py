@@ -31,13 +31,13 @@ class TestBuildLattice:
         from tud_lbm.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
-        assert lat.c.shape == (2, 9)
+        assert lat.c.shape == (1, 1, 1, 9, 2)
 
     def test_d2q9_weights_shape_and_sum(self):
         from tud_lbm.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
-        assert lat.w.shape == (9,)
+        assert lat.w.shape == (1, 1, 1, 9, 1)
         np.testing.assert_allclose(float(jnp.sum(lat.w)), 1.0)
 
     def test_d2q9_opposite_indices(self):
@@ -247,8 +247,9 @@ class TestSimulationConfigValidation:
     def test_invalid_grid_shape_raises(self):
         from tud_lbm.config.simulation_config import SimulationConfig
 
-        with pytest.raises(ValueError, match="at least 2 dimensions"):
-            SimulationConfig(grid_shape=(8,))
+        # 1D grids should be promoted to 3D (nx, 1, 1), so this should NOT raise
+        config = SimulationConfig(grid_shape=(8,))
+        assert config.grid_shape == (8, 1, 1)
 
     def test_negative_grid_dimension_raises(self):
         from tud_lbm.config.simulation_config import SimulationConfig
@@ -373,7 +374,7 @@ class TestSimulationConfigToDict:
 
         cfg = SimulationConfig(grid_shape=(16, 16), tau=0.7, nt=500)
         d = cfg.to_dict()
-        assert d["grid_shape"] == (16, 16)
+        assert d["grid_shape"] == (16, 16, 1)
         assert d["tau"] == 0.7
         assert d["nt"] == 500
 
@@ -401,7 +402,7 @@ class TestBuildSetup:
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8)
         setup = build_setup(cfg)
 
-        assert setup.grid_shape == (8, 8)
+        assert setup.grid_shape == (8, 8, 1)
         assert setup.tau == 0.8
         assert setup.lattice.d == 2
         assert setup.lattice.q == 9
@@ -484,10 +485,10 @@ class TestBuildSetup:
         setup = build_setup(cfg)
 
         assert setup.bc_masks is not None
-        assert setup.bc_masks.top.shape == (8, 8, 1, 1)
-        assert setup.bc_masks.bottom.shape == (8, 8, 1, 1)
-        assert setup.bc_masks.left.shape == (8, 8, 1, 1)
-        assert setup.bc_masks.right.shape == (8, 8, 1, 1)
+        assert setup.bc_masks.top.shape == (8, 8, 1, 1, 1)
+        assert setup.bc_masks.bottom.shape == (8, 8, 1, 1, 1)
+        assert setup.bc_masks.left.shape == (8, 8, 1, 1, 1)
+        assert setup.bc_masks.right.shape == (8, 8, 1, 1, 1)
 
     def test_bc_masks_correct_edges(self):
         """BCMasks mark the correct boundary rows/columns."""
@@ -594,10 +595,10 @@ class TestBuildBCMasks:
         from tud_lbm.operators.boundary import build_bc_masks
 
         masks = build_bc_masks((16, 32))
-        assert masks.top.shape == (16, 32, 1, 1)
-        assert masks.bottom.shape == (16, 32, 1, 1)
-        assert masks.left.shape == (16, 32, 1, 1)
-        assert masks.right.shape == (16, 32, 1, 1)
+        assert masks.top.shape == (16, 32, 1, 1, 1)
+        assert masks.bottom.shape == (16, 32, 1, 1, 1)
+        assert masks.left.shape == (16, 32, 1, 1, 1)
+        assert masks.right.shape == (16, 32, 1, 1, 1)
 
     def test_mask_counts(self):
         """Each edge mask should have exactly one row/column of True."""
@@ -645,7 +646,6 @@ class TestBuildMultiphaseParams:
 
     def test_missing_field_raises(self):
         from dataclasses import dataclass
-
         from tud_lbm.operators.macroscopic import build_multiphase_params
 
         @dataclass
@@ -699,25 +699,25 @@ class TestLatticeOn8x8Grid:
         lat = build_lattice("D2Q9")
         nx, ny = 8, 8
         # Broadcast weights to (nx, ny, q, 1) for equilibrium computation
-        w_grid = lat.w[jnp.newaxis, jnp.newaxis, :, jnp.newaxis]
-        assert w_grid.shape == (1, 1, 9, 1)
-        w_full = jnp.broadcast_to(w_grid, (nx, ny, lat.q, 1))
-        assert w_full.shape == (8, 8, 9, 1)
-        np.testing.assert_allclose(float(jnp.sum(w_full[0, 0, :, 0])), 1.0)
+        w_grid = lat.w
+        assert w_grid.shape == (1, 1, 1, 9, 1)
+        w_full = jnp.broadcast_to(w_grid, (nx, ny, 1, lat.q, 1))
+        assert w_full.shape == (8, 8, 1, 9, 1)
+        np.testing.assert_allclose(float(jnp.sum(w_full[0, 0, 0, :, 0])), 1.0)
 
     def test_streaming_roll_on_8x8(self):
         """Verify that jnp.roll with lattice velocities works on 8×8."""
         from tud_lbm.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
-        nx, ny = 8, 8
-        f = jnp.zeros((nx, ny, lat.q, 1))
+        nx, ny, nz = 8, 8, 1
+        f = jnp.zeros((nx, ny, nz, lat.q, 1))
         # Put a pulse in direction 1 (cx=1, cy=0)
-        f = f.at[3, 3, 1, 0].set(1.0)
+        f = f.at[3, 3, 0, 1, 0].set(1.0)
         # Roll direction 1
         i = 1
-        shift = (int(lat.c[0, i]), int(lat.c[1, i]))
-        f_rolled = jnp.roll(f[:, :, i, :], shift=shift, axis=(0, 1))
+        shift = (int(lat.c[0, 0, 0, i, 0]), int(lat.c[0, 0, 0, i, 1]))
+        f_rolled = jnp.roll(f[:, :, :, i, :], shift=shift, axis=(0, 1))
         # Should have moved to (4, 3)
-        assert float(f_rolled[4, 3, 0]) == 1.0
-        assert float(f_rolled[3, 3, 0]) == 0.0
+        assert float(f_rolled[4, 3, 0, 0]) == 1.0
+        assert float(f_rolled[3, 3, 0, 0]) == 0.0

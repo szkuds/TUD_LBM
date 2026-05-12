@@ -1,13 +1,14 @@
 """Density field plot operator."""
 
 from __future__ import annotations
-
 import matplotlib.axes
 import matplotlib.colors
 import numpy as np
-
-from tud_lbm.registry import plotting_operator
 from tud_lbm.io.plotting.base import PlotOperator
+from tud_lbm.registry import plotting_operator
+
+# Density ratio threshold for using log scale
+DENSITY_RATIO_THRESHOLD = 100
 
 
 @plotting_operator(name="density")
@@ -17,6 +18,7 @@ class DensityPlotOperator(PlotOperator):
     name = "density"
 
     def is_available(self, data: dict[str, np.ndarray]) -> bool:
+        """Check if density data is available for rendering."""
         return "rho" in data
 
     def __call__(
@@ -25,13 +27,14 @@ class DensityPlotOperator(PlotOperator):
         data: dict[str, np.ndarray],
         timestep: int,
     ) -> None:
-        rho = np.asarray(data["rho"])[..., 0, 0].T
+        """Render the density field as a 2D color map."""
+        rho = np.asarray(data["rho"])[:, :, 0, 0, 0].T
         use_log_scale = False
         if self.config.sim_type == "multiphase":
             rho_l = self.config.rho_l
             rho_v = self.config.rho_v
             if rho_l and rho_v and rho_v != 0:
-                use_log_scale = (rho_l / rho_v) > 100
+                use_log_scale = (rho_l / rho_v) > DENSITY_RATIO_THRESHOLD
 
         if use_log_scale:
             positive = rho[rho > 0]

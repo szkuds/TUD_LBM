@@ -1,7 +1,6 @@
 """Runner-focused tests for state init and IO callback behavior."""
 
 from pathlib import Path
-
 import jax.numpy as jnp
 import numpy as np
 
@@ -32,15 +31,15 @@ class TestInitState:
 
         setup = _single_phase_setup()
         state = init_state(setup)
-        assert state.f.shape == (8, 8, 9, 1)
-        assert state.rho.shape == (8, 8, 1, 1)
+        assert state.f.shape == (8, 8, 1, 9, 1)
+        assert state.rho.shape == (8, 8, 1, 1, 1)
         np.testing.assert_allclose(float(jnp.sum(state.rho)), 64.0, rtol=1e-5)
 
     def test_custom_f(self):
         from tud_lbm.pipeline.runner import init_state
 
         setup = _single_phase_setup()
-        f_custom = jnp.ones((8, 8, 9, 1)) * 0.5
+        f_custom = jnp.ones((8, 8, 1, 9, 1)) * 0.5
         state = init_state(setup, f=f_custom)
         np.testing.assert_allclose(state.f, f_custom)
 
@@ -84,7 +83,8 @@ class TestStreamingIO:
 
     def test_trajectory_is_none_with_io_handler(self, tmp_path):
         """When io_handler is supplied, trajectory must be None."""
-        from tud_lbm.pipeline.runner import init_state, run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -102,7 +102,8 @@ class TestStreamingIO:
 
     def test_files_written_at_correct_steps(self, tmp_path):
         """Snapshots are written at every save_interval step."""
-        from tud_lbm.pipeline.runner import init_state, run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -122,7 +123,8 @@ class TestStreamingIO:
 
     def test_save_fields_filters_keys(self, tmp_path):
         """Only the requested fields appear in the saved files."""
-        from tud_lbm.pipeline.runner import init_state, run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -148,7 +150,8 @@ class TestStreamingIO:
 
     def test_skip_interval_suppresses_early_saves(self, tmp_path):
         """Steps ≤ skip_interval must not produce files."""
-        from tud_lbm.pipeline.runner import init_state, run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -173,7 +176,8 @@ class TestStreamingIO:
 
     def test_backward_compat_no_io_handler(self):
         """Existing trajectory-mode call is unaffected."""
-        from tud_lbm.pipeline.runner import init_state, run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)

@@ -1,4 +1,4 @@
-"""LBM-stencil Laplacian operator — pure function.
+r"""LBM-stencil Laplacian operator — pure function.
 
 Registered as ``("differential", "laplacian")`` via ``@register_operator``.
 
@@ -13,10 +13,9 @@ lattice (``c_s^2 = 1/3``).
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
-
-from tud_lbm.operators.differential._pad_utils import _apply_stencil_padding, to_2d
+from tud_lbm.operators.differential._pad_utils import _apply_stencil_padding
+from tud_lbm.operators.differential._pad_utils import to_2d
 from tud_lbm.registry import register_operator
 
 
@@ -36,18 +35,18 @@ def compute_laplacian(
     or close over *pad_mode* in a wrapper.
 
     Args:
-        grid: Scalar field, shape ``(nx, ny, 1, 1)`` or ``(nx, ny)``.
+        grid: Scalar field, shape ``(nx, ny, nz, 1, 1)`` or ``(nx, ny)``.
         w: Lattice weights, shape ``(q,)``.
         pad_mode: Four padding modes ``(right_y, left_y, bottom_x, top_x)``.
 
     Returns:
-        Laplacian field, shape ``(nx, ny, 1, 1)``.
+        Laplacian field, shape ``(nx, ny, nz, 1, 1)``.
     """
     gp = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
-    return lap_core(gp, w)
+    return lap_core_2d(gp, w)
 
 
-def lap_core(
+def lap_core_2d(
     padded: jnp.ndarray,
     w: jnp.ndarray,
 ) -> jnp.ndarray:
@@ -57,25 +56,31 @@ def lap_core(
 
     Args:
         padded: Shape ``(nx + 2, ny + 2)``.
-        w: Lattice weights, shape ``(q,)``.
+        w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
 
     Returns:
-        Laplacian field, shape ``(nx, ny, 1, 1)``.
+        Laplacian field, shape ``(nx, ny, 1, 1, 1)``.
     """
     i0 = padded[1:-1, 1:-1]  # centre values
 
-    lap = 6.0 * (
-        w[1] * (padded[2:, 1:-1] - i0)  # (i+1, j)
-        + w[2] * (padded[1:-1, 2:] - i0)  # (i, j+1)
-        + w[3] * (padded[:-2, 1:-1] - i0)  # (i-1, j)
-        + w[4] * (padded[1:-1, :-2] - i0)  # (i, j-1)
-        + w[5] * (padded[2:, 2:] - i0)  # (i+1, j+1)
-        + w[6] * (padded[:-2, 2:] - i0)  # (i-1, j+1)
-        + w[7] * (padded[:-2, :-2] - i0)  # (i-1, j-1)
-        + w[8] * (padded[2:, :-2] - i0)  # (i+1, j-1)
+    w_flat = w[0, 0, 0, :, 0]
+
+    lap = (
+        6.0
+        * (
+            w_flat[1] * (padded[2:, 1:-1] - i0)  # (i+1, j)
+            + w_flat[2] * (padded[1:-1, 2:] - i0)  # (i, j+1)
+            + w_flat[3] * (padded[:-2, 1:-1] - i0)  # (i-1, j)
+            + w_flat[4] * (padded[1:-1, :-2] - i0)  # (i, j-1)
+            + w_flat[5] * (padded[2:, 2:] - i0)  # (i+1, j+1)
+            + w_flat[6] * (padded[:-2, 2:] - i0)  # (i-1, j+1)
+            + w_flat[7] * (padded[:-2, :-2] - i0)  # (i-1, j-1)
+            + w_flat[8] * (padded[2:, :-2] - i0)  # (i+1, j-1)
+        )
     )
 
     nx = padded.shape[0] - 2
     ny = padded.shape[1] - 2
-    out = jnp.zeros((nx, ny, 1, 1))
-    return out.at[:, :, 0, 0].set(lap)
+    nz = 1  # Pseudo-3D: stencil operates on nz=1, output preserves it
+    out = jnp.zeros((nx, ny, nz, 1, 1))
+    return out.at[:, :, 0, 0, 0].set(lap)

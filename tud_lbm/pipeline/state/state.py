@@ -14,20 +14,21 @@ Usage::
     from state.state import State
 
     state = State(
-        f=jnp.zeros((64, 64, 9, 1)),
-        rho=jnp.ones((64, 64, 1, 1)),
-        u=jnp.zeros((64, 64, 1, 2)),
+        f=jnp.zeros((64, 64, 1, 9, 1)),
+        rho=jnp.ones((64, 64, 1, 1, 1)),
+        u=jnp.zeros((64, 64, 1, 1, 2)),
         t=jnp.array(0),
     )
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import NamedTuple
 
-from typing import Any, NamedTuple
-
-import jax.numpy as jnp
-
-from tud_lbm.operators.protocols import ExtraState
+if TYPE_CHECKING:
+    import jax.numpy as jnp
+    from tud_lbm.operators.protocols import ExtraState
 
 
 class WettingState(NamedTuple):
@@ -65,13 +66,13 @@ class State(NamedTuple):
     """Complete dynamic simulation state — the *carry* in ``lax.scan``.
 
     Attributes:
-        f: Population distributions, shape ``(nx, ny, q, 1)``.
-        rho: Density field, shape ``(nx, ny, 1, 1)``.
-        u: Velocity field, shape ``(nx, ny, 1, d)``.
+        f: Population distributions, shape ``(nx, ny, nz, q, 1)``.
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
+        u: Velocity field, shape ``(nx, ny, nz, 1, d)``.
         t: Current timestep — scalar ``jax.Array``.
-        force: Interaction / body force field (optional).
-        force_ext: External force field (optional).
-        h: Electric potential field (optional).
+        force: Interaction / body force field (optional), shape ``(nx, ny, nz, 1, d)``.
+        force_ext: External force field (optional), shape ``(nx, ny, nz, 1, d)``.
+        h: Electric potential field (optional), shape ``(nx, ny, nz, q, 1)``.
         wetting: Dynamic wetting state (``None`` for non-wetting runs).
     """
 

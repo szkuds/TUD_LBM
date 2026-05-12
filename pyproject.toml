@@ -17,11 +17,22 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  # Install via conda for best results
-  # See environment.yml for conda-based app_setup
+  # Core runtime — previously managed via environment.yml
+  "jax[cpu]",
+  "jax",
+  "numpy",
+  "scipy",
+  "matplotlib",
+  "pandas",
+  "optax",
+  "tomli-w",       # PyPI name uses a dash, not an underscore
+  "pyevtk",
+  # CLI
+  "click",
+  "rich",
 ]
 description = "This is a lattice Boltzmann method package developed at Delft University of Technology."
-keywords = ["LBM", " TUD", " Delft University of Technology"]
+keywords = ["LBM", "TUD", "Delft University of Technology"]
 license = { file = "LICENSE" }
 name = "tud_lbm"
 readme = { file = "README.md", content-type = "text/markdown" }
@@ -29,21 +40,50 @@ requires-python = ">=3.10"
 version = "2026.0.0a1"
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "coverage", "ruff", "python-dotenv"]
+dev = [
+  "pytest",
+  "pytest-cov",
+  "coverage",
+  "ruff",
+  "python-dotenv",
+]
+docs = [
+  "sphinx",
+  "sphinx-rtd-theme",
+  "myst-parser",
+  "sphinx-autoapi",
+  "pandoc",
+  # jax[cpu] is already a core dep — listed here for clarity/standalone doc installs
+  "jax[cpu]",
+]
 publishing = ["build", "twine"]
-docs = ["sphinx", "sphinx-rtd-theme", "myst-parser", "sphinx-autoapi"]
 
 [project.urls]
 Repository = "https://github.com/szkuds/tud_lbm"
-Issues = "https://github.com/szkuds/tud_lbm/issues"
+Issues     = "https://github.com/szkuds/tud_lbm/issues"
 ReadTheDocs = "https://tud_lbm.readthedocs.io"
-
-[tool.setuptools.packages.find]
-where = ["."]
 
 [project.scripts]
 tud-lbm = "cli:main"
 
+# ---------------------------------------------------------------------------
+# uv
+# ---------------------------------------------------------------------------
+[tool.uv]
+# Use the lockfile for reproducible installs; uv will create uv.lock on first run.
+# Override jax to CPU-only in CI — GPU builds are only needed locally.
+# If you need GPU support locally, run:  uv sync --extra dev --override jax[cuda12]
+package = true
+
+# ---------------------------------------------------------------------------
+# setuptools
+# ---------------------------------------------------------------------------
+[tool.setuptools.packages.find]
+where = ["."]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
@@ -52,137 +92,88 @@ markers = [
   "conformance: Tests that verify operators satisfy protocol contracts",
 ]
 
+# ---------------------------------------------------------------------------
+# coverage
+# ---------------------------------------------------------------------------
 [tool.coverage.run]
 branch = true
 source = ["tud_lbm"]
 command_line = "-m pytest"
 
+# ---------------------------------------------------------------------------
+# tox (kept for legacy compatibility; prefer uv run in CI)
+# ---------------------------------------------------------------------------
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = py38,py39,py310,py311,py312
+envlist = py310,py311,py312,py313,py314
 skip_missing_interpreters = true
 [testenv]
 commands = pytest
 extras = dev
 """
 
+# ---------------------------------------------------------------------------
+# ruff
+# ---------------------------------------------------------------------------
 [tool.ruff]
 line-length = 120
 output-format = "concise"
 extend-exclude = ["docs"]
 
 [tool.ruff.lint]
-# Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-
-# Enable Pyflakes `E` and `F` codes by default.
 select = ["ALL"]
 ignore = [
-  # --- ignores ---
-  "ANN204", # Missing return type annotation for special (dunder) method
-  "ANN205", # Missing return type annotation for staticmethod
-  "FBT",    # Using boolean function arguments
-  "TD",     # TODOs
-  "FIX001", # Resolve FIXMEs
-  "FIX002", # Resolve TODOs
-  "B028",   # No explicit `stacklevel` keyword argument found in warning
-  # No docstrings required in the following cases
-  "D100", # Missing module docstring
-  "D104", # Missing public package docstring
-  "D105", # Missing docstring in magic method
-  "D107", # Missing docstring in `__init__`
-
-  # --- annotations (scientific/JAX code doesn't require full typing) ---
-  "ANN001", # Missing type annotation for function argument
-  "ANN002", # Missing type annotation for *args
-  "ANN003", # Missing type annotation for **kwargs
-  "ANN201", # Missing return type annotation for public function
-  "ANN202", # Missing return type annotation for private function
-  "ANN401", # Dynamically typed expressions (typing.Any) disallowed
-
-  # --- docstring style (noisy for physics code) ---
-  "D101", # Missing docstring in public class
-  "D102", # Missing docstring in public method
-  "D103", # Missing docstring in public function
-  "D200", # No blank lines allowed after function docstring
-  "D205", # 1 blank line required between summary line and description
-  "D301", # Use r""" if any backslashes in a docstring
-  "D415", # First line should end with a period
-  "D417", # Missing argument description in the docstring
-
-  # --- exception message style (verbose for scientific code) ---
-  "TRY003", # Avoid specifying long messages outside the exception class
-  "EM101",  # Exception must not use a string literal
-  "EM102",  # Exception must not use an f-string literal
-
-  # --- TYPE_CHECKING imports (JAX type annotations cause circular imports) ---
-  "TC001", # Move application import into a type-checking block
-  "TC002", # Move third-party import into a type-checking block
-  "TC003", # Move standard library import into a type-checking block
-
-  # --- scientific/numeric code patterns ---
-  "PLR2004", # Magic value used in comparison (physics constants are intentional)
-  "PLR0913", # Too many arguments in function definition (LBM operators need many params)
-  "RUF002",  # Ambiguous unicode in docstring (Greek letters intentional in physics docs)
-  "RUF003",  # Ambiguous unicode in comment
-
-  # --- exception handling patterns ---
-  "BLE001", # Do not catch blind exception
-  "S110",   # try-except-pass detected
-
-  # --- print statements (needed in examples and CLI output) ---
-  "T201", # `print` found
-
-  # --- import location (lazy imports needed for optional JAX deps) ---
-  "PLC0415", # `import` should be at the top-level of a file
+  "ANN204",
+  "ANN205",
+  "FBT",
+  "TD",
+  "FIX001",
+  "FIX002",
+  "PLR0913",
+  "PLC0415",
   "COM812",
-  "ARG",
-  "C901",
 ]
 pydocstyle.convention = "google"
 
 [tool.ruff.lint.flake8-bugbear]
-# array_field is a dataclasses.field() wrapper — never produces a mutable default.
 extend-immutable-calls = ["array_field"]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests can ignore a few extra rules
 "tests/**.py" = [
-  "ANN201", # Missing return type annotation for public function
-  "PT011",  # Missing `match` parameter in `pytest.raises()`
-  "S101",   # Use of assert is detected
-  "SLF001", # Private member access
-  "INP001", # File is part of an implicit namespace package
-  "S108",   # Probable insecure usage of temporary file or directory
+  "ANN201","PT011","S101","SLF001","INP001","S108","ANN001","D103",
+  "PLC0415","ARG001","PLR2004","D102","ARG004","ARG003","ANN202",
+  "ANN002","ANN003","ARG005","ARG002","RUF002","RUF003","D100",
+  "D104","D205","PLR0913","TRY300",
 ]
-# Examples are standalone scripts, not part of the package
-"examples/**.py" = [
-  "INP001", # File is part of an implicit namespace package
-  "ANN201", # Missing return type annotation
-]
-
-"src/config/simulation_config.py" = [
-  "RUF009", # array_field / config_field are dataclasses.field() wrappers, not mutable defaults
-]
-"src/util/plotting/__init__.py" = ["I001"]
+"examples/**.py"                                  = ["INP001","ANN201","ERA001"]
+"examples/minimal_example.py"                     = ["RUF002"]
+"tud_lbm/config/simulation_config.py"             = ["RUF009"]
+"tud_lbm/util/plotting/__init__.py"               = ["I001"]
+"tud_lbm/util/plotting/base.py"                   = ["ARG002"]
+"tud_lbm/pipeline/setup.py"                       = ["PLC0415","RUF002"]
+"tud_lbm/pipeline/__init__.py"                    = ["PLC0415"]
+"tud_lbm/runner/parallel_runner.py"               = ["PLC0415","ARG001","LOG015","G004"]
+"tud_lbm/operators/protocols.py"                  = ["ANN401","RUF002"]
+"tud_lbm/operators/macroscopic/_multiphase.py"    = ["RUF002","RUF003"]
+"tud_lbm/operators/collision/_bgk.py"             = ["RUF002"]
+"tud_lbm/util/io.py"                              = ["ANN002"]
+"tud_lbm/pipeline/**"                             = ["T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tud_lbm"]
 force-single-line = true
-no-lines-before = [
-  "future",
-  "standard-library",
-  "third-party",
-  "first-party",
-  "local-folder",
-]
+no-lines-before = ["future","standard-library","third-party","first-party","local-folder"]
 
+# ---------------------------------------------------------------------------
+# bumpversion
+# ---------------------------------------------------------------------------
 [tool.bumpversion]
-current_version = "0.0.2"
+current_version = "2026.0.0a1"
 
 [[tool.bumpversion.files]]
-filename = "src/__init__.py"
+filename = "tud_lbm/__init__.py"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"

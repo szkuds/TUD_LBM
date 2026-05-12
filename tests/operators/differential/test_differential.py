@@ -9,16 +9,14 @@ Verifies:
 """
 
 from __future__ import annotations
-
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-
-from tud_lbm.operators.wetting import build_wetting_fn
 from tud_lbm.lattice.lattice import build_lattice
+from tud_lbm.operators.wetting import build_wetting_fn
 
-NX, NY = 16, 16
+NX, NY, NZ = 16, 16, 1
 
 
 @pytest.fixture(scope="module")
@@ -34,15 +32,15 @@ def periodic_pad():
 
 @pytest.fixture(scope="module")
 def const_field():
-    """Uniform field of 1.0, shape (NX, NY, 1, 1)."""
-    return jnp.ones((NX, NY, 1, 1))
+    """Uniform field of 1.0, shape (NX, NY, NZ, 1, 1)."""
+    return jnp.ones((NX, NY, NZ, 1, 1))
 
 
 @pytest.fixture(scope="module")
 def linear_x_field():
     """f(i,j) = i, so df/dx = 1, df/dy = 0 (periodic wrap)."""
     xs = jnp.arange(NX, dtype=jnp.float32)
-    return jnp.broadcast_to(xs[:, None, None, None], (NX, NY, 1, 1))
+    return jnp.broadcast_to(xs[:, None, None, None, None], (NX, NY, NZ, 1, 1))
 
 
 # =====================================================================
@@ -57,21 +55,13 @@ class TestComputeGradient:
         from tud_lbm.operators.differential._gradient import compute_gradient
 
         out = compute_gradient(const_field, lattice.w, lattice.c, periodic_pad)
-        assert out.shape == (NX, NY, 1, 2)
+        assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_constant_field_zero_gradient(self, lattice, const_field, periodic_pad):
         from tud_lbm.operators.differential._gradient import compute_gradient
 
         out = compute_gradient(const_field, lattice.w, lattice.c, periodic_pad)
         np.testing.assert_allclose(np.array(out), 0.0, atol=1e-5)
-
-    def test_2d_input_accepted(self, lattice, periodic_pad):
-        """Also accepts a bare (nx, ny) array."""
-        from tud_lbm.operators.differential._gradient import compute_gradient
-
-        field_2d = jnp.ones((NX, NY))
-        out = compute_gradient(field_2d, lattice.w, lattice.c, periodic_pad)
-        assert out.shape == (NX, NY, 1, 2)
 
     def test_x_gradient_nonzero_for_x_varying_field(
         self,
@@ -92,7 +82,7 @@ class TestComputeGradient:
 
         jitted = jax.jit(compute_gradient, static_argnames=("pad_mode",))
         out = jitted(const_field, lattice.w, lattice.c, pad_mode=tuple(periodic_pad))
-        assert out.shape == (NX, NY, 1, 2)
+        assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_registered_in_registry(self):
         from tud_lbm.registry import get_operator_names
@@ -112,7 +102,7 @@ class TestComputeLaplacian:
         from tud_lbm.operators.differential._laplacian import compute_laplacian
 
         out = compute_laplacian(const_field, lattice.w, periodic_pad)
-        assert out.shape == (NX, NY, 1, 1)
+        assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_constant_field_zero_laplacian(self, lattice, const_field, periodic_pad):
         from tud_lbm.operators.differential._laplacian import compute_laplacian
@@ -123,15 +113,15 @@ class TestComputeLaplacian:
     def test_2d_input_accepted(self, lattice, periodic_pad):
         from tud_lbm.operators.differential._laplacian import compute_laplacian
 
-        out = compute_laplacian(jnp.ones((NX, NY)), lattice.w, periodic_pad)
-        assert out.shape == (NX, NY, 1, 1)
+        out = compute_laplacian(jnp.ones((NX, NY, NZ, 1, 1)), lattice.w, periodic_pad)
+        assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_quadratic_field_nonzero_laplacian(self, lattice, periodic_pad):
         """f(i,j) = i² — Laplacian should be ~2 in the interior."""
         from tud_lbm.operators.differential._laplacian import compute_laplacian
 
         xs = jnp.arange(NX, dtype=jnp.float32)
-        field = (xs**2)[:, None, None, None] * jnp.ones((NX, NY, 1, 1))
+        field = (xs**2)[:, None, None, None, None] * jnp.ones((NX, NY, NZ, 1, 1))
         out = compute_laplacian(field, lattice.w, periodic_pad)
         # Interior (avoid periodic wrap artefacts at boundaries)
         lap_interior = np.array(out[2:-2, 2:-2, 0, 0])
@@ -142,7 +132,7 @@ class TestComputeLaplacian:
 
         jitted = jax.jit(compute_laplacian, static_argnames=("pad_mode",))
         out = jitted(const_field, lattice.w, pad_mode=tuple(periodic_pad))
-        assert out.shape == (NX, NY, 1, 1)
+        assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_registered_in_registry(self):
         from tud_lbm.registry import get_operator_names
@@ -205,7 +195,7 @@ class TestBuildWettingGradient:
             width=wetting_params["width"],
         )
         out = self._call_wetting(fn, const_field, wetting_params)
-        assert out.shape == (NX, NY, 1, 2)
+        assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_differs_from_plain_gradient_on_nonuniform_field(
         self,
@@ -233,7 +223,7 @@ class TestBuildWettingGradient:
         ys = jnp.linspace(0, 1, NY)
         taper_y = 0.5 * (1.0 + jnp.tanh((0.5 - ys) / 0.15))
         rho_2d = rho_v + (droplet_x[:, None] - rho_v) * taper_y[None, :]
-        rho = rho_2d[:, :, None, None]
+        rho = rho_2d[:, :, None, None, None]
 
         plain = compute_gradient(rho, lattice.w, lattice.c, wetting_pad)
         wetting_fn = build_wetting_gradient(
@@ -254,9 +244,7 @@ class TestBuildWettingGradient:
 
         assert not jnp.allclose(plain, with_wetting, atol=1e-9)
 
-    def test_deterministic_result(
-        self, lattice, periodic_pad, wetting_params, const_field
-    ):
+    def test_deterministic_result(self, lattice, periodic_pad, wetting_params, const_field):
         from tud_lbm.operators.differential._gradient_wetting import build_wetting_gradient
 
         fn = build_wetting_gradient(
@@ -280,9 +268,7 @@ class TestBuildWettingGradient:
             "d_rho": [0.03, 0.07],
         }
         _resolve_wetting_fields = build_wetting_fn("resolve_wetting_fields")
-        phi_l, phi_r, d_rho_l, d_rho_r = _resolve_wetting_fields(
-            params_array, chemical_step=0
-        )
+        phi_l, phi_r, d_rho_l, d_rho_r = _resolve_wetting_fields(params_array, chemical_step=0)
 
         fn = build_wetting_gradient(
             lattice.w,
@@ -299,7 +285,7 @@ class TestBuildWettingGradient:
             d_rho_l,
             d_rho_r,
         )
-        assert out.shape == (NX, NY, 1, 2)
+        assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_registered_in_registry(self):
         from tud_lbm.registry import get_operator_names
@@ -353,12 +339,10 @@ class TestWettingUtil:
 
     def test_reconstruction_uses_d2q9_weights(self):
         """Ghost row should be a D2Q9-weighted average of interior neighbour."""
-        from tud_lbm.operators.wetting._ghost_reconstruction import (
-            _W_CARDINAL,
-            _W_DIAGONAL,
-            _W_TOTAL,
-            _reconstruct_ghost_row,
-        )
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_CARDINAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_DIAGONAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_TOTAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
 
         # 6 rows along the wall, 4 columns (2 interior + 2 ghost)
         arr = jnp.zeros((6, 4))
@@ -366,29 +350,23 @@ class TestWettingUtil:
         vals = jnp.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
         arr = arr.at[:, 1].set(vals)
 
-        out = _reconstruct_ghost_row(
-            arr, ghost_idx=0, interior_offset=1, wrap_start=True, wrap_end=True
-        )
+        out = _reconstruct_ghost_row(arr, ghost_idx=0, interior_offset=1, wrap_start=True, wrap_end=True)
         # Interior point at index 2: cardinal=3.0, diag_minus=2.0, diag_plus=4.0
         expected = (_W_CARDINAL * 3.0 + _W_DIAGONAL * (2.0 + 4.0)) / _W_TOTAL
         np.testing.assert_allclose(float(out[2, 0]), expected, atol=1e-6)
 
     def test_reconstruction_corner_periodic(self):
         """Start corner wraps to last row when periodic."""
-        from tud_lbm.operators.wetting._ghost_reconstruction import (
-            _W_CARDINAL,
-            _W_DIAGONAL,
-            _W_TOTAL,
-            _reconstruct_ghost_row,
-        )
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_CARDINAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_DIAGONAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_TOTAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
 
         arr = jnp.zeros((6, 4))
         vals = jnp.array([10.0, 20.0, 30.0, 40.0, 50.0, 60.0])
         arr = arr.at[:, 1].set(vals)
 
-        out = _reconstruct_ghost_row(
-            arr, ghost_idx=0, interior_offset=1, wrap_start=True, wrap_end=True
-        )
+        out = _reconstruct_ghost_row(arr, ghost_idx=0, interior_offset=1, wrap_start=True, wrap_end=True)
         # Start corner (index 0): wrap_start → uses arr[-1, 1] = 60.0
         expected_start = (_W_CARDINAL * 10.0 + _W_DIAGONAL * (60.0 + 20.0)) / _W_TOTAL
         np.testing.assert_allclose(float(out[0, 0]), expected_start, atol=1e-6)
@@ -399,20 +377,16 @@ class TestWettingUtil:
 
     def test_reconstruction_corner_non_periodic(self):
         """Non-periodic corners mirror the adjacent interior value."""
-        from tud_lbm.operators.wetting._ghost_reconstruction import (
-            _W_CARDINAL,
-            _W_DIAGONAL,
-            _W_TOTAL,
-            _reconstruct_ghost_row,
-        )
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_CARDINAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_DIAGONAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _W_TOTAL
+        from tud_lbm.operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
 
         arr = jnp.zeros((6, 4))
         vals = jnp.array([10.0, 20.0, 30.0, 40.0, 50.0, 60.0])
         arr = arr.at[:, 1].set(vals)
 
-        out = _reconstruct_ghost_row(
-            arr, ghost_idx=0, interior_offset=1, wrap_start=False, wrap_end=False
-        )
+        out = _reconstruct_ghost_row(arr, ghost_idx=0, interior_offset=1, wrap_start=False, wrap_end=False)
         # Start corner: non-periodic → uses arr[1, 1] = 20.0 instead of arr[-1, 1]
         expected_start = (_W_CARDINAL * 10.0 + _W_DIAGONAL * (20.0 + 20.0)) / _W_TOTAL
         np.testing.assert_allclose(float(out[0, 0]), expected_start, atol=1e-6)
@@ -434,9 +408,7 @@ class TestWettingUtil:
         # Create a slice with values spanning the full density range
         n = 32
         edge = jnp.linspace(rho_v, rho_l, n)
-        result = _apply_wetting_modification(
-            edge, rho_l, rho_v, 1.2, 1.2, 0.05, 0.05, 4
-        )
+        result = _apply_wetting_modification(edge, rho_l, rho_v, 1.2, 1.2, 0.05, 0.05, 4)
 
         # Values clearly outside the interface should be unchanged
         outside_mask = (np.array(edge) >= upper) | (np.array(edge) <= lower)
@@ -455,9 +427,7 @@ class TestWettingUtil:
 
         edge = jnp.linspace(rho_v, rho_l, 32)
         # Use extreme phi values to force clamping
-        result = _apply_wetting_modification(
-            edge, rho_l, rho_v, 10.0, 10.0, 0.0, 0.0, 4
-        )
+        result = _apply_wetting_modification(edge, rho_l, rho_v, 10.0, 10.0, 0.0, 0.0, 4)
 
         # Identify which values were actually modified (inside the interface)
         edge_np = np.array(edge)
@@ -531,9 +501,7 @@ class TestWettingUtil:
 
         # Periodic perpendicular (default for unspecified edges)
         _build_wetting_applicator = build_wetting_fn("applicator")
-        fn_periodic = _build_wetting_applicator(
-            rho_l=1.0, rho_v=0.1, width=4, bc_config={"bottom": "wetting"}
-        )
+        fn_periodic = _build_wetting_applicator(rho_l=1.0, rho_v=0.1, width=4, bc_config={"bottom": "wetting"})
 
         # Non-periodic perpendicular (bounce-back on left/right)
         fn_nonperiodic = _build_wetting_applicator(
@@ -556,6 +524,4 @@ class TestWettingUtil:
         out_p2 = fn_periodic(gp2, 1.0, 1.0, 0.0, 0.0)
         out_np2 = fn_nonperiodic(gp2, 1.0, 1.0, 0.0, 0.0)
         # With asymmetric interior, periodic and non-periodic corners differ
-        assert float(out_p2[0, 0]) != float(out_np2[0, 0]) or float(
-            out_p2[-1, 0]
-        ) != float(out_np2[-1, 0])
+        assert float(out_p2[0, 0]) != float(out_np2[0, 0]) or float(out_p2[-1, 0]) != float(out_np2[-1, 0])

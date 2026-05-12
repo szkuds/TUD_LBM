@@ -1,8 +1,8 @@
 """Unit tests for array expansion module."""
 
 import pytest
-
-from tud_lbm.config.array_expansion import enumerate_configs, expand_config
+from tud_lbm.config.array_expansion import enumerate_configs
+from tud_lbm.config.array_expansion import expand_config
 
 
 class TestExpandConfig:
@@ -106,8 +106,8 @@ class TestExpandConfig:
         configs, _ = expand_config(config_dict)
 
         assert len(configs) == 2
-        assert configs[0].grid_shape == (64, 64)
-        assert configs[1].grid_shape == (128, 128)
+        assert configs[0].grid_shape == (64, 64, 1)
+        assert configs[1].grid_shape == (128, 128, 1)
 
     def test_multiphase_arrays(self):
         """Multiphase parameters should support arrays."""
@@ -267,10 +267,8 @@ class TestGetNestedSweepableFields:
 
     def test_nested_sweepable_is_subset_of_array_eligible(self):
         """Every nested-sweepable field must also be array-eligible."""
-        from tud_lbm.config.simulation_config import (
-            get_array_eligible_fields,
-            get_nested_sweepable_fields,
-        )
+        from tud_lbm.config.simulation_config import get_array_eligible_fields
+        from tud_lbm.config.simulation_config import get_nested_sweepable_fields
 
         assert get_nested_sweepable_fields().issubset(get_array_eligible_fields())
 
@@ -337,10 +335,7 @@ class TestNestedSweepGravityForce:
         for idx, (i, params, config) in enumerate(results):
             assert i == idx
             assert "gravity_force.inclination_angle_deg" in params
-            assert (
-                config.gravity_force["inclination_angle_deg"]
-                == params["gravity_force.inclination_angle_deg"]
-            )
+            assert config.gravity_force["inclination_angle_deg"] == params["gravity_force.inclination_angle_deg"]
 
     def test_no_array_subkeys_returns_single(self):
         """gravity_force with no list values returns a single config."""
@@ -474,9 +469,7 @@ class TestNestedSweepWettingConfig:
         )
         for _, params, config in enumerate_configs(cfg):
             assert "wetting_config.phi_left" in params
-            assert (
-                config.wetting_config["phi_left"] == params["wetting_config.phi_left"]
-            )
+            assert config.wetting_config["phi_left"] == params["wetting_config.phi_left"]
 
 
 # ── Nested sweep: hysteresis_config ───────────────────────────────────────
@@ -570,10 +563,7 @@ class TestNestedSweepHysteresisConfig:
         )
         for _, params, config in enumerate_configs(cfg):
             assert "hysteresis_config.ca_advancing" in params
-            assert (
-                config.hysteresis_config["ca_advancing"]
-                == params["hysteresis_config.ca_advancing"]
-            )
+            assert config.hysteresis_config["ca_advancing"] == params["hysteresis_config.ca_advancing"]
 
     def test_allow_arrays_false_raises_on_hysteresis(self):
         cfg = _base_multiphase(
@@ -611,9 +601,7 @@ class TestEnumerateConfigsNestedIndex:
             if "tau" in params:
                 assert config.tau == params["tau"]
             if "gravity_force.force_g" in params:
-                assert (
-                    config.gravity_force["force_g"] == params["gravity_force.force_g"]
-                )
+                assert config.gravity_force["force_g"] == params["gravity_force.force_g"]
 
     def test_total_count_matches_metadata(self):
         cfg = _base_single_phase(

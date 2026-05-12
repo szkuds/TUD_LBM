@@ -7,9 +7,8 @@ registered, it must satisfy its protocol's structural requirements.
 
 import jax.numpy as jnp
 import pytest
-
-from tud_lbm.operators.boundary import build_bc_masks
 from tud_lbm.lattice.lattice import build_lattice
+from tud_lbm.operators.boundary import build_bc_masks
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -30,10 +29,11 @@ def grid_shape():
 def test_state(lattice_d2q9, grid_shape):
     """Create a simple test state."""
     nx, ny = grid_shape
+    nz = 1
     q = lattice_d2q9.q
-    f = jnp.ones((nx, ny, q, 1)) / q
-    rho = jnp.ones((nx, ny, 1, 1))
-    u = jnp.zeros((nx, ny, 1, 2))
+    f = jnp.ones((nx, ny, nz, q, 1)) / q
+    rho = jnp.ones((nx, ny, nz, 1, 1))
+    u = jnp.zeros((nx, ny, nz, 1, 2))
     return f, rho, u
 
 
@@ -50,9 +50,10 @@ class TestCollisionProtocol:
         bgk_fn = build_collision_fn("bgk")
 
         nx, ny = grid_shape
+        nz = 1
         q = lattice_d2q9.q
-        f = jnp.ones((nx, ny, q, 1)) / q
-        feq = jnp.ones((nx, ny, q, 1)) / q
+        f = jnp.ones((nx, ny, nz, q, 1)) / q
+        feq = jnp.ones((nx, ny, nz, q, 1)) / q
         tau = 0.8
 
         # Should not raise
@@ -66,9 +67,10 @@ class TestCollisionProtocol:
         mrt_fn = build_collision_fn("mrt")
 
         nx, ny = grid_shape
+        nz = 1
         q = lattice_d2q9.q
-        f = jnp.ones((nx, ny, q, 1)) / q
-        feq = jnp.ones((nx, ny, q, 1)) / q
+        f = jnp.ones((nx, ny, nz, q, 1)) / q
+        feq = jnp.ones((nx, ny, nz, q, 1)) / q
         tau = 0.8
         # MRT requires k_diag as an array
         k_diag = jnp.array([1.0] * q)
@@ -91,8 +93,9 @@ class TestStreamingProtocol:
         stream = build_streaming_fn("standard")
 
         nx, ny = grid_shape
+        nz = 1
         q = lattice_d2q9.q
-        f = jnp.ones((nx, ny, q, 1)) / q
+        f = jnp.ones((nx, ny, nz, q, 1)) / q
 
         result = stream(f, lattice_d2q9)
         assert result.shape == f.shape
@@ -116,8 +119,9 @@ class TestEquilibriumProtocol:
         feq = equilibrium(rho, u, lattice_d2q9)
 
         nx, ny = grid_shape
+        nz = 1
         q = lattice_d2q9.q
-        assert feq.shape == (nx, ny, q, 1)
+        assert feq.shape == (nx, ny, nz, q, 1)
         # Equilibrium should conserve mass
         assert jnp.allclose(jnp.sum(feq), jnp.sum(rho))
 
@@ -128,9 +132,7 @@ class TestEquilibriumProtocol:
 class TestMacroscopicProtocol:
     """Verify macroscopic operators conform to MacroscopicOperator."""
 
-    def test_standard_macroscopic_conformance(
-        self, lattice_d2q9, grid_shape, test_state
-    ):
+    def test_standard_macroscopic_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Standard macroscopic should match protocol."""
         from tud_lbm.operators.macroscopic import build_macroscopic_fn
 
@@ -142,16 +144,14 @@ class TestMacroscopicProtocol:
         assert rho.shape == rho_expected.shape
         assert u.shape == u_expected.shape
 
-    def test_macroscopic_with_force_conformance(
-        self, lattice_d2q9, grid_shape, test_state
-    ):
+    def test_macroscopic_with_force_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Macroscopic with force should return 3-tuple."""
         from tud_lbm.operators.macroscopic import build_macroscopic_fn
 
         macroscopic = build_macroscopic_fn("standard")
 
         f, rho_expected, u_expected = test_state
-        force = jnp.zeros((grid_shape[0], grid_shape[1], 1, 2))
+        force = jnp.zeros((grid_shape[0], grid_shape[1], 1, 1, 2))
 
         rho, u, force_out = macroscopic(f, lattice_d2q9, force=force)
         assert rho.shape == rho_expected.shape
@@ -176,7 +176,8 @@ class TestBoundaryProtocol:
             "left": "periodic",
             "right": "periodic",
         }
-        bc_masks = build_bc_masks(grid_shape)
+        grid_shape_3d = (*grid_shape, 1)
+        bc_masks = build_bc_masks(grid_shape_3d)
 
         bc_fn = build_bc(bc_config, lattice_d2q9)
         result = bc_fn(f_stream, f_col, bc_masks)
@@ -184,7 +185,8 @@ class TestBoundaryProtocol:
 
     def test_bounce_back_bc_conformance(self, lattice_d2q9, grid_shape, test_state):
         """Bounce-back boundary should match protocol."""
-        from tud_lbm.operators.boundary import build_bc, build_bc_masks
+        from tud_lbm.operators.boundary import build_bc
+        from tud_lbm.operators.boundary import build_bc_masks
 
         f_stream, f_col = test_state[0], test_state[0]
         bc_config = {
@@ -193,7 +195,8 @@ class TestBoundaryProtocol:
             "left": "periodic",
             "right": "periodic",
         }
-        bc_masks = build_bc_masks(grid_shape)
+        grid_shape_3d = (*grid_shape, 1)
+        bc_masks = build_bc_masks(grid_shape_3d)
 
         bc_fn = build_bc(bc_config, lattice_d2q9)
         result = bc_fn(f_stream, f_col, bc_masks)
@@ -212,13 +215,14 @@ class TestInitialiserProtocol:
 
         init_fn = build_initialise_fn("standard")
         nx, ny = grid_shape
+        nz = 1
         q = lattice_d2q9.q
 
-        f = init_fn(nx, ny, lattice_d2q9)
-        assert f.shape == (nx, ny, q, 1)
+        f = init_fn(nx, ny, nz, lattice_d2q9)
+        assert f.shape == (nx, ny, nz, q, 1)
         # Should conserve total density (mass conservation)
         total_density = jnp.sum(f)
-        expected_density = nx * ny  # density = 1 at each point
+        expected_density = nx * ny * nz  # density = 1 at each point
         assert jnp.allclose(total_density, expected_density, rtol=1e-5)
 
 

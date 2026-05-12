@@ -5,27 +5,28 @@ boundaries require no additional transformation.
 """
 
 from __future__ import annotations
-
-import jax.numpy as jnp
-
-from tud_lbm.lattice.lattice import Lattice
+from typing import TYPE_CHECKING
 from tud_lbm.registry import boundary_condition
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
+    from tud_lbm.lattice.lattice import Lattice
 
 
 @boundary_condition(name="periodic", pad_edge_mode="wrap")
 def apply_periodic(
     f_streamed: jnp.ndarray,
-    f_collision: jnp.ndarray,
-    lattice: Lattice,
-    edge: str,
+    _f_collision: jnp.ndarray,
+    _lattice: Lattice,
+    _edge: str,
 ) -> jnp.ndarray:
     """No-op: streaming already handles periodicity.
 
     Args:
         f_streamed: Post-streaming populations.
-        f_collision: Post-collision populations (unused).
-        lattice: Lattice (unused).
-        edge: Edge name (unused).
+        _f_collision: Post-collision populations (unused).
+        _lattice: Lattice (unused).
+        _edge: Edge name (unused).
 
     Returns:
         ``f_streamed`` unchanged.

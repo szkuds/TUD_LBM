@@ -1,4 +1,4 @@
-"""MRT (Multiple Relaxation Time) collision operator — pure function.
+r"""MRT (Multiple Relaxation Time) collision operator — pure function.
 
 Extracted from :class:`simulation_operators.collision_models.CollisionMRT`.
 Uses the D2Q9 moment transformation matrix *M* and its inverse *M_INV*.
@@ -15,9 +15,7 @@ where *K* = ``diag(k_diag)`` is the diagonal relaxation-rate matrix and
 """
 
 from __future__ import annotations
-
 import jax.numpy as jnp
-
 from tud_lbm.registry import collision_model
 
 # ── D2Q9 moment basis (compile-time constant) ───────────────────────
@@ -51,7 +49,7 @@ def collide_mrt(
     """MRT collision using the D2Q9 moment transformation matrix.
 
     Args:
-        f: Pre-collision populations, shape ``(nx, ny, q, 1)``.
+        f: Pre-collision populations, shape ``(nx, ny, nz, q, 1)``.
         feq: Equilibrium populations, same shape.
         tau: Relaxation time (used to build *k_diag* default if not supplied).
         source: Optional source term, same shape.

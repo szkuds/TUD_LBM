@@ -14,12 +14,14 @@ Example:
 """
 
 from __future__ import annotations
-
+from typing import TYPE_CHECKING
 from typing import NamedTuple
-
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
-from tud_lbm.operators.protocols import MacroscopicOperator
+
+if TYPE_CHECKING:
+    from tud_lbm.config import SimulationConfig
+    from tud_lbm.operators.protocols import MacroscopicOperator
 
 
 class MultiphaseParams(NamedTuple):
@@ -67,7 +69,7 @@ def build_macroscopic_fn(scheme: str = "standard") -> MacroscopicOperator:
     return build_operator("macroscopic", scheme)
 
 
-def build_multiphase_params(config) -> MultiphaseParams:
+def build_multiphase_params(config: SimulationConfig) -> MultiphaseParams:
     """Construct :class:`MultiphaseParams` from a configuration object.
 
     Args:
@@ -82,7 +84,8 @@ def build_multiphase_params(config) -> MultiphaseParams:
     """
     for name in ("eos", "kappa", "rho_l", "rho_v", "interface_width"):
         if getattr(config, name, None) is None:
-            raise ValueError(f"'{name}' is required for multiphase simulations")
+            msg = f"'{name}' is required for multiphase simulations"
+            raise ValueError(msg)
 
     return MultiphaseParams(
         eos=config.eos,

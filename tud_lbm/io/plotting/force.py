@@ -1,10 +1,13 @@
 """Force magnitude plot operators."""
 
 from __future__ import annotations
-import matplotlib.axes
+from typing import TYPE_CHECKING
 import numpy as np
-from tud_lbm.registry import plotting_operator
 from tud_lbm.io.plotting.base import PlotOperator
+from tud_lbm.registry import plotting_operator
+
+if TYPE_CHECKING:
+    import matplotlib.axes
 
 
 class _BaseForceOperator(PlotOperator):
@@ -21,8 +24,8 @@ class _BaseForceOperator(PlotOperator):
         timestep: int,
     ) -> None:
         force = np.asarray(data[self.field_name])
-        fx = force[..., 0, 0].T
-        fy = force[..., 0, 1].T
+        fx = force[:, :, 0, 0, 0].T
+        fy = force[:, :, 0, 1, 0].T
         mag = np.sqrt(fx**2 + fy**2)
         im = ax.imshow(mag, origin="lower", aspect="equal", cmap="cividis")
         ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="|F|")

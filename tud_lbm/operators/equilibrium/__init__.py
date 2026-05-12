@@ -12,10 +12,12 @@ Example:
 """
 
 from __future__ import annotations
-
+from typing import TYPE_CHECKING
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
-from tud_lbm.operators.protocols import EquilibriumOperator
+
+if TYPE_CHECKING:
+    from tud_lbm.operators.protocols import EquilibriumOperator
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("tud_lbm.operators.equilibrium")

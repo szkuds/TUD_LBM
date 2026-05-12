@@ -2,11 +2,10 @@
 
 import warnings
 from types import SimpleNamespace
-
 import jax.numpy as jnp
 import pytest
-
-from tud_lbm.pipeline.state._extra_state import _build_extra_state, _update_extra_state
+from tud_lbm.pipeline.state._extra_state import _build_extra_state
+from tud_lbm.pipeline.state._extra_state import _update_extra_state
 from tud_lbm.pipeline.state.state import State
 
 

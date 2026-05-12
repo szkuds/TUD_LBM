@@ -17,11 +17,10 @@ Example usage::
 """
 
 from __future__ import annotations
-
 import dataclasses
-import tomllib
 from pathlib import Path
 from typing import Any
+import tomllib
 
 try:
     import tomli_w
@@ -82,20 +81,16 @@ class TomlAdapter(ConfigAdapter):
             KeyError: If force type is unknown.
             TypeError: If force section is not a table.
         """
-        known_force_fields = {
-            f.name
-            for f in dataclasses.fields(SimulationConfig)
-            if f.name.endswith("_force")
-        }
+        known_force_fields = {f.name for f in dataclasses.fields(SimulationConfig) if f.name.endswith("_force")}
         for key, value in raw.items():
             if not key.endswith("_force"):
                 continue
             if key not in known_force_fields:
-                raise KeyError(f"Unknown force type '{key}'")
+                msg = f"Unknown force type '{key}'"
+                raise KeyError(msg)
             if not isinstance(value, dict):
-                raise TypeError(
-                    f"Force section '[{key}]' must be a table, got {type(value).__name__}."
-                )
+                msg = f"Force section '[{key}]' must be a table, got {type(value).__name__}."
+                raise TypeError(msg)
             sim_table[key] = dict(value)
 
     def load_raw(self, path: str) -> dict[str, Any]:
@@ -118,7 +113,8 @@ class TomlAdapter(ConfigAdapter):
         """
         path_obj: Path = Path(path).expanduser()
         if not path_obj.is_file():
-            raise FileNotFoundError(f"Config file not found: {path_obj}")
+            msg = f"Config file not found: {path_obj}"
+            raise FileNotFoundError(msg)
 
         with path_obj.open("rb") as fh:
             raw = tomllib.load(fh)
@@ -126,9 +122,8 @@ class TomlAdapter(ConfigAdapter):
         # ── [simulation_type] (required) ──────────────────────────────────
         sim_table = dict(raw.get("simulation_type", {}))
         if not sim_table:
-            raise ValueError(
-                f"Config file '{path}' is missing the required [simulation_type] table."
-            )
+            msg = f"Config file '{path}' is missing the required [simulation_type] table."
+            raise ValueError(msg)
 
         sim_type: str = sim_table.pop("type", "single_phase")
 
@@ -139,9 +134,8 @@ class TomlAdapter(ConfigAdapter):
         # ── Validate sim_type ────────────────────────────────────────
         valid_types = ("single_phase", "multiphase")
         if sim_type not in valid_types:
-            raise ValueError(
-                f"Unknown simulation type '{sim_type}'. Expected one of: {', '.join(valid_types)}."
-            )
+            msg = f"Unknown simulation type '{sim_type}'. Expected one of: {', '.join(valid_types)}."
+            raise ValueError(msg)
 
         # ── Merge [multiphase] table (for multiphase simulations) ────
         if sim_type == "multiphase":
@@ -226,8 +220,9 @@ class TomlAdapter(ConfigAdapter):
             ImportError: If tomli_w is not installed.
         """
         if tomli_w is None:
-            raise ImportError("tomli_w is required for saving TOML files. Install with: pip install tomli-w")
-        
+            msg = "tomli_w is required for saving TOML files. Install with: pip install tomli-w"
+            raise ImportError(msg)
+
         path_obj: Path = Path(path).expanduser()
         path_obj.parent.mkdir(parents=True, exist_ok=True)
 

@@ -1,14 +1,13 @@
 import builtins
 import sys
 from pathlib import Path
-
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _register_step_operators():
+def _register_step_operators() -> None:
     """Auto-register step operators for all tests.
 
     This fixture ensures that the runner modules are imported
@@ -37,9 +36,10 @@ def mock_optax_missing(monkeypatch):
     original_import = builtins.__import__
 
     def mock_import(name, *args, **kwargs):
-        """Mock import that fails for optax"""
+        """Mock import that fails for optax."""
         if name == "optax" or name.startswith("optax."):
-            raise ModuleNotFoundError(f"No module named '{name}'")
+            msg = f"No module named '{name}'"
+            raise ModuleNotFoundError(msg)
         # Call original import for other modules
         return original_import(name, *args, **kwargs)
 

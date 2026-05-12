@@ -13,20 +13,18 @@ Functions:
 """
 
 
-def __getattr__(name):
+def __getattr__(name: str):  # noqa: ANN202
     """Lazy-load CLI only when accessed (requires click)."""
-    if name == "main":
-        try:
-            from .cli import main
-            return main
-        except ImportError as e:
-            if "click" in str(e):
-                raise ImportError(
-                    "The CLI requires 'click' to be installed. "
-                    "Install with: pip install click"
-                ) from e
+    if name != "main":
+        msg = f"module {__name__!r} has no attribute {name!r}"
+        raise AttributeError(msg)
+
+    try:
+        from tud_lbm.cli import main
+
+        return main  # noqa: TRY300
+    except ImportError as e:
+        if "click" not in str(e):
             raise
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-__all__ = ["main"]
+        msg = "The CLI requires 'click' to be installed. Install with: pip install click"
+        raise ImportError(msg) from e

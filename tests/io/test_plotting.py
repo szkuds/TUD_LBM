@@ -1,14 +1,12 @@
 """Tests for the plotting operator package and figure builder."""
 
 from __future__ import annotations
-
 import numpy as np
 import pytest
-
 from tud_lbm.config import SimulationConfig
-from tud_lbm.registry import get_operator_names
 from tud_lbm.io.plotting import visualise
 from tud_lbm.io.plotting.figure_builder import FigureBuilder
+from tud_lbm.registry import get_operator_names
 
 
 @pytest.fixture
@@ -94,7 +92,7 @@ def test_build_all_creates_one_figure_per_snapshot(plotting_run_dir, simple_conf
     assert all(path.exists() for path in saved)
 
 
-def test_visualise_accepts_run_directory(plotting_run_dir):
+def test_visualise_accepts_run_directory(plotting_run_dir: str):
     np.savez(
         plotting_run_dir / "data" / "timestep_1.npz",
         rho=np.ones((6, 6, 1, 1)),

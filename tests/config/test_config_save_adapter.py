@@ -9,17 +9,12 @@ Covers:
 """
 
 from pathlib import Path
-
 import pytest
-
-try:
-    import tomli_w
-except ImportError:
-    pytest.skip("tomli_w not installed", allow_module_level=True)
-
-from tud_lbm.config.adapter_base import ConfigAdapter, get_adapter
+from tud_lbm.config.adapter_base import ConfigAdapter
+from tud_lbm.config.adapter_base import get_adapter
 from tud_lbm.config.adapter_toml import TomlAdapter
 from tud_lbm.config.simulation_config import SimulationConfig
+
 
 class TestTomlAdapterSave:
     """Tests for TomlAdapter.save()."""
@@ -40,7 +35,7 @@ class TestTomlAdapterSave:
         adapter.save(cfg, str(dest))
 
         loaded = TomlAdapter().load(str(dest))
-        assert loaded.grid_shape == (16, 16)
+        assert loaded.grid_shape == (16, 16, 1)
         assert loaded.tau == 0.8
         assert loaded.nt == 500
 
@@ -111,9 +106,11 @@ class TestTomlAdapterSave:
         adapter.save(cfg, str(dest))
         assert dest.exists()
 
+
 # ══════════════════════════════════════════════════════════════════════
 # ConfigAdapter ABC enforcement
 # ══════════════════════════════════════════════════════════════════════
+
 
 class TestConfigAdapterABCSave:
     """The ABC must force subclasses to implement save()."""
@@ -122,7 +119,7 @@ class TestConfigAdapterABCSave:
         """A subclass that only implements load() should fail to instantiate."""
 
         class IncompleteAdapter(ConfigAdapter):
-            def load(self, path): ...
+            def load(self, path) -> None: ...
 
             # save() not implemented
 
@@ -133,16 +130,18 @@ class TestConfigAdapterABCSave:
         """A subclass that only implements save() should fail to instantiate."""
 
         class IncompleteAdapter(ConfigAdapter):
-            def save(self, config, path): ...
+            def save(self, config, path) -> None: ...
 
             # load() not implemented
 
         with pytest.raises(TypeError):
             IncompleteAdapter()
 
+
 # ══════════════════════════════════════════════════════════════════════
 # get_adapter() dispatch
 # ══════════════════════════════════════════════════════════════════════
+
 
 class TestGetAdapterDispatch:
     """get_adapter() should raise for unsupported extensions."""
@@ -155,9 +154,11 @@ class TestGetAdapterDispatch:
         adapter = get_adapter("config.toml")
         assert isinstance(adapter, TomlAdapter)
 
+
 # ══════════════════════════════════════════════════════════════════════
 # SimulationIO integration
 # ══════════════════════════════════════════════════════════════════════
+
 
 class TestSimulationIOConfigFileType:
     """SimulationIO should write the config file in the requested format."""
@@ -189,6 +190,6 @@ class TestSimulationIOConfigFileType:
         )
         config_path = Path(io.run_dir) / "config.toml"
         loaded = TomlAdapter().load(str(config_path))
-        assert loaded.grid_shape == (8, 8)
+        assert loaded.grid_shape == (8, 8, 1)
         assert loaded.tau == 0.7
         assert loaded.nt == 200

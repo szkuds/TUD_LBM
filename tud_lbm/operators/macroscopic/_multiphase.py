@@ -12,19 +12,20 @@ padding and optional wetting ghost-cell correction).
 """
 
 from __future__ import annotations
-
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
-
-from tud_lbm.lattice.lattice import Lattice
-from tud_lbm.operators.macroscopic import MultiphaseParams
-from tud_lbm.operators.protocols import DifferentialOperator
 from tud_lbm.registry import macroscopic_operator
+
+if TYPE_CHECKING:
+    from tud_lbm.lattice.lattice import Lattice
+    from tud_lbm.operators.macroscopic import MultiphaseParams
+    from tud_lbm.operators.protocols import DifferentialOperator
 
 # ── EOS and chemical potential ───────────────────────────────────────
 
 
 def _eos_double_well(
-    rho_2d: jnp.ndarray,
+    rho: jnp.ndarray,
     beta: float,
     rho_l: float,
     rho_v: float,
@@ -32,21 +33,15 @@ def _eos_double_well(
     """Double-well equation-of-state derivative (chemical potential bulk part).
 
     Args:
-        rho_2d: Density field, shape ``(nx, ny)``.
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
         beta: ``8 κ / (W² (ρ_l − ρ_v)²)``.
         rho_l: Liquid density.
         rho_v: Vapour density.
 
     Returns:
-        ``μ_0(ρ)``, shape ``(nx, ny)``.
+        ``μ_0(ρ)``, shape ``(nx, ny, nz, 1, 1)``.
     """
-    return (
-        2.0
-        * beta
-        * (rho_2d - rho_l)
-        * (rho_2d - rho_v)
-        * (2.0 * rho_2d - rho_l - rho_v)
-    )
+    return 2.0 * beta * (rho - rho_l) * (rho - rho_v) * (2.0 * rho - rho_l - rho_v)
 
 
 # ── Public API ───────────────────────────────────────────────────────
@@ -65,10 +60,10 @@ def compute_macroscopic_multiphase(
     """Compute density, equilibrium velocity, and total force for multiphase.
 
     Args:
-        f: Populations, shape ``(nx, ny, q, 1)``.
+        f: Populations, shape ``(nx, ny, nz, q, 1)``.
         lattice: :class:`~setup.lattice.Lattice`.
         mp: :class:`~setup.simulation_setup.MultiphaseParams`.
-        force_ext: Optional external force, shape ``(nx, ny, 1, 2)``.
+        force_ext: Optional external force, shape ``(nx, ny, nz, 1, 2)``.
         gradient_standard: Standard LBM-stencil gradient for chemical potential ``∇μ``.
             Signature ``(grid) → gradient``. Must be a **single-argument** grid-only
             closure. **Never wetting-corrected** — used only for ``∇μ``.
@@ -80,39 +75,29 @@ def compute_macroscopic_multiphase(
     Returns:
         ``(rho, u_eq, force_total)``
 
-        * ``rho``: shape ``(nx, ny, 1, 1)``
-        * ``u_eq``: force-corrected velocity, shape ``(nx, ny, 1, 2)``
-        * ``force_total``: total force, shape ``(nx, ny, 1, 2)``
+        * ``rho``: shape ``(nx, ny, nz, 1, 1)``
+        * ``u_eq``: force-corrected velocity, shape ``(nx, ny, nz, 1, 2)``
+        * ``force_total``: total force, shape ``(nx, ny, nz, 1, 2)``
     """
-    cx = lattice.c[0]  # (q,)
-    cy = lattice.c[1]  # (q,)
-    q = lattice.q
+    # Density — zeroth moment. Sum over q
+    rho = jnp.sum(f, axis=-2, keepdims=True)  # (nx, ny, nz, 1, 1)
 
-    # 1. Density
-    rho = jnp.sum(f, axis=2, keepdims=True)  # (nx, ny, 1, 1)
-
-    # 2. Uncorrected velocity
-    cx4 = cx.reshape((1, 1, q, 1))
-    cy4 = cy.reshape((1, 1, q, 1))
-    ux = jnp.sum(f * cx4, axis=2, keepdims=True)
-    uy = jnp.sum(f * cy4, axis=2, keepdims=True)
-    u = jnp.concatenate([ux, uy], axis=-1) / rho  # (nx, ny, 1, 2)
+    # Momentum — first moment
+    u = jnp.sum(f * lattice.c, axis=-2, keepdims=True) / rho  # (nx, ny, nz, 1, D)
 
     # 3. Interparticle force from chemical potential
-    beta = (
-        8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
-    )
+    beta = 8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
 
     # Laplacian and gradient are always pad-modes-only.
-    mu_0 = _eos_double_well(rho[:, :, 0, 0], beta, mp.rho_l, mp.rho_v)
-    lap_rho = laplacian_density(rho)  # (nx, ny, 1, 1)
-    mu = mu_0[..., None, None] - mp.kappa * lap_rho  # (nx, ny, 1, 1)
+    mu_0 = _eos_double_well(rho, beta, mp.rho_l, mp.rho_v)  # (nx, ny, nz, 1, 1)
+    lap_rho = laplacian_density(rho)  # (nx, ny, nz, 1, 1)
+    mu = mu_0 - mp.kappa * lap_rho  # (nx, ny, nz, 1, 1)
 
-    # Chemical-potential gradient — always the standard (non-wetting) gradient
-    grad_mu = gradient_standard(mu)  # (nx, ny, 1, 2)
+    # Chemical-potential gradient - always the standard (non-wetting) gradient
+    grad_mu = gradient_standard(mu)  # (nx, ny, nz, 1, 2)
 
-    # F_int = −ρ ∇μ
-    force_int = -rho * grad_mu  # (nx, ny, 1, 2)
+    # F_int = -ρ ∇μ
+    force_int = -rho * grad_mu  # (nx, ny, nz, 1, 2)
 
     # 4. Total force
     force_total = force_int

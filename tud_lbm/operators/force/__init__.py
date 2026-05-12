@@ -13,16 +13,21 @@ Example:
 """
 
 from __future__ import annotations
-
 import dataclasses
-from collections.abc import Callable
-from typing import Any, NamedTuple, cast
-
-import jax.numpy as jnp
-
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import NamedTuple
+from typing import cast
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
-from tud_lbm.operators.protocols import ForceOperator
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    import jax.numpy as jnp
+    from tud_lbm.config import SimulationConfig
+    from tud_lbm.operators.protocols import ForceOperator
+    from tud_lbm.pipeline.state import State
+    from tud_lbm.setup import SimulationSetup
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("tud_lbm.operators.force")
@@ -34,7 +39,7 @@ class ForceParams(NamedTuple):
     Attributes:
         name: Registry key, e.g. ``"gravity_force"``.
         compute_fn: Pure function ``(state, precomputed, lattice) → jnp.ndarray``
-            of shape ``(nx, ny, 1, d)``.
+            of shape ``(nx, ny, nz, 1, d)``.
             Returns the force contribution for this physics.
         precomputed: Optional pre-computed data (e.g. gravity template array).
     """
@@ -80,9 +85,9 @@ def _build_force_fn(scheme: str) -> Callable[..., object] | type:
 
 
 def build_forces(
-    config: Any,
+    config: SimulationConfig,
     grid_shape: tuple[int, ...],
-    lattice: Any,
+    lattice: Any,  # noqa: ANN401
 ) -> ForceSetup:
     """Discover ``*_force`` fields on config, build ForceSetup with specs and source term.
 
@@ -90,9 +95,10 @@ def build_forces(
 
     - ``build(params, grid_shape, config, lattice)`` → precomputed data (or None)
     - ``compute(state, precomputed, **kwargs)`` → force array
+
     Args:
         config: A validated configuration object with ``*_force`` fields.
-        grid_shape: Spatial dimensions, e.g. ``(64, 64)``.
+        grid_shape: Spatial dimensions, e.g. ``(64, 64, 1)`` or ``(64, 64, 32)`` for (nx, ny, nz).
         lattice: The simulation lattice.
 
     Returns:
@@ -126,8 +132,8 @@ def build_forces(
 
 
 def compute_total_force_ext(
-    setup: Any,
-    state: Any,
+    setup: SimulationSetup,
+    state: State,
     force_setup: ForceSetup | None,
 ) -> tuple[jnp.ndarray | None, Any]:
     """Compute the summed external force contribution.
@@ -158,9 +164,7 @@ def compute_total_force_ext(
             gradient_density=setup.gradient_density,
             laplacian_density=setup.laplacian_density,
         )
-        total_force = (
-            contribution if total_force is None else total_force + contribution
-        )
+        total_force = contribution if total_force is None else total_force + contribution
 
     return total_force, state
 

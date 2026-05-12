@@ -29,8 +29,9 @@ Tests are organized by what they explain:
 """
 
 import pytest
-
-from tud_lbm.registry import get_operators, register_operator, unregister_operator
+from tud_lbm.registry import get_operators
+from tud_lbm.registry import register_operator
+from tud_lbm.registry import unregister_operator
 
 # ── PART 1: Generic Factory Tests ─────────────────────────────────────────
 
@@ -245,7 +246,7 @@ class TestBackwardCompatibility:
     """
 
     def test_collision_init_import_recommended(self):
-        """Recommended import: from tud_lbm.operators.collision import build_collision_fn"""
+        """Recommended import: from tud_lbm.operators.collision import build_collision_fn."""
         from tud_lbm.operators.collision import build_collision_fn
 
         op = build_collision_fn("bgk")
@@ -349,7 +350,7 @@ class TestFactoryPattern:
 
         # Register a test operator
         @register_operator("_test_operator_kind", name="_test_scheme")
-        def test_op():
+        def test_op() -> str:
             return "test"
 
         # Generic factory finds it

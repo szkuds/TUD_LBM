@@ -24,18 +24,20 @@ Usage::
 """
 
 from __future__ import annotations
-
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
-
-import jax.numpy as jnp
-import matplotlib.axes
-import numpy as np
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Protocol
+from typing import runtime_checkable
 
 if TYPE_CHECKING:
+    from pathlib import Path
+    import jax.numpy as jnp
+    import matplotlib.axes
+    import numpy as np
     from tud_lbm.config.simulation_config import SimulationConfig
     from tud_lbm.lattice.lattice import Lattice
-    from tud_lbm.pipeline.state import State, WettingState
+    from tud_lbm.pipeline.state import State
+    from tud_lbm.pipeline.state import WettingState
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -65,10 +67,10 @@ class CollisionOperator(Protocol):
         """Compute post-collision distribution.
 
         Args:
-            f: Populations, shape ``(nx, ny, q, 1)``.
-            feq: Equilibrium distribution, shape ``(nx, ny, q, 1)``.
+            f: Populations, shape ``(nx, ny, nz, q, 1)``.
+            feq: Equilibrium distribution, shape ``(nx, ny, nz, q, 1)``.
             tau: Relaxation time (> 0.5).
-            source: Optional forcing source term, shape ``(nx, ny, q, 1)``.
+            source: Optional forcing source term, shape ``(nx, ny, nz, q, 1)``.
             **kwargs: Operator-specific parameters.
 
         Returns:
@@ -97,7 +99,7 @@ class StreamingOperator(Protocol):
         """Propagate populations across the domain.
 
         Args:
-            f: Populations, shape ``(nx, ny, q, 1)``.
+            f: Populations, shape ``(nx, ny, nz, q, 1)``.
             lattice: :class:`~setup.lattice.Lattice` with velocity vectors ``c``.
 
         Returns:
@@ -127,13 +129,13 @@ class EquilibriumOperator(Protocol):
         """Compute the equilibrium distribution.
 
         Args:
-            rho: Density field, shape ``(nx, ny, 1, 1)``.
-            u: Velocity field, shape ``(nx, ny, 1, d)`` where d ∈ {2, 3}.
+            rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
+            u: Velocity field, shape ``(nx, ny, nz, 1, d)`` where d ∈ {2, 3}.
             lattice: :class:`~setup.lattice.Lattice` with weights ``w``
                 and velocity vectors ``c``.
 
         Returns:
-            Equilibrium distribution ``feq``, shape ``(nx, ny, q, 1)``.
+            Equilibrium distribution ``feq``, shape ``(nx, ny, nz, q, 1)``.
         """
         ...
 
@@ -159,15 +161,17 @@ class MacroscopicOperator(Protocol):
         """Compute density and velocity fields.
 
         Args:
-            f: Populations, shape ``(nx, ny, q, 1)``.
+            f: Populations, shape ``(nx, ny, nz, q, 1)``.
             lattice: :class:`~setup.lattice.Lattice`.
-            force: Optional external force field, shape ``(nx, ny, 1, d)``.
+            force: Optional external force field.
+            **kwargs: Additional keyword arguments.
+            force: Optional external force field, shape ``(nx, ny, nz, 1, d)``.
                 When provided, velocity is corrected by ``u ← u + force / (2ρ)``.
 
         Returns:
             Without *force*: ``(rho, u)`` where
-                - ``rho``: shape ``(nx, ny, 1, 1)``
-                - ``u``: shape ``(nx, ny, 1, d)``
+                - ``rho``: shape ``(nx, ny, nz, 1, 1)``
+                - ``u``: shape ``(nx, ny, nz, 1, d)``
 
             With *force*: ``(rho, u_eq, force)`` where *u_eq* includes the force correction.
         """
@@ -236,7 +240,7 @@ class InitialiserOperator(Protocol):
                 ``npz_path``).
 
         Returns:
-            Initial population distribution, shape ``(nx, ny, q, 1)``.
+            Initial population distribution, shape ``(nx, ny, nz, q, 1)``.
         """
         ...
 
@@ -295,9 +299,9 @@ class HysteresisOperator(Protocol):
 
         Args:
             wetting: Current :class:`~state.state.WettingState`.
-            rho: Density field, shape ``(nx, ny, 1, 1)``.
+            rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
             setup: :class:`~setup.simulation_setup.SimulationSetup`.
-            f_t: Pre-step populations, shape ``(nx, ny, q, 1)``.
+            f_t: Pre-step populations, shape ``(nx, ny, nz, q, 1)``.
             **kwargs: Operator-specific parameters (e.g., ``force_ext``).
 
         Returns:
@@ -323,9 +327,7 @@ class ForceOperator(Protocol):
         """Construct precomputed data for the force module."""
         ...
 
-    def compute(
-        self, state: Any, precomputed: Any, *, diff_ops: Any = None
-    ) -> jnp.ndarray:
+    def compute(self, state: Any, precomputed: Any, *, diff_ops: Any = None) -> jnp.ndarray:
         """Compute the force contribution for the current state."""
         ...
 
@@ -350,7 +352,7 @@ class InitialPopulationOperator(Protocol):
                 ``rho_l``, ``npz_path``).
 
         Returns:
-            Initial populations, shape ``(nx, ny, q, 1)``.
+            Initial populations, shape ``(nx, ny, nz, q, 1)``.
         """
         ...
 
@@ -379,14 +381,14 @@ class MultiphaseStepOperator(Protocol):
         """Run one multiphase trial step.
 
         Args:
-            f_t: Pre-step populations, shape ``(nx, ny, q, 1)``.
-            force_ext: Optional external force, shape ``(nx, ny, 1, d)``.
+            f_t: Pre-step populations, shape ``(nx, ny, nz, q, 1)``.
+            force_ext: Optional external force, shape ``(nx, ny, nz, 1, d)``.
             wetting: Optional :class:`~state.state.WettingState`.
             gradient_density: Optional pre-built density gradient operator.
             laplacian_density: Optional pre-built density Laplacian operator.
 
         Returns:
-            Post-BC populations, shape ``(nx, ny, q, 1)``.
+            Post-BC populations, shape ``(nx, ny, nz, q, 1)``.
         """
         ...
 
@@ -415,9 +417,7 @@ class ExtraStatePlugin(Protocol):
         """Create initial extra fields merged into :class:`state.state.State`."""
         ...
 
-    def update_state(
-        self, setup: Any, prev_state: Any, new_state: Any, **context: Any
-    ) -> Any:
+    def update_state(self, setup: Any, prev_state: Any, new_state: Any, **context: Any) -> Any:
         """Apply per-step extra-state updates and return the updated state."""
         ...
 

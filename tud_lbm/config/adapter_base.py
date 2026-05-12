@@ -1,15 +1,15 @@
 """Base class for configuration file adapters."""
 
 from __future__ import annotations
-
 import dataclasses
 import importlib
-from abc import ABC, abstractmethod
+from abc import ABC
+from abc import abstractmethod
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
-
-from tud_lbm.config.simulation_config import CONFIG_SECTION, SimulationConfig
+from tud_lbm.config.simulation_config import CONFIG_SECTION
+from tud_lbm.config.simulation_config import SimulationConfig
 
 
 class ConfigAdapter(ABC):
@@ -44,10 +44,17 @@ class ConfigAdapter(ABC):
         ...
 
     @abstractmethod
-    def save(self, config: SimulationConfig, path: str) -> None: ...
+    def save(self, config: SimulationConfig, path: str) -> None:
+        """Save a :class:`SimulationConfig` to *path*.
+
+        Args:
+            config: Configuration to save.
+            path: Filesystem path where to save the configuration.
+        """
+        ...
 
     @staticmethod
-    def _serialize_safe(value: Any) -> Any:
+    def _serialize_safe(value: Any) -> Any:  # noqa: ANN401
         """Convert tuples to lists and recursively process nested structures."""
         if isinstance(value, tuple):
             value = list(value)
@@ -61,8 +68,7 @@ class ConfigAdapter(ABC):
     def build_sections(cls, config: SimulationConfig) -> dict[str, Any]:
         """Build a format-agnostic nested dict from *config*, routed by CONFIG_SECTION metadata."""
         sections = {
-            f.name: f.metadata.get(CONFIG_SECTION, "simulation_type")
-            for f in dataclasses.fields(SimulationConfig)
+            f.name: f.metadata.get(CONFIG_SECTION, "simulation_type") for f in dataclasses.fields(SimulationConfig)
         }
         sim_type = config.sim_type
         skip = {"identity", "extra"}
@@ -99,8 +105,7 @@ def get_adapter(path: str) -> ConfigAdapter:
     ext = Path(path).suffix.lower()
     fqn = _ADAPTER_MAP.get(ext)
     if not fqn:
-        raise ValueError(
-            f"Unsupported extension '{ext}'. Supported: {', '.join(sorted(_ADAPTER_MAP))}"
-        )
+        msg = f"Unsupported extension '{ext}'. Supported: {', '.join(sorted(_ADAPTER_MAP))}"
+        raise ValueError(msg)
     module_path, class_name = fqn.rsplit(".", 1)
     return getattr(importlib.import_module(module_path), class_name)()

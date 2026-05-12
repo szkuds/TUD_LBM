@@ -29,15 +29,18 @@ can differentiate through it.
 """
 
 from __future__ import annotations
-
+from typing import TYPE_CHECKING
 import jax
 import jax.numpy as jnp
-
 from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
 from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
 from tud_lbm.operators.wetting._params import WettingParams
 from tud_lbm.pipeline.state.state import WettingState
 from tud_lbm.registry import wetting_operator
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from tud_lbm.pipeline.setup import SimulationSetup
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -72,10 +75,10 @@ def _cost_ca(ca_target: jnp.ndarray, ca_current: jnp.ndarray) -> jnp.ndarray:
 
 
 def _optimise_single_param(
-    objective_fn,
+    objective_fn: Callable[[WettingParams], jnp.ndarray],
     initial_params: WettingParams,
-    grad_mask_fn,
-    optimiser,
+    grad_mask_fn: Callable[[WettingParams], WettingParams],
+    optimiser: object,
     max_iterations: int,
     loss_tol: float = 1e-6,
 ) -> tuple[WettingParams, jnp.ndarray]:
@@ -103,11 +106,11 @@ def _optimise_single_param(
     opt_state = optimiser.init(initial_params)
     initial_loss = objective_fn(initial_params)
 
-    def cond_fn(carry):
+    def cond_fn(carry: tuple) -> jnp.ndarray:
         _params, _opt_state, loss, iteration = carry
         return (iteration < max_iterations) & (loss > loss_tol)
 
-    def body_fn(carry):
+    def body_fn(carry: tuple) -> tuple:
         params, opt_state, _loss, iteration = carry
         loss, grads = jax.value_and_grad(objective_fn)(params)
         grads = grad_mask_fn(grads)
@@ -132,11 +135,11 @@ def _optimise_single_param(
 def update_wetting_state(
     wetting: WettingState,
     rho: jnp.ndarray,
-    setup,
+    setup: SimulationSetup,
     f_t: jnp.ndarray,
     *,
-    evaluate_fn=None,
-    force_ext=None,
+    evaluate_fn: Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]] | None = None,
+    force_ext: jnp.ndarray | None = None,
 ) -> WettingState:
     """Pure JAX update of wetting / hysteresis parameters.
 
@@ -154,20 +157,20 @@ def update_wetting_state(
     Per-side advancing/receding direction is inferred from the sign of
     the contact-line displacement between the previous and current
     timestep: the left side is advancing when ``cll_left`` decreases
-    (moves in −x), and the right side is advancing when ``cll_right``
+    (moves in -x), and the right side is advancing when ``cll_right``
     increases (moves in +x).
 
     Args:
         wetting: Current :class:`WettingState`.
-        rho: Density field, shape ``(nx, ny, 1, 1)``.
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
         setup: :class:`~setup.simulation_setup.SimulationSetup`
             (closed-over, not traced).
-        f_t: Pre-step populations, shape ``(nx, ny, q, 1)``.
+        f_t: Pre-step populations, shape ``(nx, ny, nz, q, 1)``.
         evaluate_fn: Optional callable
             ``(WettingParams) → (ca_l, ca_r, cll_l, cll_r)``
             used by the inner optimiser.  If ``None``, a default is
             built from the pure-function operators.
-        force_ext: External force field, shape ``(nx, ny, 1, 2)``
+        force_ext: External force field, shape ``(nx, ny, nz, 1, 2)``
             or ``None``.  Passed to the multiphase macroscopic function
             inside the default evaluate_fn so that interparticle forces
             are not double-counted.
@@ -209,8 +212,9 @@ def update_wetting_state(
     try:
         import optax  # lazy import — optional dependency
     except ImportError as err:
+        msg = "The 'optax' package is required for hysteresis wetting.\nInstall it with:  pip install optax"
         raise ImportError(
-            "The 'optax' package is required for hysteresis wetting.\nInstall it with:  pip install optax"
+            msg,
         ) from err
     optimiser = optax.adam(lr)
 
@@ -235,39 +239,29 @@ def update_wetting_state(
 
     # --- 5.1: per-side objectives ---
 
-    def left_objective(p):
+    def left_objective(p: WettingParams) -> jnp.ndarray:
         ca_l, _, cll_l, _ = evaluate_fn(p)
-        return jnp.where(
-            in_window_left, _cost_cll(cll_left, cll_l), _cost_ca(ca_target_left, ca_l)
-        )
+        return jnp.where(in_window_left, _cost_cll(cll_left, cll_l), _cost_ca(ca_target_left, ca_l))
 
-    def right_objective(p):
+    def right_objective(p: WettingParams) -> jnp.ndarray:
         _, ca_r, _, cll_r = evaluate_fn(p)
-        return jnp.where(
-            in_window_right,
-            _cost_cll(cll_right, cll_r),
-            _cost_ca(ca_target_right, ca_r),
-        )
+        return jnp.where(in_window_right, _cost_cll(cll_right, cll_r), _cost_ca(ca_target_right, ca_r))
 
-    def left_mask(g):
+    def left_mask(g: WettingParams) -> WettingParams:
         return g._replace(
             phi_right=jnp.zeros_like(g.phi_right),
             d_rho_right=jnp.zeros_like(g.d_rho_right),
         )
 
-    def right_mask(g):
+    def right_mask(g: WettingParams) -> WettingParams:
         return g._replace(
             phi_left=jnp.zeros_like(g.phi_left),
             d_rho_left=jnp.zeros_like(g.d_rho_left),
         )
 
     # --- 5.2: optimise left side, then right side ---
-    p1, _ = _optimise_single_param(
-        left_objective, params, left_mask, optimiser, max_iter, loss_tol
-    )
-    new_params, _ = _optimise_single_param(
-        right_objective, p1, right_mask, optimiser, max_iter, loss_tol
-    )
+    p1, _ = _optimise_single_param(left_objective, params, left_mask, optimiser, max_iter, loss_tol)
+    new_params, _ = _optimise_single_param(right_objective, p1, right_mask, optimiser, max_iter, loss_tol)
 
     # 6. Return updated wetting state
     return wetting._replace(
@@ -286,11 +280,11 @@ def update_wetting_state(
 
 
 def _build_default_evaluate_fn(
-    setup,
-    f_t,
-    force_ext,
-    rho_mean,
-):
+    setup: SimulationSetup,
+    f_t: jnp.ndarray,
+    force_ext: jnp.ndarray | None,
+    rho_mean: jnp.ndarray,
+) -> Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
     """Build ``evaluate_fn(params) → (ca_l, ca_r, cll_l, cll_r)``.
 
     Delegates the full LBM trial step to ``setup.multiphase_step``,
@@ -298,11 +292,9 @@ def _build_default_evaluate_fn(
     ``jax.value_and_grad`` can differentiate through the param → shim
     → step → CA/CLL chain.
     """
-    from tud_lbm.operators.step._wetting_differential_operators import (
-        _make_wetting_differential_ops,
-    )
+    from tud_lbm.operators.step._wetting_differential_operators import _make_wetting_differential_ops
 
-    def evaluate_fn(params: WettingParams):
+    def evaluate_fn(params: WettingParams) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         if setup.config.wetting_config is not None:
             temp_wetting = WettingState(
                 d_rho_left=params.d_rho_left,
@@ -323,9 +315,8 @@ def _build_default_evaluate_fn(
             laplacian_density = setup.laplacian_density
 
         if setup.multiphase_step is None:
-            raise ValueError(
-                "Multiphase hysteresis requires setup.multiphase_step to be configured."
-            )
+            msg = "Multiphase hysteresis requires setup.multiphase_step to be configured."
+            raise ValueError(msg)
 
         f_out = setup.multiphase_step(
             f_t,
@@ -334,7 +325,7 @@ def _build_default_evaluate_fn(
             laplacian_density=laplacian_density,
         )
 
-        rho_out = jnp.sum(f_out, axis=2, keepdims=True)
+        rho_out = jnp.sum(f_out, axis=-2, keepdims=True)
         ca_l, ca_r = compute_contact_angle(rho_out, rho_mean)
         cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, rho_mean)
         return ca_l, ca_r, cll_l, cll_r

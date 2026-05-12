@@ -51,9 +51,9 @@ __version__ = "0.2.0"
 
 
 # Lazy imports to avoid circular dependencies
-def __getattr__(name):
+def __getattr__(name):  # noqa: PLR0911, ANN001, ANN202
     """Lazy load main API to avoid circular imports.
-    
+
     Exports:
     --------
     SimulationConfig : Immutable frozen dataclass with physics & grid parameters
@@ -69,38 +69,39 @@ def __getattr__(name):
         from tud_lbm.config.simulation_config import SimulationConfig
 
         return SimulationConfig
-    elif name == "Lattice":
+    if name == "Lattice":
         from tud_lbm.lattice.lattice import Lattice
 
         return Lattice
-    elif name == "build_lattice":
+    if name == "build_lattice":
         from tud_lbm.lattice.lattice import build_lattice
 
         return build_lattice
-    elif name == "build_setup":
+    if name == "build_setup":
         from tud_lbm.pipeline.setup import build_setup
 
         return build_setup
-    elif name == "init_state":
+    if name == "init_state":
         from tud_lbm.pipeline.runner import init_state
 
         return init_state
-    elif name == "run":
+    if name == "run":
         from tud_lbm.pipeline.runner import run
 
         return run
-    elif name == "State":
+    if name == "State":
         from tud_lbm.pipeline.state.state import State
 
         return State
-    elif name == "WettingState":
+    if name == "WettingState":
         from tud_lbm.pipeline.state.state import WettingState
 
         return WettingState
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
 
 
-def __dir__():
+def __dir__():  # noqa: ANN202
     """Expose public API for IDE autocompletion and help()."""
     return [
         "SimulationConfig",

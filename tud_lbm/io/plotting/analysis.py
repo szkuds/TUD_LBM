@@ -1,14 +1,14 @@
 """Analysis plot operator for saved simulation history."""
 
 from __future__ import annotations
-
 from pathlib import Path
-
-import matplotlib.axes
+from typing import TYPE_CHECKING
 import numpy as np
-
-from tud_lbm.registry import plotting_operator
 from tud_lbm.io.plotting.base import PlotOperator
+from tud_lbm.registry import plotting_operator
+
+if TYPE_CHECKING:
+    import matplotlib.axes
 
 
 @plotting_operator(name="analysis")
@@ -23,6 +23,7 @@ class AnalysisPlotOperator(PlotOperator):
         data: dict[str, np.ndarray],
         timestep: int,
     ) -> None:
+        """Render diagnostic plots from saved simulation history."""
         del data
         data_dir = self.data_dir or Path()
         files = sorted(data_dir.glob("*.npz"))
@@ -45,16 +46,15 @@ class AnalysisPlotOperator(PlotOperator):
 
             rho = np.asarray(snapshot["rho"])
             u = np.asarray(snapshot["u"])
-            vel_mag = np.sqrt(u[..., 0, 0] ** 2 + u[..., 0, 1] ** 2)
-            min_rho = float(np.min(rho))
+            vel_mag = np.sqrt(u[:, :, 0, 0, 0] ** 2 + u[:, :, 0, 0, 1] ** 2)
+            min_rho = float(np.min(rho[:, :, 0, 0, 0]))
             safe_min = min_rho if min_rho > 0 else max(min_rho, 1e-30)
 
             iters.append(step)
             umax_vals.append(float(np.max(vel_mag)))
-            avg_rho_vals.append(float(np.mean(rho)))
-            ratio_vals.append(
-                float(np.max(rho)) / safe_min if safe_min != 0 else np.inf
-            )
+            avg_rho_vals.append(float(np.mean(rho[:, :, 0, 0, 0])))
+            rho_2d = rho[:, :, 0, 0, 0]
+            ratio_vals.append(float(np.max(rho_2d)) / safe_min if safe_min != 0 else np.inf)
 
         if not iters:
             ax.text(

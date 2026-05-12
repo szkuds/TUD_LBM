@@ -2,17 +2,14 @@
 
 Ported from :class:`simulation_operators.wetting.ContactAngle`.
 Computes left and right contact angles from the density field using
-linear interpolation at the liquid–vapour interface.
+linear interpolation at the liquid-vapour interface.
 
 All operations are JAX-compatible and jittable.
 """
 
 from __future__ import annotations
-
 import math
-
 import jax.numpy as jnp
-
 from tud_lbm.registry import wetting_operator
 
 
@@ -23,19 +20,23 @@ def compute_contact_angle(
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Compute contact angles (left and right) from a density field.
 
-    The algorithm finds the liquid–vapour transition at the bottom two
+    The algorithm finds the liquid-vapour transition at the bottom two
     rows (``j=1`` and ``j=2``), interpolates the interface x-position,
     and derives the contact angle from the slope.
 
     Args:
-        rho: Density field, shape ``(nx, ny, 1, 1)``.
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
         rho_mean: Mean density ``(rho_l + rho_v) / 2``.
 
     Returns:
         ``(ca_left, ca_right)`` — contact angles in **degrees**
         (scalar ``jnp.ndarray``).
     """
-    rho_2d = rho[:, :, 0, 0]  # (nx, ny)
+    if rho.shape[2] != 1:
+        msg = "Contact angle computation only implemented in 2D (nz=1)"
+        raise ValueError(msg)
+
+    rho_2d = rho[:, :, 0, 0, 0]  # (nx, ny)
 
     array_j0 = rho_2d[:, 1]
     array_j1 = rho_2d[:, 2]
@@ -56,21 +57,13 @@ def compute_contact_angle(
     idx_right_j1 = jnp.where(diff_j1 == 1, size=1, fill_value=0)[0][0] + 1
 
     # Linear interpolation for sub-cell interface location
-    x_left_j0 = idx_left_j0 + (
-        (rho_mean - array_j0[idx_left_j0])
-        / (array_j0[idx_left_j0 + 1] - array_j0[idx_left_j0])
-    )
-    x_left_j1 = idx_left_j1 + (
-        (rho_mean - array_j1[idx_left_j1])
-        / (array_j1[idx_left_j1 + 1] - array_j1[idx_left_j1])
-    )
+    x_left_j0 = idx_left_j0 + ((rho_mean - array_j0[idx_left_j0]) / (array_j0[idx_left_j0 + 1] - array_j0[idx_left_j0]))
+    x_left_j1 = idx_left_j1 + ((rho_mean - array_j1[idx_left_j1]) / (array_j1[idx_left_j1 + 1] - array_j1[idx_left_j1]))
     x_right_j0 = idx_right_j0 - (
-        (rho_mean - array_j0[idx_right_j0])
-        / (array_j0[idx_right_j0 - 1] - array_j0[idx_right_j0])
+        (rho_mean - array_j0[idx_right_j0]) / (array_j0[idx_right_j0 - 1] - array_j0[idx_right_j0])
     )
     x_right_j1 = idx_right_j1 - (
-        (rho_mean - array_j1[idx_right_j1])
-        / (array_j1[idx_right_j1 - 1] - array_j1[idx_right_j1])
+        (rho_mean - array_j1[idx_right_j1]) / (array_j1[idx_right_j1 - 1] - array_j1[idx_right_j1])
     )
 
     ca_left = jnp.rad2deg(math.pi / 2.0 + jnp.arctan(x_left_j0 - x_left_j1))

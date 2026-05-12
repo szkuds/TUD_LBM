@@ -1,36 +1,61 @@
 """Build composite per-timestep figures from registered plot operators."""
 
 from __future__ import annotations
-
 import math
-import os
 import warnings
 from pathlib import Path
-
 import matplotlib as mpl
-
-from tud_lbm.config import SimulationConfig
 
 mpl.use("Agg")
 
+from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 import numpy as np
-
 from tud_lbm.registry import get_operators
+
+if TYPE_CHECKING:
+    import os
+    from tud_lbm.config import SimulationConfig
+
+_SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
+    1: (1, 1),
+    2: (2, 1),
+    3: (2, 2),
+    4: (2, 2),
+}
 
 
 class FigureBuilder:
     """Build and save composite figures for saved simulation snapshots."""
 
-    def __init__(
-        self, config: SimulationConfig, run_dir: str | os.PathLike, dpi: int = 150
-    ) -> None:
+    _SMALL_LAYOUTS: dict[int, tuple[int, int]] = _SMALL_LAYOUTS
+
+    def __init__(self, config: SimulationConfig, run_dir: str | os.PathLike, dpi: int = 150) -> None:
+        """Initialize figure builder with simulation config and output directory.
+
+        Args:
+            config: Simulation configuration object.
+            run_dir: Directory containing simulation results and output.
+            dpi: Resolution in dots per inch for saved figures.
+        """
         self.config = config
         self.run_dir = Path(run_dir)
         self.dpi = dpi
 
         self._data_dir = self.run_dir / "data"
         self._plot_dir = self.run_dir / "plots"
+        self._operators: list = []
+
+        # Guard: plotting only supports 2D simulations (nz=1)
+        nz = getattr(config, "nz", config.grid_shape[2] if len(config.grid_shape) > 2 else 1)  # noqa: PLR2004
+        if nz != 1:
+            warnings.warn(
+                f"Plotting is not supported for 3D simulations (nz={nz}). "
+                "Save your output in VTK format and use ParaView to visualise results.",
+                stacklevel=2,
+            )
+            return  # leave _operators empty, all build() calls become no-ops
+
         self._plot_dir.mkdir(parents=True, exist_ok=True)
 
         requested = self.config.plot_fields
@@ -38,7 +63,6 @@ class FigureBuilder:
             requested = list(get_operators("plotting").keys())
 
         all_ops = get_operators("plotting")
-        self._operators: list = []
         for name in requested:
             entry = all_ops.get(name)
             if entry is None:
@@ -76,7 +100,7 @@ class FigureBuilder:
             row, col = divmod(idx, ncols)
             try:
                 op(axes[row][col], data, timestep)
-            except Exception as exc:  # pragma: no cover
+            except Exception as exc:  ## noqa: BLE001
                 axes[row][col].set_title(f"{op.name} - ERROR")
                 axes[row][col].text(
                     0.5,
@@ -138,12 +162,8 @@ class FigureBuilder:
     @staticmethod
     def _layout(n: int) -> tuple[int, int]:
         """Choose a compact subplot layout for *n* panels."""
-        if n <= 1:
-            return 1, 1
-        if n <= 2:
-            return 2, 1
-        if n <= 4:
-            return 2, 2
+        if layout := FigureBuilder._SMALL_LAYOUTS.get(n):
+            return layout
         ncols = math.ceil(math.sqrt(n))
         nrows = math.ceil(n / ncols)
         return ncols, nrows

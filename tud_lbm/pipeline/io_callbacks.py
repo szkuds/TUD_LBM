@@ -32,14 +32,17 @@ Usage (strategy 2)::
 """
 
 from __future__ import annotations
-
-from collections.abc import Callable
-
+from typing import TYPE_CHECKING
 import jax
 import numpy as np
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from tud_lbm.io import SimulationIO
+    from tud_lbm.pipeline.state import State
 
-def _state_to_numpy(state, fields: tuple | None = None, t: int | None = None) -> dict:
+
+def _state_to_numpy(state: State, fields: tuple | None = None, t: int | None = None) -> dict:
     """Convert a :class:`~state.state.State` pytree to a NumPy dict.
 
     Only includes non-``None`` array fields suitable for saving.
@@ -63,12 +66,13 @@ def _state_to_numpy(state, fields: tuple | None = None, t: int | None = None) ->
         # Raising here causes the jax.debug.callback to fail
         # and the lax.scan / run(...) to abort at this timestep.
         # TODO: when a NaN is triggered it still needs to plot id that is enabled.
-        raise FloatingPointError(f"NaNs detected at t={t} in fields: {bad}")
+        msg = f"NaNs detected at t={t} in fields: {bad}"
+        raise FloatingPointError(msg)
     return data
 
 
 def make_save_callback(
-    io_handler,
+    io_handler: SimulationIO,
     save_interval: int,
     skip_interval: int = 0,
     save_fields: tuple | None = None,
@@ -99,17 +103,17 @@ def make_save_callback(
             return new_state, None
     """
 
-    def _host_save(state, t):
+    def _host_save(state: State, t: int) -> None:
         """Write state to disk; interval already checked on-device."""
         it = int(t)
         data = _state_to_numpy(state, fields=save_fields, t=it)
         io_handler.save_data_step(it, data)
 
-    def do_save(state, t):
+    def do_save(state: State, t: int) -> None:
         jax.lax.cond(
             (t > skip_interval) & (t % save_interval == 0),
-            lambda s, t: jax.debug.callback(_host_save, s, t, ordered=True),
-            lambda s, t: None,
+            lambda _s, _t: jax.debug.callback(_host_save, state, t, ordered=True),
+            lambda _s, _t: None,
             state,
             t,
         )

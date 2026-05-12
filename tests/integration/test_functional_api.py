@@ -9,9 +9,7 @@
 """
 
 from __future__ import annotations
-
 import inspect
-
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -25,18 +23,18 @@ class TestTopLevelExports:
     """The top-level package re-exports only the new functional API."""
 
     def test_exports_simulation_config(self):
-        import tud_lbm.config as config
+        from tud_lbm import config
 
         assert hasattr(config, "SimulationConfig")
 
     def test_exports_from_dict(self):
-        import tud_lbm.config as config
+        from tud_lbm import config
 
         assert hasattr(config, "from_dict")
         assert callable(config.from_dict)
 
     def test_exports_dict_adapter(self):
-        import tud_lbm.config as config
+        from tud_lbm import config
 
         assert hasattr(config, "DictAdapter")
 
@@ -45,18 +43,18 @@ class TestRunnerExports:
     """``runner`` exports only the functional API."""
 
     def test_exports_run(self):
-        import tud_lbm.pipeline.runner as runner
+        from tud_lbm.pipeline import runner
 
         assert hasattr(runner, "run")
         assert callable(runner.run)
 
     def test_exports_init_state(self):
-        import tud_lbm.pipeline.runner as runner
+        from tud_lbm.pipeline import runner
 
         assert hasattr(runner, "init_state")
 
     def test_no_legacy_exports(self):
-        import tud_lbm.pipeline.runner as runner
+        from tud_lbm.pipeline import runner
 
         for name in (
             "Run",
@@ -121,14 +119,14 @@ class TestDictAdapter:
         adapter = DictAdapter()
         cfg = adapter.load(d)
         assert isinstance(cfg, SimulationConfig)
-        assert cfg.grid_shape == (8, 8)
+        assert cfg.grid_shape == (8, 8, 1)
         assert cfg.tau == 0.8
 
     def test_from_dict_convenience(self):
         from tud_lbm.config import from_dict
 
         cfg = from_dict({"grid_shape": [16, 16], "tau": 0.7, "nt": 10})
-        assert cfg.grid_shape == (16, 16)
+        assert cfg.grid_shape == (16, 16, 1)
 
     def test_validation_error(self):
         from tud_lbm.config import from_dict
@@ -170,7 +168,8 @@ class TestEndToEnd:
 
     def test_single_phase_e2e(self):
         from tud_lbm.config import SimulationConfig
-        from tud_lbm.pipeline.runner import init_state, run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
         from tud_lbm.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=5)
@@ -185,7 +184,8 @@ class TestEndToEnd:
 
     def test_multiphase_e2e(self):
         from tud_lbm.config import SimulationConfig
-        from tud_lbm.pipeline.runner import init_state, run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
         from tud_lbm.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
@@ -208,7 +208,8 @@ class TestEndToEnd:
 
     def test_run_uses_setup_nt_default(self):
         from tud_lbm.config import SimulationConfig
-        from tud_lbm.pipeline.runner import init_state, run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
         from tud_lbm.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=4)
@@ -219,7 +220,8 @@ class TestEndToEnd:
 
     def test_save_interval(self):
         from tud_lbm.config import SimulationConfig
-        from tud_lbm.pipeline.runner import init_state, run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
         from tud_lbm.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
@@ -246,7 +248,8 @@ class TestEndToEnd:
 
     def test_mass_conservation(self):
         from tud_lbm.config import SimulationConfig
-        from tud_lbm.pipeline.runner import init_state, run
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
         from tud_lbm.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)

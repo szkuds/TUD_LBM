@@ -1,4 +1,4 @@
-"""BGK (Bhatnagar–Gross–Krook) collision operator — IMPLEMENTATION.
+r"""BGK (Bhatnagar-Gross-Krook) collision operator — IMPLEMENTATION.
 
 This is an internal implementation of the CollisionOperator protocol.
 Do NOT import this module directly.
@@ -21,10 +21,11 @@ where *S* is the optional source term.
 """
 
 from __future__ import annotations
-
-import jax.numpy as jnp
-
+from typing import TYPE_CHECKING
 from tud_lbm.registry import collision_model
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
 
 
 @collision_model(name="bgk")
@@ -56,7 +57,7 @@ def collide_bgk(
         f_col = (1 − 1/τ) f + (1/τ) feq [+ (1 − 1/(2τ)) source]
 
     Args:
-        f: Pre-collision populations, shape ``(nx, ny, q, 1)``.
+        f: Pre-collision populations, shape ``(nx, ny, nz, q, 1)``.
         feq: Equilibrium populations, same shape.
         tau: Relaxation time (> 0.5).
         source: Optional source term, same shape.

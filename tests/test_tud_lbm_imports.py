@@ -6,8 +6,6 @@ ensuring that the new tud_lbm/ package hierarchy exists and has proper exports.
 
 import importlib.util
 
-import pytest
-
 
 class TestTudLbmStructure:
     """Verify tud_lbm package modules exist and have expected exports."""
@@ -34,19 +32,10 @@ class TestTudLbmStructure:
 
     def test_pipeline_state_module_exists(self):
         """Test that pipeline.state module exists on disk."""
-        import os
+        from pathlib import Path
 
-        state_path = os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "tud_lbm",
-            "pipeline",
-            "state",
-            "__init__.py",
-        )
-        assert os.path.exists(
-            state_path
-        ), f"State module __init__.py not found at {state_path}"
+        state_path = Path(__file__).parent / ".." / "tud_lbm" / "pipeline" / "state" / "__init__.py"
+        assert state_path.exists(), f"State module __init__.py not found at {state_path}"
 
     def test_registry_module_exists(self):
         """Test that registry module can be imported."""

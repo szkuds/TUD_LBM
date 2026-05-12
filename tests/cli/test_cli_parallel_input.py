@@ -1,9 +1,8 @@
 from __future__ import annotations
-
-import pytest
-
-pytest.skip("click dependency not installed", allow_module_level=True)
-
+from click.testing import CliRunner
+from tud_lbm.config import SimulationConfig
+from tud_lbm.config.array_expansion import ArrayParameterSet
+from tud_lbm.pipeline.parallel_runner import SimulationResult
 
 
 def _make_config(results_dir: str, tau: float = 0.8) -> SimulationConfig:
@@ -24,12 +23,8 @@ def test_cli_single_config_uses_single_run(monkeypatch, tmp_path):
 
     config = _make_config(str(tmp_path))
 
-    monkeypatch.setattr(
-        "config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"}
-    )
-    monkeypatch.setattr(
-        "config.array_expansion.expand_config", lambda raw: ([config], None)
-    )
+    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
+    monkeypatch.setattr("tud_lbm.config.array_expansion.expand_config", lambda raw: ([config], None))
 
     called = {"single": False}
 
@@ -38,7 +33,7 @@ def test_cli_single_config_uses_single_run(monkeypatch, tmp_path):
         assert cfg == config
         return cfg
 
-    monkeypatch.setattr("cli.cli._run_simulation", _fake_single_run)
+    monkeypatch.setattr("tud_lbm.cli.cli._run_simulation", _fake_single_run)
 
     result = CliRunner().invoke(main, [str(cfg_path), "--no-prompt"])
 
@@ -61,15 +56,13 @@ def test_cli_array_config_uses_parallel_sweep(monkeypatch, tmp_path):
         total_combinations=2,
     )
 
+    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
     monkeypatch.setattr(
-        "config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"}
-    )
-    monkeypatch.setattr(
-        "config.array_expansion.expand_config",
+        "tud_lbm.config.array_expansion.expand_config",
         lambda raw: ([config_a, config_b], metadata),
     )
     monkeypatch.setattr(
-        "config.array_expansion.enumerate_configs",
+        "tud_lbm.config.array_expansion.enumerate_configs",
         lambda raw: iter(
             [
                 (0, {"tau": 0.6}, config_a),
@@ -89,7 +82,7 @@ def test_cli_array_config_uses_parallel_sweep(monkeypatch, tmp_path):
             SimulationResult(index=1, config=config_b, status="success"),
         ]
 
-    monkeypatch.setattr("cli.cli._run_parallel_sweep", _fake_parallel_sweep)
+    monkeypatch.setattr("tud_lbm.cli.cli._run_parallel_sweep", _fake_parallel_sweep)
 
     result = CliRunner().invoke(main, [str(cfg_path), "--no-prompt"])
 
@@ -113,15 +106,13 @@ def test_cli_array_config_dry_run_skips_parallel_execution(monkeypatch, tmp_path
         total_combinations=2,
     )
 
+    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
     monkeypatch.setattr(
-        "config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"}
-    )
-    monkeypatch.setattr(
-        "config.array_expansion.expand_config",
+        "tud_lbm.config.array_expansion.expand_config",
         lambda raw: ([config_a, config_b], metadata),
     )
     monkeypatch.setattr(
-        "config.array_expansion.enumerate_configs",
+        "tud_lbm.config.array_expansion.enumerate_configs",
         lambda raw: iter(
             [
                 (0, {"tau": 0.6}, config_a),
@@ -136,7 +127,7 @@ def test_cli_array_config_dry_run_skips_parallel_execution(monkeypatch, tmp_path
         called["parallel"] = True
         return []
 
-    monkeypatch.setattr("cli.cli._run_parallel_sweep", _fake_parallel_sweep)
+    monkeypatch.setattr("tud_lbm.cli.cli._run_parallel_sweep", _fake_parallel_sweep)
 
     result = CliRunner().invoke(main, [str(cfg_path), "--no-prompt", "--dry-run"])
 
@@ -166,9 +157,9 @@ def test_cli_override_updates_scalar_field_before_single_run(monkeypatch, tmp_pa
         captured["raw"] = dict(raw)
         return [_make_config(str(tmp_path), tau=0.8)], None
 
-    monkeypatch.setattr("config.adapter_toml.TomlAdapter.load_raw", _fake_load_raw)
-    monkeypatch.setattr("config.array_expansion.expand_config", _fake_expand)
-    monkeypatch.setattr("cli.cli._run_simulation", lambda cfg: cfg)
+    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", _fake_load_raw)
+    monkeypatch.setattr("tud_lbm.config.array_expansion.expand_config", _fake_expand)
+    monkeypatch.setattr("tud_lbm.cli.cli._run_simulation", lambda cfg: cfg)
 
     result = CliRunner().invoke(
         main,
@@ -200,28 +191,22 @@ def test_cli_override_updates_nested_sweep_field(monkeypatch, tmp_path):
     captured = {"raw": None}
 
     monkeypatch.setattr(
-        "config.adapter_toml.TomlAdapter.load_raw",
-        lambda self, path: {
-            "gravity_force": {"force_g": 5e-7, "inclination_angle_deg": 50}
-        },
+        "tud_lbm.config.adapter_toml.TomlAdapter.load_raw",
+        lambda self, path: {"gravity_force": {"force_g": 5e-7, "inclination_angle_deg": 50}},
     )
 
     def _fake_expand(raw):
         captured["raw"] = raw
         return [config_a, config_a], metadata
 
-    monkeypatch.setattr("config.array_expansion.expand_config", _fake_expand)
+    monkeypatch.setattr("tud_lbm.config.array_expansion.expand_config", _fake_expand)
     monkeypatch.setattr(
-        "config.array_expansion.enumerate_configs",
-        lambda raw: iter(
-            [(0, {"gravity_force.inclination_angle_deg": 50}, config_a)] * 2
-        ),
+        "tud_lbm.config.array_expansion.enumerate_configs",
+        lambda raw: iter([(0, {"gravity_force.inclination_angle_deg": 50}, config_a)] * 2),
     )
     monkeypatch.setattr(
-        "cli.cli._run_parallel_sweep",
-        lambda configs, parameters_list, **kwargs: [
-            SimulationResult(index=0, config=config_a, status="success")
-        ],
+        "tud_lbm.cli.cli._run_parallel_sweep",
+        lambda configs, parameters_list, **kwargs: [SimulationResult(index=0, config=config_a, status="success")],
     )
 
     result = CliRunner().invoke(
@@ -244,9 +229,7 @@ def test_cli_override_rejects_invalid_value(monkeypatch, tmp_path):
     cfg_path = tmp_path / "config.toml"
     cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
 
-    monkeypatch.setattr(
-        "config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"tau": 0.8}
-    )
+    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"tau": 0.8})
 
     result = CliRunner().invoke(
         main,

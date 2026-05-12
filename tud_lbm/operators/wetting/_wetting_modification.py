@@ -1,14 +1,11 @@
 """Interface-localised wetting density modification.
 
 Provides :func:`_apply_wetting_modification`, which adjusts ghost-cell
-densities at the liquid–vapour interface so that the LBM-stencil
+densities at the liquid-vapour interface so that the LBM-stencil
 gradient "sees" the desired wetting boundary condition.
 """
 
 from __future__ import annotations
-
-from typing import Any
-
 import jax.numpy as jnp
 
 # Density thresholds for detecting the interface region
@@ -18,12 +15,12 @@ _LOW_FRAC = 0.05
 
 def _apply_wetting_modification(
     edge_slice: jnp.ndarray,
-    rho_l: float,
-    rho_v: float,
-    phi_l: Any,
-    phi_r: Any,
-    d_rho_l: Any,
-    d_rho_r: Any,
+    rho_l: jnp.ndarray,
+    rho_v: jnp.ndarray,
+    phi_l: jnp.ndarray,
+    phi_r: jnp.ndarray,
+    d_rho_l: jnp.ndarray,
+    d_rho_r: jnp.ndarray,
     width: int,
 ) -> jnp.ndarray:
     """Apply wetting density modification at the liquid-vapour interface.
@@ -31,6 +28,16 @@ def _apply_wetting_modification(
     Only modifies ghost-cell values that lie within the interface region
     (between the density thresholds). The interface is split into left
     and right contact-line regions, each receiving its own phi/d_rho.
+
+    Args:
+        edge_slice: Edge density slice.
+        rho_l: Liquid density.
+        rho_v: Vapour density.
+        phi_l: Left contact angle parameter.
+        phi_r: Right contact angle parameter.
+        d_rho_l: Left density modification.
+        d_rho_r: Right density modification.
+        width: Ghost-cell width.
 
     Args:
         edge_slice: Ghost-row densities, shape ``(n,)``.

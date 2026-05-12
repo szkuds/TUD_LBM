@@ -12,10 +12,12 @@ Example:
 """
 
 from __future__ import annotations
-
+from typing import TYPE_CHECKING
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
-from tud_lbm.operators.protocols import StreamingOperator
+
+if TYPE_CHECKING:
+    from tud_lbm.operators.protocols import StreamingOperator
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("tud_lbm.operators.streaming")
@@ -41,7 +43,7 @@ def build_streaming_fn(scheme: str = "standard") -> StreamingOperator:
         ValueError: If scheme is not registered.
 
     Examples:
-        >>> from operators.streaming import build_streaming_fn
+        >>> from tud_lbm.operators.streaming import build_streaming_fn
         >>> stream = build_streaming_fn("standard")
         >>> f_streamed = stream(f, lattice)
     """

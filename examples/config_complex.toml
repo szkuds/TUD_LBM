@@ -5,7 +5,7 @@ type = "multiphase"
 grid_shape = [201, 101]
 lattice_type = "D2Q9"
 tau = 0.99
-nt = 20000
+nt = 1000
 init_type = "wetting_chem_step"
 
 [multiphase]

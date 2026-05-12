@@ -43,23 +43,21 @@ Usage::
 """
 
 from __future__ import annotations
-
 from typing import TYPE_CHECKING
-
 import jax
 import jax.numpy as jnp
-
 from tud_lbm.pipeline.state.state import State
 
 if TYPE_CHECKING:
-    from util.io import SimulationIO
+    from setup import SimulationSetup
+    from tud_lbm.io import SimulationIO
 
 
 # ── State initialisation ─────────────────────────────────────────────
 
 
 def init_state(
-    setup,
+    setup: SimulationSetup,
     *,
     f: jnp.ndarray | None = None,
     init_kwargs: dict | None = None,
@@ -77,7 +75,7 @@ def init_state(
     Args:
         setup: :class:`~setup.simulation_setup.SimulationSetup`.
         f: Optional pre-computed initial distribution function,
-           shape ``(nx, ny, q, 1)``.
+           shape ``(nx, ny, nz, q, 1)``.
         init_kwargs: Extra keyword arguments forwarded to the
            initialisation function (e.g. ``density``, ``rho_l``,
            ``rho_v``, ``interface_width``, ``npz_path``).
@@ -85,19 +83,20 @@ def init_state(
     Returns:
         A :class:`State` ready to be passed to :func:`run`.
     """
-    from tud_lbm.pipeline.state import build_extra_state, build_optional_fields
+    from tud_lbm.pipeline.state import build_extra_state
+    from tud_lbm.pipeline.state import build_optional_fields
 
     lattice = setup.lattice
-    nx, ny = setup.grid_shape[0], setup.grid_shape[1]
+    nx, ny, nz = setup.grid_shape[0], setup.grid_shape[1], setup.grid_shape[2]
 
     if f is None:
         f = setup.initial_f_fn(init_kwargs)
 
-    rho = jnp.sum(f, axis=2, keepdims=True)
-    u = jnp.zeros((nx, ny, 1, lattice.d))
+    rho = jnp.sum(f, axis=-2, keepdims=True)
+    u = jnp.zeros((nx, ny, nz, 1, lattice.d))
     t = jnp.array(0)
 
-    force, force_ext = build_optional_fields(setup, nx, ny, lattice.d)
+    force, force_ext = build_optional_fields(setup, nx, ny, nz, lattice.d)
     extra_state = build_extra_state(setup)
 
     return State(
@@ -115,7 +114,7 @@ def init_state(
 
 
 def run(
-    setup,
+    setup: SimulationSetup,
     initial_state: State,
     nt: int | None = None,
     save_interval: int = 1,
@@ -162,7 +161,7 @@ def run(
         )
 
         @jax.jit
-        def scan_body_io(state, t):
+        def scan_body_io(state: State, t: int) -> State:
             new_state = setup.step_fn(setup, state)
             do_save(new_state, t)
             return new_state, None
@@ -176,7 +175,7 @@ def run(
 
     # ── In-memory trajectory mode ────────────────────────────────
     @jax.jit
-    def scan_body(state, t):
+    def scan_body(state: State, _t: int) -> State:
         new_state = setup.step_fn(setup, state)
         return new_state, new_state
 

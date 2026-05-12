@@ -12,4 +12,3 @@ from tud_lbm.config.adapter_dict import DictAdapter
 from tud_lbm.config.adapter_toml import TomlAdapter
 
 __all__ = ["DictAdapter", "TomlAdapter"]
-

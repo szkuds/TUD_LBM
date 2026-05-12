@@ -9,14 +9,13 @@ Tests end-to-end workflows that users will employ:
 """
 
 from __future__ import annotations
-
 import tempfile
 from pathlib import Path
-
 import numpy as np
 import pytest
-
-from tud_lbm import SimulationConfig, build_setup, run
+from tud_lbm import SimulationConfig
+from tud_lbm import build_setup
+from tud_lbm import run
 from tud_lbm.pipeline.runner import init_state
 from tud_lbm.readers import DictAdapter
 
@@ -32,8 +31,8 @@ class TestMinimalSimulation:
         final_state, _ = run(setup, state, nt=10)
 
         assert final_state.t == 10
-        assert final_state.rho.shape == (32, 32, 1, 1)
-        assert final_state.u.shape == (32, 32, 1, 2)
+        assert final_state.rho.shape == (32, 32, 1, 1, 1)
+        assert final_state.u.shape == (32, 32, 1, 1, 2)
         assert not np.isnan(final_state.f).any()
 
     def test_minimal_with_trajectory(self):
@@ -55,7 +54,7 @@ class TestConfigCreation:
         """Verify all defaults are sensible."""
         config = SimulationConfig()
 
-        assert config.grid_shape == (64, 64)
+        assert config.grid_shape == (64, 64, 1)
         assert config.tau == 1.0
         assert config.nt == 1000
         assert config.lattice_type == "D2Q9"
@@ -70,11 +69,11 @@ class TestConfigCreation:
             state = init_state(setup)
             final_state, _ = run(setup, state, nt=5)
 
-            assert final_state.rho.shape == (*shape, 1, 1)
+            assert final_state.rho.shape == (*shape, 1, 1, 1)
 
     def test_tau_must_be_greater_than_half(self):
         """Verify tau validation."""
-        with pytest.raises(ValueError, match="tau.*must be.*0.5"):
+        with pytest.raises(ValueError, match=r"tau.*must be.*0.5"):
             SimulationConfig(tau=0.4)
 
     def test_tau_at_boundary(self):
@@ -108,7 +107,7 @@ class TestDictAdapter:
         assert final_state.t == 5
 
     def test_dict_adapter_normalizes_grid_shape(self):
-        """Verify list grid_shape is converted to tuple."""
+        """Verify list grid_shape is converted to tuple and normalized to 3D."""
         adapter = DictAdapter()
         config = adapter.load(
             {
@@ -118,7 +117,7 @@ class TestDictAdapter:
         )
 
         assert isinstance(config.grid_shape, tuple)
-        assert config.grid_shape == (32, 32)
+        assert config.grid_shape == (32, 32, 1)
 
     def test_dict_adapter_partial_config(self):
         """Verify dict adapter works with partial config (rest are defaults)."""
@@ -223,9 +222,6 @@ class TestForceConfiguration:
 class TestOutputAdapters:
     """Test output adapter functionality."""
 
-    @pytest.mark.skip(
-        reason="Output writer instantiation requires further investigation"
-    )
     def test_write_numpy_creates_file(self):
         """Verify write_numpy creates valid .npz file."""
         try:
@@ -255,12 +251,10 @@ class TestOutputAdapters:
             files = list(Path(tmpdir).glob("*.npz"))
             assert len(files) > 0
 
-    @pytest.mark.skip(reason="VTK writer requires pyevtk optional dependency")
     def test_write_vtk_creates_file(self):
         """Verify write_vtk creates valid .vtk file."""
         try:
             import pyevtk  # noqa: F401
-
             from tud_lbm.io.output_data import output_writers
         except ImportError:
             pytest.skip("VTK writer or pyevtk not available")
@@ -271,7 +265,8 @@ class TestOutputAdapters:
         final_state, _ = run(setup, state, nt=2)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            vtk_writer = output_writers["vtk"]
+            vtk_writer_class = output_writers["vtk"]
+            vtk_writer = vtk_writer_class()
             vtk_writer.data_dir = str(tmpdir)
             vtk_writer.save_data_step(
                 iteration=0,
@@ -335,7 +330,7 @@ class TestEdgeCases:
         state = init_state(setup)
         final_state, _ = run(setup, state, nt=2)
 
-        assert final_state.rho.shape == (4, 4, 1, 1)
+        assert final_state.rho.shape == (4, 4, 1, 1, 1)
 
     def test_very_large_tau(self):
         """Verify large tau values work."""
@@ -377,7 +372,7 @@ class TestAPIIntegration:
         assert state is not None
 
         # Run simulation
-        final_state, trajectory = run(setup, state, nt=50)
+        final_state, _trajectory = run(setup, state, nt=50)
         assert final_state.t == 50
 
     def test_dict_adapter_workflow(self):

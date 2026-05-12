@@ -8,8 +8,7 @@ Public surface:
   or run directories.
 """
 
-from __future__ import annotations
-
+from __future__ import annotations  # noqa: I001
 import json
 from pathlib import Path
 
@@ -22,16 +21,15 @@ from .base import PlotOperator
 from .figure_builder import FigureBuilder
 
 
-def visualise(run_dir, title: str = "LBM Simulation Results", skip: int = 0) -> None:
+def visualise(run_dir: str, skip: int = 0) -> None:
     """Plotting entry point.
 
-    Accepts a run-directory
-    path. In both cases, figures are rendered by :class:`FigureBuilder`.
+    Accepts a run-directory path. In both cases, figures are rendered
+    by :class:`FigureBuilder`.
 
     Note:
-        The *title* parameter is retained for backward compatibility but
-        is no longer used.  The figure title is sourced from
-        ``SimulationConfig.simulation_name`` instead.
+        The *title* parameter has been removed as figures now source
+        their title from ``SimulationConfig.simulation_name`` instead.
     """
     # TODO: Need make this function with adapters
     from tud_lbm.config import from_dict

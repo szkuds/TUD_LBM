@@ -11,38 +11,32 @@ Tests cover:
 """
 
 from __future__ import annotations
-
-import pytest
-
-pytest.skip("This test module references functions removed in refactoring", allow_module_level=True)
-
 import dataclasses
 import json
 import tempfile
 from pathlib import Path
 from unittest import mock
 from uuid import UUID
-
+import pytest
 from tud_lbm.config.simulation_config import SimulationConfig
-from tud_lbm.pipeline.runner import (
-
-    SimulationResult,
-    _generate_plots,
-    _print_result_line,
-    _run_single_simulation,
-    run_parallel_simulations,
-    save_sweep_log,
-)
+from tud_lbm.pipeline.parallel_runner import SimulationResult
+from tud_lbm.pipeline.parallel_runner import generate_plots
+from tud_lbm.pipeline.parallel_runner import print_result_line
+from tud_lbm.pipeline.parallel_runner import run_parallel_simulations
+from tud_lbm.pipeline.parallel_runner import run_single_simulation
+from tud_lbm.pipeline.parallel_runner import save_sweep_log
 
 # =========================================================================
 # Fixtures
 # =========================================================================
+
 
 @pytest.fixture
 def temp_results_dir():
     """Return a temporary directory for simulation results."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield tmpdir
+
 
 @pytest.fixture
 def simple_config(temp_results_dir):
@@ -55,16 +49,18 @@ def simple_config(temp_results_dir):
         results_dir=temp_results_dir,
     )
 
+
 # =========================================================================
 # SimulationResult Dataclass Tests
 # =========================================================================
+
 
 class TestSimulationResult:
     """Tests for the SimulationResult dataclass."""
 
     def test_frozen_immutable(self, simple_config):
         """Verify SimulationResult is frozen (immutable)."""
-        result = SimulationResult(
+        result: SimulationResult = SimulationResult(
             index=0,
             config=simple_config,
             status="success",
@@ -112,9 +108,11 @@ class TestSimulationResult:
             )
             assert result.status == status
 
+
 # =========================================================================
 # _run_single_simulation Tests
 # =========================================================================
+
 
 class TestRunSingleSimulation:
     """Tests for _run_single_simulation function."""
@@ -126,16 +124,16 @@ class TestRunSingleSimulation:
         mock_run_fn = mock.Mock(return_value=(mock_state, None))
 
         with (
-            mock.patch("config.jax_config.configure_jax"),
-            mock.patch("setup.simulation_setup.build_setup", return_value=mock_setup),
-            mock.patch("runner.run.init_state", return_value=mock_state),
-            mock.patch("util.io.SimulationIO") as mock_io_cls,
+            mock.patch("tud_lbm.config.jax_config.configure_jax"),
+            mock.patch("tud_lbm.pipeline.setup.build_setup", return_value=mock_setup),
+            mock.patch("tud_lbm.pipeline.runner.init_state", return_value=mock_state),
+            mock.patch("tud_lbm.io.SimulationIO") as mock_io_cls,
         ):
             mock_io = mock.Mock()
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            result = _run_single_simulation(
+            result = run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=mock_run_fn,
@@ -154,16 +152,16 @@ class TestRunSingleSimulation:
         mock_run_fn = mock.Mock(return_value=(mock_state, None))
 
         with (
-            mock.patch("config.jax_config.configure_jax") as mock_configure,
-            mock.patch("setup.simulation_setup.build_setup", return_value=mock_setup),
-            mock.patch("runner.run.init_state", return_value=mock_state),
-            mock.patch("util.io.SimulationIO") as mock_io_cls,
+            mock.patch("tud_lbm.config.jax_config.configure_jax") as mock_configure,
+            mock.patch("tud_lbm.pipeline.setup.build_setup", return_value=mock_setup),
+            mock.patch("tud_lbm.pipeline.runner.init_state", return_value=mock_state),
+            mock.patch("tud_lbm.io.SimulationIO") as mock_io_cls,
         ):
             mock_io = mock.Mock()
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=mock_run_fn,
@@ -178,15 +176,15 @@ class TestRunSingleSimulation:
         mock_run_fn = mock.Mock(return_value=(mock_state, None))
 
         with (
-            mock.patch("config.jax_config.configure_jax"),
-            mock.patch("runner.run.init_state", return_value=mock_state),
-            mock.patch("util.io.SimulationIO") as mock_io_cls,
+            mock.patch("tud_lbm.config.jax_config.configure_jax"),
+            mock.patch("tud_lbm.pipeline.runner.init_state", return_value=mock_state),
+            mock.patch("tud_lbm.io.SimulationIO") as mock_io_cls,
         ):
             mock_io = mock.Mock()
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 setup_fn=custom_setup_fn,
@@ -201,16 +199,16 @@ class TestRunSingleSimulation:
         mock_run_fn = mock.Mock(return_value=(mock_state, None))
 
         with (
-            mock.patch("config.jax_config.configure_jax"),
-            mock.patch("setup.simulation_setup.build_setup") as mock_build,
-            mock.patch("runner.run.init_state", return_value=mock_state),
-            mock.patch("util.io.SimulationIO") as mock_io_cls,
+            mock.patch("tud_lbm.config.jax_config.configure_jax"),
+            mock.patch("tud_lbm.pipeline.setup.build_setup") as mock_build,
+            mock.patch("tud_lbm.pipeline.runner.init_state", return_value=mock_state),
+            mock.patch("tud_lbm.io.SimulationIO") as mock_io_cls,
         ):
             mock_io = mock.Mock()
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 setup_fn=None,
@@ -226,16 +224,16 @@ class TestRunSingleSimulation:
         custom_run_fn = mock.Mock(return_value=(mock_state, None))
 
         with (
-            mock.patch("config.jax_config.configure_jax"),
-            mock.patch("setup.simulation_setup.build_setup", return_value=mock_setup),
-            mock.patch("runner.run.init_state", return_value=mock_state),
-            mock.patch("util.io.SimulationIO") as mock_io_cls,
+            mock.patch("tud_lbm.config.jax_config.configure_jax"),
+            mock.patch("tud_lbm.pipeline.setup.build_setup", return_value=mock_setup),
+            mock.patch("tud_lbm.pipeline.runner.init_state", return_value=mock_state),
+            mock.patch("tud_lbm.io.SimulationIO") as mock_io_cls,
         ):
             mock_io = mock.Mock()
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=custom_run_fn,
@@ -249,18 +247,18 @@ class TestRunSingleSimulation:
         mock_state = mock.Mock()
 
         with (
-            mock.patch("config.jax_config.configure_jax"),
-            mock.patch("setup.simulation_setup.build_setup", return_value=mock_setup),
-            mock.patch("runner.run.init_state", return_value=mock_state),
-            mock.patch("runner.run.run") as mock_run,
-            mock.patch("util.io.SimulationIO") as mock_io_cls,
+            mock.patch("tud_lbm.config.jax_config.configure_jax"),
+            mock.patch("tud_lbm.pipeline.setup.build_setup", return_value=mock_setup),
+            mock.patch("tud_lbm.pipeline.runner.init_state", return_value=mock_state),
+            mock.patch("tud_lbm.pipeline.runner.run") as mock_run,
+            mock.patch("tud_lbm.io.SimulationIO") as mock_io_cls,
         ):
             mock_io = mock.Mock()
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
             mock_run.return_value = (mock_state, None)
 
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=None,
@@ -268,26 +266,24 @@ class TestRunSingleSimulation:
 
         mock_run.assert_called_once()
 
-    def test_parameter_string_formatting_with_params(
-        self, simple_config, temp_results_dir
-    ):
+    def test_parameter_string_formatting_with_params(self, simple_config, temp_results_dir):
         """Verify parameter string formatting when parameters dict is provided."""
         mock_setup = mock.Mock()
         mock_state = mock.Mock()
         mock_run_fn = mock.Mock(return_value=(mock_state, None))
 
         with (
-            mock.patch("config.jax_config.configure_jax"),
-            mock.patch("setup.simulation_setup.build_setup", return_value=mock_setup),
-            mock.patch("runner.run.init_state", return_value=mock_state),
-            mock.patch("util.io.SimulationIO") as mock_io_cls,
+            mock.patch("tud_lbm.config.jax_config.configure_jax"),
+            mock.patch("tud_lbm.pipeline.setup.build_setup", return_value=mock_setup),
+            mock.patch("tud_lbm.pipeline.runner.init_state", return_value=mock_state),
+            mock.patch("tud_lbm.io.SimulationIO") as mock_io_cls,
         ):
             mock_io = mock.Mock()
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
             parameters = {"alpha": 0.5, "beta": 2.0}
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 parameters=parameters,
@@ -300,25 +296,23 @@ class TestRunSingleSimulation:
         assert "alpha=0.5" in call_kwargs["simulation_name"]
         assert "beta=2.0" in call_kwargs["simulation_name"]
 
-    def test_parameter_string_formatting_without_params(
-        self, simple_config, temp_results_dir
-    ):
+    def test_parameter_string_formatting_without_params(self, simple_config, temp_results_dir):
         """Verify parameter string formatting when parameters is None."""
         mock_setup = mock.Mock()
         mock_state = mock.Mock()
         mock_run_fn = mock.Mock(return_value=(mock_state, None))
 
         with (
-            mock.patch("config.jax_config.configure_jax"),
-            mock.patch("setup.simulation_setup.build_setup", return_value=mock_setup),
-            mock.patch("runner.run.init_state", return_value=mock_state),
-            mock.patch("util.io.SimulationIO") as mock_io_cls,
+            mock.patch("tud_lbm.config.jax_config.configure_jax"),
+            mock.patch("tud_lbm.pipeline.setup.build_setup", return_value=mock_setup),
+            mock.patch("tud_lbm.pipeline.runner.init_state", return_value=mock_state),
+            mock.patch("tud_lbm.io.SimulationIO") as mock_io_cls,
         ):
             mock_io = mock.Mock()
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            _run_single_simulation(
+            run_single_simulation(
                 index=0,
                 config=simple_config,
                 parameters=None,
@@ -328,25 +322,23 @@ class TestRunSingleSimulation:
         call_kwargs = mock_io_cls.call_args[1]
         assert "[sim_0]" in call_kwargs["simulation_name"]
 
-    def test_exception_handling_returns_failed_status(
-        self, simple_config, temp_results_dir
-    ):
+    def test_exception_handling_returns_failed_status(self, simple_config, temp_results_dir):
         """Verify exception handling returns status='failed'."""
         mock_setup = mock.Mock()
         mock_state = mock.Mock()
         mock_run_fn = mock.Mock(side_effect=ValueError("Test error"))
 
         with (
-            mock.patch("config.jax_config.configure_jax"),
-            mock.patch("setup.simulation_setup.build_setup", return_value=mock_setup),
-            mock.patch("runner.run.init_state", return_value=mock_state),
-            mock.patch("util.io.SimulationIO") as mock_io_cls,
+            mock.patch("tud_lbm.config.jax_config.configure_jax"),
+            mock.patch("tud_lbm.pipeline.setup.build_setup", return_value=mock_setup),
+            mock.patch("tud_lbm.pipeline.runner.init_state", return_value=mock_state),
+            mock.patch("tud_lbm.io.SimulationIO") as mock_io_cls,
         ):
             mock_io = mock.Mock()
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            result = _run_single_simulation(
+            result = run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=mock_run_fn,
@@ -363,16 +355,16 @@ class TestRunSingleSimulation:
         mock_run_fn = mock.Mock(side_effect=RuntimeError("Deep error"))
 
         with (
-            mock.patch("config.jax_config.configure_jax"),
-            mock.patch("setup.simulation_setup.build_setup", return_value=mock_setup),
-            mock.patch("runner.run.init_state", return_value=mock_state),
-            mock.patch("util.io.SimulationIO") as mock_io_cls,
+            mock.patch("tud_lbm.config.jax_config.configure_jax"),
+            mock.patch("tud_lbm.pipeline.setup.build_setup", return_value=mock_setup),
+            mock.patch("tud_lbm.pipeline.runner.init_state", return_value=mock_state),
+            mock.patch("tud_lbm.io.SimulationIO") as mock_io_cls,
         ):
             mock_io = mock.Mock()
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            result = _run_single_simulation(
+            result = run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=mock_run_fn,
@@ -387,16 +379,16 @@ class TestRunSingleSimulation:
         mock_run_fn = mock.Mock(side_effect=Exception("Test failure"))
 
         with (
-            mock.patch("config.jax_config.configure_jax"),
-            mock.patch("setup.simulation_setup.build_setup", return_value=mock_setup),
-            mock.patch("runner.run.init_state", return_value=mock_state),
-            mock.patch("util.io.SimulationIO") as mock_io_cls,
+            mock.patch("tud_lbm.config.jax_config.configure_jax"),
+            mock.patch("tud_lbm.pipeline.setup.build_setup", return_value=mock_setup),
+            mock.patch("tud_lbm.pipeline.runner.init_state", return_value=mock_state),
+            mock.patch("tud_lbm.io.SimulationIO") as mock_io_cls,
         ):
             mock_io = mock.Mock()
             mock_io.run_dir = Path(temp_results_dir) / "run_001"
             mock_io_cls.return_value = mock_io
 
-            result = _run_single_simulation(
+            result = run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=mock_run_fn,
@@ -404,26 +396,24 @@ class TestRunSingleSimulation:
 
         assert result.duration > 0.0
 
-    def test_config_output_dir_updated_via_replace(
-        self, simple_config, temp_results_dir
-    ):
+    def test_config_output_dir_updated_via_replace(self, simple_config, temp_results_dir):
         """Verify config.output_dir is updated via replace() on success."""
         mock_setup = mock.Mock()
         mock_state = mock.Mock()
         mock_run_fn = mock.Mock(return_value=(mock_state, None))
 
         with (
-            mock.patch("config.jax_config.configure_jax"),
-            mock.patch("setup.simulation_setup.build_setup", return_value=mock_setup),
-            mock.patch("runner.run.init_state", return_value=mock_state),
-            mock.patch("util.io.SimulationIO") as mock_io_cls,
+            mock.patch("tud_lbm.config.jax_config.configure_jax"),
+            mock.patch("tud_lbm.pipeline.setup.build_setup", return_value=mock_setup),
+            mock.patch("tud_lbm.pipeline.runner.init_state", return_value=mock_state),
+            mock.patch("tud_lbm.io.SimulationIO") as mock_io_cls,
         ):
             mock_io = mock.Mock()
             expected_dir = Path(temp_results_dir) / "run_001"
             mock_io.run_dir = expected_dir
             mock_io_cls.return_value = mock_io
 
-            result = _run_single_simulation(
+            result = run_single_simulation(
                 index=0,
                 config=simple_config,
                 run_fn=mock_run_fn,
@@ -431,9 +421,11 @@ class TestRunSingleSimulation:
 
         assert result.config.output_dir == str(expected_dir)
 
+
 # =========================================================================
 # run_parallel_simulations Tests
 # =========================================================================
+
 
 class TestRunParallelSimulations:
     """Tests for run_parallel_simulations function."""
@@ -465,12 +457,10 @@ class TestRunParallelSimulations:
 
         with (
             mock.patch(
-                "runner.parallel_runner._run_single_simulation",
+                "tud_lbm.pipeline.parallel_runner.run_single_simulation",
                 side_effect=mock_run_single_sim,
             ),
-            mock.patch(
-                "runner.parallel_runner.ProcessPoolExecutor"
-            ) as mock_executor_cls,
+            mock.patch("tud_lbm.pipeline.parallel_runner.ProcessPoolExecutor") as mock_executor_cls,
         ):
             mock_executor = mock.MagicMock()
             mock_executor_cls.return_value.__enter__.return_value = mock_executor
@@ -484,17 +474,13 @@ class TestRunParallelSimulations:
                     output_dir=f"/output_{i}",
                 )
 
-            with mock.patch(
-                "runner.parallel_runner.as_completed", return_value=futures
-            ):
+            with mock.patch("tud_lbm.pipeline.parallel_runner.as_completed", return_value=futures):
                 results = run_parallel_simulations(configs)
 
         indices = [r.index for r in results]
         assert indices == sorted(indices)
 
-    def test_verbose_true_produces_output(
-        self, simple_config, temp_results_dir, capsys
-    ):
+    def test_verbose_true_produces_output(self, simple_config, temp_results_dir, capsys):
         """Verify verbose=True produces printed output."""
         configs = [simple_config]
 
@@ -509,12 +495,10 @@ class TestRunParallelSimulations:
 
         with (
             mock.patch(
-                "runner.parallel_runner._run_single_simulation",
+                "tud_lbm.pipeline.parallel_runner.run_single_simulation",
                 side_effect=mock_run_single_sim,
             ),
-            mock.patch(
-                "runner.parallel_runner.ProcessPoolExecutor"
-            ) as mock_executor_cls,
+            mock.patch("tud_lbm.pipeline.parallel_runner.ProcessPoolExecutor") as mock_executor_cls,
         ):
             mock_executor = mock.MagicMock()
             mock_executor_cls.return_value.__enter__.return_value = mock_executor
@@ -528,9 +512,7 @@ class TestRunParallelSimulations:
                 duration=1.0,
             )
 
-            with mock.patch(
-                "runner.parallel_runner.as_completed", return_value=[future]
-            ):
+            with mock.patch("tud_lbm.pipeline.parallel_runner.as_completed", return_value=[future]):
                 results = run_parallel_simulations(configs, verbose=True)
 
         captured = capsys.readouterr()
@@ -542,7 +524,7 @@ class TestRunParallelSimulations:
 
         progress_calls = []
 
-        def mock_progress(completed, total):
+        def mock_progress(completed, total) -> None:
             progress_calls.append((completed, total))
 
         def mock_run_single_sim(index, config, **kwargs):
@@ -555,12 +537,10 @@ class TestRunParallelSimulations:
 
         with (
             mock.patch(
-                "runner.parallel_runner._run_single_simulation",
+                "tud_lbm.pipeline.parallel_runner.run_single_simulation",
                 side_effect=mock_run_single_sim,
             ),
-            mock.patch(
-                "runner.parallel_runner.ProcessPoolExecutor"
-            ) as mock_executor_cls,
+            mock.patch("tud_lbm.pipeline.parallel_runner.ProcessPoolExecutor") as mock_executor_cls,
         ):
             mock_executor = mock.MagicMock()
             mock_executor_cls.return_value.__enter__.return_value = mock_executor
@@ -574,17 +554,13 @@ class TestRunParallelSimulations:
                     output_dir=f"/output_{i}",
                 )
 
-            with mock.patch(
-                "runner.parallel_runner.as_completed", return_value=futures
-            ):
+            with mock.patch("tud_lbm.pipeline.parallel_runner.as_completed", return_value=futures):
                 run_parallel_simulations(configs, progress_callback=mock_progress)
 
         assert len(progress_calls) == 2
         assert all(call[1] == 2 for call in progress_calls)
 
-    def test_continue_on_error_false_raises_on_failure(
-        self, simple_config, temp_results_dir
-    ):
+    def test_continue_on_error_false_raises_on_failure(self, simple_config, temp_results_dir):
         """Verify continue_on_error=False raises RuntimeError on first failure."""
         configs = [simple_config, simple_config]
 
@@ -605,12 +581,10 @@ class TestRunParallelSimulations:
 
         with (
             mock.patch(
-                "runner.parallel_runner._run_single_simulation",
+                "tud_lbm.pipeline.parallel_runner.run_single_simulation",
                 side_effect=mock_run_single_sim,
             ),
-            mock.patch(
-                "runner.parallel_runner.ProcessPoolExecutor"
-            ) as mock_executor_cls,
+            mock.patch("tud_lbm.pipeline.parallel_runner.ProcessPoolExecutor") as mock_executor_cls,
         ):
             mock_executor = mock.MagicMock()
             mock_executor_cls.return_value.__enter__.return_value = mock_executor
@@ -630,14 +604,12 @@ class TestRunParallelSimulations:
             )
 
             with (
-                mock.patch("runner.parallel_runner.as_completed", return_value=futures),
+                mock.patch("tud_lbm.pipeline.parallel_runner.as_completed", return_value=futures),
                 pytest.raises(RuntimeError, match=r"Simulation .* failed"),
             ):
                 run_parallel_simulations(configs, continue_on_error=False)
 
-    def test_continue_on_error_true_collects_all_results(
-        self, simple_config, temp_results_dir
-    ):
+    def test_continue_on_error_true_collects_all_results(self, simple_config, temp_results_dir):
         """Verify continue_on_error=True collects all results even when some fail."""
         configs = [simple_config, simple_config, simple_config]
 
@@ -658,12 +630,10 @@ class TestRunParallelSimulations:
 
         with (
             mock.patch(
-                "runner.parallel_runner._run_single_simulation",
+                "tud_lbm.pipeline.parallel_runner.run_single_simulation",
                 side_effect=mock_run_single_sim,
             ),
-            mock.patch(
-                "runner.parallel_runner.ProcessPoolExecutor"
-            ) as mock_executor_cls,
+            mock.patch("tud_lbm.pipeline.parallel_runner.ProcessPoolExecutor") as mock_executor_cls,
         ):
             mock_executor = mock.MagicMock()
             mock_executor_cls.return_value.__enter__.return_value = mock_executor
@@ -685,18 +655,14 @@ class TestRunParallelSimulations:
                         output_dir=f"/output_{i}",
                     )
 
-            with mock.patch(
-                "runner.parallel_runner.as_completed", return_value=futures
-            ):
+            with mock.patch("tud_lbm.pipeline.parallel_runner.as_completed", return_value=futures):
                 results = run_parallel_simulations(configs, continue_on_error=True)
 
         assert len(results) == 3
         assert sum(1 for r in results if r.status == "success") == 2
         assert sum(1 for r in results if r.status == "failed") == 1
 
-    def test_max_workers_none_delegates_to_executor(
-        self, simple_config, temp_results_dir
-    ):
+    def test_max_workers_none_delegates_to_executor(self, simple_config, temp_results_dir):
         """Verify max_workers=None is passed to ProcessPoolExecutor."""
         configs = [simple_config]
 
@@ -710,12 +676,10 @@ class TestRunParallelSimulations:
 
         with (
             mock.patch(
-                "runner.parallel_runner._run_single_simulation",
+                "tud_lbm.pipeline.parallel_runner.run_single_simulation",
                 side_effect=mock_run_single_sim,
             ),
-            mock.patch(
-                "runner.parallel_runner.ProcessPoolExecutor"
-            ) as mock_executor_cls,
+            mock.patch("tud_lbm.pipeline.parallel_runner.ProcessPoolExecutor") as mock_executor_cls,
         ):
             mock_executor = mock.MagicMock()
             mock_executor_cls.return_value.__enter__.return_value = mock_executor
@@ -723,7 +687,7 @@ class TestRunParallelSimulations:
             mock_executor.__exit__ = mock.Mock(return_value=None)
             mock_executor.submit = mock.Mock(return_value=mock.Mock())
 
-            with mock.patch("runner.parallel_runner.as_completed", return_value=[]):
+            with mock.patch("tud_lbm.pipeline.parallel_runner.as_completed", return_value=[]):
                 run_parallel_simulations(configs, max_workers=None)
 
             mock_executor_cls.assert_called_once_with(max_workers=None)
@@ -733,9 +697,7 @@ class TestRunParallelSimulations:
         configs = [simple_config]
         custom_setup_fn = mock.Mock()
 
-        with mock.patch(
-            "runner.parallel_runner.ProcessPoolExecutor"
-        ) as mock_executor_cls:
+        with mock.patch("tud_lbm.pipeline.parallel_runner.ProcessPoolExecutor") as mock_executor_cls:
             mock_executor = mock.MagicMock()
             mock_executor_cls.return_value.__enter__.return_value = mock_executor
 
@@ -754,9 +716,7 @@ class TestRunParallelSimulations:
 
             mock_executor.submit.side_effect = capture_submit
 
-            with mock.patch(
-                "runner.parallel_runner.as_completed", return_value=[mock.MagicMock()]
-            ):
+            with mock.patch("tud_lbm.pipeline.parallel_runner.as_completed", return_value=[mock.MagicMock()]):
                 run_parallel_simulations(configs, setup_fn=custom_setup_fn)
 
         assert len(submit_calls) > 0
@@ -768,9 +728,7 @@ class TestRunParallelSimulations:
         configs = [simple_config]
         custom_run_fn = mock.Mock()
 
-        with mock.patch(
-            "runner.parallel_runner.ProcessPoolExecutor"
-        ) as mock_executor_cls:
+        with mock.patch("tud_lbm.pipeline.parallel_runner.ProcessPoolExecutor") as mock_executor_cls:
             mock_executor = mock.MagicMock()
             mock_executor_cls.return_value.__enter__.return_value = mock_executor
 
@@ -789,16 +747,16 @@ class TestRunParallelSimulations:
 
             mock_executor.submit.side_effect = capture_submit
 
-            with mock.patch(
-                "runner.parallel_runner.as_completed", return_value=[mock.MagicMock()]
-            ):
+            with mock.patch("tud_lbm.pipeline.parallel_runner.as_completed", return_value=[mock.MagicMock()]):
                 run_parallel_simulations(configs, run_fn=custom_run_fn)
 
         assert len(submit_calls) > 0
 
+
 # =========================================================================
 # _print_result_line Tests
 # =========================================================================
+
 
 class TestPrintResultLine:
     """Tests for _print_result_line function."""
@@ -811,7 +769,7 @@ class TestPrintResultLine:
             status="success",
             duration=1.5,
         )
-        _print_result_line(result, 1, 3)
+        print_result_line(result, 1, 3)
         captured = capsys.readouterr()
         assert "✓" in captured.out
 
@@ -824,7 +782,7 @@ class TestPrintResultLine:
             error="Test error",
             duration=1.5,
         )
-        _print_result_line(result, 1, 3)
+        print_result_line(result, 1, 3)
         captured = capsys.readouterr()
         assert "✗" in captured.out
 
@@ -838,7 +796,7 @@ class TestPrintResultLine:
             error=error_msg,
             duration=1.5,
         )
-        _print_result_line(result, 1, 3)
+        print_result_line(result, 1, 3)
         captured = capsys.readouterr()
         assert "First line" in captured.out
         assert "Second line" not in captured.out
@@ -852,7 +810,7 @@ class TestPrintResultLine:
             parameters={"alpha": 0.5, "beta": 2.0},
             duration=1.5,
         )
-        _print_result_line(result, 1, 3)
+        print_result_line(result, 1, 3)
         captured = capsys.readouterr()
         assert "[" in captured.out
         assert "]" in captured.out
@@ -867,13 +825,15 @@ class TestPrintResultLine:
             parameters=None,
             duration=1.5,
         )
-        _print_result_line(result, 1, 3)
+        print_result_line(result, 1, 3)
         captured = capsys.readouterr()
         assert "Sim 0" in captured.out
+
 
 # =========================================================================
 # _generate_plots Tests
 # =========================================================================
+
 
 class TestGeneratePlots:
     """Tests for _generate_plots function."""
@@ -885,8 +845,8 @@ class TestGeneratePlots:
             config=simple_config,
             status="failed",
         )
-        with mock.patch("util.plotting.FigureBuilder") as mock_builder:
-            _generate_plots([failed_result], verbose=False)
+        with mock.patch("tud_lbm.io.plotting.FigureBuilder") as mock_builder:
+            generate_plots([failed_result], verbose=False)
         mock_builder.assert_not_called()
 
     def test_skips_when_plot_fields_falsy(self, simple_config):
@@ -899,15 +859,13 @@ class TestGeneratePlots:
             output_dir="/output",
         )
 
-        with mock.patch("util.plotting.FigureBuilder") as mock_builder:
-            _generate_plots([result], verbose=False)
+        with mock.patch("tud_lbm.io.plotting.FigureBuilder") as mock_builder:
+            generate_plots([result], verbose=False)
         mock_builder.assert_not_called()
 
     def test_calls_figure_builder_for_qualifying_results(self, simple_config):
         """Verify FigureBuilder is called for qualifying results."""
-        config_with_plots = dataclasses.replace(
-            simple_config, plot_fields=["density", "velocity"]
-        )
+        config_with_plots = dataclasses.replace(simple_config, plot_fields=["density", "velocity"])
         result = SimulationResult(
             index=0,
             config=config_with_plots,
@@ -915,10 +873,10 @@ class TestGeneratePlots:
             output_dir="/output",
         )
 
-        with mock.patch("util.plotting.FigureBuilder") as mock_builder_cls:
+        with mock.patch("tud_lbm.io.plotting.FigureBuilder") as mock_builder_cls:
             mock_builder = mock.Mock()
             mock_builder_cls.return_value = mock_builder
-            _generate_plots([result], verbose=False)
+            generate_plots([result], verbose=False)
 
         mock_builder_cls.assert_called_once_with(config_with_plots, "/output")
         mock_builder.build_all.assert_called_once()
@@ -933,16 +891,14 @@ class TestGeneratePlots:
             output_dir="/output",
         )
 
-        with mock.patch("util.plotting.FigureBuilder") as mock_builder_cls:
+        with mock.patch("tud_lbm.io.plotting.FigureBuilder") as mock_builder_cls:
             mock_builder = mock.Mock()
             mock_builder.build_all.side_effect = RuntimeError("Plot error")
             mock_builder_cls.return_value = mock_builder
-            _generate_plots([result], verbose=False)
+            generate_plots([result], verbose=False)
 
         captured = capsys.readouterr()
-        assert (
-            "Failed to generate plots" in captured.out or "Plot error" in captured.out
-        )
+        assert "Failed to generate plots" in captured.out or "Plot error" in captured.out
 
     def test_skips_all_results_no_plot_fields(self, simple_config):
         """Verify all results are skipped when none have plot_fields."""
@@ -957,13 +913,15 @@ class TestGeneratePlots:
             for i in range(3)
         ]
 
-        with mock.patch("util.plotting.FigureBuilder") as mock_builder:
-            _generate_plots(results, verbose=False)
+        with mock.patch("tud_lbm.io.plotting.FigureBuilder") as mock_builder:
+            generate_plots(results, verbose=False)
         mock_builder.assert_not_called()
+
 
 # =========================================================================
 # save_sweep_log Tests
 # =========================================================================
+
 
 class TestSaveSweepLog:
     """Tests for save_sweep_log function."""
@@ -978,7 +936,7 @@ class TestSaveSweepLog:
                     config=simple_config,
                     status="success",
                     output_dir="/output_0",
-                )
+                ),
             ]
             save_sweep_log(results, output_dir)
             assert output_dir.exists()
@@ -1057,7 +1015,7 @@ class TestSaveSweepLog:
                     index=0,
                     config=simple_config,
                     status="success",
-                )
+                ),
             ]
             save_sweep_log(results, tmpdir)
 
@@ -1080,7 +1038,7 @@ class TestSaveSweepLog:
                     index=0,
                     config=simple_config,
                     status="success",
-                )
+                ),
             ]
             save_sweep_log(results, tmpdir)
 
@@ -1104,7 +1062,7 @@ class TestSaveSweepLog:
                     index=0,
                     config=simple_config,
                     status="success",
-                )
+                ),
             ]
             save_sweep_log(results, tmpdir)
 

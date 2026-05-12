@@ -11,9 +11,14 @@ Public API::
     from state import State, WettingState, build_optional_fields, build_extra_state
 """
 
-from tud_lbm.pipeline.state._extra_state import _build_extra_state, _update_extra_state
+from typing import Any
+import jax.numpy as jnp
+from tud_lbm.pipeline.setup import SimulationSetup
+from tud_lbm.pipeline.state._extra_state import _build_extra_state
+from tud_lbm.pipeline.state._extra_state import _update_extra_state
 from tud_lbm.pipeline.state._optional_fields import _build_optional_fields
-from tud_lbm.pipeline.state.state import State, WettingState
+from tud_lbm.pipeline.state.state import State
+from tud_lbm.pipeline.state.state import WettingState
 
 __all__ = [
     "State",
@@ -24,7 +29,9 @@ __all__ = [
 ]
 
 
-def build_optional_fields(setup, nx: int, ny: int, d: int):
+def build_optional_fields(
+    setup: SimulationSetup, nx: int, ny: int, nz: int, d: int
+) -> tuple[jnp.ndarray | None, jnp.ndarray | None]:
     """Build the optional ``force`` and ``force_ext`` fields.
 
     Returns zero-filled arrays for fields that will be written by the
@@ -37,23 +44,24 @@ def build_optional_fields(setup, nx: int, ny: int, d: int):
         setup: :class:`~setup.simulation_setup.SimulationSetup`.
         nx: Grid size in x.
         ny: Grid size in y.
+        nz: Grid size in z.
         d: Lattice dimension (e.g. 2 for D2Q9).
 
     Returns:
         A tuple ``(force, force_ext)``:
 
-        * ``force``: Zeros ``(nx, ny, 1, d)`` for multiphase runs,
+        * ``force``: Zeros ``(nx, ny, nz, 1, d)`` for multiphase runs,
           ``None`` otherwise.
-        * ``force_ext``: Zeros ``(nx, ny, 1, d)`` when forces are active,
+        * ``force_ext``: Zeros ``(nx, ny, nz, 1, d)`` when forces are active,
           ``None`` otherwise.
 
     See Also:
         :func:`state._optional_fields._build_optional_fields`
     """
-    return _build_optional_fields(setup, nx, ny, d)
+    return _build_optional_fields(setup, nx, ny, nz, d)
 
 
-def build_extra_state(setup):
+def build_extra_state(setup: SimulationSetup) -> dict[str, Any]:
     """Collect extra State fields initialised by active extra-state plugins.
 
     Args:
@@ -69,6 +77,6 @@ def build_extra_state(setup):
     return _build_extra_state(setup)
 
 
-def update_extra_state(setup, prev_state, new_state, **context):
+def update_extra_state(setup: SimulationSetup, prev_state: State, new_state: State, **context: dict[str, Any]) -> State:
     """Apply plugin-driven extra-state updates after one step."""
     return _update_extra_state(setup, prev_state, new_state, **context)

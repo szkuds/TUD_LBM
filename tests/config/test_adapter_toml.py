@@ -9,10 +9,9 @@ Tests validate that:
 
 import textwrap
 from pathlib import Path
-
 import pytest
-
-from tud_lbm.config.adapter_base import ConfigAdapter, get_adapter
+from tud_lbm.config.adapter_base import ConfigAdapter
+from tud_lbm.config.adapter_base import get_adapter
 from tud_lbm.config.adapter_toml import TomlAdapter
 from tud_lbm.config.simulation_config import SimulationConfig
 
@@ -135,15 +134,11 @@ class TestGetAdapter:
         assert isinstance(adapter, TomlAdapter)
 
     def test_unsupported_extension_raises(self):
-        with pytest.raises(
-            ValueError, match=r"Unsupported extension '\.yaml'\. Supported: .toml"
-        ):
+        with pytest.raises(ValueError, match=r"Unsupported extension '\.yaml'\. Supported: .toml"):
             get_adapter("app_setup.yaml")
 
     def test_no_extension_raises(self):
-        with pytest.raises(
-            ValueError, match=r"Unsupported extension ''. Supported: .toml"
-        ):
+        with pytest.raises(ValueError, match=r"Unsupported extension ''. Supported: .toml"):
             get_adapter("app_setup")
 
 
@@ -169,7 +164,7 @@ class TestTomlAdapterSimple:
 
     def test_grid_shape_is_tuple(self, simple_toml_file):
         bundle = TomlAdapter().load(simple_toml_file)
-        assert bundle.grid_shape == (100, 100)
+        assert bundle.grid_shape == (100, 100, 1)
         assert isinstance(bundle.grid_shape, tuple)
 
     def test_physics_parameters(self, simple_toml_file):
@@ -206,7 +201,7 @@ class TestTomlAdapterSimple:
         bundle = TomlAdapter().load(simple_toml_file)
         d = bundle.to_dict()
         assert d["simulation_type"] == "single_phase"
-        assert d["grid_shape"] == (100, 100)
+        assert d["grid_shape"] == (100, 100, 1)
         assert d["tau"] == 0.6
         assert d["save_interval"] == 1000
 
@@ -236,7 +231,7 @@ class TestTomlAdapterMultiphase:
 
     def test_grid_shape(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
-        assert bundle.grid_shape == (401, 101)
+        assert bundle.grid_shape == (401, 101, 1)
 
     def test_runner_config(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
@@ -430,7 +425,7 @@ class TestExampleFiles:
             pytest.skip("example_for_test/config_simple.toml not found")
         bundle = TomlAdapter().load(str(path))
         assert bundle.is_single_phase
-        assert bundle.grid_shape == (100, 100)
+        assert bundle.grid_shape == (100, 100, 1)
 
     def test_config_complex_loads(self, example_dir):
         """Load the complex config using canonical top-level force sections."""
@@ -441,9 +436,9 @@ class TestExampleFiles:
         bundle = TomlAdapter().load(str(path))
 
         assert bundle.is_multiphase
-        assert bundle.grid_shape == (201, 201)
+        assert bundle.grid_shape == (201, 201, 1)
         assert bundle.kappa == 0.017
-        assert bundle.save_interval == 400
+        assert bundle.save_interval == 10
         assert bundle.force_enabled is True
         assert bundle.gravity_force == {
             "force_g": 2e-6,

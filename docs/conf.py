@@ -18,7 +18,7 @@ import sys
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 sys.path.insert(
-    0, os.path.join(PROJECT_ROOT, "src")
+    0, os.path.join(PROJECT_ROOT, "tud_lbm")
 )  # so `import src...` works if still used
 
 # -- Project information -----------------------------------------------------
@@ -32,7 +32,7 @@ author = "Sacha Szkudlarek"
 # built documents.
 #
 # The short X.Y version.
-version = "0.0.4"
+version = "0.2.0"
 # The full version, including alpha/beta/rc tags.
 release = version
 
@@ -69,7 +69,7 @@ todo_include_todos = False
 
 # -- Use autoapi.extension to generate API docs -----------------
 
-autoapi_dirs = ["../src"]
+autoapi_dirs = ["../tud_lbm"]
 autoapi_options = [
     "members",
     "undoc-members",

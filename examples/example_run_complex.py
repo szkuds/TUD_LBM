@@ -7,17 +7,14 @@ post-run using the registered plot operators.
 Configuration is loaded from config_complex.toml.
 """
 
-import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-
-from config.adapter_toml import TomlAdapter
-from config.jax_config import configure_jax
-from runner.run import init_state, run
-from setup.simulation_setup import build_setup
-from util.io import SimulationIO
-from util.plotting import FigureBuilder
+from tud_lbm.config.adapter_toml import TomlAdapter
+from tud_lbm.config.jax_config import configure_jax
+from tud_lbm.io.plotting.figure_builder import FigureBuilder
+from tud_lbm.io.save import SimulationIO
+from tud_lbm.pipeline.runner import init_state
+from tud_lbm.pipeline.runner import run
+from tud_lbm.pipeline.setup import build_setup
 
 # Configure JAX (64-bit precision, JIT enabled).
 configure_jax()
@@ -25,8 +22,6 @@ configure_jax()
 
 def wetting_hysteresis_simulation():
     """Run a multiphase wetting simulation with streaming I/O + plotting."""
-    print("\n=== Multiphase Wetting — Streaming I/O + Plotting ===")
-
     # Load configuration from TOML file.
     config_path = Path(__file__).parent / "config_complex.toml"
     adapter = TomlAdapter()
@@ -35,17 +30,12 @@ def wetting_hysteresis_simulation():
     simulation_setup = build_setup(config)
     state = init_state(simulation_setup)
 
-    print(f"  Config loaded from : {config_path.name}")
-    print(f"  Grid               : {config.grid_shape}")
-    print(f"  Steps              : {config.nt}  (save every {config.save_interval})")
-
     # Create the I/O handler — makes the timestamped run directory.
     io = SimulationIO(
         base_dir=config.results_dir,
         config=config,
         simulation_name=config.simulation_name,
     )
-    print(f"  Run directory      : {io.run_dir}")
 
     # Stream snapshots to disk during the lax.scan loop.
     final_state, _ = run(
@@ -57,21 +47,12 @@ def wetting_hysteresis_simulation():
         save_fields=tuple(config.save_fields) if config.save_fields else None,
     )
 
-    print(f"  Final timestep     : {int(final_state.t)}")
-    print(f"  Snapshots saved to : {io.data_dir}")
-
     # Render one composite PNG per saved snapshot.
     builder = FigureBuilder(config=config, run_dir=io.run_dir)
-    saved_plots = builder.build_all()
-    print(f"  Plots saved        : {len(saved_plots)} PNG(s) in {io.run_dir}/plots/")
+    builder.build_all()
 
     return final_state
 
 
 if __name__ == "__main__":
-    print("TUD-LBM  —  Multiphase Wetting Example")
-    print("=" * 50)
-
     wetting_hysteresis_simulation()
-
-    print("\nDone.")

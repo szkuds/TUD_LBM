@@ -9,9 +9,8 @@ Tests for:
 """
 
 from __future__ import annotations
-
 import pytest
-
+import tud_lbm.lattice.lattice
 import tud_lbm.operators.boundary
 
 # Import all operator packages to trigger registration decorators.
@@ -24,15 +23,12 @@ import tud_lbm.operators.initialise
 import tud_lbm.operators.macroscopic
 import tud_lbm.operators.streaming
 import tud_lbm.operators.wetting  # noqa: F401
-import tud_lbm.lattice.lattice  # noqa: F401
-from tud_lbm.registry import (
-    OPERATOR_REGISTRY,
-    get_operator_category,
-    get_operator_names,
-    get_operators,
-    register_operator,
-    unregister_operator,
-)
+from tud_lbm.registry import OPERATOR_REGISTRY
+from tud_lbm.registry import get_operator_category
+from tud_lbm.registry import get_operator_names
+from tud_lbm.registry import get_operators
+from tud_lbm.registry import register_operator
+from tud_lbm.registry import unregister_operator
 
 # =====================================================================
 # Registration mechanics
@@ -44,7 +40,7 @@ class TestRegisterOperator:
 
     def test_register_function_with_explicit_name(self):
         @register_operator("_test_kind", name="_test_fn")
-        def my_fn():
+        def my_fn() -> None:
             pass
 
         entry = OPERATOR_REGISTRY["_test_kind:_test_fn"]
@@ -65,7 +61,7 @@ class TestRegisterOperator:
 
     def test_register_function_uses_dunder_name(self):
         @register_operator("_test_kind")
-        def _test_auto_name():
+        def _test_auto_name() -> None:
             pass
 
         assert "_test_kind:_test_auto_name" in OPERATOR_REGISTRY
@@ -73,20 +69,20 @@ class TestRegisterOperator:
 
     def test_duplicate_raises(self):
         @register_operator("_test_dup", name="_dup")
-        def fn1():
+        def fn1() -> None:
             pass
 
         with pytest.raises(ValueError, match="Duplicate"):
 
             @register_operator("_test_dup", name="_dup")
-            def fn2():
+            def fn2() -> None:
                 pass
 
         unregister_operator("_test_dup", "_dup")
 
     def test_metadata_stored(self):
         @register_operator("_test_meta", name="_meta", foo="bar")
-        def fn():
+        def fn() -> None:
             pass
 
         entry = OPERATOR_REGISTRY["_test_meta:_meta"]
@@ -298,9 +294,7 @@ class TestDummyOperatorAutoExposure:
             assert ops["_dummy_test_force"].target is _dummy_force_builder
 
             # Metadata carries result_field
-            assert (
-                ops["_dummy_test_force"].metadata["result_field"] == "gravity_template"
-            )
+            assert ops["_dummy_test_force"].metadata["result_field"] == "gravity_template"
         finally:
             unregister_operator("force", "_dummy_test_force")
 
@@ -325,7 +319,7 @@ class TestDummyOperatorAutoExposure:
         from tud_lbm.registry import _KIND_INDEX
 
         @register_operator("_test_cleanup", name="_cleanup_target")
-        def _fn():
+        def _fn() -> None:
             pass
 
         assert "_test_cleanup:_cleanup_target" in OPERATOR_REGISTRY
