@@ -80,11 +80,11 @@ class SimulationSetup(NamedTuple):
         laplacian_density: Laplacian of density ``∇²ρ`` in chemical-potential computation.
             Wetting-corrected when applicable.
         gradient_density_wetting: Parametric density gradient for hysteresis optimisation.
-            Only populated when both wetting_config and hysteresis_config are present.
+            Populated for hysteresis runs.
             Signature: ``(grid, phi_l, phi_r, d_rho_l, d_rho_r) -> result``.
             ``None`` for non-hysteresis cases.
         laplacian_density_wetting: Parametric Laplacian of density for hysteresis optimisation.
-            Only populated when both wetting_config and hysteresis_config are present.
+            Populated for hysteresis runs.
             Signature: ``(grid, phi_l, phi_r, d_rho_l, d_rho_r) -> result``.
             ``None`` for non-hysteresis cases.
         step_fn: The unbound step operator resolved from the registry,
@@ -92,7 +92,7 @@ class SimulationSetup(NamedTuple):
             Signature: ``(setup, state) → state_next``.
         wetting_fn: The hysteresis operator for updating wetting state,
             implementing :class:`~operators.protocols.HysteresisOperator`.
-            Built only when both ``wetting_config`` and ``hysteresis_config`` are present;
+            Built when ``hysteresis_config`` is present;
             ``None`` otherwise.
         extra_state_plugins: Active plugin tuple used to initialise and update
             operation-specific extra state (e.g. electric potential, wetting state).
@@ -210,9 +210,9 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     )
     bc_fn = build_bc(config.bc_config, lattice)
 
-    # Build wetting function if both wetting and hysteresis configs are present
+    # Build wetting function for hysteresis-capable runs.
     wetting_fn = None
-    if config.wetting_config is not None and config.hysteresis_config is not None:
+    if config.hysteresis_config is not None:
         wetting_scheme = (
             "chemical_step_hysteresis" if config.sim_type == "multiphase_hysteresis_chemical_step" else "hysteresis"
         )
@@ -233,9 +233,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
             kw.update(init_kwargs)
         if config.init_type == "init_from_file" and "npz_path" not in kw and config.init_dir is not None:
             kw["npz_path"] = config.init_dir
-        return build_initialise_fn(config.init_type)(
-            config.grid_shape[0], config.grid_shape[1], config.grid_shape[2], lattice, **kw
-        )
+        return build_initialise_fn(config.init_type)(config.grid_shape, lattice, **kw)
 
     return SimulationSetup(
         config=config,

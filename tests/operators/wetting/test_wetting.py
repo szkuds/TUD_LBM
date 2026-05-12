@@ -537,12 +537,6 @@ class TestUpdateWettingState:
             rho_l=RHO_L,
             rho_v=RHO_V,
             interface_width=4,
-            wetting_config={
-                "phi_left": 1.2,
-                "phi_right": 1.2,
-                "d_rho_left": 0.05,
-                "d_rho_right": 0.05,
-            },
             hysteresis_config={
                 "ca_advancing": 120.0,
                 "ca_receding": 60.0,
@@ -562,6 +556,7 @@ class TestUpdateWettingState:
 
         assert setup.wetting_fn is not None
         assert setup.wetting_fn.__name__ == "update_wetting_state_chemical_step"
+        assert setup.config.wetting_config is not None
 
 
 # =====================================================================
@@ -590,11 +585,11 @@ class TestStepMultiphaseWithWetting:
             rho_l=RHO_L,
             rho_v=RHO_V,
             interface_width=4,
-            hysteresis_config={
-                "ca_advancing": 120.0,
-                "ca_receding": 60.0,
-                "learning_rate": 0.01,
-                "max_iterations": 3,
+            wetting_config={
+                "phi_left": 1.0,
+                "phi_right": 1.0,
+                "d_rho_left": 0.0,
+                "d_rho_right": 0.0,
             },
         )
         setup = build_setup(cfg)

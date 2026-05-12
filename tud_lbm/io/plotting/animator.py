@@ -22,19 +22,18 @@ class Animator:
         dpi: int = 150,
     ) -> None:
         """Initialise animation settings for a simulation run directory."""
-        self.config = config
-        self.run_dir = Path(run_dir)
+        fields = config.animate_fields or config.plot_fields
         self.fps = fps
         self.dpi = dpi
-        self.builder = FigureBuilder(config=config, run_dir=self.run_dir, dpi=dpi)
+        self.builder = FigureBuilder(config=config, run_dir=run_dir, dpi=dpi, fields=fields)
         self._frames_dir = self.builder.plot_dir / "frames"
 
     def build_frames(self) -> list[Path]:
         """Build one composite frame per timestep file."""
         timed_files = self.builder.sorted_timed_files()
-        files = [fp for _, fp in timed_files]
-        if not files:
+        if not timed_files:
             return []
+        files = [fp for _, fp in timed_files]
 
         self._frames_dir.mkdir(parents=True, exist_ok=True)
         frame_paths: list[Path] = []
@@ -43,38 +42,10 @@ class Animator:
             with np.load(fp) as raw:
                 data = {key: raw[key] for key in raw.files}
 
-            field_ops = [op for op in self.builder.field_operators if op.is_available(data)]
-            analysis_ops = list(self.builder.analysis_operators)
-            panels = field_ops + analysis_ops
-
-            if not panels:
-                continue
-
-            ncols, nrows = FigureBuilder.layout(len(panels))
-            fig, axes = plt.subplots(
-                nrows,
-                ncols,
-                figsize=(5 * ncols, 4 * nrows),
-                squeeze=False,
-            )
-
-            for panel_idx, op in enumerate(field_ops):
-                row, col = divmod(panel_idx, ncols)
-                op(axes[row][col], data, timestep)
-
             history = files[: idx + 1]
-            offset = len(field_ops)
-            for panel_idx, op in enumerate(analysis_ops):
-                row, col = divmod(offset + panel_idx, ncols)
-                op.update(axes[row][col], history)
-
-            for panel_idx in range(len(panels), nrows * ncols):
-                row, col = divmod(panel_idx, ncols)
-                axes[row][col].set_visible(False)
-
-            title = self.config.simulation_name or "simulation"
-            fig.suptitle(f"{title} - Timestep {timestep}", fontsize=12)
-            plt.tight_layout(rect=(0, 0.03, 1, 0.95))
+            fig = self.builder.render_figure(data, timestep, history_files=history)
+            if fig is None:
+                continue
 
             out_path = self._frames_dir / f"frame_{idx:06d}.png"
             fig.savefig(out_path, dpi=self.dpi)

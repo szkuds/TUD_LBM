@@ -1,5 +1,5 @@
 # Test config for step_multiphase_hysteresis_chemical_step
-# Triggers: sim_type="multiphase" + [wetting] + [hysteresis] + [chemical_step]
+# Triggers: sim_type="multiphase" + [hysteresis] + [chemical_step]
 # Hysteresis window is spatially varying: pre/post step angles differ across the step location.
 
 [simulation_type]
@@ -8,11 +8,8 @@ type = "multiphase_hysteresis_chemical_step"
 grid_shape = [256, 64]
 lattice_type = "D2Q9"
 tau = 0.99
-nt = 50000
-save_interval = 500
+nt = 500
 init_type = "multiphase_bubbles"
-#init_type = "init_from_file"
-#init_dir = "/Users/sbszkudlarek/TUD_LBM_data/test_runs/2026-05-11/15-53-45_test_multiphase_wetting/data/timestep_50000.npz"
 
 [initialisation]
 centres = [[0.23, 0]]
@@ -32,12 +29,6 @@ right = "periodic"
 top = "bounce-back"
 bottom = "wetting"
 
-[wetting]
-phi_left = 1.0
-phi_right = 1.0
-d_rho_left = 0.0
-d_rho_right = 0.0
-
 [hysteresis]
 learning_rate = 0.01
 max_iterations = 5
@@ -47,12 +38,8 @@ chemical_step_location = 0.5
 chemical_step_edge = "bottom"
 ca_advancing_pre_step = 120.0
 ca_receding_pre_step = 100.0
-phi_pre_step = 1.0
-d_rho_pre_step = 0.05
 ca_advancing_post_step = 70.0
 ca_receding_post_step = 50.0
-phi_post_step = 1.2
-d_rho_post_step = 0.0
 
 [gravity_masked_force]
 force_g = 5e-06

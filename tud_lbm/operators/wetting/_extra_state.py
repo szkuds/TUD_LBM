@@ -27,13 +27,21 @@ class WettingExtraStatePlugin:
 
     @staticmethod
     def is_active(config: SimulationSetup) -> bool:
-        return getattr(config, "wetting_config", None) is not None
+        return (
+            getattr(config, "wetting_config", None) is not None
+            or getattr(config, "hysteresis_config", None) is not None
+        )
 
     @staticmethod
     def init_state(setup: SimulationSetup) -> dict[str, Any]:
         wetting_cfg = setup.config.wetting_config
         if wetting_cfg is None:
-            return {}
+            wetting_cfg = {
+                "phi_left": 1.0,
+                "phi_right": 1.0,
+                "d_rho_left": 0.0,
+                "d_rho_right": 0.0,
+            }
 
         f_init = setup.initial_f_fn()
         rho_init = jnp.sum(f_init, axis=-2, keepdims=True)
@@ -51,10 +59,10 @@ class WettingExtraStatePlugin:
 
         return {
             "wetting": WettingState(
-                phi_left=wetting_cfg["phi_left"],
-                phi_right=wetting_cfg["phi_right"],
-                d_rho_left=wetting_cfg["d_rho_left"],
-                d_rho_right=wetting_cfg["d_rho_right"],
+                phi_left=jnp.array(_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.0)),
+                phi_right=jnp.array(_cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.0)),
+                d_rho_left=jnp.array(_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.0)),
+                d_rho_right=jnp.array(_cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.0)),
                 ca_left=ca_left,
                 ca_right=ca_right,
                 cll_left=cll_left,

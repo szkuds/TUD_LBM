@@ -53,26 +53,30 @@ class TestInitStandard:
     """``init_standard`` produces correct shapes and densities."""
 
     def test_shape(self, lattice):
-        f = build_initialise_fn("standard")(NX, NY, NZ, lattice)
+        f = build_initialise_fn("standard")((NX, NY, NZ), lattice)
         assert f.shape == (NX, NY, NZ, 9, 1)
 
     def test_density_default(self, lattice):
-        f = build_initialise_fn("standard")(NX, NY, NZ, lattice, density=1.0)
+        f = build_initialise_fn("standard")((NX, NY, NZ), lattice, density=1.0)
         rho = jnp.sum(f, axis=3, keepdims=True)
         np.testing.assert_allclose(np.array(rho), 1.0, atol=1e-12)
 
     def test_density_custom(self, lattice):
-        f = build_initialise_fn("standard")(NX, NY, NZ, lattice, density=2.5)
+        f = build_initialise_fn("standard")((NX, NY, NZ), lattice, density=2.5)
         rho = jnp.sum(f, axis=3, keepdims=True)
         np.testing.assert_allclose(np.array(rho), 2.5, atol=1e-12)
+
+    def test_legacy_signature_rejected(self, lattice):
+        with pytest.raises(TypeError):
+            build_initialise_fn("standard")(NX, NY, NZ, lattice)
 
     def test_jittable(self, lattice):
         from functools import partial
 
         fn = build_initialise_fn("standard")
-        # lattice contains string (name) — close over it; nx, ny, nz are static
-        jitted = jax.jit(partial(fn, lattice=lattice), static_argnums=(0, 1, 2))
-        f = jitted(NX, NY, NZ)
+        # Close over lattice; grid_shape is static for JIT compilation.
+        jitted = jax.jit(partial(fn, lattice=lattice), static_argnums=(0,))
+        f = jitted((NX, NY, NZ))
         assert f.shape == (NX, NY, NZ, 9, 1)
 
 
@@ -93,9 +97,7 @@ class TestMultiphaseInitShape:
     def test_shape(self, lattice, init_type):
         fn = build_initialise_fn(init_type)
         f = fn(
-            NX,
-            NY,
-            NZ,
+            (NX, NY, NZ),
             lattice,
             rho_l=1.0,
             rho_v=0.33,
@@ -110,9 +112,7 @@ class TestMultiphaseInitShape:
         """Density should be between rho_v and rho_l everywhere."""
         fn = build_initialise_fn(init_type)
         f = fn(
-            NX,
-            NY,
-            NZ,
+            (NX, NY, NZ),
             lattice,
             rho_l=1.0,
             rho_v=0.33,
@@ -139,7 +139,7 @@ class TestWettingInitShape:
     @pytest.mark.parametrize("init_type", _WETTING_TYPES)
     def test_shape(self, lattice, init_type):
         fn = build_initialise_fn(init_type)
-        f = fn(NX, NY, NZ, lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
+        f = fn((NX, NY, NZ), lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
         assert f.shape == (NX, NY, NZ, 9, 1)
 
 
@@ -154,9 +154,7 @@ class TestMassConservation:
     def test_bubble_mass_positive(self, lattice):
         fn = build_initialise_fn("multiphase_bubbles")
         f = fn(
-            32,
-            32,
-            NZ,
+            (32, 32, NZ),
             lattice,
             rho_l=1.0,
             rho_v=0.33,
@@ -173,9 +171,7 @@ class TestMassConservation:
     def test_droplet_mass_positive(self, lattice):
         fn = build_initialise_fn("multiphase_bubbles")
         f = fn(
-            32,
-            32,
-            NZ,
+            (32, 32, NZ),
             lattice,
             rho_l=1.0,
             rho_v=0.33,
@@ -201,9 +197,7 @@ class TestMultiphaseBubbles:
     def test_multiple_inclusions(self, lattice):
         fn = build_initialise_fn("multiphase_bubbles")
         f = fn(
-            32,
-            32,
-            NZ,
+            (32, 32, NZ),
             lattice,
             rho_l=1.0,
             rho_v=0.33,
@@ -217,9 +211,7 @@ class TestMultiphaseBubbles:
         fn = build_initialise_fn("multiphase_bubbles")
         with pytest.raises(ValueError, match="dispersed"):
             fn(
-                32,
-                32,
-                NZ,
+                (32, 32, NZ),
                 lattice,
                 rho_l=1.0,
                 rho_v=0.33,
@@ -233,9 +225,7 @@ class TestMultiphaseBubbles:
         fn = build_initialise_fn("multiphase_bubbles")
         with pytest.raises(ValueError, match="same length"):
             fn(
-                32,
-                32,
-                NZ,
+                (32, 32, NZ),
                 lattice,
                 rho_l=1.0,
                 rho_v=0.33,
@@ -248,9 +238,7 @@ class TestMultiphaseBubbles:
         fn = build_initialise_fn("multiphase_bubbles")
         with pytest.raises(ValueError, match="non-empty"):
             fn(
-                32,
-                32,
-                NZ,
+                (32, 32, NZ),
                 lattice,
                 rho_l=1.0,
                 rho_v=0.33,
@@ -262,9 +250,7 @@ class TestMultiphaseBubbles:
     def test_liquid_dispersed_mode(self, lattice):
         fn = build_initialise_fn("multiphase_bubbles")
         f = fn(
-            32,
-            32,
-            NZ,
+            (32, 32, NZ),
             lattice,
             rho_l=1.0,
             rho_v=0.33,

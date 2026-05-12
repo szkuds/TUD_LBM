@@ -65,7 +65,7 @@ Issues     = "https://github.com/szkuds/tud_lbm/issues"
 ReadTheDocs = "https://tud_lbm.readthedocs.io"
 
 [project.scripts]
-tud-lbm = "cli:main"
+tud-lbm = "tud_lbm.cli:cli"
 
 # ---------------------------------------------------------------------------
 # uv

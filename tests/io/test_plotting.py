@@ -4,7 +4,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting import visualise
 from tud_lbm.io.plotting.figure_builder import FigureBuilder
 from tud_lbm.registry import get_operator_names
 
@@ -125,17 +124,19 @@ def test_build_analysis_writes_analysis_plots(plotting_run_dir):
     assert all(path.exists() for path in written)
 
 
-def test_visualise_accepts_run_directory(plotting_run_dir: str):
+def test_build_all_accepts_run_directory(plotting_run_dir: str):
     np.savez(
         plotting_run_dir / "data" / "timestep_1.npz",
         rho=np.ones((6, 6, 1, 1, 1)),
         u=np.zeros((6, 6, 1, 1, 2)),
     )
-    (plotting_run_dir / "config.json").write_text(
-        '{"simulation_name": "demo", "plot_fields": ["density", "velocity"]}',
-    )
+    config = SimulationConfig(simulation_name="demo", plot_fields=["density", "velocity"])
+    builder = FigureBuilder(config=config, run_dir=str(plotting_run_dir))
 
-    visualise(str(plotting_run_dir))
+    saved = builder.build_all()
+
+    assert len(saved) == 1
+    assert saved[0].exists()
 
     plots = list((plotting_run_dir / "plots").glob("*.png"))
     assert len(plots) == 1

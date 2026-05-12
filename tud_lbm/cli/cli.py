@@ -319,6 +319,8 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
         table.add_row("Save Fields", ", ".join(config.save_fields))
     if config.plot_fields:
         table.add_row("Plot Fields", ", ".join(config.plot_fields))
+    if config.animate_fields:
+        table.add_row("Animate Fields", ", ".join(config.animate_fields))
 
     if config.is_multiphase:
         table.add_row("Kappa", str(config.kappa))
@@ -449,7 +451,7 @@ def _run_parallel_sweep(
 
 
 def _validate_cli_args(overrides: tuple[str, ...], config_path: str | None) -> None:
-    """TRY301: raise lives here, outside the try-block in main()."""
+    """TRY301: raise lives here, outside the try-block in run()."""
     if overrides and not config_path:
         msg = "--override requires CONFIG_PATH"
         raise click.UsageError(msg)
@@ -478,7 +480,6 @@ def _load_config_from_file(
 
 def _load_config_interactive() -> tuple[list[SimulationConfig], SimulationConfig, None, None]:
     """Collect simulation parameters interactively; return the same 4-tuple as _load_config_from_file."""
-    # TODO: the interactive mode can be extended further. Plotting is not yet added for example_for_test.
     from tud_lbm.config import SimulationConfig
 
     console.print("[cyan]Interactive mode - creating default simulation config[/cyan]")
@@ -528,11 +529,20 @@ def _confirm_run(sweep_metadata: ArrayParameterSet | None, configs: list[Simulat
 
 
 def _check_sweep_errors(results: list[Any]) -> None:
-    """TRY301: raise lives here, outside the try-block in main()."""
+    """TRY301: raise lives here, outside the try-block in run()."""
     failed = sum(1 for result in results if result.status == "failed")
     if failed > 0:
         msg = f"Parameter sweep completed with {failed} failed simulation(s)."
         raise RuntimeError(msg)
+
+
+def _validate_run_dir_has_config(run_dir: str) -> Path:
+    """TRY301: raise lives here, outside the try-block in animate()."""
+    config_path = Path(run_dir) / "config.toml"
+    if not config_path.exists():
+        msg = f"No config.toml found in {run_dir}. Is this a valid run directory?"
+        raise FileNotFoundError(msg)
+    return config_path
 
 
 def _execute_run(
@@ -556,7 +566,13 @@ def _execute_run(
         _check_sweep_errors(results)
 
 
-@click.command()
+@click.group()
+@click.version_option(package_name="tud_lbm")
+def cli() -> None:
+    """TUD-LBM - Lattice Boltzmann Method Solver."""
+
+
+@cli.command()
 @click.argument("config_path", type=click.Path(exists=True), required=False)
 @click.option(
     "--no-prompt",
@@ -592,8 +608,7 @@ def _execute_run(
     help="Override config values using path=value (repeatable), "
     "e.g. --override simulation_type.simulation_name='new name'",
 )
-@click.version_option(package_name="tud_lbm")
-def main(
+def run(
     config_path: str,
     no_prompt: bool,
     dry_run: bool,
@@ -602,7 +617,7 @@ def main(
     fail_fast: bool,
     overrides: tuple[str, ...],
 ) -> None:
-    """Run a TUD-LBM simulation.
+    """Run a TUD-LBM simulation from CONFIG_PATH.
 
     CONFIG_PATH is an optional path to a configuration file (.toml).
     If omitted, an interactive prompt collects parameters.
@@ -614,37 +629,37 @@ def main(
 
     Examples:
         # Single simulation
-        tud_lbm example_for_test/config_simple.toml
+        tud-lbm run example_for_test/config_simple.toml
 
         # Parameter sweep (if config has array fields)
-        tud_lbm example_for_test/config_parallel.toml
+        tud-lbm run example_for_test/config_parallel.toml
 
         # Override scalar field
-        tud_lbm config.toml --override tau=0.7
+        tud-lbm run config.toml --override tau=0.7
 
         # Override with quotes (field name may contain underscores)
-        tud_lbm config.toml --override 'simulation_type.simulation_name="new name"'
+        tud-lbm run config.toml --override 'simulation_type.simulation_name="new name"'
 
         # Create nested fields
-        tud_lbm config.toml --override 'gravity_force.force_g=5e-7'
+        tud-lbm run config.toml --override 'gravity_force.force_g=5e-7'
 
         # Multiple overrides (applied in order)
-        tud_lbm config.toml --override tau=0.7 --override nt=500
+        tud-lbm run config.toml --override tau=0.7 --override nt=500
 
         # Override array field to trigger sweep
-        tud_lbm config.toml --override 'tau=[0.6, 0.7, 0.8]' --max-workers 4
+        tud-lbm run config.toml --override 'tau=[0.6, 0.7, 0.8]' --max-workers 4
 
         # Dry run with preview (no execution)
-        tud_lbm config.toml --dry-run
+        tud-lbm run config.toml --dry-run
 
         # Stop sweep on first failure
-        tud_lbm config.toml --fail-fast
+        tud-lbm run config.toml --fail-fast
 
         # Interactive mode
-        tud_lbm
+        tud-lbm run
 
         # List all registered operators
-        tud_lbm --list-simulation-operators
+        tud-lbm run --list-simulation-operators
     """
     console.print()
     console.print(
@@ -660,7 +675,6 @@ def main(
             _display_operators()
             return
 
-        # TRY301: validation raise is inside _validate_cli_args, not this try-block
         _validate_cli_args(overrides, config_path)
 
         configs, config, sweep_metadata, parameters_list = (
@@ -677,7 +691,6 @@ def main(
             console.print("[yellow]Simulation cancelled.[/yellow]")
             return
 
-        # TRY301: sweep error raise is inside _check_sweep_errors, not this try-block
         _execute_run(configs, config, sweep_metadata, parameters_list, max_workers, fail_fast)
 
         console.print()
@@ -698,5 +711,84 @@ def main(
         sys.exit(1)
 
 
+@cli.command()
+@click.argument("run_dir", type=click.Path(exists=True))
+@click.option(
+    "--output",
+    default=None,
+    help="Output file path (.mp4 or .gif). Defaults to plots/animation.mp4 inside RUN_DIR.",
+)
+@click.option(
+    "--fps",
+    default=10,
+    show_default=True,
+    help="Frames per second for the output video.",
+)
+def animate(run_dir: str, output: str | None, fps: int) -> None:
+    """Animate saved snapshots in RUN_DIR."""
+    from tud_lbm.config import from_toml
+    from tud_lbm.io.plotting import Animator
+
+    console.print()
+    console.print(
+        Panel.fit(
+            "[bold blue]TUD-LBM[/bold blue] - Animation",
+            subtitle="Delft University of Technology",
+        ),
+    )
+    console.print()
+
+    try:
+        config_path = _validate_run_dir_has_config(run_dir)
+
+        config = from_toml(str(config_path))
+
+        console.print(f"[dim]Run directory : {run_dir}[/dim]")
+        fields = config.animate_fields or config.plot_fields
+        if fields:
+            console.print(f"[dim]Fields        : {', '.join(fields)}[/dim]")
+        console.print(f"[dim]FPS           : {fps}[/dim]")
+        console.print()
+
+        animator = Animator(config=config, run_dir=run_dir, fps=fps)
+        output_path = animator.create(output)
+
+        console.print(f"[bold green]Animation saved to:[/bold green] {output_path}")
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Animation interrupted by user.[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        if os.environ.get("TUD_LBM_DEBUG"):
+            raise
+        sys.exit(1)
+
+
+@click.command(
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+    add_help_option=False,
+)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def main(args: tuple[str, ...]) -> None:
+    """Backward-compatible shim for launchers still targeting ``...:main``.
+
+    Supports both legacy direct run style (``tud-lbm CONFIG.toml``) and
+    newer subcommand style (``tud-lbm run ...`` / ``tud-lbm animate ...``).
+    """
+    forwarded = list(args)
+
+    # New-style help/version and explicit animate should use the command group.
+    if forwarded and forwarded[0] in {"--help", "-h", "--version", "animate"}:
+        cli.main(args=forwarded, standalone_mode=False)
+        return
+
+    # Allow stale wrappers to pass through the explicit "run" subcommand token.
+    if forwarded and forwarded[0] == "run":
+        forwarded = forwarded[1:]
+
+    run.main(args=forwarded, standalone_mode=False)
+
+
 if __name__ == "__main__":
-    main()
+    cli()

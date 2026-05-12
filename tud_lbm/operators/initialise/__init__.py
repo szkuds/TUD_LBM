@@ -9,7 +9,7 @@ Example:
     from operators.initialise import build_initialise_fn
 
     init = build_initialise_fn("standard")
-    f = init(64, 64, 1, lattice, density=1.0)  # (nx, ny, nz)
+    f = init((64, 64, 1), lattice, density=1.0)  # grid_shape
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 
 if TYPE_CHECKING:
+    import jax.numpy as jnp
+    from tud_lbm.lattice.lattice import Lattice
     from tud_lbm.operators.protocols import InitialiserOperator
 
 # Auto-discover and import private operator modules for registry registration.
@@ -33,7 +35,7 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
 
     Returns:
         A callable satisfying the InitialiserOperator protocol.
-        Can be called as: operator(nx, ny, nz, lattice, **kwargs) -> f
+        Call form: ``operator(grid_shape, lattice, **kwargs) -> f``.
 
     Raises:
         ValueError: If scheme is not registered.
@@ -41,9 +43,19 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
     Examples:
         >>> from operators.initialise import build_initialise_fn
         >>> init = build_initialise_fn("standard")
-        >>> f = init(64, 64, 1, lattice, density=1.0)
+        >>> f = init((64, 64, 1), lattice, density=1.0)
     """
-    return build_operator("initialise", scheme)
+    op = build_operator("initialise", scheme)
+
+    def _initialise(
+        grid_shape: tuple[int, int, int],
+        lattice: Lattice,
+        **kwargs: object,
+    ) -> jnp.ndarray:
+        nx, ny, nz = map(int, grid_shape)
+        return op(nx, ny, nz, lattice, **kwargs)
+
+    return _initialise
 
 
 __all__ = ["build_initialise_fn"]

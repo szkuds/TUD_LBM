@@ -27,12 +27,8 @@ chemical_step_location = 0.5
 chemical_step_edge = "bottom"
 ca_advancing_pre_step = 120.0
 ca_receding_pre_step = 100.0
-phi_pre_step = 1.0
-d_rho_pre_step = 0.05
 ca_advancing_post_step = 70.0
 ca_receding_post_step = 50.0
-phi_post_step = 1.2
-d_rho_post_step = 0.0
 
 [gravity_masked_force]
 force_g = 1e-06
@@ -73,8 +69,3 @@ plot_fields = [
 ]
 output_format = "numpy"
 
-[wetting]
-phi_left = 1.0
-phi_right = 1.0
-d_rho_left = 0.05
-d_rho_right = 0.05

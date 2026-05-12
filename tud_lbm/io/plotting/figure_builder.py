@@ -31,13 +31,21 @@ class FigureBuilder:
 
     _SMALL_LAYOUTS: dict[int, tuple[int, int]] = _SMALL_LAYOUTS
 
-    def __init__(self, config: SimulationConfig, run_dir: str | os.PathLike, dpi: int = 150) -> None:
+    def __init__(
+        self,
+        config: SimulationConfig,
+        run_dir: str | os.PathLike,
+        dpi: int = 150,
+        fields: list[str] | None = None,
+    ) -> None:
         """Initialize figure builder with simulation config and output directory.
 
         Args:
             config: Simulation configuration object.
             run_dir: Directory containing simulation results and output.
             dpi: Resolution in dots per inch for saved figures.
+            fields: Explicit list of operator names to activate. When provided,
+                overrides ``config.plot_fields``.
         """
         self.config = config
         self.run_dir = Path(run_dir)
@@ -63,7 +71,7 @@ class FigureBuilder:
 
         self._plot_dir.mkdir(parents=True, exist_ok=True)
 
-        requested = self.config.plot_fields
+        requested = fields or self.config.plot_fields
         if not requested:
             # Default: only enable field plotting operators (density, velocity, force).
             # Analysis operators (max_velocity, contact_angles, etc.) must be explicitly
@@ -157,22 +165,21 @@ class FigureBuilder:
             saved.append(out_path)
         return saved
 
-    def build(
+    def render_figure(
         self,
         data: dict[str, np.ndarray],
         timestep: int,
-        filename: str | None = None,
-    ) -> Path | None:
-        """Render one timestep figure and save it to disk."""
-        active_ops = [op for op in self._field_operators if op.is_available(data)]
-        if not active_ops:
-            warnings.warn(
-                f"FigureBuilder: no operators have data at t={timestep}.",
-                stacklevel=2,
-            )
+        history_files: list[Path] | None = None,
+    ) -> plt.Figure | None:
+        """Render one timestep into a Figure without saving it."""
+        field_ops = [op for op in self._field_operators if op.is_available(data)]
+        analysis_ops = list(self._analysis_operators) if history_files is not None else []
+        panels = field_ops + analysis_ops
+
+        if not panels:
             return None
 
-        ncols, nrows = self._layout(len(active_ops))
+        ncols, nrows = self._layout(len(panels))
         fig, axes = plt.subplots(
             nrows,
             ncols,
@@ -180,11 +187,11 @@ class FigureBuilder:
             squeeze=False,
         )
 
-        for idx, op in enumerate(active_ops):
+        for idx, op in enumerate(field_ops):
             row, col = divmod(idx, ncols)
             try:
                 op(axes[row][col], data, timestep)
-            except Exception as exc:  ## noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 axes[row][col].set_title(f"{op.name} - ERROR")
                 axes[row][col].text(
                     0.5,
@@ -197,13 +204,48 @@ class FigureBuilder:
                     color="red",
                 )
 
-        for idx in range(len(active_ops), nrows * ncols):
+        offset = len(field_ops)
+        for idx, op in enumerate(analysis_ops):
+            row, col = divmod(offset + idx, ncols)
+            try:
+                op.update(axes[row][col], history_files)
+            except Exception as exc:  # noqa: BLE001
+                axes[row][col].set_title(f"{op.name} - ERROR")
+                axes[row][col].text(
+                    0.5,
+                    0.5,
+                    str(exc),
+                    ha="center",
+                    va="center",
+                    transform=axes[row][col].transAxes,
+                    fontsize=7,
+                    color="red",
+                )
+
+        for idx in range(len(panels), nrows * ncols):
             row, col = divmod(idx, ncols)
             axes[row][col].set_visible(False)
 
         title = self.config.simulation_name or "simulation"
         fig.suptitle(f"{title} - Timestep {timestep}", fontsize=12)
         plt.tight_layout(rect=(0, 0.03, 1, 0.95))
+
+        return fig
+
+    def build(
+        self,
+        data: dict[str, np.ndarray],
+        timestep: int,
+        filename: str | None = None,
+    ) -> Path | None:
+        """Render one timestep figure and save it to disk."""
+        fig = self.render_figure(data, timestep)
+        if fig is None:
+            warnings.warn(
+                f"FigureBuilder: no operators have data at t={timestep}.",
+                stacklevel=2,
+            )
+            return None
 
         out_name = filename or f"timestep_{timestep}.png"
         out_path = self._plot_dir / out_name

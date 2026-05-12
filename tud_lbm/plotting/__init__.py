@@ -20,14 +20,9 @@ PlotOperator
     Abstract base class for custom visualization panels. Extend this to
     create custom plot types that integrate with FigureBuilder.
 
-visualise()
-    Backward-compatible entry point for rendering all timesteps in a run
-    directory. Automatically discovers and uses registered plot operators.
-
-    Example::
-
-        from tud_lbm.plotting import visualise
-        visualise("results/run_001/", skip=10)
+Animator
+    Build frame sequences and encode simulation animations (mp4/gif) from
+    saved run directories.
 
 Available Plot Operators
 ------------------------
@@ -46,8 +41,7 @@ Complete Example
 
 ::
 
-    from tud_lbm import SimulationConfig, build_setup, run, init_state
-    from tud_lbm.plotting import visualise
+    from tud_lbm.plotting import FigureBuilder
 
     config = SimulationConfig(grid_shape=(64, 64), tau=0.8, nt=100)
     setup = build_setup(config)
@@ -55,11 +49,12 @@ Complete Example
     final_state, _ = run(setup, state, nt=100)
 
     # Render figures for a saved run directory
-    visualise("results/my_run/", skip=5)
+    builder = FigureBuilder(config, "results/my_run/")
+    builder.build_all(skip=5)
 """
 
+from tud_lbm.io.plotting import Animator
 from tud_lbm.io.plotting import FigureBuilder
 from tud_lbm.io.plotting import PlotOperator
-from tud_lbm.io.plotting import visualise
 
-__all__ = ["FigureBuilder", "PlotOperator", "visualise"]
+__all__ = ["Animator", "FigureBuilder", "PlotOperator"]

@@ -32,12 +32,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax
 import jax.numpy as jnp
+from tud_lbm.config.config_overview import DEBUG_FLAG
 from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
 from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
 from tud_lbm.operators.wetting._params import WettingParams
 from tud_lbm.registry import wetting_operator
 
 if TYPE_CHECKING:
+    import types
     from collections.abc import Callable
     from tud_lbm.pipeline.setup import SimulationSetup
     from tud_lbm.pipeline.state.state import WettingState
@@ -49,6 +51,16 @@ if TYPE_CHECKING:
 # directional split is applied.
 _PHI_NEUTRAL: float = 1.0
 _D_RHO_NEUTRAL: float = 0.0
+
+
+def _import_optax() -> types.ModuleType:
+    """Import optional ``optax`` dependency with a clear install hint."""
+    try:
+        import optax
+    except ImportError as err:
+        msg = "The 'optax' package is required for hysteresis wetting.\nInstall it with:  pip install optax"
+        raise ImportError(msg) from err
+    return optax
 
 
 def _phi_is_active(
@@ -274,13 +286,7 @@ def update_wetting_state(
         d_rho_right=d_rho_right_init,
     )
 
-    try:
-        import optax  # lazy import — optional dependency
-    except ImportError as err:
-        msg = "The 'optax' package is required for hysteresis wetting.\nInstall it with:  pip install optax"
-        raise ImportError(
-            msg,
-        ) from err
+    optax = _import_optax()
     optimiser = optax.adam(lr)
 
     # 4. Create wrapper that converts trial_step_fn to evaluate_fn
@@ -366,25 +372,25 @@ def update_wetting_state(
     new_params_left = _opt_left(params)
     new_params = _opt_right(new_params_left)
 
-    # Change G — debug prints with active-parameter flag
-    jax.debug.print(
-        "ca_right={ca} cll_right={cll} phi_active={a} phi={p} d_rho={d} loss={l}",
-        ca=ca_right_tplus1,
-        cll=cll_right_tplus1,
-        a=phi_active_right,
-        p=new_params.phi_right,
-        d=new_params.d_rho_right,
-        l=right_objective(new_params),
-    )
-    jax.debug.print(
-        "ca_left={ca}  cll_left={cll}  phi_active={a} phi={p} d_rho={d} loss={l}",
-        ca=ca_left_tplus1,
-        cll=cll_left_tplus1,
-        a=phi_active_left,
-        p=new_params.phi_left,
-        d=new_params.d_rho_left,
-        l=left_objective(new_params),
-    )
+    if DEBUG_FLAG:
+        jax.debug.print(
+            "ca_right={ca} cll_right={cll} phi_active={a} phi={p} d_rho={d} loss={l}",
+            ca=ca_right_tplus1,
+            cll=cll_right_tplus1,
+            a=phi_active_right,
+            p=new_params.phi_right,
+            d=new_params.d_rho_right,
+            l=right_objective(new_params),
+        )
+        jax.debug.print(
+            "ca_left={ca}  cll_left={cll}  phi_active={a} phi={p} d_rho={d} loss={l}",
+            ca=ca_left_tplus1,
+            cll=cll_left_tplus1,
+            a=phi_active_left,
+            p=new_params.phi_left,
+            d=new_params.d_rho_left,
+            l=left_objective(new_params),
+        )
     # 6. Return updated wetting state
     return wetting._replace(
         phi_left=new_params.phi_left,
@@ -469,13 +475,7 @@ def update_wetting_state_chemical_step(
         d_rho_right=jnp.where(phi_active_right, _D_RHO_NEUTRAL, wetting.d_rho_right),
     )
 
-    try:
-        import optax  # lazy import — optional dependency
-    except ImportError as err:
-        msg = "The 'optax' package is required for hysteresis wetting.\nInstall it with:  pip install optax"
-        raise ImportError(
-            msg,
-        ) from err
+    optax = _import_optax()
     optimiser = optax.adam(lr)
 
     # 4. Create wrapper that converts trial_step_fn to evaluate_fn
@@ -559,24 +559,25 @@ def update_wetting_state_chemical_step(
     new_params_left = _opt_left(params)
     new_params = _opt_right(new_params_left)
 
-    jax.debug.print(
-        "ca_right={ca} cll_right={cll} phi_active={a} phi={p} d_rho={d} loss={l}",
-        ca=ca_right_tplus1,
-        cll=cll_right_tplus1,
-        a=phi_active_right,
-        p=new_params.phi_right,
-        d=new_params.d_rho_right,
-        l=right_objective(new_params),
-    )
-    jax.debug.print(
-        "ca_left={ca}  cll_left={cll}  phi_active={a} phi={p} d_rho={d} loss={l}",
-        ca=ca_left_tplus1,
-        cll=cll_left_tplus1,
-        a=phi_active_left,
-        p=new_params.phi_left,
-        d=new_params.d_rho_left,
-        l=left_objective(new_params),
-    )
+    if DEBUG_FLAG:
+        jax.debug.print(
+            "ca_right={ca} cll_right={cll} phi_active={a} phi={p} d_rho={d} loss={l}",
+            ca=ca_right_tplus1,
+            cll=cll_right_tplus1,
+            a=phi_active_right,
+            p=new_params.phi_right,
+            d=new_params.d_rho_right,
+            l=right_objective(new_params),
+        )
+        jax.debug.print(
+            "ca_left={ca}  cll_left={cll}  phi_active={a} phi={p} d_rho={d} loss={l}",
+            ca=ca_left_tplus1,
+            cll=cll_left_tplus1,
+            a=phi_active_left,
+            p=new_params.phi_left,
+            d=new_params.d_rho_left,
+            l=left_objective(new_params),
+        )
 
     # 6. Return updated wetting state
     return wetting._replace(

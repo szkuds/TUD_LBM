@@ -3,14 +3,12 @@
 Public surface:
 
 - ``FigureBuilder`` -- assembles per-timestep composite figures from config.
+- ``Animator``      -- encodes saved snapshots into an mp4 or gif.
 - ``PlotOperator`` -- abstract base class for individual panel operators.
-- ``visualise`` -- backward-compatible entry point for simulation objects
-  or run directories.
+- ``AnalysisPlot``  -- abstract base class for analysis plot operators.
 """
 
 from __future__ import annotations  # noqa: I001
-import json
-from pathlib import Path
 
 # Trigger operator self-registration at import time.
 from . import analysis as _analysis_mod  # noqa: F401
@@ -22,39 +20,4 @@ from .base import AnalysisPlot
 from .base import PlotOperator
 from .figure_builder import FigureBuilder
 
-
-def visualise(run_dir: str, skip: int = 0) -> None:
-    """Plotting entry point.
-
-    Accepts a run-directory path. In both cases, figures are rendered
-    by :class:`FigureBuilder`.
-
-    Note:
-        The *title* parameter has been removed as figures now source
-        their title from ``SimulationConfig.simulation_name`` instead.
-    """
-    # TODO: Need make this function with adapters
-    from tud_lbm.config import from_dict
-
-    with Path(run_dir + "/config.json").open() as _fh:
-        raw = json.load(_fh)
-
-    config = from_dict(raw)
-
-    builder = FigureBuilder(config=config, run_dir=run_dir)
-    builder.build_all(skip=skip)
-
-
-def animate(run_dir: str, output: str | None = None, fps: int = 10) -> None:
-    """Animation entry point for a run directory."""
-    from tud_lbm.config import from_dict
-
-    with Path(run_dir + "/config.json").open() as _fh:
-        raw = json.load(_fh)
-
-    config = from_dict(raw)
-    animator = Animator(config=config, run_dir=run_dir, fps=fps)
-    animator.create(output)
-
-
-__all__ = ["AnalysisPlot", "FigureBuilder", "PlotOperator", "animate", "visualise"]
+__all__ = ["AnalysisPlot", "Animator", "FigureBuilder", "PlotOperator"]

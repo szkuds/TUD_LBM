@@ -21,15 +21,13 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
 from typing import Literal
-from tud_lbm.config.dir_config import BASE_RESULTS_DIR
+from tud_lbm.config.config_overview import BASE_RESULTS_DIR
 
 CONFIG_SECTION: str = "config_section"
 ARRAY_ELIGIBLE: str = "array_eligible"
 NESTED_SWEEPABLE: str = "nested_sweepable"
 MIN_GRID_DIMENSIONS: int = 2
 MIN_TAU_VALUE: float = 0.5
-# Threshold for distinguishing advancing contact angle behaviour in chemical step
-CA_THRESHOLD: float = 90.0
 
 
 def array_field(
@@ -133,7 +131,13 @@ class SimulationConfig:
     """
 
     # ── Simulation identity ──────────────────────────────────────
-    sim_type: Literal["single_phase", "multiphase"] = field(
+    sim_type: Literal[
+        "single_phase",
+        "multiphase",
+        "multiphase_wetting",
+        "multiphase_hysteresis",
+        "multiphase_hysteresis_chemical_step",
+    ] = field(
         default="single_phase",
         metadata={CONFIG_SECTION: "identity"},
     )
@@ -188,6 +192,7 @@ class SimulationConfig:
     skip_interval: int = 0
     save_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
     plot_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
+    animate_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
     output_format: str | list[str] | None = field(default="numpy", metadata={CONFIG_SECTION: "output"})
     output_dir: str | None = field(default=None, metadata={CONFIG_SECTION: "output"})
 
@@ -211,51 +216,14 @@ class SimulationConfig:
         self._make_grid_shape_3d()
         self._set_all_bcs()
         self._validate_common()
-        if self.sim_type == "multiphase":
+        if "multiphase" in self.sim_type:
             self._validate_multiphase()
-        if self.chemical_step_config is not None:
-            self._validate_chemical_step()
 
     def _normalize(self) -> None:
         object.__setattr__(self, "grid_shape", _normalize_sequence(self.grid_shape))
         object.__setattr__(self, "output_format", _first_if_list(self.output_format))
         if isinstance(self.output_format, str):
             object.__setattr__(self, "output_format", self.output_format.lower())
-
-    def _validate_chemical_step(self) -> None:
-        """Validate chemical_step_config for consistency between levers.
-
-        Ensures that the advancing contact angle, phi seed factor and d_rho
-        displacement are consistent and warns when both phi and d_rho are
-        active as they produce opposing optimisation gradients.
-        """
-        csc = self.chemical_step_config
-        for side in ("pre", "post"):
-            ca_adv = float(csc[f"ca_advancing_{side}_step"])
-            phi = float(csc.get(f"phi_{side}_step", 1.0))
-            d_rho = float(csc.get(f"d_rho_{side}_step", 0.0))
-
-            if ca_adv > CA_THRESHOLD and phi > 1.0:
-                msg = (
-                    f"chemical_step {side}_step: ca_advancing={ca_adv}\u00b0 requires a "
-                    f"hydrophobic seed but phi={phi}>1 with d_rho=0 is hydrophilic."
-                )
-                raise ValueError(msg)
-            if ca_adv < CA_THRESHOLD and d_rho > 0.0:
-                msg = (
-                    f"chemical_step {side}_step: ca_advancing={ca_adv}\u00b0 requires a "
-                    f"hydrophilic seed but d_rho={d_rho}>0 with phi=1 is hydrophobic."
-                )
-                raise ValueError(msg)
-            if phi > 1.0 and d_rho > 0.0:
-                import warnings
-
-                warnings.warn(
-                    f"chemical_step {side}_step: phi={phi}>1 and d_rho={d_rho}>0 are "
-                    "both active — levers oppose each other, optimiser gradients will "
-                    "be ambiguous.",
-                    stacklevel=3,
-                )
 
     def _apply_defaults(self) -> None:
         if self.save_interval == 0:
@@ -271,6 +239,17 @@ class SimulationConfig:
                     "right": "periodic",
                     "front": "periodic",
                     "back": "periodic",
+                },
+            )
+        if self.hysteresis_config is not None and self.wetting_config is None:
+            object.__setattr__(
+                self,
+                "wetting_config",
+                {
+                    "phi_left": 1.0,
+                    "phi_right": 1.0,
+                    "d_rho_left": 0.0,
+                    "d_rho_right": 0.0,
                 },
             )
 
@@ -380,7 +359,7 @@ class SimulationConfig:
     @property
     def is_multiphase(self) -> bool:
         """Check if simulation is multiphase."""
-        return self.sim_type == "multiphase"
+        return "multiphase" in self.sim_type
 
     @property
     def force_enabled(self) -> bool:

@@ -219,21 +219,19 @@ class InitialiserOperator(Protocol):
 
     Signature::
 
-        def init_fn(nx, ny, lattice, **kwargs) -> f
+        def init_fn(grid_shape, lattice, **kwargs) -> f
     """
 
     def __call__(
         self,
-        nx: int,
-        ny: int,
+        grid_shape: tuple[int, int, int],
         lattice: Lattice,
         **kwargs: Any,
     ) -> jnp.ndarray:
         """Initialise the distribution function.
 
         Args:
-            nx: Grid width.
-            ny: Grid height.
+            grid_shape: Grid dimensions ``(nx, ny, nz)``.
             lattice: :class:`~setup.lattice.Lattice`.
             **kwargs: Initialiser-specific keyword arguments
                 (e.g., ``density``, ``rho_l``, ``rho_v``, ``interface_width``,

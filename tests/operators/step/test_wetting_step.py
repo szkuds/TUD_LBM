@@ -6,7 +6,6 @@ and hysteresis optimisation.
 
 from pathlib import Path
 import jax.numpy as jnp
-import pytest
 from tud_lbm.config.adapter_toml import TomlAdapter
 from tud_lbm.config.simulation_config import SimulationConfig
 from tud_lbm.operators.step import build_step_fn
@@ -154,7 +153,6 @@ class TestStepWetting:
 class TestComplexConfig:
     """Integration test for config_complex.toml workflow."""
 
-    @pytest.mark.xfail(reason="Pre-existing config integration test")
     def test_complex_config(self):
         """Test complex config with wetting_hysteresis."""
         adapter = TomlAdapter()

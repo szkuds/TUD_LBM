@@ -42,13 +42,14 @@ plotting
     Visualization operators and figure builders.
 
     - FigureBuilder : Assemble multi-panel figures from simulation data
+    - Animator      : Encode saved timestep frames into mp4/gif
     - PlotOperator  : Base class for custom visualization panels
-    - visualise()   : Backward-compatible entry point for rendering results
 
     Example::
 
-        from tud_lbm.plotting import visualise
-        visualise("results/run_001/")
+        from tud_lbm.plotting import FigureBuilder
+        builder = FigureBuilder(config, "results/run_001/")
+        builder.build_all()
 """
 
 from .output_data import output_writers

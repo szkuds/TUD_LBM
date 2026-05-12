@@ -1,5 +1,5 @@
 # Test config for step_multiphase_hysteresis
-# Triggers: sim_type="multiphase" + [wetting] + [hysteresis], no [chemical_step]
+# Triggers: sim_type="multiphase" + [hysteresis], no [chemical_step]
 # Wetting params are updated each step by the hysteresis optimiser.
 
 [simulation_type]
@@ -10,8 +10,6 @@ lattice_type = "D2Q9"
 tau = 0.99
 nt = 5000
 init_type = "multiphase_bubbles"
-#init_type = "init_from_file"
-#init_dir = "/Users/sbszkudlarek/TUD_LBM_data/test_runs/2026-05-08/23-42-16_test_multiphase_hysteresis/data/timestep_1000.npz"
 
 [initialisation]
 centres = [[0.5, 0.0]]
@@ -31,11 +29,6 @@ right = "periodic"
 top = "bounce-back"
 bottom = "wetting"
 
-[wetting]
-phi_left = 1.0
-phi_right = 1.0
-d_rho_left = 0.0
-d_rho_right = 0.0
 
 [hysteresis]
 ca_advancing = 120.0

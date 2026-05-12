@@ -59,9 +59,9 @@ def build_diff_ops(
     * **gradient_density**: Density gradient ∇ρ, used in source terms.
     * **laplacian_density**: Laplacian ∇²ρ, used in chemical potential.
     * **gradient_density_wetting**: Parametric density gradient ``(grid, phi_l, phi_r, d_rho_l, d_rho_r) → result``.
-      ``None`` unless wetting+hysteresis are configured.
+      ``None`` unless hysteresis is configured.
     * **laplacian_density_wetting**: Parametric Laplacian ``(grid, phi_l, phi_r, d_rho_l, d_rho_r) → result``.
-      ``None`` unless wetting+hysteresis are configured.
+      ``None`` unless hysteresis is configured.
 
     Design:
 
@@ -70,8 +70,8 @@ def build_diff_ops(
     * **Fixed wetting** (wetting config but no hysteresis): Same behavior as non-wetting.
       ``gradient_density`` and ``laplacian_density`` close over static wetting parameters.
       ``gradient_density_wetting`` and ``laplacian_density_wetting`` are ``None``.
-    * **Hysteresis** (wetting + hysteresis configs): ``gradient_density`` and ``laplacian_density``
-      are initial closures (gradient_standard variant with seed parameters from config).
+    * **Hysteresis**: ``gradient_density`` and ``laplacian_density`` are initial closures
+      seeded with wetting parameters (explicit or neutral defaults).
       ``gradient_density_wetting`` and ``laplacian_density_wetting`` are the parametric factories
       used by the hysteresis optimizer to build trial-step operators.
 
@@ -99,8 +99,16 @@ def build_diff_ops(
 
     wetting_config = config.wetting_config
     hysteresis_config = config.hysteresis_config
+    effective_wetting = wetting_config
+    if hysteresis_config is not None and effective_wetting is None:
+        effective_wetting = {
+            "phi_left": 1.0,
+            "phi_right": 1.0,
+            "d_rho_left": 0.0,
+            "d_rho_right": 0.0,
+        }
 
-    if wetting_config is not None and mp_params is not None:
+    if effective_wetting is not None and mp_params is not None:
         # Wetting: build parametric closures with rho_l, rho_v, width baked in.
         # Signature: (grid, phi_l, phi_r, d_rho_l, d_rho_r) → result.
         _gradient_wetting_factory = build_differential_fn("gradient_wetting")
@@ -125,10 +133,10 @@ def build_diff_ops(
         )
 
         # Extract wetting params once, used in both branches below.
-        _phi_l = jnp.array(float(wetting_config.get("phi_left", wetting_config.get("phi_l", 1.0))))
-        _phi_r = jnp.array(float(wetting_config.get("phi_right", wetting_config.get("phi_r", 1.0))))
-        _d_rho_l = jnp.array(float(wetting_config.get("d_rho_left", wetting_config.get("d_rho_l", 0.0))))
-        _d_rho_r = jnp.array(float(wetting_config.get("d_rho_right", wetting_config.get("d_rho_r", 0.0))))
+        _phi_l = jnp.array(float(effective_wetting.get("phi_left", effective_wetting.get("phi_l", 1.0))))
+        _phi_r = jnp.array(float(effective_wetting.get("phi_right", effective_wetting.get("phi_r", 1.0))))
+        _d_rho_l = jnp.array(float(effective_wetting.get("d_rho_left", effective_wetting.get("d_rho_l", 0.0))))
+        _d_rho_r = jnp.array(float(effective_wetting.get("d_rho_right", effective_wetting.get("d_rho_r", 0.0))))
 
         def gradient_density(grid: jnp.ndarray) -> jnp.ndarray:
             return _grad_wetting(grid, _phi_l, _phi_r, _d_rho_l, _d_rho_r)
