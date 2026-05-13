@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SonarLintProjectSettings">
+    <option name="fileExclusions">
+      <list>
+        <option value="DIRECTORY:dist" />
+        <option value="DIRECTORY:build" />
+        <option value="DIRECTORY:docs" />
+        <option value="FILE:docs/_build/html/_modules/tud_lbm/cli/cli.html" />
+        <option value="FILE:docs/_build/html/_modules/tud_lbm/cli.html" />
+        <option value="FILE:docs/_build/html/_modules/tud_lbm/operators/boundary.html" />
+        <option value="FILE:docs/_build/html/_static/basic.css" />
+        <option value="FILE:docs/_build/html/_modules/tud_lbm/io/plotting/base.html" />
+        <option value="FILE:docs/_build/html/_modules/tud_lbm/io/output_data/base.html" />
+        <option value="FILE:docs/_build/html/_static/base-stemmer.js" />
+        <option value="FILE:docs/_build/html/_static/_sphinx_javascript_frameworks_compat.js" />
+        <option value="FILE:docs/_build/html/_modules/tud_lbm/config/adapter_base.html" />
+        <option value="FILE:docs/_build/html/_modules/tud_lbm/config/adapter_dict.html" />
+        <option value="FILE:docs/_build/html/_modules/tud_lbm/config/adapter_toml.html" />
+        <option value="FILE:docs/_build/html/_modules/tud_lbm/io/plotting/analysis.html" />
+        <option value="FILE:docs/_build/html/architecture.html" />
+        <option value="FILE:docs/_build/html/_modules/tud_lbm/config/array_expansion.html" />
+      </list>
+    </option>
+  </component>
+</project>

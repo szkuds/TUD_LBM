@@ -1,0 +1,33 @@
+# Test config for step_multiphase
+# Triggers: sim_type="multiphase", no [wetting], no [hysteresis], no [chemical_step]
+
+[simulation_type]
+simulation_name = "test_multiphase"
+type = "multiphase"
+grid_shape = [128, 128]
+lattice_type = "D2Q9"
+tau = 0.99
+nt = 10000
+init_type = "multiphase_bubbles"
+
+[initialisation]
+centres = [[0.5, 0.5]]
+radii = [0.2]
+dispersed = "liquid"
+
+[multiphase]
+kappa = 0.04
+rho_l = 1.0
+rho_v = 0.001
+interface_width = 5
+eos = "double-well"
+
+[boundary_conditions]
+left = "periodic"
+right = "periodic"
+top = "periodic"
+bottom = "periodic"
+
+[output]
+results_dir = "~/TUD_LBM_data/test_runs"
+save_fields = ["rho", "u"]

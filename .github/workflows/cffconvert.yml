@@ -3,13 +3,13 @@ name: cffconvert
 on:
   push:
     branches:
-    - main
+      - main
   pull_request:
     branches:
-    - main
+      - main
+      - develop
 
 jobs:
-
   verify:
     name: "cffconvert"
     runs-on: ubuntu-latest

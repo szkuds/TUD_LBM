@@ -1,58 +1,71 @@
-# TUD-LBM Complex Multiphase Simulation Configuration
-#
-# Load this config via the TOML adapter:
-#
-#   from config.adapter_toml import TomlAdapter
-#   from setup.simulation_setup import build_setup
-#   from runner.run import init_state, run
-#
-#   config = TomlAdapter().load("config_complex.toml")
-#   setup  = build_setup(config)
-#   state  = init_state(setup)
-#   final_state, trajectory = run(setup, state)
-
 [simulation_type]
-simulation_name = 'Test complex simulation'
-type = "multiphase"
-grid_shape = [201, 201]
+simulation_name = "Test chemical step simulation"
 lattice_type = "D2Q9"
+grid_shape = [
+    201,
+    101,
+    1,
+]
+nt = 20000
 tau = 0.99
-nt = 2000
-init_type = "wetting"
-
-[multiphase]
-kappa = 0.017
-rho_l = 1.0
-rho_v = 0.33
-interface_width = 5
-eos = "double-well"
-
-# Force configuration - can have multiple [[force]] tables
-[[force]]
-type = "gravity_multiphase"
-force_g = 2e-6
-inclination_angle_deg = 0
+collision_scheme = "bgk"
+init_type = "multiphase_bubbles"
+init_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_test/2026-05-04/13-30-21_Test chemical step simulation/data/timestep_12000.npz"
+skip_interval = 1
+type = "multiphase_hysteresis_chemical_step"
 
 [boundary_conditions]
 left = "periodic"
 right = "periodic"
 top = "bounce-back"
 bottom = "wetting"
+front = "periodic"
+back = "periodic"
 
-[boundary_conditions.wetting_params]
-phi_left = 1.0
-phi_right = 1.0
-d_rho_left = 0.0
-d_rho_right = 0.0
+[chemical_step]
+chemical_step_location = 0.5
+chemical_step_edge = "bottom"
+ca_advancing_pre_step = 120.0
+ca_receding_pre_step = 100.0
+ca_advancing_post_step = 70.0
+ca_receding_post_step = 50.0
 
-[boundary_conditions.hysteresis_params]
-ca_advancing = 90.0
-ca_receding = 80.0
+[gravity_masked_force]
+force_g = 1e-06
+inclination_angle_deg = 60
+
+[hysteresis]
 learning_rate = 0.05
 max_iterations = 10
 
+[initialisation]
+centres = [
+    [
+        0.3,
+        0,
+    ],
+]
+radii = [
+    0.3,
+]
+dispersed = "liquid"
+
+[multiphase]
+eos = "double-well"
+kappa = 0.04
+rho_l = 1.0
+rho_v = 0.001
+interface_width = 5
+
 [output]
-results_dir = "~/TUD_LBM_data/results"
-save_fields = ["rho", "u"]
-plot_fields = ["density", 'velocity', 'analysis']
+results_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_test"
+save_fields = [
+    "rho",
+    "u",
+]
+plot_fields = [
+    "density",
+    "velocity",
+]
+output_format = "numpy"
 
