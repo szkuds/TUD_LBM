@@ -157,7 +157,7 @@ class TestStreamingIO:
         state = init_state(setup)
         io = self._make_io(tmp_path)
 
-        # save_interval=1, skip_interval=3 → saves at t=4,5,6,7
+        # save_interval=1, skip_interval=3 → saves at t=4,5,6,7,8
         run(
             setup,
             state,
@@ -169,8 +169,8 @@ class TestStreamingIO:
 
         files = sorted(p.name for p in Path(io.data_dir).iterdir())
         # Steps 0..7 with skip=3 → nothing saved for t=0,1,2,3
-        # Steps 4..7 → 4 files
-        assert len(files) == 4
+        # Steps 4..8 → 5 files
+        assert len(files) == 5
         # First file should be timestep_4
         assert files[0] == "timestep_4.npz"
 

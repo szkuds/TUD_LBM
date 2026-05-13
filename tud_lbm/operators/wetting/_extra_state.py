@@ -27,40 +27,46 @@ class WettingExtraStatePlugin:
 
     @staticmethod
     def is_active(config: SimulationSetup) -> bool:
-        return getattr(config, "wetting_config", None) is not None
+        return (
+            getattr(config, "wetting_config", None) is not None
+            or getattr(config, "hysteresis_config", None) is not None
+        )
 
     @staticmethod
     def init_state(setup: SimulationSetup) -> dict[str, Any]:
         wetting_cfg = setup.config.wetting_config
         if wetting_cfg is None:
-            return {}
+            wetting_cfg = {
+                "phi_left": 1.0,
+                "phi_right": 1.0,
+                "d_rho_left": 0.0,
+                "d_rho_right": 0.0,
+            }
 
         f_init = setup.initial_f_fn()
-        rho_init = jnp.sum(f_init, axis=2, keepdims=True)
+        rho_init = jnp.sum(f_init, axis=-2, keepdims=True)
 
         mp = setup.multiphase_params
         rho_mean = 0.5 * (mp.rho_l + mp.rho_v) if mp is not None else 1.0
 
-        ca_left, ca_right = compute_contact_angle(rho_init, rho_mean)
+        ca_left, ca_right = compute_contact_angle(rho_init, jnp.array(rho_mean))
         cll_left, cll_right = compute_contact_line_location(
             rho_init,
             ca_left,
             ca_right,
-            rho_mean,
+            jnp.array(rho_mean),
         )
 
         return {
             "wetting": WettingState(
-                d_rho_left=jnp.array(_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.05)),
-                d_rho_right=jnp.array(_cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.05)),
-                phi_left=jnp.array(_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.2)),
-                phi_right=jnp.array(_cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.2)),
+                phi_left=jnp.array(_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.0)),
+                phi_right=jnp.array(_cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.0)),
+                d_rho_left=jnp.array(_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.0)),
+                d_rho_right=jnp.array(_cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.0)),
                 ca_left=ca_left,
                 ca_right=ca_right,
                 cll_left=cll_left,
                 cll_right=cll_right,
-                opt_state_left=None,
-                opt_state_right=None,
             ),
         }
 
@@ -78,7 +84,6 @@ class WettingExtraStatePlugin:
             prev_state.wetting,
             new_state.rho,
             setup,
-            prev_state.f,
-            force_ext=context.get("force_ext"),
+            trial_step_fn=context.get("trial_step_fn"),
         )
         return new_state._replace(wetting=updated_wetting)

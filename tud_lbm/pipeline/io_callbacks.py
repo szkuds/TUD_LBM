@@ -61,13 +61,20 @@ def _state_to_numpy(state: State, fields: tuple | None = None, t: int | None = N
         for k, v in state._asdict().items()
         if v is not None and hasattr(v, "shape") and (fields is None or k in fields)
     }
+
+    # Persist wetting scalars explicitly so plotting/analysis can read them from snapshots.
+    # Note: wetting fields (ca_left, ca_right, cll_left, cll_right) are ALWAYS saved
+    # because they are needed for analysis plots. They are scalar-valued metadata, not
+    # large field arrays, so the storage overhead is negligible. Users can control which
+    # analysis plots are created via config.plot_fields in the [output] section.
+    wetting = getattr(state, "wetting", None)
+    if wetting is not None:
+        for key, value in wetting._asdict().items():
+            data[key] = np.asarray(value)
+
     bad = [k for k, v in data.items() if np.isnan(v).any()]
     if bad:
-        # Raising here causes the jax.debug.callback to fail
-        # and the lax.scan / run(...) to abort at this timestep.
-        # TODO: when a NaN is triggered it still needs to plot id that is enabled.
-        msg = f"NaNs detected at t={t} in fields: {bad}"
-        raise FloatingPointError(msg)
+        jax.debug.print("NaNs detected at t={t} in fields: {bad}", t=t, bad=bad)
     return data
 
 

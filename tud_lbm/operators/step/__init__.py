@@ -2,9 +2,8 @@
 
 Public API: build_step_fn()
 
-Implementation modules (_single_phase.py, _multiphase.py) are internal;
-use the factory to access. Helper modules (_common.py, _wetting_differential_operators.py)
-provide shared logic.
+Implementation modules (_single_phase.py, _multiphase.py, _multiphase_wetting.py) are internal;
+use the factory to access. Helper modules (_common.py) provide shared logic.
 
 Example:
     from tud_lbm.operators.step import build_step_fn
@@ -23,13 +22,14 @@ if TYPE_CHECKING:
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("tud_lbm.operators.step")
+from tud_lbm.operators.step import _multiphase_hysteresis_chemical_step  # noqa: F401, E402
 
 
 def build_step_fn(scheme: str = "single_phase") -> StepOperator:
     """Return a step operator looked up from the registry.
 
     Args:
-        scheme: Step operator name ("single_phase" or "multiphase").
+        scheme: Step operator name ("single_phase", "multiphase", "multiphase_wetting").
                 Defaults to "single_phase".
 
     Returns:

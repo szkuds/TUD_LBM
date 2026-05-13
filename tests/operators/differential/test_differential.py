@@ -260,15 +260,12 @@ class TestBuildWettingGradient:
         np.testing.assert_array_equal(np.array(out), np.array(out2))
 
     def test_chemical_step_variant(self, lattice, periodic_pad, const_field):
-        """build_wetting_gradient with resolved chemical-step wetting fields."""
+        """build_wetting_gradient accepts explicit step-selected wetting params."""
         from tud_lbm.operators.differential._gradient_wetting import build_wetting_gradient
 
-        params_array = {
-            "phi": [1.2, 1.4],
-            "d_rho": [0.03, 0.07],
-        }
-        _resolve_wetting_fields = build_wetting_fn("resolve_wetting_fields")
-        phi_l, phi_r, d_rho_l, d_rho_r = _resolve_wetting_fields(params_array, chemical_step=0)
+        # Chemical-step side selection now happens in hysteresis logic.
+        # Differential operators consume explicit per-side values.
+        phi_l, phi_r, d_rho_l, d_rho_r = 1.2, 1.4, 0.03, 0.07
 
         fn = build_wetting_gradient(
             lattice.w,
@@ -309,31 +306,25 @@ class TestWettingUtil:
     - Corner handling with periodic vs non-periodic perpendicular BCs
     """
 
-    # --- resolve_wetting_fields -------------------------------------------
+    # --- edge resolution ---------------------------------------------------
 
-    def test_resolve_scalar_layout(self):
-        p = {"phi_l": 1.2, "phi_r": 1.4, "d_rho_l": 0.05, "d_rho_r": 0.06}
-        _resolve_wetting_fields = build_wetting_fn("resolve_wetting_fields")
-        phi_l, phi_r, drho_l, drho_r = _resolve_wetting_fields(p)
-        assert phi_l == 1.2
-        assert phi_r == 1.4
-        assert drho_l == 0.05
-        assert drho_r == 0.06
+    def test_resolve_wetting_edges_defaults_perpendicular_to_periodic(self):
+        from tud_lbm.operators.wetting._edge_config import _resolve_wetting_edges
 
-    def test_resolve_array_layout_step0(self):
-        p = {"phi": [1.2, 1.4], "d_rho": [0.03, 0.07]}
-        _resolve_wetting_fields = build_wetting_fn("resolve_wetting_fields")
-        phi_l, phi_r, _d_rho_l, _d_rho_r = _resolve_wetting_fields(p, chemical_step=0)
-        assert phi_l == 1.2
-        assert phi_r == 1.4
+        edges = _resolve_wetting_edges({"bottom": "wetting"})
+        assert edges == [("bottom", True, True)]
 
-    def test_resolve_array_layout_step1(self):
-        p = {"phi": [1.2, 1.4], "d_rho": [0.03, 0.07]}
-        _resolve_wetting_fields = build_wetting_fn("resolve_wetting_fields")
-        phi_l, phi_r, _d_rho_l, _d_rho_r = _resolve_wetting_fields(p, chemical_step=1)
-        # step=1 swaps sides
-        assert phi_l == 1.4
-        assert phi_r == 1.2
+    def test_resolve_wetting_edges_respects_explicit_perpendicular_bcs(self):
+        from tud_lbm.operators.wetting._edge_config import _resolve_wetting_edges
+
+        edges = _resolve_wetting_edges(
+            {
+                "bottom": "wetting",
+                "left": "bounce-back",
+                "right": "periodic",
+            }
+        )
+        assert edges == [("bottom", False, True)]
 
     # --- Ghost-cell reconstruction ----------------------------------------
 

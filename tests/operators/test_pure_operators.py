@@ -39,7 +39,7 @@ def rest_state(lattice):
     """Uniform density=1, velocity=0 populations at equilibrium."""
     rho = jnp.ones((NX, NY, NZ, 1, 1))
     u = jnp.zeros((NX, NY, NZ, 1, 2))
-    # At rest: feq_0 = rho - sum_rest, feq_i = w_i * rho for i>0
+    # At rest: feq_0 = rho_t_plus1 - sum_rest, feq_i = w_i * rho_t_plus1 for i>0
     # Actually, compute equilibrium properly
     from tud_lbm.operators.equilibrium import build_equilibrium_fn
 
@@ -285,7 +285,7 @@ class TestComputeEquilibrium:
         feq = compute_equilibrium(rho, u, lattice)
 
         assert feq.shape == (NX, NY, NZ, 9, 1)
-        # Mass conservation: sum over q should equal rho
+        # Mass conservation: sum over q should equal rho_t_plus1
         np.testing.assert_allclose(
             np.array(jnp.sum(feq, axis=3, keepdims=True)),
             np.array(rho),
@@ -300,7 +300,7 @@ class TestComputeEquilibrium:
 
         feq = compute_equilibrium(rho, u, lattice)
 
-        # sum_q feq_q = rho everywhere
+        # sum_q feq_q = rho_t_plus1 everywhere
         np.testing.assert_allclose(
             np.array(jnp.sum(feq, axis=3, keepdims=True)),
             np.array(rho),
@@ -390,7 +390,7 @@ class TestComputeMacroscopic:
 
 
 class TestComputeMacroscopicMultiphase:
-    """``compute_macroscopic_multiphase`` returns (rho, u_eq, force)."""
+    """``compute_macroscopic_multiphase`` returns (rho_t_plus1, u_eq, force)."""
 
     def _mp_params(self):
         from tud_lbm.operators.macroscopic import MultiphaseParams

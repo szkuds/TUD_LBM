@@ -1,6 +1,7 @@
 """Tests for CLI helper functions and edge cases."""
 
 from __future__ import annotations
+from types import ModuleType
 import pytest
 
 try:
@@ -10,6 +11,14 @@ try:
     from tud_lbm.cli.cli import _set_nested_override
 except ImportError:
     pytest.skip("click or rich dependency not installed", allow_module_level=True)
+
+
+def test_package_cli_import_is_callable():
+    from tud_lbm.cli.cli import cli
+
+    assert callable(cli)
+    assert not isinstance(cli, ModuleType)
+
 
 # =========================================================================
 # _parse_override_argument Tests
@@ -55,9 +64,9 @@ class TestParseOverrideArgument:
         assert value == [0.6, 0.7, 0.8]
 
     def test_parse_array_of_strings(self):
-        path, value = _parse_override_argument('fields=["rho", "u", "f"]')
+        path, value = _parse_override_argument('fields=["rho_t_plus1", "u", "f"]')
         assert path == "fields"
-        assert value == ["rho", "u", "f"]
+        assert value == ["rho_t_plus1", "u", "f"]
 
     def test_parse_dotted_path(self):
         path, value = _parse_override_argument("gravity_force.force_g=5e-7")
@@ -277,8 +286,8 @@ class TestApplyOverrides:
 
     def test_apply_mixed_scalar_and_array_overrides(self):
         raw = {"tau": 0.6}
-        _apply_overrides(raw, ("nt=500", 'fields=["rho", "u"]'))
-        assert raw == {"tau": 0.6, "nt": 500, "fields": ["rho", "u"]}
+        _apply_overrides(raw, ("nt=500", 'fields=["rho_t_plus1", "u"]'))
+        assert raw == {"tau": 0.6, "nt": 500, "fields": ["rho_t_plus1", "u"]}
 
     def test_apply_overrides_reject_invalid_value(self):
         raw = {}
@@ -305,9 +314,9 @@ class TestCLIEdgeCases:
         assert value == "test_sim-2024"
 
     def test_override_with_unicode_string(self):
-        path, value = _parse_override_argument('title="Simulation α"')  # noqa: RUF001
+        path, value = _parse_override_argument('title="Simulation α"')
         assert path == "title"
-        assert value == "Simulation α"  # noqa: RUF001
+        assert value == "Simulation α"
 
     def test_override_with_negative_number(self):
         path, value = _parse_override_argument("offset=-0.5")

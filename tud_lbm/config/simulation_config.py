@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
 from typing import Literal
-from tud_lbm.config.dir_config import BASE_RESULTS_DIR
+from tud_lbm.config.config_overview import BASE_RESULTS_DIR
 
 CONFIG_SECTION: str = "config_section"
 ARRAY_ELIGIBLE: str = "array_eligible"
@@ -131,7 +131,13 @@ class SimulationConfig:
     """
 
     # ── Simulation identity ──────────────────────────────────────
-    sim_type: Literal["single_phase", "multiphase"] = field(
+    sim_type: Literal[
+        "single_phase",
+        "multiphase",
+        "multiphase_wetting",
+        "multiphase_hysteresis",
+        "multiphase_hysteresis_chemical_step",
+    ] = field(
         default="single_phase",
         metadata={CONFIG_SECTION: "identity"},
     )
@@ -155,15 +161,23 @@ class SimulationConfig:
         metadata={CONFIG_SECTION: "boundary_conditions"},
     )
 
-    # ── Wetting model (promoted to first-class section) ──────────
+    # ── Wetting model ──────────
     wetting_config: dict[str, Any] | None = array_field(default=None, section="wetting", nested_sweepable=True)
 
-    # ── Hysteresis model (promoted to first-class section) ───────
+    # ── Hysteresis model ───────
     hysteresis_config: dict[str, Any] | None = array_field(default=None, section="hysteresis", nested_sweepable=True)
+
+    # ── Chemical step model ───────
+    chemical_step_config: dict[str, Any] | None = array_field(
+        default=None, section="chemical_step", nested_sweepable=True
+    )
 
     # ── Forces (each force is its own field, named by physics) ───
     gravity_force: dict[str, Any] | None = array_field(default=None, section="gravity_force", nested_sweepable=True)
     electric_force: dict[str, Any] | None = array_field(default=None, section="electric_force", nested_sweepable=True)
+    gravity_masked_force: dict[str, Any] | None = array_field(
+        default=None, section="gravity_masked_force", nested_sweepable=True
+    )
     # ── Initialisation ───────────────────────────────────────────
     init_type: str = "standard"
     init_dir: str | None = None
@@ -178,6 +192,7 @@ class SimulationConfig:
     skip_interval: int = 0
     save_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
     plot_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
+    animate_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
     output_format: str | list[str] | None = field(default="numpy", metadata={CONFIG_SECTION: "output"})
     output_dir: str | None = field(default=None, metadata={CONFIG_SECTION: "output"})
 
@@ -201,7 +216,7 @@ class SimulationConfig:
         self._make_grid_shape_3d()
         self._set_all_bcs()
         self._validate_common()
-        if self.sim_type == "multiphase":
+        if "multiphase" in self.sim_type:
             self._validate_multiphase()
 
     def _normalize(self) -> None:
@@ -224,6 +239,17 @@ class SimulationConfig:
                     "right": "periodic",
                     "front": "periodic",
                     "back": "periodic",
+                },
+            )
+        if self.hysteresis_config is not None and self.wetting_config is None:
+            object.__setattr__(
+                self,
+                "wetting_config",
+                {
+                    "phi_left": 1.0,
+                    "phi_right": 1.0,
+                    "d_rho_left": 0.0,
+                    "d_rho_right": 0.0,
                 },
             )
 
@@ -333,7 +359,7 @@ class SimulationConfig:
     @property
     def is_multiphase(self) -> bool:
         """Check if simulation is multiphase."""
-        return self.sim_type == "multiphase"
+        return "multiphase" in self.sim_type
 
     @property
     def force_enabled(self) -> bool:

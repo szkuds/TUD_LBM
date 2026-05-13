@@ -242,7 +242,7 @@ class TestOutputAdapters:
             numpy_writer.save_data_step(
                 iteration=0,
                 data={
-                    "rho": final_state.rho,
+                    "rho_t_plus1": final_state.rho,
                     "u": final_state.u,
                 },
             )
@@ -271,7 +271,7 @@ class TestOutputAdapters:
             vtk_writer.save_data_step(
                 iteration=0,
                 data={
-                    "rho": final_state.rho,
+                    "rho_t_plus1": final_state.rho,
                     "u": final_state.u,
                 },
             )

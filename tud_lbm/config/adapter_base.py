@@ -78,7 +78,7 @@ class ConfigAdapter(ABC):
             section = sections.get(key, "simulation_type")
             if value is None or section in skip:
                 continue
-            if section == "multiphase" and sim_type != "multiphase":
+            if section == "multiphase" and "multiphase" not in sim_type:
                 continue
             if isinstance(value, dict):
                 buckets[section].update(cls._serialize_safe(value))

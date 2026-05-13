@@ -150,10 +150,10 @@ class TestWettingState:
         from tud_lbm.pipeline.state import WettingState
 
         return WettingState(
-            d_rho_left=jnp.array(0.1),
-            d_rho_right=jnp.array(0.1),
             phi_left=jnp.array(0.5),
             phi_right=jnp.array(0.5),
+            d_rho_left=jnp.array(0.1),
+            d_rho_right=jnp.array(0.1),
             ca_left=jnp.array(90.0),
             ca_right=jnp.array(90.0),
             cll_left=jnp.array(10.0),

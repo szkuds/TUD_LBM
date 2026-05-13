@@ -23,7 +23,6 @@ Usage::
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from typing import Any
 from typing import NamedTuple
 
 if TYPE_CHECKING:
@@ -38,28 +37,24 @@ class WettingState(NamedTuple):
     state can flow through ``jax.lax.scan`` as part of the carry.
 
     Attributes:
-        d_rho_left: Density offset parameter (left contact line).
-        d_rho_right: Density offset parameter (right contact line).
         phi_left: Wetting potential parameter (left).
         phi_right: Wetting potential parameter (right).
+        d_rho_left: Density offset parameter (left contact line).
+        d_rho_right: Density offset parameter (right contact line).
         ca_left: Current contact angle — left.
         ca_right: Current contact angle — right.
         cll_left: Contact-line location — left.
         cll_right: Contact-line location — right.
-        opt_state_left: ``optax`` optimizer state (left) — a valid pytree.
-        opt_state_right: ``optax`` optimizer state (right) — a valid pytree.
     """
 
-    d_rho_left: jnp.ndarray
-    d_rho_right: jnp.ndarray
     phi_left: jnp.ndarray
     phi_right: jnp.ndarray
+    d_rho_left: jnp.ndarray
+    d_rho_right: jnp.ndarray
     ca_left: jnp.ndarray
     ca_right: jnp.ndarray
     cll_left: jnp.ndarray
     cll_right: jnp.ndarray
-    opt_state_left: Any = None  # optax optimizer state (pytree)
-    opt_state_right: Any = None  # optax optimizer state (pytree)
 
 
 class State(NamedTuple):

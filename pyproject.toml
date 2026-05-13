@@ -56,6 +56,7 @@ docs = [
   # jax[cpu] is already a core dep — listed here for clarity/standalone doc installs
   "jax[cpu]",
 ]
+animation = ["moviepy"]
 publishing = ["build", "twine"]
 
 [project.urls]
@@ -64,7 +65,7 @@ Issues     = "https://github.com/szkuds/tud_lbm/issues"
 ReadTheDocs = "https://tud_lbm.readthedocs.io"
 
 [project.scripts]
-tud-lbm = "cli:main"
+tud-lbm = "tud_lbm.cli.cli:cli"
 
 # ---------------------------------------------------------------------------
 # uv
@@ -134,6 +135,8 @@ ignore = [
   "PLR0913",
   "PLC0415",
   "COM812",
+  "RUF002",
+    "RUF001",
 ]
 pydocstyle.convention = "google"
 
@@ -160,6 +163,7 @@ extend-immutable-calls = ["array_field"]
 "tud_lbm/operators/collision/_bgk.py"             = ["RUF002"]
 "tud_lbm/util/io.py"                              = ["ANN002"]
 "tud_lbm/pipeline/**"                             = ["T201"]
+"tud_lbm/operators/wetting/hysteresis/hysteresis.py" = ["C901", "PLR0915"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tud_lbm"]

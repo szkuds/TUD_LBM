@@ -218,7 +218,7 @@ class TestInitialiserProtocol:
         nz = 1
         q = lattice_d2q9.q
 
-        f = init_fn(nx, ny, nz, lattice_d2q9)
+        f = init_fn((nx, ny, nz), lattice_d2q9)
         assert f.shape == (nx, ny, nz, q, 1)
         # Should conserve total density (mass conservation)
         total_density = jnp.sum(f)

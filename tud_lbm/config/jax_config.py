@@ -7,12 +7,10 @@ Import and call `configure_jax()` at the start of your script to apply settings.
 # Set environment variable to prevent JAX from pre-allocating all GPU memory.
 import os
 import jax
+from tud_lbm.config.config_overview import DISABLE_JIT
+from tud_lbm.config.config_overview import ENABLE_X64
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-
-# Configuration flags
-ENABLE_X64 = True  # Enable 64-bit precision for JAX arrays
-DISABLE_JIT = False  # Set to True for debugging (disables JIT compilation)
 
 
 def configure_jax(

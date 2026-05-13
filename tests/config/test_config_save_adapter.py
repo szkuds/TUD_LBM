@@ -193,3 +193,31 @@ class TestSimulationIOConfigFileType:
         assert loaded.grid_shape == (8, 8, 1)
         assert loaded.tau == 0.7
         assert loaded.nt == 200
+
+    def test_multiphase_variant_saves_multiphase_params(self, tmp_path):
+        """SimulationIO should persist [multiphase] parameters for multiphase variants."""
+        from tud_lbm.io import SimulationIO
+
+        cfg = SimulationConfig(
+            grid_shape=(16, 16),
+            sim_type="multiphase_wetting",
+            eos="double-well",
+            kappa=0.017,
+            rho_l=1.0,
+            rho_v=0.33,
+            interface_width=4,
+        )
+        io = SimulationIO(
+            base_dir=str(tmp_path),
+            config=cfg,
+            config_file_type=".toml",
+            output_format="numpy",
+        )
+
+        loaded = TomlAdapter().load(str(Path(io.run_dir) / "config.toml"))
+        assert loaded.sim_type == "multiphase_wetting"
+        assert loaded.eos == "double-well"
+        assert loaded.kappa == 0.017
+        assert loaded.rho_l == 1.0
+        assert loaded.rho_v == 0.33
+        assert loaded.interface_width == 4

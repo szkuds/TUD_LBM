@@ -151,6 +151,7 @@ def run(
 
     # ── Streaming I/O mode ───────────────────────────────────────
     if io_handler is not None:
+        from tud_lbm.pipeline.io_callbacks import _state_to_numpy
         from tud_lbm.pipeline.io_callbacks import make_save_callback
 
         do_save = make_save_callback(
@@ -161,7 +162,7 @@ def run(
         )
 
         @jax.jit
-        def scan_body_io(state: State, t: int) -> State:
+        def scan_body_io(state: State, t: int) -> tuple[State, None]:
             new_state = setup.step_fn(setup, state)
             do_save(new_state, t)
             return new_state, None
@@ -171,11 +172,17 @@ def run(
             initial_state,
             jnp.arange(nt),
         )
+
+        final_t = int(final_state.t)
+        io_handler.save_data_step(
+            final_t,
+            _state_to_numpy(final_state, fields=save_fields, t=final_t),
+        )
         return final_state, None
 
     # ── In-memory trajectory mode ────────────────────────────────
     @jax.jit
-    def scan_body(state: State, _t: int) -> State:
+    def scan_body(state: State, _t: int) -> tuple[State, State]:
         new_state = setup.step_fn(setup, state)
         return new_state, new_state
 

@@ -93,7 +93,7 @@ class TomlAdapter(ConfigAdapter):
                 raise TypeError(msg)
             sim_table[key] = dict(value)
 
-    def load_raw(self, path: str) -> dict[str, Any]:
+    def load_raw(self, path: str) -> dict[str, Any]:  # noqa: C901
         """Parse *path* and return raw configuration dict.
 
         Unlike :meth:`load`, this returns the raw config dict without
@@ -132,13 +132,19 @@ class TomlAdapter(ConfigAdapter):
             sim_table["grid_shape"] = tuple(sim_table["grid_shape"])
 
         # ── Validate sim_type ────────────────────────────────────────
-        valid_types = ("single_phase", "multiphase")
+        valid_types = (
+            "single_phase",
+            "multiphase",
+            "multiphase_wetting",
+            "multiphase_hysteresis",
+            "multiphase_hysteresis_chemical_step",
+        )
         if sim_type not in valid_types:
             msg = f"Unknown simulation type '{sim_type}'. Expected one of: {', '.join(valid_types)}."
             raise ValueError(msg)
 
         # ── Merge [multiphase] table (for multiphase simulations) ────
-        if sim_type == "multiphase":
+        if "multiphase" in sim_type:
             multiphase_table = raw.get("multiphase", {})
             sim_table.update(multiphase_table)
 
@@ -152,6 +158,8 @@ class TomlAdapter(ConfigAdapter):
             sim_table["wetting_config"] = dict(raw["wetting"])
         if "hysteresis" in raw:
             sim_table["hysteresis_config"] = dict(raw["hysteresis"])
+        if "chemical_step" in raw:
+            sim_table["chemical_step_config"] = dict(raw["chemical_step"])
 
         if "initialisation" in raw:
             sim_table["initialisation"] = dict(raw["initialisation"])
