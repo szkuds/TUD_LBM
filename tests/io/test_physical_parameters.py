@@ -27,6 +27,7 @@ def test_build_overview_uses_contact_line_length_when_available():
     text = build_overview(cfg)
 
     assert "gamma (surface tension):" in text
+    assert "Oh (Ohnesorge number):" in text
     assert "Bo (Bond number):" in text
     assert "contact line" in text
 
@@ -36,6 +37,7 @@ def test_build_overview_falls_back_to_grid_x_length_when_contact_line_missing():
 
     text = build_overview(cfg)
 
+    assert "Oh (Ohnesorge number):" in text
     assert "Bo (Bond number):" in text
     assert "grid_x" in text
 

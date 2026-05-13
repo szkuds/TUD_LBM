@@ -31,7 +31,7 @@ def test_cli_single_config_uses_single_run(monkeypatch, tmp_path):
     def _fake_single_run(cfg):
         called["single"] = True
         assert cfg == config
-        return cfg
+        return str(tmp_path / "single")
 
     monkeypatch.setattr("tud_lbm.cli.cli._run_simulation", _fake_single_run)
 
@@ -159,7 +159,7 @@ def test_cli_override_updates_scalar_field_before_single_run(monkeypatch, tmp_pa
 
     monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", _fake_load_raw)
     monkeypatch.setattr("tud_lbm.config.array_expansion.expand_config", _fake_expand)
-    monkeypatch.setattr("tud_lbm.cli.cli._run_simulation", lambda cfg: cfg)
+    monkeypatch.setattr("tud_lbm.cli.cli._run_simulation", lambda cfg: str(tmp_path / "single"))
 
     result = CliRunner().invoke(
         main,
@@ -243,3 +243,157 @@ def test_cli_override_rejects_invalid_value(monkeypatch, tmp_path):
 
     assert result.exit_code == 1
     assert "invalid override value" in result.output
+
+
+def test_cli_init_wetting_requires_config_path():
+    from tud_lbm.cli.cli import main
+
+    result = CliRunner().invoke(main, ["--init-wetting"])
+
+    assert result.exit_code == 1
+    assert "--init-wetting requires CONFIG_PATH" in result.output
+
+
+def test_cli_debug_wetting_sets_runtime_flag(monkeypatch, tmp_path):
+    from tud_lbm.cli.cli import main
+    from tud_lbm.config import config_overview
+
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
+
+    config = _make_config(str(tmp_path))
+
+    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
+    monkeypatch.setattr("tud_lbm.config.array_expansion.expand_config", lambda raw: ([config], None))
+    monkeypatch.setattr("tud_lbm.cli.cli._run_simulation", lambda cfg: str(tmp_path / "single"))
+    monkeypatch.setattr(config_overview, "DEBUG_FLAG", False)
+
+    result = CliRunner().invoke(main, [str(cfg_path), "--no-prompt", "--debug-wetting"])
+
+    assert result.exit_code == 0
+    assert config_overview.DEBUG_FLAG is True
+
+
+def test_cli_init_wetting_runs_two_phase_flow(monkeypatch, tmp_path):
+    from tud_lbm.cli.cli import main
+
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
+
+    phase1_cfg = _make_config(str(tmp_path / "phase1"))
+    phase2_cfg = _make_config(str(tmp_path / "phase2"))
+
+    base_raw = {
+        "gravity_force": {"force_g": 5e-7},
+        "wetting_config": {"contact_angle": 90.0},
+    }
+    expanded_raws: list[dict[str, object]] = []
+    run_calls: list[SimulationConfig] = []
+
+    monkeypatch.setattr(
+        "tud_lbm.config.adapter_toml.TomlAdapter.load_raw",
+        lambda self, path: dict(base_raw),
+    )
+
+    def _fake_expand(raw):
+        expanded_raws.append(dict(raw))
+        if len(expanded_raws) == 1:
+            return [phase1_cfg], None
+        return [phase2_cfg], None
+
+    monkeypatch.setattr("tud_lbm.config.array_expansion.expand_config", _fake_expand)
+    monkeypatch.setattr(
+        "tud_lbm.cli.cli.Prompt.ask",
+        lambda _text, default=None: {
+            "1.0": "1.2",
+            "0.0": "0.3",
+        }[default],
+    )
+
+    def _fake_run_simulation(cfg):
+        run_calls.append(cfg)
+        if len(run_calls) == 1:
+            return str(tmp_path / "phase1_data")
+        return str(tmp_path / "phase2_data")
+
+    monkeypatch.setattr("tud_lbm.cli.cli._run_simulation", _fake_run_simulation)
+    monkeypatch.setattr("tud_lbm.cli.cli._display_config_summary", lambda cfg: None)
+
+    result = CliRunner().invoke(main, [str(cfg_path), "--no-prompt", "--init-wetting"])
+
+    assert result.exit_code == 0
+    assert len(expanded_raws) == 2
+    phase1_raw, phase2_raw = expanded_raws
+
+    assert "gravity_force" not in phase1_raw
+    assert phase1_raw["nt"] == 50_000
+    assert phase1_raw["save_interval"] == 50_000
+    assert phase1_raw["output_format"] == "numpy"
+    assert phase1_raw["simulation_name"] == "wetting_init"
+    assert phase1_raw["wetting_config"]["contact_angle"] == 90.0
+    assert phase1_raw["wetting_config"]["phi_left"] == 1.2
+    assert phase1_raw["wetting_config"]["phi_right"] == 1.2
+    assert phase1_raw["wetting_config"]["d_rho_left"] == 0.3
+    assert phase1_raw["wetting_config"]["d_rho_right"] == 0.3
+
+    assert phase2_raw["gravity_force"]["force_g"] == 5e-7
+    assert phase2_raw["init_type"] == "init_from_file"
+    assert phase2_raw["init_dir"] == str(tmp_path / "phase1_data" / "timestep_50000.npz")
+    assert phase2_raw["wetting_config"]["contact_angle"] == 90.0
+    assert phase2_raw["wetting_config"]["phi_left"] == 1.2
+    assert phase2_raw["wetting_config"]["phi_right"] == 1.2
+    assert phase2_raw["wetting_config"]["d_rho_left"] == 0.3
+    assert phase2_raw["wetting_config"]["d_rho_right"] == 0.3
+    assert run_calls == [phase1_cfg, phase2_cfg]
+
+
+def test_cli_init_wetting_rejects_phase1_sweep(monkeypatch, tmp_path):
+    from tud_lbm.cli.cli import main
+
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
+
+    cfg_a = _make_config(str(tmp_path / "a"), tau=0.6)
+    cfg_b = _make_config(str(tmp_path / "b"), tau=0.8)
+
+    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {})
+    monkeypatch.setattr("tud_lbm.config.array_expansion.expand_config", lambda raw: ([cfg_a, cfg_b], None))
+    monkeypatch.setattr("tud_lbm.cli.cli.Prompt.ask", lambda _text, default=None: default)
+
+    result = CliRunner().invoke(main, [str(cfg_path), "--no-prompt", "--init-wetting"])
+
+    assert result.exit_code == 1
+    assert "--init-wetting does not support parameter sweeps" in result.output
+    assert "Phase 1" in result.output
+
+
+def test_cli_init_wetting_rejects_phase2_sweep(monkeypatch, tmp_path):
+    from tud_lbm.cli.cli import main
+
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
+
+    cfg_phase1 = _make_config(str(tmp_path / "phase1"))
+    cfg_a = _make_config(str(tmp_path / "a"), tau=0.6)
+    cfg_b = _make_config(str(tmp_path / "b"), tau=0.8)
+
+    calls = {"expand": 0}
+
+    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {})
+
+    def _fake_expand(raw):
+        calls["expand"] += 1
+        if calls["expand"] == 1:
+            return [cfg_phase1], None
+        return [cfg_a, cfg_b], None
+
+    monkeypatch.setattr("tud_lbm.config.array_expansion.expand_config", _fake_expand)
+    monkeypatch.setattr("tud_lbm.cli.cli.Prompt.ask", lambda _text, default=None: default)
+    monkeypatch.setattr("tud_lbm.cli.cli._display_config_summary", lambda cfg: None)
+    monkeypatch.setattr("tud_lbm.cli.cli._run_simulation", lambda cfg: str(tmp_path / "phase1_data"))
+
+    result = CliRunner().invoke(main, [str(cfg_path), "--no-prompt", "--init-wetting"])
+
+    assert result.exit_code == 1
+    assert "--init-wetting does not support parameter sweeps" in result.output
+    assert "Phase 2" in result.output

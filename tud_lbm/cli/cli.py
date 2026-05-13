@@ -14,6 +14,7 @@ Example Python usage::
 
 import os
 import sys
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 import click
@@ -37,6 +38,9 @@ _SECTION_ALIAS_MAP = {
     "hysteresis": "hysteresis_config",
     "chemical_step": "chemical_step_config",
 }
+
+# Number of timesteps for the no-gravity wetting equilibration phase.
+_WETTING_INIT_NT = 50_000
 
 
 def _parse_override_argument(raw_override: str) -> tuple[str, object]:
@@ -340,8 +344,12 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
     console.print()
 
 
-def _run_simulation(config: SimulationConfig) -> None:
-    """Run the simulation with the given configuration."""
+def _run_simulation(config: SimulationConfig) -> str:
+    """Run the simulation with the given configuration.
+
+    Returns:
+        The data directory path (``io.data_dir``) where snapshots were written.
+    """
     from tud_lbm.config.jax_config import configure_jax
 
     configure_jax()
@@ -387,7 +395,7 @@ def _run_simulation(config: SimulationConfig) -> None:
         console.print(
             "[bold green]Plotting complete![/bold green]",
         )
-    return final_state
+    return io.data_dir
 
 
 def _display_sweep_summary(metadata: ArrayParameterSet) -> None:
@@ -450,16 +458,30 @@ def _run_parallel_sweep(
     return results
 
 
-def _validate_cli_args(overrides: tuple[str, ...], config_path: str | None) -> None:
+def _validate_cli_args(
+    overrides: tuple[str, ...],
+    config_path: str | None,
+    *,
+    init_wetting: bool = False,
+    init_dir: str | None = None,
+) -> None:
     """TRY301: raise lives here, outside the try-block in run()."""
     if overrides and not config_path:
         msg = "--override requires CONFIG_PATH"
+        raise click.UsageError(msg)
+    if init_wetting and not config_path:
+        msg = "--init-wetting requires CONFIG_PATH"
+        raise click.UsageError(msg)
+    if init_dir and not config_path:
+        msg = "--init-dir requires CONFIG_PATH"
         raise click.UsageError(msg)
 
 
 def _load_config_from_file(
     config_path: str,
     overrides: tuple[str, ...],
+    *,
+    init_dir: str | None = None,
 ) -> tuple[list[SimulationConfig], SimulationConfig | None, ArrayParameterSet | None, list[dict[str, Any]] | None]:
     """Load and expand a TOML config file; return (configs, config, sweep_metadata, parameters_list)."""
     from tud_lbm.config.adapter_toml import TomlAdapter
@@ -468,6 +490,10 @@ def _load_config_from_file(
 
     console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
     raw_config = TomlAdapter().load_raw(config_path)
+    if init_dir is not None:
+        raw_config["init_dir"] = str(init_dir)
+        # Default to file-based initialization unless config/overrides set otherwise.
+        raw_config.setdefault("init_type", "init_from_file")
     _apply_overrides(raw_config, overrides)
     configs, sweep_metadata = expand_config(raw_config)
 
@@ -497,6 +523,86 @@ def _load_config_interactive() -> tuple[list[SimulationConfig], SimulationConfig
         save_interval=save_interval,
     )
     return [config], config, None, None
+
+
+def _run_two_phase_wetting_init(
+    config_path: str,
+    overrides: tuple[str, ...],
+    *,
+    no_prompt: bool,
+) -> None:
+    """Two-phase wetting initialisation.
+
+    Phase 1 equilibrates the droplet without gravity for ``_WETTING_INIT_NT``
+    steps and writes one final snapshot. Phase 2 then runs with gravity,
+    initialized from the Phase 1 snapshot.
+    """
+    from tud_lbm.config.adapter_toml import TomlAdapter
+    from tud_lbm.config.array_expansion import expand_config
+
+    console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
+    base_raw = TomlAdapter().load_raw(config_path)
+    _apply_overrides(base_raw, overrides)
+
+    console.print("[cyan]Wetting init - enter wetting boundary parameters:[/cyan]")
+    phi_left = float(Prompt.ask("  phi_left", default="1.0"))
+    phi_right = float(Prompt.ask("  phi_right", default="1.0"))
+    d_rho_left = float(Prompt.ask("  d_rho_left", default="0.0"))
+    d_rho_right = float(Prompt.ask("  d_rho_right", default="0.0"))
+    console.print()
+
+    wetting_params = {
+        "phi_left": phi_left,
+        "phi_right": phi_right,
+        "d_rho_left": d_rho_left,
+        "d_rho_right": d_rho_right,
+    }
+
+    init_raw = deepcopy(base_raw)
+    init_raw.pop("gravity_force", None)
+    init_raw["nt"] = _WETTING_INIT_NT
+    init_raw["save_interval"] = _WETTING_INIT_NT
+    init_raw["output_format"] = "numpy"
+    init_raw["simulation_name"] = "wetting_init"
+    init_raw.setdefault("wetting_config", {}).update(wetting_params)
+
+    (init_configs, *_) = expand_config(init_raw)
+    if len(init_configs) != 1:
+        msg = "--init-wetting does not support parameter sweeps (Phase 1 expansion must yield exactly 1 config)."
+        raise click.UsageError(msg)
+    init_config = init_configs[0]
+
+    console.print(Panel.fit("[bold cyan]Phase 1 - wetting equilibration (no gravity)[/bold cyan]"))
+    _display_config_summary(init_config)
+
+    if not no_prompt and not Confirm.ask("[bold]Start Phase 1?[/bold]", default=True):
+        console.print("[yellow]Cancelled.[/yellow]")
+        return
+
+    init_data_dir = _run_simulation(init_config)
+    init_snapshot = str(Path(init_data_dir) / f"timestep_{_WETTING_INIT_NT}.npz")
+    console.print(f"  Init snapshot     : {init_snapshot}")
+    console.print()
+
+    gravity_raw = deepcopy(base_raw)
+    gravity_raw["init_type"] = "init_from_file"
+    gravity_raw["init_dir"] = init_snapshot
+    gravity_raw.setdefault("wetting_config", {}).update(wetting_params)
+
+    (gravity_configs, *_) = expand_config(gravity_raw)
+    if len(gravity_configs) != 1:
+        msg = "--init-wetting does not support parameter sweeps (Phase 2 expansion must yield exactly 1 config)."
+        raise click.UsageError(msg)
+    gravity_config = gravity_configs[0]
+
+    console.print(Panel.fit("[bold cyan]Phase 2 - full simulation with gravity[/bold cyan]"))
+    _display_config_summary(gravity_config)
+
+    if not no_prompt and not Confirm.ask("[bold]Start Phase 2?[/bold]", default=True):
+        console.print("[yellow]Phase 2 cancelled.[/yellow]")
+        return
+
+    _run_simulation(gravity_config)
 
 
 def _display_summary(
@@ -608,6 +714,29 @@ def cli() -> None:
     help="Override config values using path=value (repeatable), "
     "e.g. --override simulation_type.simulation_name='new name'",
 )
+@click.option(
+    "--debug-wetting",
+    is_flag=True,
+    help="Enable wetting debug output (sets DEBUG_FLAG in config_overview)",
+)
+@click.option(
+    "--init-wetting",
+    is_flag=True,
+    help=(
+        "Two-phase wetting initialisation: run nt=50000 without gravity to equilibrate "
+        "the droplet, then run the full config using that snapshot as the initial condition"
+    ),
+)
+@click.option(
+    "--init-dir",
+    "init_dir",
+    default=None,
+    type=click.Path(exists=True),
+    help=(
+        "Path to .npz snapshot to resume from. "
+        "Sets init_type='init_from_file' automatically (overrideable via --override)."
+    ),
+)
 def run(
     config_path: str,
     no_prompt: bool,
@@ -616,6 +745,9 @@ def run(
     max_workers: int | None,
     fail_fast: bool,
     overrides: tuple[str, ...],
+    debug_wetting: bool,
+    init_wetting: bool,
+    init_dir: str | None,
 ) -> None:
     """Run a TUD-LBM simulation from CONFIG_PATH.
 
@@ -660,6 +792,15 @@ def run(
 
         # List all registered operators
         tud-lbm run --list-simulation-operators
+
+        # Enable wetting debug output
+        tud-lbm run config.toml --debug-wetting
+
+        # Two-phase wetting init: equilibrate without gravity then run with gravity
+        tud-lbm run config.toml --init-wetting
+
+        # Resume from a saved snapshot
+        tud-lbm run config.toml --init-dir /path/to/timestep_1000.npz
     """
     console.print()
     console.print(
@@ -675,10 +816,30 @@ def run(
             _display_operators()
             return
 
-        _validate_cli_args(overrides, config_path)
+        if debug_wetting:
+            import tud_lbm.config.config_overview as _flags
+
+            _flags.DEBUG_FLAG = True
+            console.print("[dim]Wetting debug logging enabled.[/dim]")
+            console.print()
+
+        _validate_cli_args(overrides, config_path, init_wetting=init_wetting, init_dir=init_dir)
+
+        if init_wetting:
+            _run_two_phase_wetting_init(config_path, overrides, no_prompt=no_prompt)
+            console.print()
+            console.print(
+                Panel.fit(
+                    "[bold green]Wetting initialisation complete![/bold green]",
+                    title="Success",
+                ),
+            )
+            return
 
         configs, config, sweep_metadata, parameters_list = (
-            _load_config_from_file(config_path, overrides) if config_path else _load_config_interactive()
+            _load_config_from_file(config_path, overrides, init_dir=init_dir)
+            if config_path
+            else _load_config_interactive()
         )
 
         _display_summary(config, sweep_metadata, configs)

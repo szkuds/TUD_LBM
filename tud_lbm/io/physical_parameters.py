@@ -118,17 +118,27 @@ def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, floa
     return drho, gamma
 
 
-def _format_bond_number_row(config: SimulationConfig, drho: float, gamma: float, g_val: float) -> str:
-    """Build Bond-number row with contact-line length or grid-x fallback."""
+def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple[float, str]:
+    """Resolve shared length scale and annotation for Oh/Bo rows."""
     cl_length = _get_setup_contact_line_length(config)
     if cl_length is not None:
-        length = cl_length
-        bo = (drho * g_val * (length**2)) / gamma
-        return _row("Bo (Bond number):", f"{bo:.6g}  [ΔρgL²/gamma, L={length:.4g} (contact line)]")
+        return cl_length, f"L={cl_length:.4g} (contact line)"
 
     length = float(config.grid_shape[0])
+    return length, f"L={length} (grid_x)"
+
+
+def _format_ohnesorge_number_row(config: SimulationConfig, gamma: float, length: float, length_label: str) -> str:
+    """Build Ohnesorge-number row from lattice kinematic viscosity."""
+    nu = _nu(float(config.tau))
+    oh = nu * (float(config.rho_l) / (gamma * length)) ** 0.5
+    return _row("Oh (Ohnesorge number):", f"{oh:.6g}  [ν√(ρ_l/(γL)), {length_label}]")
+
+
+def _format_bond_number_row(drho: float, gamma: float, g_val: float, length: float, length_label: str) -> str:
+    """Build Bond-number row from shared length scale."""
     bo = (drho * g_val * (length**2)) / gamma
-    return _row("Bo (Bond number):", f"{bo:.6g}  [ΔρgL²/gamma, L={length} (grid_x)]")
+    return _row("Bo (Bond number):", f"{bo:.6g}  [ΔρgL²/γ, {length_label}]")
 
 
 def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
@@ -149,11 +159,14 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     drho, gamma = derived
     lines.append(_row("gamma (surface tension):", f"{gamma:.6g}  [2/3(κ/W)(Δρ)²]"))
 
+    length, length_label = _resolve_length_for_dimensionless_numbers(config)
+    lines.append(_format_ohnesorge_number_row(config, gamma, length, length_label))
+
     g_val = _resolve_gravity_value(config)
     if g_val is None:
         return
 
-    lines.append(_format_bond_number_row(config, drho, gamma, g_val))
+    lines.append(_format_bond_number_row(drho, gamma, g_val, length, length_label))
 
 
 def _add_key_value_section(lines: list[str], title: str, values: dict | None) -> None:

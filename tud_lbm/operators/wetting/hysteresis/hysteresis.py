@@ -328,7 +328,7 @@ def _update_wetting_state_impl(
 
     if DEBUG_FLAG:
         jax.debug.print(
-            "ca_right={ca} cll_right={cll} phi_active={a} phi={p} d_rho={d} loss={l}",
+            "ca_r={ca} cll_r={cll} phi_act={a} phi={p} d_rho={d} loss={l}",
             ca=ca_right_tplus1,
             cll=cll_right_tplus1,
             a=phi_active_right,
@@ -337,7 +337,7 @@ def _update_wetting_state_impl(
             l=right_objective(new_params),
         )
         jax.debug.print(
-            "ca_left={ca}  cll_left={cll}  phi_active={a} phi={p} d_rho={d} loss={l}",
+            "ca_l={ca}  cll_l={cll}  phi_act={a} phi={p} d_rho={d} loss={l}",
             ca=ca_left_tplus1,
             cll=cll_left_tplus1,
             a=phi_active_left,
