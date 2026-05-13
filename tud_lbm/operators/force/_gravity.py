@@ -26,6 +26,27 @@ from tud_lbm.registry import force_model
 if TYPE_CHECKING:
     from tud_lbm.pipeline.state import State
 
+
+def _build_gravity_template(
+    params: dict,
+    grid_shape: tuple[int, ...],
+    **kwargs: object,
+) -> jnp.ndarray:
+    """Build a constant gravity template shared by gravity force variants."""
+    lattice = kwargs.get("lattice")
+    d = lattice.d if lattice is not None else min(len(grid_shape), 3)
+
+    nx, ny, nz = grid_shape[0], grid_shape[1], grid_shape[2] if len(grid_shape) > 2 else 1  # noqa: PLR2004
+
+    angle_rad = jnp.deg2rad(params.get("inclination_angle_deg", 0.0))
+    force_x = params["force_g"] * (-jnp.sin(angle_rad))
+    force_y = params["force_g"] * jnp.cos(angle_rad)
+
+    template = jnp.zeros((nx, ny, nz, 1, d))
+    template = template.at[:, :, :, 0, 0].set(force_x)
+    return template.at[:, :, :, 0, 1].set(force_y)
+
+
 # ══════════════════════════════════════════════════════════════════════
 # ForceOperator protocol — registry-backed module
 # ══════════════════════════════════════════════════════════════════════
@@ -56,30 +77,7 @@ class GravityForceModule:
         Returns:
             Gravity template array, shape ``(nx, ny, nz, 1, d)``.
         """
-        # Get lattice to determine dimensionality
-        lattice = kwargs.get("lattice")
-        if lattice is not None:
-            d = lattice.d
-        else:
-            # Fallback: infer from grid_shape
-            d = len(grid_shape)
-            d = min(d, 3)  # Cap at 3D
-
-        nx, ny, nz = grid_shape[0], grid_shape[1], grid_shape[2] if len(grid_shape) > 2 else 1  # noqa: PLR2004
-
-        angle_rad = jnp.deg2rad(params.get("inclination_angle_deg", 0.0))
-        force_x = params["force_g"] * (-jnp.sin(angle_rad))
-        force_y = params["force_g"] * jnp.cos(angle_rad)
-
-        template = jnp.zeros((nx, ny, nz, 1, d))
-        template = template.at[:, :, :, 0, 0].set(force_x)
-        template = template.at[:, :, :, 0, 1].set(force_y)
-
-        # For 3D, z-component is zero
-        if d == 3:  # noqa: PLR2004
-            template = template.at[:, :, :, 0, 2].set(0.0)
-
-        return template
+        return _build_gravity_template(params, grid_shape, **kwargs)
 
     @staticmethod
     def compute(

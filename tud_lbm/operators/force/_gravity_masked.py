@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 import jax.numpy as jnp
+from tud_lbm.operators.force._gravity import _build_gravity_template
 from tud_lbm.registry import force_model
 
 if TYPE_CHECKING:
@@ -72,28 +73,7 @@ class GravityForceModule:
         Returns:
             Gravity template array, shape ``(nx, ny, nz, 1, d)``.
         """
-        # Get lattice to determine dimensionality
-        lattice = kwargs.get("lattice")
-        if lattice is not None:
-            d = lattice.d
-        else:
-            # Fallback: infer from grid_shape
-            d = len(grid_shape)
-            d = min(d, 3)  # Cap at 3D
-
-        nx, ny, nz = grid_shape[0], grid_shape[1], grid_shape[2] if len(grid_shape) > 2 else 1  # noqa: PLR2004
-
-        angle_rad = jnp.deg2rad(params.get("inclination_angle_deg", 0.0))
-        force_x = params["force_g"] * (-jnp.sin(angle_rad))
-        force_y = params["force_g"] * jnp.cos(angle_rad)
-
-        template = jnp.zeros((nx, ny, nz, 1, d))
-        template = template.at[:, :, :, 0, 0].set(force_x)
-        template = template.at[:, :, :, 0, 1].set(force_y)
-
-        # For 3D, z-component is zero
-        if d == 3:  # noqa: PLR2004
-            template = template.at[:, :, :, 0, 2].set(0.0)
+        template = _build_gravity_template(params, grid_shape, **kwargs)
 
         # Extract optional reference densities from config (if provided).
         config = kwargs.get("config")

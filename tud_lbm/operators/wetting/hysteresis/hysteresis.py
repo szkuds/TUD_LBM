@@ -126,6 +126,46 @@ def _cost_ca(ca_target: jnp.ndarray, ca_current: jnp.ndarray) -> jnp.ndarray:
     return jnp.where(err < delta, 0.5 * err**2, delta * (err - 0.5 * delta))
 
 
+def _mask_left_d_rho(g: WettingParams) -> WettingParams:
+    z = jnp.zeros_like
+    return WettingParams(
+        phi_left=z(g.phi_left),
+        phi_right=z(g.phi_right),
+        d_rho_left=g.d_rho_left,
+        d_rho_right=z(g.d_rho_right),
+    )
+
+
+def _mask_left_phi(g: WettingParams) -> WettingParams:
+    z = jnp.zeros_like
+    return WettingParams(
+        phi_left=g.phi_left,
+        phi_right=z(g.phi_right),
+        d_rho_left=z(g.d_rho_left),
+        d_rho_right=z(g.d_rho_right),
+    )
+
+
+def _mask_right_d_rho(g: WettingParams) -> WettingParams:
+    z = jnp.zeros_like
+    return WettingParams(
+        phi_left=z(g.phi_left),
+        phi_right=z(g.phi_right),
+        d_rho_left=z(g.d_rho_left),
+        d_rho_right=g.d_rho_right,
+    )
+
+
+def _mask_right_phi(g: WettingParams) -> WettingParams:
+    z = jnp.zeros_like
+    return WettingParams(
+        phi_left=z(g.phi_left),
+        phi_right=g.phi_right,
+        d_rho_left=z(g.d_rho_left),
+        d_rho_right=z(g.d_rho_right),
+    )
+
+
 # ── Generic optimisation routine ─────────────────────────────────────
 
 
@@ -199,6 +239,125 @@ def _get_hysteresis_window_chemical_step(setup: SimulationSetup, cll: jnp.ndarra
     )
 
 
+def _update_wetting_state_impl(
+    wetting: WettingState,
+    rho_t_plus1: jnp.ndarray,
+    setup: SimulationSetup,
+    trial_step_fn: Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray]],
+    *,
+    ca_adv_left: jnp.ndarray,
+    ca_rec_left: jnp.ndarray,
+    ca_adv_right: jnp.ndarray,
+    ca_rec_right: jnp.ndarray,
+) -> WettingState:
+    """Shared implementation for hysteresis wetting updates."""
+    mp = setup.multiphase_params
+    rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
+
+    ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean))
+    cll_left_tplus1, cll_right_tplus1 = compute_contact_line_location(
+        rho_t_plus1,
+        ca_left_tplus1,
+        ca_right_tplus1,
+        jnp.array(rho_mean),
+    )
+
+    forward_drift_right = cll_right_tplus1 > wetting.cll_right
+    forward_drift_left = cll_left_tplus1 < wetting.cll_left
+
+    in_window_left = (ca_left_tplus1 >= ca_rec_left) & (ca_left_tplus1 <= ca_adv_left)
+    in_window_right = (ca_right_tplus1 >= ca_rec_right) & (ca_right_tplus1 <= ca_adv_right)
+    above_window_left = ca_left_tplus1 > ca_adv_left
+    above_window_right = ca_right_tplus1 > ca_adv_right
+
+    phi_active_right = _phi_is_active(in_window_right, above_window_right, forward_drift_right)
+    phi_active_left = _phi_is_active(in_window_left, above_window_left, forward_drift_left)
+
+    hc = setup.config.hysteresis_config
+    lr_default = hc.get("learning_rate", 0.01)
+    lr = jnp.where(above_window_right | above_window_left, hc.get("learning_rate_above", 0.05), lr_default)
+    max_iter = hc.get("max_iterations_above", 50) if hc.get("max_iterations_above") else hc.get("max_iterations", 50)
+
+    params = WettingParams(
+        phi_left=jnp.where(phi_active_left, wetting.phi_left, _PHI_NEUTRAL),
+        phi_right=jnp.where(phi_active_right, wetting.phi_right, _PHI_NEUTRAL),
+        d_rho_left=jnp.where(phi_active_left, _D_RHO_NEUTRAL, wetting.d_rho_left),
+        d_rho_right=jnp.where(phi_active_right, _D_RHO_NEUTRAL, wetting.d_rho_right),
+    )
+
+    optax = _import_optax()
+    optimiser = optax.adam(lr)
+
+    def evaluate_fn(params: WettingParams) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        _, rho_out = trial_step_fn(params)
+        ca_l, ca_r = compute_contact_angle(rho_out, jnp.array(rho_mean))
+        cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, jnp.array(rho_mean))
+        return ca_l, ca_r, cll_l, cll_r
+
+    def left_objective(p: WettingParams) -> jnp.ndarray:
+        ca_l, _, cll_l, _ = evaluate_fn(p)
+        cost_in = _cost_cll(wetting.cll_left, cll_l)
+        cost_below = _cost_ca(ca_rec_left, ca_l)
+        cost_above = _cost_ca(ca_adv_left, ca_l)
+        return jnp.where(in_window_left, cost_in, jnp.where(above_window_left, cost_above, cost_below))
+
+    def right_objective(p: WettingParams) -> jnp.ndarray:
+        _, ca_r, _, cll_r = evaluate_fn(p)
+        cost_in = _cost_cll(wetting.cll_right, cll_r)
+        cost_below = _cost_ca(ca_rec_right, ca_r)
+        cost_above = _cost_ca(ca_adv_right, ca_r)
+        return jnp.where(in_window_right, cost_in, jnp.where(above_window_right, cost_above, cost_below))
+
+    def _opt_left(p: WettingParams) -> WettingParams:
+        return jax.lax.cond(
+            phi_active_left,
+            lambda pp: _optimise_single_param(left_objective, pp, _mask_left_phi, optimiser, max_iter)[0],
+            lambda pp: _optimise_single_param(left_objective, pp, _mask_left_d_rho, optimiser, max_iter)[0],
+            p,
+        )
+
+    def _opt_right(p: WettingParams) -> WettingParams:
+        return jax.lax.cond(
+            phi_active_right,
+            lambda pp: _optimise_single_param(right_objective, pp, _mask_right_phi, optimiser, max_iter)[0],
+            lambda pp: _optimise_single_param(right_objective, pp, _mask_right_d_rho, optimiser, max_iter)[0],
+            p,
+        )
+
+    new_params = _opt_right(_opt_left(params))
+
+    if DEBUG_FLAG:
+        jax.debug.print(
+            "ca_right={ca} cll_right={cll} phi_active={a} phi={p} d_rho={d} loss={l}",
+            ca=ca_right_tplus1,
+            cll=cll_right_tplus1,
+            a=phi_active_right,
+            p=new_params.phi_right,
+            d=new_params.d_rho_right,
+            l=right_objective(new_params),
+        )
+        jax.debug.print(
+            "ca_left={ca}  cll_left={cll}  phi_active={a} phi={p} d_rho={d} loss={l}",
+            ca=ca_left_tplus1,
+            cll=cll_left_tplus1,
+            a=phi_active_left,
+            p=new_params.phi_left,
+            d=new_params.d_rho_left,
+            l=left_objective(new_params),
+        )
+
+    return wetting._replace(
+        phi_left=new_params.phi_left,
+        phi_right=new_params.phi_right,
+        d_rho_left=new_params.d_rho_left,
+        d_rho_right=new_params.d_rho_right,
+        ca_left=ca_left_tplus1,
+        ca_right=ca_right_tplus1,
+        cll_left=cll_left_tplus1,
+        cll_right=cll_right_tplus1,
+    )
+
+
 @wetting_operator(name="hysteresis")
 def update_wetting_state(
     wetting: WettingState,
@@ -238,169 +397,18 @@ def update_wetting_state(
     Returns:
         Updated :class:`WettingState`.
     """
-    mp = setup.multiphase_params
-    rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
-
-    # 1. Measure current contact angles and contact-line locations
-    ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean))
-    cll_left_tplus1, cll_right_tplus1 = compute_contact_line_location(
-        rho_t_plus1,
-        ca_left_tplus1,
-        ca_right_tplus1,
-        jnp.array(rho_mean),
-    )
-
-    # Forward drift = CL moved in its "advancing" direction since last step.
-    # Right side: advancing = rightward = cll increased.
-    # Left side:  advancing = leftward  = cll decreased.
-    forward_drift_right = cll_right_tplus1 > wetting.cll_right
-    forward_drift_left = cll_left_tplus1 < wetting.cll_left
-
-    # 2. Hysteresis window parameters
     hc = setup.config.hysteresis_config
-    ca_adv_left = ca_adv_right = hc["ca_advancing"]
-    ca_rec_left = ca_rec_right = hc["ca_receding"]
-    in_window_left = (ca_left_tplus1 >= ca_rec_left) & (ca_left_tplus1 <= ca_adv_left)
-    in_window_right = (ca_right_tplus1 >= ca_rec_right) & (ca_right_tplus1 <= ca_adv_right)
-    above_window_left = ca_left_tplus1 > ca_adv_left
-    above_window_right = ca_right_tplus1 > ca_adv_right
-
-    # Active-parameter flags
-    phi_active_right = _phi_is_active(in_window_right, above_window_right, forward_drift_right)
-    phi_active_left = _phi_is_active(in_window_left, above_window_left, forward_drift_left)
-
-    lr_default = hc.get("learning_rate", 0.01)
-    lr = jnp.where(above_window_right | above_window_left, hc.get("learning_rate_above", 0.05), lr_default)
-    max_iter = hc.get("max_iterations_above", 50) if hc.get("max_iterations_above") else hc.get("max_iterations", 50)
-
-    # Snap inactive parameters to their neutral values before optimisation.
-    phi_left_init = jnp.where(phi_active_left, wetting.phi_left, _PHI_NEUTRAL)
-    phi_right_init = jnp.where(phi_active_right, wetting.phi_right, _PHI_NEUTRAL)
-    d_rho_left_init = jnp.where(phi_active_left, _D_RHO_NEUTRAL, wetting.d_rho_left)
-    d_rho_right_init = jnp.where(phi_active_right, _D_RHO_NEUTRAL, wetting.d_rho_right)
-
-    params = WettingParams(
-        phi_left=phi_left_init,
-        phi_right=phi_right_init,
-        d_rho_left=d_rho_left_init,
-        d_rho_right=d_rho_right_init,
-    )
-
-    optax = _import_optax()
-    optimiser = optax.adam(lr)
-
-    # 4. Create wrapper that converts trial_step_fn to evaluate_fn
-    # trial_step_fn returns (f_out, rho_out); we need (ca_l, ca_r, cll_l, cll_r)
-    def evaluate_fn(params: WettingParams) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        """Evaluate trial parameters by running trial step and measuring contact properties."""
-        _, rho_out = trial_step_fn(params)
-        ca_l, ca_r = compute_contact_angle(rho_out, jnp.array(rho_mean))
-        cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, jnp.array(rho_mean))
-        return ca_l, ca_r, cll_l, cll_r
-
-    # --- 5.1: per-side objectives (cost_above uses CA-only loss) ---
-
-    def left_objective(p: WettingParams) -> jnp.ndarray:
-        ca_l, _, cll_l, _ = evaluate_fn(p)
-        cost_in = _cost_cll(wetting.cll_left, cll_l)
-        cost_below = _cost_ca(ca_rec_left, ca_l)
-        cost_above = _cost_ca(ca_adv_left, ca_l)
-        return jnp.where(in_window_left, cost_in, jnp.where(above_window_left, cost_above, cost_below))
-
-    def right_objective(p: WettingParams) -> jnp.ndarray:
-        _, ca_r, _, cll_r = evaluate_fn(p)
-        cost_in = _cost_cll(wetting.cll_right, cll_r)
-        cost_below = _cost_ca(ca_rec_right, ca_r)
-        cost_above = _cost_ca(ca_adv_right, ca_r)
-        return jnp.where(in_window_right, cost_in, jnp.where(above_window_right, cost_above, cost_below))
-
-    def left_mask_d_rho_only(g: WettingParams) -> WettingParams:
-        z = jnp.zeros_like
-        return WettingParams(
-            phi_left=z(g.phi_left),
-            phi_right=z(g.phi_right),
-            d_rho_left=g.d_rho_left,
-            d_rho_right=z(g.d_rho_right),
-        )
-
-    def left_mask_phi_only(g: WettingParams) -> WettingParams:
-        z = jnp.zeros_like
-        return WettingParams(
-            phi_left=g.phi_left,
-            phi_right=z(g.phi_right),
-            d_rho_left=z(g.d_rho_left),
-            d_rho_right=z(g.d_rho_right),
-        )
-
-    def right_mask_d_rho_only(g: WettingParams) -> WettingParams:
-        z = jnp.zeros_like
-        return WettingParams(
-            phi_left=z(g.phi_left),
-            phi_right=z(g.phi_right),
-            d_rho_left=z(g.d_rho_left),
-            d_rho_right=g.d_rho_right,
-        )
-
-    def right_mask_phi_only(g: WettingParams) -> WettingParams:
-        z = jnp.zeros_like
-        return WettingParams(
-            phi_left=z(g.phi_left),
-            phi_right=g.phi_right,
-            d_rho_left=z(g.d_rho_left),
-            d_rho_right=z(g.d_rho_right),
-        )
-
-    # --- 5.2: single-branch optimisers — parameter chosen by physics ---
-
-    def _opt_left(p: WettingParams) -> WettingParams:
-        return jax.lax.cond(
-            phi_active_left,
-            lambda pp: _optimise_single_param(left_objective, pp, left_mask_phi_only, optimiser, max_iter)[0],
-            lambda pp: _optimise_single_param(left_objective, pp, left_mask_d_rho_only, optimiser, max_iter)[0],
-            p,
-        )
-
-    def _opt_right(p: WettingParams) -> WettingParams:
-        return jax.lax.cond(
-            phi_active_right,
-            lambda pp: _optimise_single_param(right_objective, pp, right_mask_phi_only, optimiser, max_iter)[0],
-            lambda pp: _optimise_single_param(right_objective, pp, right_mask_d_rho_only, optimiser, max_iter)[0],
-            p,
-        )
-
-    # Unconditional optimisation
-    new_params_left = _opt_left(params)
-    new_params = _opt_right(new_params_left)
-
-    if DEBUG_FLAG:
-        jax.debug.print(
-            "ca_right={ca} cll_right={cll} phi_active={a} phi={p} d_rho={d} loss={l}",
-            ca=ca_right_tplus1,
-            cll=cll_right_tplus1,
-            a=phi_active_right,
-            p=new_params.phi_right,
-            d=new_params.d_rho_right,
-            l=right_objective(new_params),
-        )
-        jax.debug.print(
-            "ca_left={ca}  cll_left={cll}  phi_active={a} phi={p} d_rho={d} loss={l}",
-            ca=ca_left_tplus1,
-            cll=cll_left_tplus1,
-            a=phi_active_left,
-            p=new_params.phi_left,
-            d=new_params.d_rho_left,
-            l=left_objective(new_params),
-        )
-    # 6. Return updated wetting state
-    return wetting._replace(
-        phi_left=new_params.phi_left,
-        phi_right=new_params.phi_right,
-        d_rho_left=new_params.d_rho_left,
-        d_rho_right=new_params.d_rho_right,
-        ca_left=ca_left_tplus1,
-        ca_right=ca_right_tplus1,
-        cll_left=cll_left_tplus1,
-        cll_right=cll_right_tplus1,
+    ca_adv = hc["ca_advancing"]
+    ca_rec = hc["ca_receding"]
+    return _update_wetting_state_impl(
+        wetting,
+        rho_t_plus1,
+        setup,
+        trial_step_fn,
+        ca_adv_left=ca_adv,
+        ca_rec_left=ca_rec,
+        ca_adv_right=ca_adv,
+        ca_rec_right=ca_rec,
     )
 
 
@@ -447,146 +455,13 @@ def update_wetting_state_chemical_step(
     ca_adv_left, ca_rec_left = _get_hysteresis_window_chemical_step(setup, cll_left_tplus1)
     ca_adv_right, ca_rec_right = _get_hysteresis_window_chemical_step(setup, cll_right_tplus1)
 
-    # Forward drift = CL moved in its "advancing" direction since last step.
-    # Right side: advancing = rightward = cll increased.
-    # Left side:  advancing = leftward  = cll decreased.
-    forward_drift_right = cll_right_tplus1 > wetting.cll_right
-    forward_drift_left = cll_left_tplus1 < wetting.cll_left
-
-    # 2. Hysteresis window parameters (using per-side CA values from chemical step)
-    hc = setup.config.hysteresis_config
-    in_window_left = (ca_left_tplus1 >= ca_rec_left) & (ca_left_tplus1 <= ca_adv_left)
-    in_window_right = (ca_right_tplus1 >= ca_rec_right) & (ca_right_tplus1 <= ca_adv_right)
-    above_window_left = ca_left_tplus1 > ca_adv_left
-    above_window_right = ca_right_tplus1 > ca_adv_right
-
-    phi_active_right = _phi_is_active(in_window_right, above_window_right, forward_drift_right)
-    phi_active_left = _phi_is_active(in_window_left, above_window_left, forward_drift_left)
-
-    lr_default = hc.get("learning_rate", 0.01)
-    lr = jnp.where(above_window_right | above_window_left, hc.get("learning_rate_above", 0.05), lr_default)
-    max_iter = hc.get("max_iterations_above", 50) if hc.get("max_iterations_above") else hc.get("max_iterations", 50)
-
-    # 3. Current optimisable parameters (inactive side snapped to neutral)
-    params = WettingParams(
-        phi_left=jnp.where(phi_active_left, wetting.phi_left, _PHI_NEUTRAL),
-        phi_right=jnp.where(phi_active_right, wetting.phi_right, _PHI_NEUTRAL),
-        d_rho_left=jnp.where(phi_active_left, _D_RHO_NEUTRAL, wetting.d_rho_left),
-        d_rho_right=jnp.where(phi_active_right, _D_RHO_NEUTRAL, wetting.d_rho_right),
-    )
-
-    optax = _import_optax()
-    optimiser = optax.adam(lr)
-
-    # 4. Create wrapper that converts trial_step_fn to evaluate_fn
-    def evaluate_fn(params: WettingParams) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        """Evaluate trial parameters by running trial step and measuring contact properties."""
-        _, rho_out = trial_step_fn(params)
-        ca_l, ca_r = compute_contact_angle(rho_out, jnp.array(rho_mean))
-        cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, jnp.array(rho_mean))
-        return ca_l, ca_r, cll_l, cll_r
-
-    # --- 5.1: per-side objectives ---
-
-    def left_objective(p: WettingParams) -> jnp.ndarray:
-        ca_l, _, cll_l, _ = evaluate_fn(p)
-        cost_in = _cost_cll(wetting.cll_left, cll_l)
-        cost_below = _cost_ca(ca_rec_left, ca_l)
-        cost_above = _cost_ca(ca_adv_left, ca_l)
-        return jnp.where(in_window_left, cost_in, jnp.where(above_window_left, cost_above, cost_below))
-
-    def right_objective(p: WettingParams) -> jnp.ndarray:
-        _, ca_r, _, cll_r = evaluate_fn(p)
-        cost_in = _cost_cll(wetting.cll_right, cll_r)
-        cost_below = _cost_ca(ca_rec_right, ca_r)
-        cost_above = _cost_ca(ca_adv_right, ca_r)
-        return jnp.where(in_window_right, cost_in, jnp.where(above_window_right, cost_above, cost_below))
-
-    def left_mask_d_rho_only(g: WettingParams) -> WettingParams:
-        z = jnp.zeros_like
-        return WettingParams(
-            phi_left=z(g.phi_left),
-            phi_right=z(g.phi_right),
-            d_rho_left=g.d_rho_left,
-            d_rho_right=z(g.d_rho_right),
-        )
-
-    def left_mask_phi_only(g: WettingParams) -> WettingParams:
-        z = jnp.zeros_like
-        return WettingParams(
-            phi_left=g.phi_left,
-            phi_right=z(g.phi_right),
-            d_rho_left=z(g.d_rho_left),
-            d_rho_right=z(g.d_rho_right),
-        )
-
-    def right_mask_d_rho_only(g: WettingParams) -> WettingParams:
-        z = jnp.zeros_like
-        return WettingParams(
-            phi_left=z(g.phi_left),
-            phi_right=z(g.phi_right),
-            d_rho_left=z(g.d_rho_left),
-            d_rho_right=g.d_rho_right,
-        )
-
-    def right_mask_phi_only(g: WettingParams) -> WettingParams:
-        z = jnp.zeros_like
-        return WettingParams(
-            phi_left=z(g.phi_left),
-            phi_right=g.phi_right,
-            d_rho_left=z(g.d_rho_left),
-            d_rho_right=z(g.d_rho_right),
-        )
-
-    # --- 5.2: optimise left side, then right side ---
-
-    def _opt_left(p: WettingParams) -> WettingParams:
-        return jax.lax.cond(
-            phi_active_left,
-            lambda pp: _optimise_single_param(left_objective, pp, left_mask_phi_only, optimiser, max_iter)[0],
-            lambda pp: _optimise_single_param(left_objective, pp, left_mask_d_rho_only, optimiser, max_iter)[0],
-            p,
-        )
-
-    def _opt_right(p: WettingParams) -> WettingParams:
-        return jax.lax.cond(
-            phi_active_right,
-            lambda pp: _optimise_single_param(right_objective, pp, right_mask_phi_only, optimiser, max_iter)[0],
-            lambda pp: _optimise_single_param(right_objective, pp, right_mask_d_rho_only, optimiser, max_iter)[0],
-            p,
-        )
-
-    new_params_left = _opt_left(params)
-    new_params = _opt_right(new_params_left)
-
-    if DEBUG_FLAG:
-        jax.debug.print(
-            "ca_right={ca} cll_right={cll} phi_active={a} phi={p} d_rho={d} loss={l}",
-            ca=ca_right_tplus1,
-            cll=cll_right_tplus1,
-            a=phi_active_right,
-            p=new_params.phi_right,
-            d=new_params.d_rho_right,
-            l=right_objective(new_params),
-        )
-        jax.debug.print(
-            "ca_left={ca}  cll_left={cll}  phi_active={a} phi={p} d_rho={d} loss={l}",
-            ca=ca_left_tplus1,
-            cll=cll_left_tplus1,
-            a=phi_active_left,
-            p=new_params.phi_left,
-            d=new_params.d_rho_left,
-            l=left_objective(new_params),
-        )
-
-    # 6. Return updated wetting state
-    return wetting._replace(
-        phi_left=new_params.phi_left,
-        phi_right=new_params.phi_right,
-        d_rho_left=new_params.d_rho_left,
-        d_rho_right=new_params.d_rho_right,
-        ca_left=ca_left_tplus1,
-        ca_right=ca_right_tplus1,
-        cll_left=cll_left_tplus1,
-        cll_right=cll_right_tplus1,
+    return _update_wetting_state_impl(
+        wetting,
+        rho_t_plus1,
+        setup,
+        trial_step_fn,
+        ca_adv_left=ca_adv_left,
+        ca_rec_left=ca_rec_left,
+        ca_adv_right=ca_adv_right,
+        ca_rec_right=ca_rec_right,
     )

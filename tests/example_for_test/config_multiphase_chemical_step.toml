@@ -6,11 +6,11 @@ grid_shape = [
     64,
     1,
 ]
-nt = 25000
+nt = 500
 tau = 0.99
 collision_scheme = "bgk"
 init_type = "multiphase_bubbles"
-save_interval = 500
+save_interval = 50
 skip_interval = 0
 type = "multiphase_hysteresis_chemical_step"
 
