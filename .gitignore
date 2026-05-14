@@ -76,3 +76,6 @@ venv.bak/
 /dev_notes/
 /stash/
 /simulations/Drop_top/
+
+# Trunk (CI tool — not used in this project)
+.trunk/

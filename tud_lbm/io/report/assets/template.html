@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<!--
+  TUD-LBM Simulation Report Template
+  ====================================
+  This file is both:
+    1. The Jinja-free template used by HtmlReport (Python) to produce
+       self-contained run reports.  Python replaces the <script id="report-data">
+       block with real simulation data.
+    2. A standalone browser app for UI development.  Open it directly in a
+       browser to work on the layout and JS with the built-in sample data below.
+
+  Editing guidelines
+  ------------------
+  - CSS lives in <style> (single block, start of <head>).
+  - JS lives in <script> at the end of <body>.
+  - Data contract: window.__REPORT_DATA__ is an object with shape:
+        { params, frames, comments, sim_name, generated_at }
+    Python writes the real object into <script id="report-data">.
+    The inline sample object is used when that script tag is absent or empty.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TUD-LBM Report</title>
+<style>
+/* ── Reset & design tokens ─────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:        #f6f8fa;
+  --surface:   #ffffff;
+  --border:    #d0d7de;
+  --border2:   #e8eaed;
+  --accent:    #0969da;
+  --text:      #1f2328;
+  --muted:     #656d76;
+  --green:     #1a7f37;
+  --radius:    6px;
+  --shadow:    0 1px 3px rgba(0,0,0,.08);
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  padding: 24px 16px 80px;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+.card-header {
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-body { padding: 16px; }
+
+/* ── Page header ────────────────────────────────────────────────── */
+.page-header { max-width: 960px; margin: 0 auto 24px; }
+.page-header h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+.page-header .meta { font-size: 13px; color: var(--muted); }
+
+/* ── Main content wrapper ───────────────────────────────────────── */
+.content { max-width: 960px; margin: 0 auto; }
+
+/* ── Parameters table ───────────────────────────────────────────── */
+.params-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 28%) 1fr;
+}
+@media (max-width: 600px) { .params-grid { grid-template-columns: 1fr; } }
+.param-label, .param-value {
+  padding: 7px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border2);
+}
+.param-label { font-weight: 600; color: var(--muted); white-space: nowrap; }
+.param-value { font-family: ui-monospace, monospace; word-break: break-all; }
+.params-grid > .param-label:nth-child(4n+1),
+.params-grid > .param-value:nth-child(4n+2) { background: var(--bg); }
+
+/* ── Player ─────────────────────────────────────────────────────── */
+.player { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.player-frame-wrap {
+  width: 100%;
+  min-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.player-frame-wrap img {
+  max-width: 100%;
+  max-height: 560px;
+  object-fit: contain;
+  display: block;
+}
+.player-empty { padding: 40px; color: var(--muted); font-size: 14px; text-align: center; }
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.ctrl-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ctrl-btn:hover { background: var(--bg); }
+.ctrl-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.frame-label { font-size: 12px; color: var(--muted); min-width: 64px; text-align: center; }
+.scrubber { width: 220px; accent-color: var(--accent); cursor: pointer; }
+.fps-label { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.fps-label input {
+  width: 42px; padding: 3px 5px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 4px;
+}
+
+/* ── Comments ───────────────────────────────────────────────────── */
+.comment-list { display: flex; flex-direction: column; }
+.comment {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border2);
+}
+.comment:last-child { border-bottom: none; }
+.avatar {
+  flex-shrink: 0;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  font-size: 14px; font-weight: 700;
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+.comment-meta { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.comment-meta strong { color: var(--text); }
+.comment-body { font-size: 14px; line-height: 1.6; }
+.comment-body p { margin-bottom: 8px; }
+.comment-body p:last-child { margin-bottom: 0; }
+.comment-body h1, .comment-body h2, .comment-body h3 {
+  margin: 12px 0 4px; font-size: 14px;
+}
+.comment-body code {
+  background: var(--bg); border: 1px solid var(--border2);
+  border-radius: 3px; padding: 1px 5px;
+  font-family: ui-monospace, monospace; font-size: 12px;
+}
+.comment-body pre {
+  background: var(--bg); border: 1px solid var(--border2);
+  border-radius: var(--radius); padding: 10px;
+  overflow-x: auto; margin: 8px 0;
+}
+.comment-body pre code { background: none; border: none; padding: 0; }
+.comment-body ul, .comment-body ol { padding-left: 20px; margin-bottom: 8px; }
+.comment-body strong { font-weight: 600; }
+.comment-body em { font-style: italic; }
+
+/* ── New-comment form ───────────────────────────────────────────── */
+.new-comment-wrap { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.author-row { display: flex; align-items: center; gap: 10px; }
+.author-row label { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.author-input {
+  flex: 1; max-width: 260px;
+  padding: 5px 10px; font-size: 13px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.author-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.tab-bar { display: flex; border-bottom: 1px solid var(--border); }
+.tab-btn {
+  background: none; border: none;
+  border-bottom: 2px solid transparent;
+  padding: 6px 14px; font-size: 13px;
+  cursor: pointer; color: var(--muted); margin-bottom: -1px;
+}
+.tab-btn.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+#md-textarea {
+  width: 100%; min-height: 120px; padding: 10px;
+  font-size: 13px; font-family: ui-monospace, monospace;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  resize: vertical;
+}
+#md-textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+#md-preview {
+  min-height: 80px; padding: 10px;
+  font-size: 14px; border: 1px solid var(--border2);
+  border-radius: var(--radius); background: var(--bg); line-height: 1.6;
+}
+.form-footer { display: flex; justify-content: flex-end; gap: 10px; }
+.btn {
+  padding: 6px 16px; font-size: 13px; font-weight: 600;
+  border-radius: var(--radius); border: 1px solid transparent;
+  cursor: pointer;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--green); color: #fff; border-color: var(--green); }
+.btn-primary:hover:not(:disabled) { opacity: .88; }
+.btn-secondary { background: var(--surface); border-color: var(--border); color: var(--text); }
+.btn-secondary:hover { background: var(--bg); }
+
+/* ── Save bar ───────────────────────────────────────────────────── */
+.save-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 10px 24px;
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: 12px; z-index: 100;
+  box-shadow: 0 -2px 8px rgba(0,0,0,.06);
+}
+.save-bar .hint { font-size: 12px; color: var(--muted); }
+.btn-save {
+  background: var(--accent); color: #fff; border: none;
+  padding: 7px 20px; font-size: 13px; font-weight: 600;
+  border-radius: var(--radius); cursor: pointer;
+}
+.btn-save:hover { opacity: .88; }
+</style>
+</head>
+<body>
+
+<!-- ── Page header ───────────────────────────────────────────── -->
+<div class="page-header">
+  <h1 id="page-title">Loading…</h1>
+  <div class="meta" id="page-meta"></div>
+</div>
+
+<div class="content">
+
+  <!-- ── Parameters ─────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header">&#9881; Simulation Parameters</div>
+    <div class="card-body" style="padding:0">
+      <div class="params-grid" id="params-grid"></div>
+    </div>
+  </div>
+
+  <!-- ── Animation ──────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header">&#9654; Results</div>
+    <div class="card-body">
+      <div class="player" id="player">
+        <div class="player-frame-wrap" id="frame-wrap">
+          <div class="player-empty" id="no-frames">No plot frames in this run.</div>
+          <img id="frame-img" style="display:none" alt="simulation frame">
+        </div>
+        <div class="player-controls" id="player-controls" style="display:none">
+          <button class="ctrl-btn" id="btn-prev" title="Previous">&#9664;</button>
+          <button class="ctrl-btn" id="btn-play" title="Play / Pause">&#9654; Play</button>
+          <button class="ctrl-btn" id="btn-next" title="Next">&#9654;</button>
+          <input type="range" class="scrubber" id="scrubber" min="0" value="0">
+          <span class="frame-label" id="frame-label">1 / 1</span>
+          <label class="fps-label">FPS
+            <input type="number" id="fps-input" value="4" min="1" max="60">
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Comments ───────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header">&#128172; Comments</div>
+    <div class="comment-list" id="comment-list"></div>
+    <div class="new-comment-wrap">
+      <div class="author-row">
+        <label for="author-input">Author</label>
+        <input class="author-input" id="author-input" type="text" placeholder="Your name">
+      </div>
+      <div class="tab-bar">
+        <button class="tab-btn active" id="tab-edit-btn" onclick="switchTab('edit')">Edit</button>
+        <button class="tab-btn" id="tab-preview-btn" onclick="switchTab('preview')">Preview</button>
+      </div>
+      <div>
+        <div class="tab-panel active" id="tab-edit">
+          <textarea id="md-textarea" placeholder="Leave a comment (Markdown supported)…"></textarea>
+        </div>
+        <div class="tab-panel" id="tab-preview">
+          <div id="md-preview" class="comment-body"></div>
+        </div>
+      </div>
+      <div class="form-footer">
+        <button class="btn btn-secondary" onclick="clearComment()">Clear</button>
+        <button class="btn btn-primary" onclick="addComment()">Comment</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.content -->
+
+<!-- ── Save bar ───────────────────────────────────────────── -->
+<div class="save-bar">
+  <span class="hint">Save embeds your comments into a new copy of this file.</span>
+  <button class="btn-save" onclick="saveReport()">&#128190; Save Report</button>
+</div>
+
+<!--
+  ── Data injection point ───────────────────────────────────────
+  Python replaces the contents of this script tag with real JSON.
+  When opening this file directly in a browser the sample data
+  below is used instead, so you can develop/test the UI freely.
+-->
+<script id="report-data" type="application/json">
+{
+  "sim_name": "Sample Simulation \u2014 UI Preview",
+  "generated_at": "2026-01-01 00:00 UTC",
+  "params": [
+    ["Simulation Name", "Sample Run"],
+    ["Type", "single_phase"],
+    ["Grid Shape", "(100, 100, 1)"],
+    ["Lattice", "D2Q9"],
+    ["Relaxation Time (\u03c4)", "0.8"],
+    ["Time Steps (nt)", "1000"],
+    ["Save Interval", "100"],
+    ["Collision Scheme", "bgk"],
+    ["Init Type", "standard"],
+    ["Plot Fields", "density, velocity"]
+  ],
+  "frames": [],
+  "comments": [
+    {
+      "author": "Alice",
+      "ts": "1 Jan 2026, 09:00",
+      "body": "Initial run looks stable. The **density field** is uniform at t=0 as expected.\n\nNext step: increase `nt` to 5000 and check for blow-up."
+    }
+  ]
+}
+</script>
+
+<script>
+/* =================================================================
+   TUD-LBM Report — client-side app
+   =================================================================
+   Entry point : init()
+   Public API  : addComment(), clearComment(), switchTab(), saveReport()
+   Tested via  : browser (open template.html directly) or Jest/Vitest
+   ================================================================= */
+
+// ── Data bootstrap ──────────────────────────────────────────────
+const DATA = (function loadData() {
+  const el = document.getElementById('report-data');
+  try { return JSON.parse(el ? el.textContent : '{}'); } catch (_) { return {}; }
+})();
+
+DATA.comments = DATA.comments || [];
+
+// ── Init ────────────────────────────────────────────────────────
+function init() {
+  document.title = (DATA.sim_name || 'TUD-LBM Report') + ' \u2014 TUD-LBM Report';
+  document.getElementById('page-title').textContent = DATA.sim_name || 'Simulation Report';
+  document.getElementById('page-meta').textContent =
+    'Generated ' + (DATA.generated_at || '') + '\u00a0\u00b7\u00a0TUD-LBM';
+  renderParams(DATA.params || []);
+  initPlayer(DATA.frames || []);
+  renderComments();
+}
+
+// ── Parameters ──────────────────────────────────────────────────
+function renderParams(params) {
+  const grid = document.getElementById('params-grid');
+  grid.innerHTML = '';
+  params.forEach(function(row) {
+    const label = document.createElement('div');
+    label.className = 'param-label';
+    label.textContent = row[0];
+    const value = document.createElement('div');
+    value.className = 'param-value';
+    value.textContent = row[1];
+    grid.appendChild(label);
+    grid.appendChild(value);
+  });
+}
+
+// ── Player ──────────────────────────────────────────────────────
+let _currentFrame = 0;
+let _playing = false;
+let _playTimer = null;
+
+function initPlayer(frames) {
+  if (!frames.length) return;
+  document.getElementById('no-frames').style.display = 'none';
+  document.getElementById('frame-img').style.display = '';
+  document.getElementById('player-controls').style.display = '';
+  document.getElementById('scrubber').max = frames.length - 1;
+  showFrame(0);
+}
+
+function showFrame(n) {
+  const frames = DATA.frames || [];
+  if (!frames.length) return;
+  _currentFrame = Math.max(0, Math.min(n, frames.length - 1));
+  document.getElementById('frame-img').src = frames[_currentFrame];
+  document.getElementById('scrubber').value = _currentFrame;
+  document.getElementById('frame-label').textContent =
+    (_currentFrame + 1) + ' / ' + frames.length;
+}
+
+function startPlay() {
+  const fps = Math.max(1, +(document.getElementById('fps-input').value) || 4);
+  _playing = true;
+  document.getElementById('btn-play').textContent = '\u23f8 Pause';
+  document.getElementById('btn-play').classList.add('active');
+  _playTimer = setInterval(function() {
+    showFrame((_currentFrame + 1) % (DATA.frames.length || 1));
+  }, 1000 / fps);
+}
+
+function stopPlay() {
+  _playing = false;
+  clearInterval(_playTimer);
+  document.getElementById('btn-play').textContent = '\u25b6 Play';
+  document.getElementById('btn-play').classList.remove('active');
+}
+
+document.getElementById('btn-prev').addEventListener('click', function() {
+  stopPlay(); showFrame(_currentFrame - 1);
+});
+document.getElementById('btn-next').addEventListener('click', function() {
+  stopPlay(); showFrame(_currentFrame + 1);
+});
+document.getElementById('btn-play').addEventListener('click', function() {
+  _playing ? stopPlay() : startPlay();
+});
+document.getElementById('scrubber').addEventListener('input', function(e) {
+  stopPlay(); showFrame(+e.target.value);
+});
+
+// ── Tab switcher ─────────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('tab-edit').classList.toggle('active', tab === 'edit');
+  document.getElementById('tab-preview').classList.toggle('active', tab === 'preview');
+  document.getElementById('tab-edit-btn').classList.toggle('active', tab === 'edit');
+  document.getElementById('tab-preview-btn').classList.toggle('active', tab === 'preview');
+  if (tab === 'preview') {
+    document.getElementById('md-preview').innerHTML =
+      renderMarkdown(document.getElementById('md-textarea').value);
+  }
+}
+
+// ── Comments ─────────────────────────────────────────────────────
+function renderComments() {
+  const list = document.getElementById('comment-list');
+  list.innerHTML = '';
+  DATA.comments.forEach(function(c, idx) {
+    const initials = authorInitials(c.author);
+    const color    = authorColor(c.author);
+    const div = document.createElement('div');
+    div.className = 'comment';
+    div.innerHTML =
+      '<div class="avatar" style="background:' + color + '">' + initials + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div class="comment-meta">' +
+          '<strong>' + escHtml(c.author) + '</strong>' +
+          ' commented on ' + escHtml(c.ts) +
+          '<button onclick="deleteComment(' + idx + ')" title="Delete"' +
+            ' style="float:right;background:none;border:none;cursor:pointer;' +
+            'color:var(--muted);font-size:11px">\u00d7</button>' +
+        '</div>' +
+        '<div class="comment-body">' + renderMarkdown(c.body) + '</div>' +
+      '</div>';
+    list.appendChild(div);
+  });
+}
+
+function addComment() {
+  const body   = document.getElementById('md-textarea').value.trim();
+  const author = document.getElementById('author-input').value.trim() || 'Anonymous';
+  if (!body) return;
+  const ts = new Date().toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  DATA.comments.push({ author: author, body: body, ts: ts });
+  renderComments();
+  document.getElementById('md-textarea').value = '';
+  switchTab('edit');
+}
+
+function deleteComment(idx) {
+  DATA.comments.splice(idx, 1);
+  renderComments();
+}
+
+function clearComment() {
+  document.getElementById('md-textarea').value = '';
+  document.getElementById('md-preview').innerHTML = '';
+}
+
+// ── Save ─────────────────────────────────────────────────────────
+function saveReport() {
+  const payload = {
+    sim_name:     DATA.sim_name,
+    generated_at: DATA.generated_at,
+    params:       DATA.params,
+    frames:       DATA.frames,
+    comments:     DATA.comments
+  };
+  const newData     = JSON.stringify(payload, null, 2);
+  const doc         = document.documentElement.outerHTML;
+  const openTag     = '<script id="report-data" type="application/json">';
+  const closeTag    = '<\/script>';
+  const re          = new RegExp(openTag + '[\\s\\S]*?' + closeTag);
+  const updated     = doc.replace(re, openTag + '\n' + newData + '\n' + closeTag);
+  const blob        = new Blob([updated], { type: 'text/html;charset=utf-8' });
+  const a           = document.createElement('a');
+  a.href            = URL.createObjectURL(blob);
+  a.download        = (DATA.sim_name || 'report').replace(/[^a-z0-9_\-\.]/gi, '_') + '_saved.html';
+  a.click();
+  setTimeout(function() { URL.revokeObjectURL(a.href); }, 5000);
+}
+
+// ── Minimal Markdown renderer ─────────────────────────────────────
+function renderMarkdown(src) {
+  if (!src) return '';
+  var h = src
+    .replace(/```([\s\S]*?)```/g, function(_, c) {
+      return '<pre><code>' + escHtml(c.trim()) + '</code></pre>';
+    })
+    .replace(/`([^`\n]+)`/g, function(_, c) {
+      return '<code>' + escHtml(c) + '</code>';
+    })
+    .replace(/^#{3}\s+(.+)$/gm, '<h3>$1</h3>')
+    .replace(/^#{2}\s+(.+)$/gm, '<h2>$1</h2>')
+    .replace(/^#\s+(.+)$/gm,    '<h1>$1</h1>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g,     '<em>$1</em>')
+    .replace(/__([^_]+)__/g,     '<strong>$1</strong>')
+    .replace(/_([^_]+)_/g,       '<em>$1</em>')
+    .replace(/^[-*]\s+(.+)$/gm,  '<li>$1</li>')
+    .replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" rel="noopener">$1</a>')
+    .replace(/\n\n+/g, '</p><p>')
+    .replace(/\n/g,    '<br>');
+  return '<p>' + h + '</p>';
+}
+
+// ── Utilities ─────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function authorInitials(name) {
+  return (name || '?').split(/\s+/).map(function(w) { return w[0] || ''; })
+    .join('').slice(0, 2).toUpperCase() || '?';
+}
+
+function authorColor(name) {
+  var h = 0;
+  for (var i = 0; i < name.length; i++) {
+    h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
+  }
+  return 'hsl(' + (Math.abs(h) % 360) + ',55%,42%)';
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

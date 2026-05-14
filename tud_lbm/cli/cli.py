@@ -387,6 +387,12 @@ def _run_simulation(config: SimulationConfig) -> None:
         console.print(
             "[bold green]Plotting complete![/bold green]",
         )
+
+    from tud_lbm.io.report import HtmlReport
+
+    console.print("[dim]Generating HTML report...[/dim]")
+    report_path = HtmlReport(config=config, run_dir=io.run_dir).build()
+    console.print(f"[bold green]Report:[/bold green] {report_path}")
     return final_state
 
 
