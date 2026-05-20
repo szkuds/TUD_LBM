@@ -328,22 +328,38 @@ def _update_wetting_state_impl(
 
     if DEBUG_FLAG:
         jax.debug.print(
-            "ca_r={ca} cll_r={cll} phi_act={a} phi={p} d_rho={d} loss={l}",
+            "\n[R] CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | \n"
+            "opt ={opt} | "
+            "phi: sav={phi_stored:.6f} act={phi_active_val:.6f} | "
+            "d_rho: save={d_rho_stored:.6f} act={d_rho_active_val:.6f} | "
+            "loss={loss:.3e}",
             ca=ca_right_tplus1,
+            ca_adv=ca_adv_right,
+            ca_rec=ca_rec_right,
             cll=cll_right_tplus1,
-            a=phi_active_right,
-            p=new_params.phi_right,
-            d=new_params.d_rho_right,
-            l=right_objective(new_params),
+            opt=jnp.where(phi_active_right, jnp.array(0), jnp.array(1)),
+            phi_stored=new_params.phi_right,  # what goes back into wetting state
+            phi_active_val=jnp.where(phi_active_right, new_params.phi_right, _PHI_NEUTRAL),  # what the trial step saw
+            d_rho_stored=new_params.d_rho_right,
+            d_rho_active_val=jnp.where(phi_active_right, _D_RHO_NEUTRAL, new_params.d_rho_right),
+            loss=right_objective(new_params),
         )
         jax.debug.print(
-            "ca_l={ca}  cll_l={cll}  phi_act={a} phi={p} d_rho={d} loss={l}",
+            "[L]  CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | \n"
+            "opt={opt} | "
+            "phi: sav={phi_stored:.6f} act={phi_active_val:.6f} | "
+            "d_rho: sav={d_rho_stored:.6f} act={d_rho_active_val:.6f} | "
+            "loss={loss:.3e}\n",
             ca=ca_left_tplus1,
+            ca_adv=ca_adv_left,
+            ca_rec=ca_rec_left,
             cll=cll_left_tplus1,
-            a=phi_active_left,
-            p=new_params.phi_left,
-            d=new_params.d_rho_left,
-            l=left_objective(new_params),
+            opt=jnp.where(phi_active_left, jnp.array(0), jnp.array(1)),
+            phi_stored=new_params.phi_left,
+            phi_active_val=jnp.where(phi_active_left, new_params.phi_left, _PHI_NEUTRAL),
+            d_rho_stored=new_params.d_rho_left,
+            d_rho_active_val=jnp.where(phi_active_left, _D_RHO_NEUTRAL, new_params.d_rho_left),
+            loss=left_objective(new_params),
         )
 
     return wetting._replace(

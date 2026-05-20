@@ -13,10 +13,12 @@ Public API::
 """
 
 from __future__ import annotations
+import math
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
+import numpy as np
 
 if TYPE_CHECKING:
     from tud_lbm.config.simulation_config import SimulationConfig
@@ -65,6 +67,9 @@ def _add_collision_section(lines: list[str], config: SimulationConfig) -> None:
 
 def _get_setup_contact_line_length(config: SimulationConfig) -> float | None:
     """Calculate the distance between the two contact lines at setup."""
+    if config.init_type == "init_from_file":
+        return _get_contact_line_length_from_file(config)
+
     init = config.initialisation
     if not init or not isinstance(init, dict):
         return None
@@ -95,8 +100,71 @@ def _get_setup_contact_line_length(config: SimulationConfig) -> float | None:
     return None
 
 
+def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | None:
+    """Return setup contact-line spacing from a rho field using wall-row transitions."""
+    try:
+        row = np.asarray(rho[:, 0, 0, 0, 0], dtype=float)
+
+        mask = (row < float(rho_mean)).astype(np.int32)
+        diff = np.diff(mask)
+        left_hits = np.where(diff == -1)[0]
+        right_hits = np.where(diff == 1)[0]
+        if left_hits.size == 0 or right_hits.size == 0:
+            return None
+
+        idx_left = int(left_hits[0])
+        idx_right = int(right_hits[-1] + 1)
+        if idx_left + 1 >= row.size or idx_right - 1 < 0 or idx_right >= row.size:
+            return None
+
+        denom_left = row[idx_left + 1] - row[idx_left]
+        denom_right = row[idx_right - 1] - row[idx_right]
+        if denom_left == 0.0 or denom_right == 0.0:
+            return None
+
+        x_left = idx_left + ((rho_mean - row[idx_left]) / denom_left)
+        x_right = idx_right - ((rho_mean - row[idx_right]) / denom_right)
+        length = float(x_right - x_left)
+        if length > 0.0:
+            return length
+        return None  # noqa: TRY300
+    except (IndexError, TypeError, ValueError):
+        return None
+
+
+def _get_contact_line_length_from_file(config: SimulationConfig) -> float | None:
+    """Load rho from NPZ and estimate setup contact-line spacing for init_from_file."""
+    init = config.initialisation if isinstance(config.initialisation, dict) else {}
+    npz_path = config.init_dir or init.get("npz_path")
+    if not npz_path:
+        return None
+
+    try:
+        with np.load(npz_path) as data:
+            if "rho" not in data:
+                return None
+            rho = np.asarray(data["rho"])
+
+        if config.rho_l is not None and config.rho_v is not None:
+            rho_mean = 0.5 * (float(config.rho_l) + float(config.rho_v))
+        else:
+            rho_mean = float(np.mean(rho))
+        return _contact_line_length_from_rho(rho, rho_mean)
+    except (FileNotFoundError, KeyError, OSError, TypeError, ValueError):
+        return None
+
+
+def _ensure_single_gravity_force_source(config: SimulationConfig) -> None:
+    """Reject configs that define both gravity force variants simultaneously."""
+    if config.gravity_force is not None and config.gravity_masked_force is not None:
+        msg = "Only one gravity force can be applied: set either gravity_force or gravity_masked_force, not both."
+        raise ValueError(msg)
+
+
 def _resolve_gravity_value(config: SimulationConfig) -> float | None:
     """Resolve gravity from config.g or known force dictionaries."""
+    _ensure_single_gravity_force_source(config)
+
     if config.g is not None:
         return float(config.g)
 
@@ -107,8 +175,19 @@ def _resolve_gravity_value(config: SimulationConfig) -> float | None:
     return None
 
 
+def _resolve_gravity_inclination(config: SimulationConfig) -> float:
+    """Return inclination_angle_deg from the active force config, or 0.0."""
+    _ensure_single_gravity_force_source(config)
+
+    for force_name in ("gravity_force", "gravity_masked_force"):
+        force_dict = getattr(config, force_name, None)
+        if force_dict and isinstance(force_dict, dict):
+            return float(force_dict.get("inclination_angle_deg", 0.0))
+    return 0.0
+
+
 def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, float] | None:
-    """Return (drho, gamma) when multiphase parameters are available and valid."""
+    """Return (delta_rho_phases, gamma) when multiphase parameters are available and valid."""
     has_params = all(x is not None for x in (config.kappa, config.interface_width, config.rho_l, config.rho_v))
     if not has_params or config.interface_width == 0:
         return None
@@ -122,6 +201,8 @@ def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple
     """Resolve shared length scale and annotation for Oh/Bo rows."""
     cl_length = _get_setup_contact_line_length(config)
     if cl_length is not None:
+        if config.init_type == "init_from_file":
+            return cl_length, f"L={cl_length:.4g} (init_from_file)"
         return cl_length, f"L={cl_length:.4g} (contact line)"
 
     length = float(config.grid_shape[0])
@@ -135,10 +216,27 @@ def _format_ohnesorge_number_row(config: SimulationConfig, gamma: float, length:
     return _row("Oh (Ohnesorge number):", f"{oh:.6g}  [ν√(ρ_l/(γL)), {length_label}]")
 
 
-def _format_bond_number_row(drho: float, gamma: float, g_val: float, length: float, length_label: str) -> str:
-    """Build Bond-number row from shared length scale."""
-    bo = (drho * g_val * (length**2)) / gamma
-    return _row("Bo (Bond number):", f"{bo:.6g}  [ΔρgL²/γ, {length_label}]")
+def _format_bond_number_row(
+    delta_rho_phases: float,
+    gamma: float,
+    g_val: float,
+    length: float,
+    length_label: str,
+    angle_deg: float = 0.0,
+) -> list[str]:
+    """Build Bond-number row(s) from shared length scale."""
+    bo = (delta_rho_phases * (length**2) * g_val) / gamma
+    angle_rad = math.radians(angle_deg)
+    bo_normal = bo * math.cos(angle_rad)
+    bo_tangential = bo * math.sin(angle_rad)
+    return [
+        _row("Bo (Bond number):", f"{bo:.6g}  [(ΔρgL²)/γ, {length_label}]"),
+        _row("Bo_perp (Bond normal):", f"{bo_normal:.6g}  [(Δρ*g*cos({angle_deg:.4g}deg)*L^2)/gamma, {length_label}]"),
+        _row(
+            "Bo_parallel (Bond tangential):",
+            f"{bo_tangential:.6g}  [(Δρ*g*sin({angle_deg:.4g}deg)*L^2)/gamma, {length_label}]",
+        ),
+    ]
 
 
 def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
@@ -166,7 +264,8 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     if g_val is None:
         return
 
-    lines.append(_format_bond_number_row(drho, gamma, g_val, length, length_label))
+    angle_deg = _resolve_gravity_inclination(config)
+    lines.extend(_format_bond_number_row(drho, gamma, g_val, length, length_label, angle_deg))
 
 
 def _add_key_value_section(lines: list[str], title: str, values: dict | None) -> None:
