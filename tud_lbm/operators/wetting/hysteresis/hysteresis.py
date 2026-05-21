@@ -326,6 +326,39 @@ def _update_wetting_state_impl(
 
     new_params = _opt_right(_opt_left(params))
 
+    # Fallback: if phi path is selected but stays neutral, retry with d_rho
+    # warm-started from the stored accumulated value.
+    def _fallback_d_rho_left(p: WettingParams) -> WettingParams:
+        fallback = WettingParams(
+            phi_left=_PHI_NEUTRAL,
+            phi_right=p.phi_right,
+            d_rho_left=wetting.d_rho_left,
+            d_rho_right=p.d_rho_right,
+        )
+        return _optimise_single_param(left_objective, fallback, _mask_left_d_rho, optimiser, max_iter)[0]
+
+    def _fallback_d_rho_right(p: WettingParams) -> WettingParams:
+        fallback = WettingParams(
+            phi_left=p.phi_left,
+            phi_right=_PHI_NEUTRAL,
+            d_rho_left=p.d_rho_left,
+            d_rho_right=wetting.d_rho_right,
+        )
+        return _optimise_single_param(right_objective, fallback, _mask_right_d_rho, optimiser, max_iter)[0]
+
+    final_params = jax.lax.cond(
+        phi_active_left & (new_params.phi_left <= _PHI_NEUTRAL),
+        _fallback_d_rho_left,
+        lambda p: p,
+        new_params,
+    )
+    final_params = jax.lax.cond(
+        phi_active_right & (new_params.phi_right <= _PHI_NEUTRAL),
+        _fallback_d_rho_right,
+        lambda p: p,
+        final_params,
+    )
+
     if DEBUG_FLAG:
         jax.debug.print(
             "[R] CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | \n"
@@ -337,12 +370,16 @@ def _update_wetting_state_impl(
             ca_adv=ca_adv_right,
             ca_rec=ca_rec_right,
             cll=cll_right_tplus1,
-            opt=jnp.where(phi_active_right, jnp.array(0), jnp.array(1)),
-            phi_stored=new_params.phi_right,  # what goes back into wetting state
-            phi_active_val=jnp.where(phi_active_right, new_params.phi_right, _PHI_NEUTRAL),  # what the trial step saw
-            d_rho_stored=new_params.d_rho_right,
-            d_rho_active_val=jnp.where(phi_active_right, _D_RHO_NEUTRAL, new_params.d_rho_right),
-            loss=right_objective(new_params),
+            opt=jnp.where(
+                phi_active_right & (final_params.phi_right <= _PHI_NEUTRAL),
+                jnp.array(1),
+                jnp.where(phi_active_right, jnp.array(0), jnp.array(1)),
+            ),
+            phi_stored=final_params.phi_right,  # what goes back into wetting state
+            phi_active_val=jnp.where(phi_active_right, final_params.phi_right, _PHI_NEUTRAL),  # what the trial step saw
+            d_rho_stored=final_params.d_rho_right,
+            d_rho_active_val=jnp.where(phi_active_right, _D_RHO_NEUTRAL, final_params.d_rho_right),
+            loss=right_objective(final_params),
         )
         jax.debug.print(
             "\n[L]  CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | \n"
@@ -354,19 +391,23 @@ def _update_wetting_state_impl(
             ca_adv=ca_adv_left,
             ca_rec=ca_rec_left,
             cll=cll_left_tplus1,
-            opt=jnp.where(phi_active_left, jnp.array(0), jnp.array(1)),
-            phi_stored=new_params.phi_left,
-            phi_active_val=jnp.where(phi_active_left, new_params.phi_left, _PHI_NEUTRAL),
-            d_rho_stored=new_params.d_rho_left,
-            d_rho_active_val=jnp.where(phi_active_left, _D_RHO_NEUTRAL, new_params.d_rho_left),
-            loss=left_objective(new_params),
+            opt=jnp.where(
+                phi_active_left & (final_params.phi_left <= _PHI_NEUTRAL),
+                jnp.array(1),
+                jnp.where(phi_active_left, jnp.array(0), jnp.array(1)),
+            ),
+            phi_stored=final_params.phi_left,
+            phi_active_val=jnp.where(phi_active_left, final_params.phi_left, _PHI_NEUTRAL),
+            d_rho_stored=final_params.d_rho_left,
+            d_rho_active_val=jnp.where(phi_active_left, _D_RHO_NEUTRAL, final_params.d_rho_left),
+            loss=left_objective(final_params),
         )
 
     return wetting._replace(
-        phi_left=new_params.phi_left,
-        phi_right=new_params.phi_right,
-        d_rho_left=new_params.d_rho_left,
-        d_rho_right=new_params.d_rho_right,
+        phi_left=final_params.phi_left,
+        phi_right=final_params.phi_right,
+        d_rho_left=final_params.d_rho_left,
+        d_rho_right=final_params.d_rho_right,
         ca_left=ca_left_tplus1,
         ca_right=ca_right_tplus1,
         cll_left=cll_left_tplus1,
