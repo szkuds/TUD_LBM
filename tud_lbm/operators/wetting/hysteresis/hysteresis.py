@@ -107,8 +107,8 @@ def _clamp_params(params: WettingParams) -> WettingParams:
     return WettingParams(
         phi_left=jnp.clip(params.phi_left, 1.0, 1.5),
         phi_right=jnp.clip(params.phi_right, 1.0, 1.5),
-        d_rho_left=jnp.clip(params.d_rho_left, 0.0, 0.25),
-        d_rho_right=jnp.clip(params.d_rho_right, 0.0, 0.25),
+        d_rho_left=jnp.clip(params.d_rho_left, 0.0, 0.3),
+        d_rho_right=jnp.clip(params.d_rho_right, 0.0, 0.3),
     )
 
 
@@ -124,6 +124,20 @@ def _cost_ca(ca_target: jnp.ndarray, ca_current: jnp.ndarray) -> jnp.ndarray:
     err = jnp.abs(ca_target - ca_current)
     delta = 5.0  # Degrees
     return jnp.where(err < delta, 0.5 * err**2, delta * (err - 0.5 * delta))
+
+
+def _cost_above(ca_adv: jnp.ndarray, ca_current: jnp.ndarray) -> jnp.ndarray:
+    """One-sided Huber loss that penalises only CA values above ca_adv."""
+    excess = jnp.maximum(ca_current - ca_adv, 0.0)
+    delta = 5.0  # Degrees
+    return jnp.where(excess < delta, 0.5 * excess**2, delta * (excess - 0.5 * delta))
+
+
+def _cost_below(ca_rec: jnp.ndarray, ca_current: jnp.ndarray) -> jnp.ndarray:
+    """One-sided Huber loss that penalises only CA values below ca_rec."""
+    deficit = jnp.maximum(ca_rec - ca_current, 0.0)
+    delta = 5.0  # Degrees
+    return jnp.where(deficit < delta, 0.5 * deficit**2, delta * (deficit - 0.5 * delta))
 
 
 def _mask_left_d_rho(g: WettingParams) -> WettingParams:
@@ -297,15 +311,15 @@ def _update_wetting_state_impl(
     def left_objective(p: WettingParams) -> jnp.ndarray:
         ca_l, _, cll_l, _ = evaluate_fn(p)
         cost_in = _cost_cll(wetting.cll_left, cll_l)
-        cost_below = _cost_ca(ca_rec_left, ca_l)
-        cost_above = _cost_ca(ca_adv_left, ca_l)
+        cost_below = _cost_below(ca_rec_left, ca_l)
+        cost_above = _cost_above(ca_adv_left, ca_l)
         return jnp.where(in_window_left, cost_in, jnp.where(above_window_left, cost_above, cost_below))
 
     def right_objective(p: WettingParams) -> jnp.ndarray:
         _, ca_r, _, cll_r = evaluate_fn(p)
         cost_in = _cost_cll(wetting.cll_right, cll_r)
-        cost_below = _cost_ca(ca_rec_right, ca_r)
-        cost_above = _cost_ca(ca_adv_right, ca_r)
+        cost_below = _cost_below(ca_rec_right, ca_r)
+        cost_above = _cost_above(ca_adv_right, ca_r)
         return jnp.where(in_window_right, cost_in, jnp.where(above_window_right, cost_above, cost_below))
 
     def _opt_left(p: WettingParams) -> WettingParams:
@@ -360,46 +374,43 @@ def _update_wetting_state_impl(
     )
 
     if DEBUG_FLAG:
+        phi_engaged_right = phi_active_right & (final_params.phi_right > _PHI_NEUTRAL)
+        fallback_right = phi_active_right & ~phi_engaged_right
+        phi_engaged_left = phi_active_left & (final_params.phi_left > _PHI_NEUTRAL)
+        fallback_left = phi_active_left & ~phi_engaged_left
+
+        # mode: 0=d_rho(normal), 1=phi(engaged), 2=d_rho(fallback)
+        mode_right = jnp.where(phi_engaged_right, jnp.array(1), jnp.where(fallback_right, jnp.array(2), jnp.array(0)))
+        mode_left = jnp.where(phi_engaged_left, jnp.array(1), jnp.where(fallback_left, jnp.array(2), jnp.array(0)))
+
         jax.debug.print(
-            "[R] CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | \n"
-            "opt ={opt} | "
-            "phi: sav={phi_stored:.6f} act={phi_active_val:.6f} | "
-            "d_rho: save={d_rho_stored:.6f} act={d_rho_active_val:.6f} | "
-            "loss={loss:.3e}___",
+            "\n[R] CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | "
+            "mode={mode}(0=d_rho,1=phi,2=fb) | "
+            "phi: {phi:.6f} | "
+            "d_rho: {d_rho:.6f} | "
+            "loss={loss:.3e}",
             ca=ca_right_tplus1,
             ca_adv=ca_adv_right,
             ca_rec=ca_rec_right,
             cll=cll_right_tplus1,
-            opt=jnp.where(
-                phi_active_right & (final_params.phi_right <= _PHI_NEUTRAL),
-                jnp.array(1),
-                jnp.where(phi_active_right, jnp.array(0), jnp.array(1)),
-            ),
-            phi_stored=final_params.phi_right,  # what goes back into wetting state
-            phi_active_val=jnp.where(phi_active_right, final_params.phi_right, _PHI_NEUTRAL),  # what the trial step saw
-            d_rho_stored=final_params.d_rho_right,
-            d_rho_active_val=jnp.where(phi_active_right, _D_RHO_NEUTRAL, final_params.d_rho_right),
+            mode=mode_right,
+            phi=final_params.phi_right,
+            d_rho=final_params.d_rho_right,
             loss=right_objective(final_params),
         )
         jax.debug.print(
-            "\n[L]  CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | \n"
-            "opt={opt} | "
-            "phi: sav={phi_stored:.6f} act={phi_active_val:.6f} | "
-            "d_rho: sav={d_rho_stored:.6f} act={d_rho_active_val:.6f} | "
+            "[L] CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | "
+            "mode={mode}(0=d_rho,1=phi,2=fb) | "
+            "phi: {phi:.6f} | "
+            "d_rho: {d_rho:.6f} | "
             "loss={loss:.3e}",
             ca=ca_left_tplus1,
             ca_adv=ca_adv_left,
             ca_rec=ca_rec_left,
             cll=cll_left_tplus1,
-            opt=jnp.where(
-                phi_active_left & (final_params.phi_left <= _PHI_NEUTRAL),
-                jnp.array(1),
-                jnp.where(phi_active_left, jnp.array(0), jnp.array(1)),
-            ),
-            phi_stored=final_params.phi_left,
-            phi_active_val=jnp.where(phi_active_left, final_params.phi_left, _PHI_NEUTRAL),
-            d_rho_stored=final_params.d_rho_left,
-            d_rho_active_val=jnp.where(phi_active_left, _D_RHO_NEUTRAL, final_params.d_rho_left),
+            mode=mode_left,
+            phi=final_params.phi_left,
+            d_rho=final_params.d_rho_left,
             loss=left_objective(final_params),
         )
 
