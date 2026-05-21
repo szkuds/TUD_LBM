@@ -328,11 +328,11 @@ def _update_wetting_state_impl(
 
     if DEBUG_FLAG:
         jax.debug.print(
-            "\n[R] CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | \n"
+            "[R] CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | \n"
             "opt ={opt} | "
             "phi: sav={phi_stored:.6f} act={phi_active_val:.6f} | "
             "d_rho: save={d_rho_stored:.6f} act={d_rho_active_val:.6f} | "
-            "loss={loss:.3e}",
+            "loss={loss:.3e}___",
             ca=ca_right_tplus1,
             ca_adv=ca_adv_right,
             ca_rec=ca_rec_right,
@@ -345,11 +345,11 @@ def _update_wetting_state_impl(
             loss=right_objective(new_params),
         )
         jax.debug.print(
-            "[L]  CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | \n"
+            "\n[L]  CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | \n"
             "opt={opt} | "
             "phi: sav={phi_stored:.6f} act={phi_active_val:.6f} | "
             "d_rho: sav={d_rho_stored:.6f} act={d_rho_active_val:.6f} | "
-            "loss={loss:.3e}\n",
+            "loss={loss:.3e}",
             ca=ca_left_tplus1,
             ca_adv=ca_adv_left,
             ca_rec=ca_rec_left,
