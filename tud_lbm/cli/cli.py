@@ -249,6 +249,48 @@ def _apply_overrides(raw_config: dict[str, Any], overrides: tuple[str, ...]) -> 
     console.print()
 
 
+def _build_visual_table(kind: str, ops: dict) -> Table:
+    subtitle = _VISUAL_KINDS[kind]
+    table = Table(
+        title=f"[bold magenta]{kind}[/bold magenta]  [dim]{subtitle}[/dim]",
+        show_header=True,
+        header_style="bold cyan",
+        title_justify="left",
+    )
+    table.add_column("Name", style="green", no_wrap=True)
+    table.add_column("Description", style="white")
+    table.add_column("Required keys", style="dim")
+    for name in sorted(ops):
+        target = ops[name].target
+        doc = (getattr(target, "__doc__", None) or "").strip().splitlines()
+        description = doc[0] if doc else "—"
+        required = getattr(target, "required_keys", None)
+        keys_str = ", ".join(required) if required else "—"
+        table.add_row(name, description, keys_str)
+    return table
+
+
+def _build_standard_table(kind: str, ops: dict) -> Table:
+    table = Table(
+        title=f"[bold magenta]{kind}[/bold magenta]",
+        show_header=True,
+        header_style="bold cyan",
+        title_justify="left",
+    )
+    table.add_column("Name", style="green", no_wrap=True)
+    table.add_column("Target", style="white")
+    table.add_column("Metadata", style="dim")
+    for name in sorted(ops):
+        entry = ops[name]
+        target = entry.target
+        target_mod = getattr(target, "__module__", type(target).__module__)
+        target_name = getattr(target, "__qualname__", getattr(target, "__name__", type(target).__name__))
+        target_str = f"{target_mod}.{target_name}"
+        meta_str = ", ".join(f"{k}={v!r}" for k, v in entry.metadata.items()) if entry.metadata else "—"
+        table.add_row(name, target_str, meta_str)
+    return table
+
+
 def _display_operators() -> None:
     """Display all registered operators grouped by kind in Rich tables."""
     # Import plotting package for side-effect registration of plotting/analysis operators.
@@ -277,50 +319,7 @@ def _display_operators() -> None:
 
     for kind in categories:
         ops = get_operators(kind)
-
-        if kind in _VISUAL_KINDS:
-            subtitle = _VISUAL_KINDS[kind]
-            table = Table(
-                title=f"[bold magenta]{kind}[/bold magenta]  [dim]{subtitle}[/dim]",
-                show_header=True,
-                header_style="bold cyan",
-                title_justify="left",
-            )
-            table.add_column("Name", style="green", no_wrap=True)
-            table.add_column("Description", style="white")
-            table.add_column("Required keys", style="dim")
-
-            for name in sorted(ops):
-                target = ops[name].target
-                doc = (getattr(target, "__doc__", None) or "").strip().splitlines()
-                description = doc[0] if doc else "—"
-                required = getattr(target, "required_keys", None)
-                keys_str = ", ".join(required) if required else "—"
-                table.add_row(name, description, keys_str)
-        else:
-            table = Table(
-                title=f"[bold magenta]{kind}[/bold magenta]",
-                show_header=True,
-                header_style="bold cyan",
-                title_justify="left",
-            )
-            table.add_column("Name", style="green", no_wrap=True)
-            table.add_column("Target", style="white")
-            table.add_column("Metadata", style="dim")
-
-            for name in sorted(ops):
-                entry = ops[name]
-                target = entry.target
-                target_mod = getattr(target, "__module__", type(target).__module__)
-                target_name = getattr(
-                    target,
-                    "__qualname__",
-                    getattr(target, "__name__", type(target).__name__),
-                )
-                target_str = f"{target_mod}.{target_name}"
-                meta_str = ", ".join(f"{k}={v!r}" for k, v in entry.metadata.items()) if entry.metadata else "—"
-                table.add_row(name, target_str, meta_str)
-
+        table = _build_visual_table(kind, ops) if kind in _VISUAL_KINDS else _build_standard_table(kind, ops)
         console.print(table)
         console.print()
 

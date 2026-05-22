@@ -107,8 +107,8 @@ def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | N
 
         mask = (row < float(rho_mean)).astype(np.int32)
         diff = np.diff(mask)
-        left_hits = np.where(diff == -1)[0]
-        right_hits = np.where(diff == 1)[0]
+        left_hits = np.nonzero(diff == -1)[0]
+        right_hits = np.nonzero(diff == 1)[0]
         if left_hits.size == 0 or right_hits.size == 0:
             return None
 
@@ -119,7 +119,7 @@ def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | N
 
         denom_left = row[idx_left + 1] - row[idx_left]
         denom_right = row[idx_right - 1] - row[idx_right]
-        if denom_left == 0.0 or denom_right == 0.0:
+        if math.isclose(denom_left, 0.0) or math.isclose(denom_right, 0.0):
             return None
 
         x_left = idx_left + ((rho_mean - row[idx_left]) / denom_left)
@@ -150,7 +150,7 @@ def _get_contact_line_length_from_file(config: SimulationConfig) -> float | None
         else:
             rho_mean = float(np.mean(rho))
         return _contact_line_length_from_rho(rho, rho_mean)
-    except (FileNotFoundError, KeyError, OSError, TypeError, ValueError):
+    except (KeyError, OSError, TypeError, ValueError):
         return None
 
 

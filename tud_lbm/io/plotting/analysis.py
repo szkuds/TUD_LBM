@@ -41,6 +41,11 @@ _CS2 = 1.0 / 3.0
 _WIDTH_EPS = 1e-15
 _DIR_SPLIT_PARTS = 2
 
+_LABEL_CA = r"$\mathrm{Ca}$"
+_LABEL_IT_NORM = r"$\mathrm{it}/\mathrm{it}_{\mathrm{max}}$"
+_LABEL_X_AVG_NORM = r"$X_{\mathrm{avg}}/R_0$"
+_CONFIG_TOML = "config.toml"
+
 
 def _empty_data_message(required_keys: tuple[str, ...] | None = None) -> str:
     msg = _EMPTY_DATA_TEXT
@@ -492,8 +497,8 @@ def _interpolate_interface(row: np.ndarray, rho_mean: float) -> tuple[float, flo
     """Sub-cell left/right interface positions via linear interpolation."""
     mask = (row < rho_mean).astype(int)
     diff = np.diff(mask)
-    li = int(np.where(diff == -1)[0][0])
-    ri = int(np.where(diff == 1)[0][0]) + 1
+    li = int(np.nonzero(diff == -1)[0][0])
+    ri = int(np.nonzero(diff == 1)[0][0]) + 1
     x_left = li + (rho_mean - row[li]) / (row[li + 1] - row[li])
     x_right = ri - (rho_mean - row[ri]) / (row[ri - 1] - row[ri])
     return x_left, x_right
@@ -727,52 +732,52 @@ _COMPARISON_PLOT_CONFIGS = [
         "filename": "01_Ca_vs_iteration.png",
         "x": "normalised_iteration",
         "y": "Ca",
-        "xlabel": r"$\mathrm{it}/\mathrm{it}_{\mathrm{max}}$",
-        "ylabel": r"$\mathrm{Ca}$",
+        "xlabel": _LABEL_IT_NORM,
+        "ylabel": _LABEL_CA,
     },
     {
         "filename": "02_Ca_vs_x_avg.png",
         "x": "avg_x_location_norm",
         "y": "Ca",
-        "xlabel": r"$X_{\mathrm{avg}}/R_0$",
-        "ylabel": r"$\mathrm{Ca}$",
+        "xlabel": _LABEL_X_AVG_NORM,
+        "ylabel": _LABEL_CA,
     },
     {
         "filename": "03_Ca_contact_line_vs_iteration.png",
         "x": "normalised_iteration",
         "y_pair": ("Ca_cll_left", "Ca_cll_right"),
         "pair_labels": ("Trailing", "Leading"),
-        "xlabel": r"$\mathrm{it}/\mathrm{it}_{\mathrm{max}}$",
-        "ylabel": r"$\mathrm{Ca}$",
+        "xlabel": _LABEL_IT_NORM,
+        "ylabel": _LABEL_CA,
     },
     {
         "filename": "04_Ca_contact_line_vs_x_avg.png",
         "x": "avg_x_location_norm",
         "y_pair": ("Ca_cll_left", "Ca_cll_right"),
         "pair_labels": ("Trailing", "Leading"),
-        "xlabel": r"$X_{\mathrm{avg}}/R_0$",
-        "ylabel": r"$\mathrm{Ca}$",
+        "xlabel": _LABEL_X_AVG_NORM,
+        "ylabel": _LABEL_CA,
     },
     {
         "filename": "05_Ca_cm_vs_iteration.png",
         "x": "normalised_iteration",
         "y": "Ca_cm",
-        "xlabel": r"$\mathrm{it}/\mathrm{it}_{\mathrm{max}}$",
-        "ylabel": r"$\mathrm{Ca}$",
+        "xlabel": _LABEL_IT_NORM,
+        "ylabel": _LABEL_CA,
     },
     {
         "filename": "06_Ca_cm_vs_x_avg.png",
         "x": "avg_x_location_norm",
         "y": "Ca_cm",
-        "xlabel": r"$X_{\mathrm{avg}}/R_0$",
-        "ylabel": r"$\mathrm{Ca}$",
+        "xlabel": _LABEL_X_AVG_NORM,
+        "ylabel": _LABEL_CA,
     },
     {
         "filename": "07_contact_angles_vs_iteration.png",
         "x": "normalised_iteration",
         "y_pair": ("ca_left", "ca_right"),
         "pair_labels": ("Trailing", "Leading"),
-        "xlabel": r"$\mathrm{it}/\mathrm{it}_{\mathrm{max}}$",
+        "xlabel": _LABEL_IT_NORM,
         "ylabel": "Contact angle (degrees)",
     },
     {
@@ -780,7 +785,7 @@ _COMPARISON_PLOT_CONFIGS = [
         "x": "avg_x_location_norm",
         "y_pair": ("ca_left", "ca_right"),
         "pair_labels": ("Trailing", "Leading"),
-        "xlabel": r"$X_{\mathrm{avg}}/R_0$",
+        "xlabel": _LABEL_X_AVG_NORM,
         "ylabel": r"$\theta$ (degrees)",
     },
 ]
@@ -810,7 +815,7 @@ def _load_comparison_entries(parent_dir: Path) -> list[dict]:
         run_dir = csv_path.parent
         if _COMPARISON_DIR in run_dir.parts:
             continue
-        toml_path = run_dir / "config.toml"
+        toml_path = run_dir / _CONFIG_TOML
         if not toml_path.exists():
             continue
         config = _safe_load_config(toml_path)
@@ -834,6 +839,29 @@ def _clean_dir_label(dir_name: str) -> str:
     parts = dir_name.split("_", 1)
     name = parts[1] if len(parts) == _DIR_SPLIT_PARTS and parts[0].replace("-", "").isdigit() else dir_name
     return name.replace("_", " ").capitalize()
+
+
+def _plot_comparison_entry(
+    ax: matplotlib.axes.Axes,
+    df: pd.DataFrame,
+    pc: dict,
+    x_col: str,
+    color: str,
+    marker: str,
+    label: str,
+) -> None:
+    """Plot one entry from _COMPARISON_PLOT_CONFIGS for a single run."""
+    if "y_pair" in pc:
+        y1, y2 = pc["y_pair"]
+        l1, l2 = pc["pair_labels"]
+        if y1 in df.columns:
+            ax.scatter(df[x_col], df[y1], marker=marker, s=15, color=color, alpha=1.0, label=f"{label} ({l1})")
+        if y2 in df.columns:
+            ax.scatter(df[x_col], df[y2], marker=marker, s=15, color=color, alpha=0.5, label=f"{label} ({l2})")
+    else:
+        y_col = pc["y"]
+        if y_col in df.columns:
+            ax.scatter(df[x_col], df[y_col], marker=marker, s=15, color=color, label=label)
 
 
 def compare_runs(parent_dir: str | Path) -> None:
@@ -864,38 +892,10 @@ def compare_runs(parent_dir: str | Path) -> None:
         for i, entry in enumerate(entries):
             color = colors[i % len(colors)]
             marker = _COMPARISON_MARKERS[i % len(_COMPARISON_MARKERS)]
-            label = entry["label"]
-            df = entry["data"]
             x_col = pc["x"]
-            if x_col not in df.columns:
+            if x_col not in entry["data"].columns:
                 continue
-            if "y_pair" in pc:
-                y1, y2 = pc["y_pair"]
-                l1, l2 = pc["pair_labels"]
-                if y1 in df.columns:
-                    ax.scatter(
-                        df[x_col],
-                        df[y1],
-                        marker=marker,
-                        s=15,
-                        color=color,
-                        alpha=1.0,
-                        label=f"{label} ({l1})",
-                    )
-                if y2 in df.columns:
-                    ax.scatter(
-                        df[x_col],
-                        df[y2],
-                        marker=marker,
-                        s=15,
-                        color=color,
-                        alpha=0.5,
-                        label=f"{label} ({l2})",
-                    )
-            else:
-                y_col = pc["y"]
-                if y_col in df.columns:
-                    ax.scatter(df[x_col], df[y_col], marker=marker, s=15, color=color, label=label)
+            _plot_comparison_entry(ax, entry["data"], pc, x_col, color, marker, entry["label"])
 
         ax.set_xlabel(pc["xlabel"], fontsize=24)
         ax.set_ylabel(pc["ylabel"], fontsize=24)
@@ -931,7 +931,7 @@ def process_parent_dir(parent_dir: str | Path) -> tuple[int, int]:
 
     run_dirs: list[Path] = []
     seen: set[Path] = set()
-    for toml in sorted(parent.rglob("config.toml")):
+    for toml in sorted(parent.rglob(_CONFIG_TOML)):
         rd = toml.parent
         if rd in seen or any(s in str(rd).lower() for s in skip_dirs):
             continue
@@ -945,7 +945,7 @@ def process_parent_dir(parent_dir: str | Path) -> tuple[int, int]:
 
     n_ok = 0
     for rd in run_dirs:
-        config = _safe_load_config(rd / "config.toml")
+        config = _safe_load_config(rd / _CONFIG_TOML)
         if config and build_simulation_csv(rd, config) is not None:
             n_ok += 1
 
