@@ -43,6 +43,65 @@ class TestInitState:
         state = init_state(setup, f=f_custom)
         np.testing.assert_allclose(state.f, f_custom)
 
+    def test_resume_timestep_parsed_from_snapshot_name(self):
+        from tud_lbm.config.simulation_config import SimulationConfig
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.setup import build_setup
+
+        cfg = SimulationConfig(
+            grid_shape=(8, 8),
+            tau=0.8,
+            nt=10,
+            init_type="init_from_file",
+            init_dir="/tmp/timestep_50000.npz",
+        )
+        setup = build_setup(cfg)
+        f_custom = jnp.ones((8, 8, 1, 9, 1)) * 0.5
+
+        state = init_state(setup, f=f_custom)
+
+        assert int(state.t) == 50000
+
+    def test_resume_timestep_falls_back_to_zero_for_nonconforming_name(self):
+        from tud_lbm.config.simulation_config import SimulationConfig
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.setup import build_setup
+
+        cfg = SimulationConfig(
+            grid_shape=(8, 8),
+            tau=0.8,
+            nt=10,
+            init_type="init_from_file",
+            init_dir="/tmp/latest_snapshot.npz",
+        )
+        setup = build_setup(cfg)
+        f_custom = jnp.ones((8, 8, 1, 9, 1)) * 0.5
+
+        state = init_state(setup, f=f_custom)
+
+        assert int(state.t) == 0
+
+    def test_run_advances_from_resumed_timestep(self):
+        from tud_lbm.config.simulation_config import SimulationConfig
+        from tud_lbm.pipeline.runner import init_state
+        from tud_lbm.pipeline.runner import run
+        from tud_lbm.pipeline.setup import build_setup
+
+        cfg = SimulationConfig(
+            grid_shape=(8, 8),
+            tau=0.8,
+            nt=10,
+            init_type="init_from_file",
+            init_dir="/tmp/timestep_12.npz",
+        )
+        setup = build_setup(cfg)
+        f_custom = jnp.ones((8, 8, 1, 9, 1)) * 0.5
+
+        state = init_state(setup, f=f_custom)
+        final_state, _ = run(setup, state, nt=3)
+
+        assert int(final_state.t) == 15
+
 
 # =====================================================================
 # IO callbacks

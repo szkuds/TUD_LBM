@@ -63,7 +63,7 @@ def test_build_overview_splits_bond_number_for_inclined_gravity():
 
     text = build_overview(cfg)
 
-    assert "Bo (Bond number):" not in text
+    assert "Bo (Bond number):" in text
     assert "Bo_perp (Bond normal):" in text
     assert "Bo_parallel (Bond tangential):" in text
 

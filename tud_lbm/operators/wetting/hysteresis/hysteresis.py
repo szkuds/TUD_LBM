@@ -107,8 +107,8 @@ def _clamp_params(params: WettingParams) -> WettingParams:
     return WettingParams(
         phi_left=jnp.clip(params.phi_left, 1.0, 1.5),
         phi_right=jnp.clip(params.phi_right, 1.0, 1.5),
-        d_rho_left=jnp.clip(params.d_rho_left, 0.0, 0.3),
-        d_rho_right=jnp.clip(params.d_rho_right, 0.0, 0.3),
+        d_rho_left=jnp.clip(params.d_rho_left, 0.0, 0.25),
+        d_rho_right=jnp.clip(params.d_rho_right, 0.0, 0.25),
     )
 
 
@@ -421,8 +421,8 @@ def _update_wetting_state_impl(
         d_rho_right=final_params.d_rho_right,
         ca_left=ca_left_tplus1,
         ca_right=ca_right_tplus1,
-        cll_left=cll_left_tplus1,
-        cll_right=cll_right_tplus1,
+        cll_left=jnp.where(in_window_left, wetting.cll_left, cll_left_tplus1),
+        cll_right=jnp.where(in_window_right, wetting.cll_right, cll_right_tplus1),
     )
 
 

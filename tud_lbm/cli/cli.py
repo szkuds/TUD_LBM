@@ -28,6 +28,7 @@ from tud_lbm.config import SimulationConfig
 from tud_lbm.config.array_expansion import ArrayParameterSet
 
 console = Console()
+_CLI_SUBTITLE = "Delft University of Technology"
 
 _SECTION_ALIAS_MAP = {
     "simulation_type": "",
@@ -37,6 +38,11 @@ _SECTION_ALIAS_MAP = {
     "wetting": "wetting_config",
     "hysteresis": "hysteresis_config",
     "chemical_step": "chemical_step_config",
+}
+
+_VISUAL_KINDS = {
+    "plotting": "Field plots - rendered per timestep snapshot",
+    "analysis": "Analysis plots - computed over snapshot history",
 }
 
 # Number of timesteps for the no-gravity wetting equilibration phase.
@@ -245,6 +251,8 @@ def _apply_overrides(raw_config: dict[str, Any], overrides: tuple[str, ...]) -> 
 
 def _display_operators() -> None:
     """Display all registered operators grouped by kind in Rich tables."""
+    # Import plotting package for side-effect registration of plotting/analysis operators.
+    import tud_lbm.io.plotting as _plotting_mod  # noqa: F401
     from tud_lbm.operators import load_all
     from tud_lbm.registry import OPERATOR_REGISTRY
     from tud_lbm.registry import get_operator_category
@@ -269,41 +277,61 @@ def _display_operators() -> None:
 
     for kind in categories:
         ops = get_operators(kind)
-        table = Table(
-            title=f"[bold magenta]{kind}[/bold magenta]",
-            show_header=True,
-            header_style="bold cyan",
-            title_justify="left",
-        )
-        table.add_column("Name", style="green", no_wrap=True)
-        table.add_column("Target", style="white")
-        table.add_column("Metadata", style="dim")
 
-        for name in sorted(ops):
-            entry = ops[name]
-            target = entry.target
-            target_mod = getattr(target, "__module__", type(target).__module__)
-            target_name = getattr(
-                target,
-                "__qualname__",
-                getattr(target, "__name__", type(target).__name__),
+        if kind in _VISUAL_KINDS:
+            subtitle = _VISUAL_KINDS[kind]
+            table = Table(
+                title=f"[bold magenta]{kind}[/bold magenta]  [dim]{subtitle}[/dim]",
+                show_header=True,
+                header_style="bold cyan",
+                title_justify="left",
             )
-            target_str = f"{target_mod}.{target_name}"
+            table.add_column("Name", style="green", no_wrap=True)
+            table.add_column("Description", style="white")
+            table.add_column("Required keys", style="dim")
 
-            meta_str = ""
-            if entry.metadata:
-                meta_str = ", ".join(f"{k}={v!r}" for k, v in entry.metadata.items())
+            for name in sorted(ops):
+                target = ops[name].target
+                doc = (getattr(target, "__doc__", None) or "").strip().splitlines()
+                description = doc[0] if doc else "—"
+                required = getattr(target, "required_keys", None)
+                keys_str = ", ".join(required) if required else "—"
+                table.add_row(name, description, keys_str)
+        else:
+            table = Table(
+                title=f"[bold magenta]{kind}[/bold magenta]",
+                show_header=True,
+                header_style="bold cyan",
+                title_justify="left",
+            )
+            table.add_column("Name", style="green", no_wrap=True)
+            table.add_column("Target", style="white")
+            table.add_column("Metadata", style="dim")
 
-            table.add_row(name, target_str, meta_str or "—")
+            for name in sorted(ops):
+                entry = ops[name]
+                target = entry.target
+                target_mod = getattr(target, "__module__", type(target).__module__)
+                target_name = getattr(
+                    target,
+                    "__qualname__",
+                    getattr(target, "__name__", type(target).__name__),
+                )
+                target_str = f"{target_mod}.{target_name}"
+                meta_str = ", ".join(f"{k}={v!r}" for k, v in entry.metadata.items()) if entry.metadata else "—"
+                table.add_row(name, target_str, meta_str)
 
         console.print(table)
         console.print()
 
 
 def _display_config_summary(config: SimulationConfig | None) -> None:
-    """Display a summary of the simulation configuration."""
-    console.print()
+    """Display a compact summary of the simulation configuration."""
+    if config is None:
+        console.print("[yellow]No configuration available.[/yellow]")
+        return
 
+    console.print()
     table = Table(
         title="Simulation Configuration",
         show_header=True,
@@ -315,7 +343,7 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
     table.add_row("Simulation Type", config.sim_type)
     table.add_row("Grid Shape", str(config.grid_shape))
     table.add_row("Lattice Type", config.lattice_type)
-    table.add_row("Relaxation Time (τ)", str(config.tau))
+    table.add_row("Relaxation Time (tau)", str(config.tau))
     table.add_row("Time Steps", str(config.nt))
     table.add_row("Save Interval", str(config.save_interval))
     table.add_row("Results Directory", config.results_dir)
@@ -344,6 +372,20 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
     console.print()
 
 
+def _display_full_overview(config: SimulationConfig | None) -> None:
+    """Display the full physical-parameter overview from build_overview()."""
+    from rich.text import Text
+    from tud_lbm.io.physical_parameters import build_overview
+
+    if config is None:
+        console.print("[yellow]No configuration available.[/yellow]")
+        return
+
+    overview = build_overview(config)
+    console.print(Panel(Text(overview), title="Simulation Overview", border_style="blue"))
+    console.print()
+
+
 def _run_simulation(config: SimulationConfig) -> str:
     """Run the simulation with the given configuration.
 
@@ -361,6 +403,10 @@ def _run_simulation(config: SimulationConfig) -> str:
 
     simulation_setup = build_setup(config)
     state = init_state(simulation_setup)
+
+    if config.init_type == "init_from_file" and int(state.t) > 0:
+        console.print(f"[dim]Resuming from snapshot: t={int(state.t)}[/dim]")
+        console.print()
 
     # Build the IO handler for streaming snapshots to disk.
     io = SimulationIO(
@@ -477,29 +523,34 @@ def _validate_cli_args(
         raise click.UsageError(msg)
 
 
-def _load_config_from_file(
+def _load_raw_config(
     config_path: str,
     overrides: tuple[str, ...],
     *,
     init_dir: str | None = None,
-) -> tuple[list[SimulationConfig], SimulationConfig | None, ArrayParameterSet | None, list[dict[str, Any]] | None]:
-    """Load and expand a TOML config file; return (configs, config, sweep_metadata, parameters_list)."""
+) -> dict[str, Any]:
+    """Load a TOML file, apply init_dir defaults and CLI overrides; return the raw dict."""
     from tud_lbm.config.adapter_toml import TomlAdapter
-    from tud_lbm.config.array_expansion import enumerate_configs
-    from tud_lbm.config.array_expansion import expand_config
 
     console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
     raw_config = TomlAdapter().load_raw(config_path)
     if init_dir is not None:
         raw_config["init_dir"] = str(init_dir)
-        # Default to file-based initialization unless config/overrides set otherwise.
-        raw_config.setdefault("init_type", "init_from_file")
+        raw_config["init_type"] = "init_from_file"
     _apply_overrides(raw_config, overrides)
-    configs, sweep_metadata = expand_config(raw_config)
+    return raw_config
 
+
+def _expand_raw_config(
+    raw_config: dict[str, Any],
+) -> tuple[list[SimulationConfig], SimulationConfig | None, ArrayParameterSet | None, list[dict[str, Any]] | None]:
+    """Expand a raw config dict; return (configs, config, sweep_metadata, parameters_list)."""
+    from tud_lbm.config.array_expansion import enumerate_configs
+    from tud_lbm.config.array_expansion import expand_config
+
+    configs, sweep_metadata = expand_config(raw_config)
     if sweep_metadata is None:
         return configs, configs[0], None, None
-
     parameters_list = [params for _, params, _ in enumerate_configs(raw_config)]
     return configs, None, sweep_metadata, parameters_list
 
@@ -525,11 +576,83 @@ def _load_config_interactive() -> tuple[list[SimulationConfig], SimulationConfig
     return [config], config, None, None
 
 
+_WETTING_PARAM_DEFAULTS: dict[str, float] = {
+    "phi_left": 1.0,
+    "phi_right": 1.0,
+    "d_rho_left": 0.0,
+    "d_rho_right": 0.0,
+}
+
+
+def _prompt_wetting_params(base_raw: dict[str, Any], *, no_prompt: bool) -> dict[str, float]:
+    """Return wetting params, reading from config and only prompting for missing ones."""
+    from_config: dict[str, Any] = base_raw.get("wetting_config") or {}
+    missing = [k for k in _WETTING_PARAM_DEFAULTS if k not in from_config]
+
+    if missing and not no_prompt:
+        console.print("[cyan]Wetting init - enter missing wetting boundary parameters:[/cyan]")
+
+    params: dict[str, float] = {}
+    for key, default in _WETTING_PARAM_DEFAULTS.items():
+        if key in from_config:
+            params[key] = float(from_config[key])
+        elif no_prompt:
+            params[key] = default
+        else:
+            params[key] = float(Prompt.ask(f"  {key}", default=str(default)))
+
+    if missing and not no_prompt:
+        console.print()
+
+    return params
+
+
+def _expand_single_phase(raw_config: dict[str, Any], phase_name: str) -> SimulationConfig:
+    from tud_lbm.config.array_expansion import expand_config
+
+    configs, _ = expand_config(raw_config)
+    if len(configs) != 1:
+        msg = f"--init-wetting does not support parameter sweeps ({phase_name} expansion must yield exactly 1 config)."
+        raise click.UsageError(msg)
+    return configs[0]
+
+
+def _build_wetting_init_raw(base_raw: dict[str, Any], wetting_params: dict[str, float]) -> dict[str, Any]:
+    init_raw = deepcopy(base_raw)
+    init_raw["sim_type"] = "multiphase_wetting"
+    init_raw["init_type"] = "multiphase_bubbles"
+    init_raw.pop("hysteresis_config", None)
+    init_raw.pop("chemical_step_config", None)
+    init_raw.pop("gravity_force", None)
+    init_raw.pop("gravity_masked_force", None)
+    if "bc_config" in init_raw:
+        init_raw["bc_config"] = dict(init_raw["bc_config"])
+    init_raw["nt"] = _WETTING_INIT_NT
+    init_raw["save_interval"] = _WETTING_INIT_NT
+    init_raw["output_format"] = "numpy"
+    init_raw["simulation_name"] = "wetting_init"
+    init_raw.setdefault("wetting_config", {}).update(wetting_params)
+    return init_raw
+
+
+def _build_wetting_gravity_raw(
+    base_raw: dict[str, Any],
+    wetting_params: dict[str, float],
+    init_snapshot: str,
+) -> dict[str, Any]:
+    gravity_raw = deepcopy(base_raw)
+    gravity_raw["init_type"] = "init_from_file"
+    gravity_raw["init_dir"] = init_snapshot
+    gravity_raw.setdefault("wetting_config", {}).update(wetting_params)
+    return gravity_raw
+
+
 def _run_two_phase_wetting_init(
     config_path: str,
     overrides: tuple[str, ...],
     *,
     no_prompt: bool,
+    overview: bool,
 ) -> None:
     """Two-phase wetting initialisation.
 
@@ -538,42 +661,19 @@ def _run_two_phase_wetting_init(
     initialized from the Phase 1 snapshot.
     """
     from tud_lbm.config.adapter_toml import TomlAdapter
-    from tud_lbm.config.array_expansion import expand_config
 
     console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
     base_raw = TomlAdapter().load_raw(config_path)
     _apply_overrides(base_raw, overrides)
 
-    console.print("[cyan]Wetting init - enter wetting boundary parameters:[/cyan]")
-    phi_left = float(Prompt.ask("  phi_left", default="1.0"))
-    phi_right = float(Prompt.ask("  phi_right", default="1.0"))
-    d_rho_left = float(Prompt.ask("  d_rho_left", default="0.0"))
-    d_rho_right = float(Prompt.ask("  d_rho_right", default="0.0"))
-    console.print()
-
-    wetting_params = {
-        "phi_left": phi_left,
-        "phi_right": phi_right,
-        "d_rho_left": d_rho_left,
-        "d_rho_right": d_rho_right,
-    }
-
-    init_raw = deepcopy(base_raw)
-    init_raw.pop("gravity_force", None)
-    init_raw["nt"] = _WETTING_INIT_NT
-    init_raw["save_interval"] = _WETTING_INIT_NT
-    init_raw["output_format"] = "numpy"
-    init_raw["simulation_name"] = "wetting_init"
-    init_raw.setdefault("wetting_config", {}).update(wetting_params)
-
-    (init_configs, *_) = expand_config(init_raw)
-    if len(init_configs) != 1:
-        msg = "--init-wetting does not support parameter sweeps (Phase 1 expansion must yield exactly 1 config)."
-        raise click.UsageError(msg)
-    init_config = init_configs[0]
+    wetting_params = _prompt_wetting_params(base_raw, no_prompt=no_prompt)
+    init_raw = _build_wetting_init_raw(base_raw, wetting_params)
+    init_config = _expand_single_phase(init_raw, "Phase 1")
 
     console.print(Panel.fit("[bold cyan]Phase 1 - wetting equilibration (no gravity)[/bold cyan]"))
     _display_config_summary(init_config)
+    if overview:
+        _display_full_overview(init_config)
 
     if not no_prompt and not Confirm.ask("[bold]Start Phase 1?[/bold]", default=True):
         console.print("[yellow]Cancelled.[/yellow]")
@@ -584,19 +684,13 @@ def _run_two_phase_wetting_init(
     console.print(f"  Init snapshot     : {init_snapshot}")
     console.print()
 
-    gravity_raw = deepcopy(base_raw)
-    gravity_raw["init_type"] = "init_from_file"
-    gravity_raw["init_dir"] = init_snapshot
-    gravity_raw.setdefault("wetting_config", {}).update(wetting_params)
-
-    (gravity_configs, *_) = expand_config(gravity_raw)
-    if len(gravity_configs) != 1:
-        msg = "--init-wetting does not support parameter sweeps (Phase 2 expansion must yield exactly 1 config)."
-        raise click.UsageError(msg)
-    gravity_config = gravity_configs[0]
+    gravity_raw = _build_wetting_gravity_raw(base_raw, wetting_params, init_snapshot)
+    gravity_config = _expand_single_phase(gravity_raw, "Phase 2")
 
     console.print(Panel.fit("[bold cyan]Phase 2 - full simulation with gravity[/bold cyan]"))
     _display_config_summary(gravity_config)
+    if overview:
+        _display_full_overview(gravity_config)
 
     if not no_prompt and not Confirm.ask("[bold]Start Phase 2?[/bold]", default=True):
         console.print("[yellow]Phase 2 cancelled.[/yellow]")
@@ -609,14 +703,20 @@ def _display_summary(
     config: SimulationConfig | None,
     sweep_metadata: ArrayParameterSet | None,
     configs: list[SimulationConfig],
+    *,
+    overview: bool,
 ) -> None:
     """Display either a single-run config summary or a sweep summary."""
     if sweep_metadata is None:
         _display_config_summary(config)
+        if overview:
+            _display_full_overview(config)
     else:
         _display_sweep_summary(sweep_metadata)
         console.print("[dim]Preview of the first expanded configuration:[/dim]")
         _display_config_summary(configs[0])
+        if overview:
+            _display_full_overview(configs[0])
 
 
 def _print_dry_run_message(sweep_metadata: ArrayParameterSet | None) -> None:
@@ -626,12 +726,19 @@ def _print_dry_run_message(sweep_metadata: ArrayParameterSet | None) -> None:
         console.print("[yellow]Dry run mode - parameter sweep not started[/yellow]")
 
 
-def _confirm_run(sweep_metadata: ArrayParameterSet | None, configs: list[SimulationConfig]) -> bool:
+def _confirm_run(sweep_metadata: ArrayParameterSet | None, configs: list[SimulationConfig]) -> str:
+    """Return 'yes', 'no', or 'override'."""
     if sweep_metadata is None:
         prompt_text = "[bold]Start simulation?[/bold]"
     else:
         prompt_text = f"[bold]Start parameter sweep ({len(configs)} simulations)?[/bold]"
-    return Confirm.ask(prompt_text, default=True)
+    choice = Prompt.ask(
+        f"{prompt_text} [[green]y[/green]/[red]n[/red]/[cyan]o[/cyan]=override]",
+        choices=["y", "n", "o"],
+        default="y",
+        show_choices=False,
+    )
+    return {"y": "yes", "n": "no", "o": "override"}[choice]
 
 
 def _check_sweep_errors(results: list[Any]) -> None:
@@ -658,10 +765,14 @@ def _execute_run(
     parameters_list: list[dict[str, Any]] | None,
     max_workers: int | None,
     fail_fast: bool,
+    run_compare: bool = False,
 ) -> None:
     """Dispatch to single-run or parallel-sweep execution."""
     if sweep_metadata is None:
-        _run_simulation(config)
+        # Single-run path: _run_simulation returns the data directory (string)
+        data_dir = _run_simulation(config)
+        if run_compare:
+            _run_compare_single(Path(data_dir).parent, config)
     else:
         results = _run_parallel_sweep(
             configs,
@@ -670,6 +781,152 @@ def _execute_run(
             continue_on_error=not fail_fast,
         )
         _check_sweep_errors(results)
+        if run_compare:
+            _run_compare_sweep(Path(configs[0].results_dir).expanduser())
+
+
+def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
+    """Build CSV and comparison plots for a completed single run.
+
+    Uses the in-memory config to avoid re-loading from disk which loses
+    expanded/flattened fields.
+    """
+    from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
+    from tud_lbm.io.plotting.analysis import build_simulation_csv
+    from tud_lbm.io.plotting.analysis import compare_runs
+
+    console.print("[dim]Running comparison analysis...[/dim]")
+    csv_path = build_simulation_csv(run_dir, config)
+    if csv_path is None:
+        console.print("[yellow]--compare: CSV export skipped (unsupported sim_type).[/yellow]")
+        return
+    # compare_runs expects a parent directory that contains run dirs; passing
+    # the single run directory will cause it to generate plots for that run.
+    compare_runs(run_dir)
+    console.print(f"[bold green]Comparison plots saved to:[/bold green] {run_dir / _COMPARISON_DIR}")
+
+
+def _run_compare_sweep(results_dir: Path) -> None:
+    """Build CSVs and comparison plots across all runs in a sweep directory."""
+    from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
+    from tud_lbm.io.plotting.analysis import process_parent_dir
+
+    console.print("[dim]Running comparison analysis...[/dim]")
+    _n_runs, n_ok = process_parent_dir(results_dir)
+    if n_ok == 0:
+        console.print("[yellow]--compare: no runs produced CSV data.[/yellow]")
+        return
+    console.print(f"[bold green]Comparison plots saved to:[/bold green] {results_dir / _COMPARISON_DIR}")
+
+
+def _print_run_banner() -> None:
+    console.print()
+    console.print(
+        Panel.fit(
+            "[bold blue]TUD-LBM[/bold blue] - Lattice Boltzmann Method Solver",
+            subtitle=_CLI_SUBTITLE,
+        ),
+    )
+    console.print()
+
+
+def _run_with_optional_overrides(
+    *,
+    raw_config: dict[str, Any] | None,
+    configs: list[SimulationConfig],
+    config: SimulationConfig | None,
+    sweep_metadata: ArrayParameterSet | None,
+    parameters_list: list[dict[str, Any]] | None,
+    no_prompt: bool,
+    overview: bool,
+) -> tuple[list[SimulationConfig], SimulationConfig | None, ArrayParameterSet | None, list[dict[str, Any]] | None]:
+    if no_prompt:
+        return configs, config, sweep_metadata, parameters_list
+
+    while True:
+        decision = _confirm_run(sweep_metadata, configs)
+        if decision == "no":
+            console.print("[yellow]Simulation cancelled.[/yellow]")
+            return [], None, None, None
+        if decision == "yes":
+            return configs, config, sweep_metadata, parameters_list
+        if raw_config is None:
+            console.print("[yellow]Inline overrides require a config file.[/yellow]")
+            continue
+        raw_expr = Prompt.ask("[cyan]Enter override[/cyan] [dim](e.g. tau=0.7)[/dim]")
+        try:
+            _apply_overrides(raw_config, (raw_expr,))
+        except (ValueError, TypeError) as exc:
+            console.print(f"[red]Invalid override: {exc}[/red]")
+            continue
+        configs, config, sweep_metadata, parameters_list = _expand_raw_config(raw_config)
+        _display_summary(config, sweep_metadata, configs, overview=overview)
+
+
+def _run_impl(
+    config_path: str,
+    no_prompt: bool,
+    dry_run: bool,
+    list_operators: bool,
+    max_workers: int | None,
+    fail_fast: bool,
+    overrides: tuple[str, ...],
+    overview: bool,
+    debug_wetting: bool,
+    init_wetting: bool,
+    init_dir: str | None,
+    run_compare: bool = False,
+) -> bool:
+    if list_operators:
+        _display_operators()
+        return False
+
+    if debug_wetting:
+        import tud_lbm.config.config_overview as _flags
+
+        _flags.DEBUG_FLAG = True
+        console.print("[dim]Wetting debug logging enabled.[/dim]")
+        console.print()
+
+    _validate_cli_args(overrides, config_path, init_wetting=init_wetting, init_dir=init_dir)
+
+    if init_wetting:
+        _run_two_phase_wetting_init(config_path, overrides, no_prompt=no_prompt, overview=overview)
+        console.print()
+        console.print(
+            Panel.fit(
+                "[bold green]Wetting initialisation complete![/bold green]",
+                title="Success",
+            ),
+        )
+        return False
+
+    if config_path:
+        raw_config = _load_raw_config(config_path, overrides, init_dir=init_dir)
+        configs, config, sweep_metadata, parameters_list = _expand_raw_config(raw_config)
+    else:
+        raw_config = None
+        configs, config, sweep_metadata, parameters_list = _load_config_interactive()
+
+    _display_summary(config, sweep_metadata, configs, overview=overview)
+    if dry_run:
+        _print_dry_run_message(sweep_metadata)
+        return False
+
+    configs, config, sweep_metadata, parameters_list = _run_with_optional_overrides(
+        raw_config=raw_config,
+        configs=configs,
+        config=config,
+        sweep_metadata=sweep_metadata,
+        parameters_list=parameters_list,
+        no_prompt=no_prompt,
+        overview=overview,
+    )
+    if not configs:
+        return False
+
+    _execute_run(configs, config, sweep_metadata, parameters_list, max_workers, fail_fast, run_compare)
+    return True
 
 
 @click.group()
@@ -715,6 +972,11 @@ def cli() -> None:
     "e.g. --override simulation_type.simulation_name='new name'",
 )
 @click.option(
+    "--overview",
+    is_flag=True,
+    help="Display the full physical-parameter overview in addition to the compact summary.",
+)
+@click.option(
     "--debug-wetting",
     is_flag=True,
     help="Enable wetting debug output (sets DEBUG_FLAG in config_overview)",
@@ -737,6 +999,12 @@ def cli() -> None:
         "Sets init_type='init_from_file' automatically (overrideable via --override)."
     ),
 )
+@click.option(
+    "--compare",
+    "run_compare",
+    is_flag=True,
+    help="Generate comparison plots after a parameter sweep completes.",
+)
 def run(
     config_path: str,
     no_prompt: bool,
@@ -745,9 +1013,11 @@ def run(
     max_workers: int | None,
     fail_fast: bool,
     overrides: tuple[str, ...],
+    overview: bool,
     debug_wetting: bool,
     init_wetting: bool,
     init_dir: str | None,
+    run_compare: bool,
 ) -> None:
     """Run a TUD-LBM simulation from CONFIG_PATH.
 
@@ -802,65 +1072,31 @@ def run(
         # Resume from a saved snapshot
         tud-lbm run config.toml --init-dir /path/to/timestep_1000.npz
     """
-    console.print()
-    console.print(
-        Panel.fit(
-            "[bold blue]TUD-LBM[/bold blue] - Lattice Boltzmann Method Solver",
-            subtitle="Delft University of Technology",
-        ),
-    )
-    console.print()
+    _print_run_banner()
 
     try:
-        if list_operators:
-            _display_operators()
-            return
-
-        if debug_wetting:
-            import tud_lbm.config.config_overview as _flags
-
-            _flags.DEBUG_FLAG = True
-            console.print("[dim]Wetting debug logging enabled.[/dim]")
-            console.print()
-
-        _validate_cli_args(overrides, config_path, init_wetting=init_wetting, init_dir=init_dir)
-
-        if init_wetting:
-            _run_two_phase_wetting_init(config_path, overrides, no_prompt=no_prompt)
+        completed = _run_impl(
+            config_path,
+            no_prompt,
+            dry_run,
+            list_operators,
+            max_workers,
+            fail_fast,
+            overrides,
+            overview,
+            debug_wetting,
+            init_wetting,
+            init_dir,
+            run_compare,
+        )
+        if completed:
             console.print()
             console.print(
                 Panel.fit(
-                    "[bold green]Wetting initialisation complete![/bold green]",
+                    "[bold green]Simulation, saving and plotting complete![/bold green]",
                     title="Success",
                 ),
             )
-            return
-
-        configs, config, sweep_metadata, parameters_list = (
-            _load_config_from_file(config_path, overrides, init_dir=init_dir)
-            if config_path
-            else _load_config_interactive()
-        )
-
-        _display_summary(config, sweep_metadata, configs)
-
-        if dry_run:
-            _print_dry_run_message(sweep_metadata)
-            return
-
-        if not no_prompt and not _confirm_run(sweep_metadata, configs):
-            console.print("[yellow]Simulation cancelled.[/yellow]")
-            return
-
-        _execute_run(configs, config, sweep_metadata, parameters_list, max_workers, fail_fast)
-
-        console.print()
-        console.print(
-            Panel.fit(
-                "[bold green]Simulation, saving and plotting complete![/bold green]",
-                title="Success",
-            ),
-        )
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Simulation interrupted by user.[/yellow]")
@@ -894,7 +1130,7 @@ def animate(run_dir: str, output: str | None, fps: int) -> None:
     console.print(
         Panel.fit(
             "[bold blue]TUD-LBM[/bold blue] - Animation",
-            subtitle="Delft University of Technology",
+            subtitle=_CLI_SUBTITLE,
         ),
     )
     console.print()
@@ -926,6 +1162,119 @@ def animate(run_dir: str, output: str | None, fps: int) -> None:
         sys.exit(1)
 
 
+@cli.command()
+@click.argument("run_dir", type=click.Path(exists=True))
+@click.option(
+    "--skip",
+    default=0,
+    show_default=True,
+    help="Number of earliest timestep files to skip.",
+)
+@click.option(
+    "--dpi",
+    default=150,
+    show_default=True,
+    help="Resolution in dots per inch for saved figures.",
+)
+@click.option(
+    "--fields",
+    default=None,
+    help="Comma-separated list of plot operator names to activate (overrides config.plot_fields).",
+)
+def visualise(run_dir: str, skip: int, dpi: int, fields: str | None) -> None:
+    """Build static figures for saved snapshots in RUN_DIR."""
+    from tud_lbm.config import from_toml
+    from tud_lbm.io.plotting import FigureBuilder
+
+    console.print()
+    console.print(
+        Panel.fit(
+            "[bold blue]TUD-LBM[/bold blue] - Visualisation",
+            subtitle=_CLI_SUBTITLE,
+        ),
+    )
+    console.print()
+
+    try:
+        config_path = _validate_run_dir_has_config(run_dir)
+        config = from_toml(str(config_path))
+
+        field_list = [f.strip() for f in fields.split(",")] if fields else None
+
+        console.print(f"[dim]Run directory : {run_dir}[/dim]")
+        active_fields = field_list or config.plot_fields
+        if active_fields:
+            console.print(f"[dim]Fields        : {', '.join(active_fields)}[/dim]")
+        if skip:
+            console.print(f"[dim]Skip          : {skip}[/dim]")
+        console.print(f"[dim]DPI           : {dpi}[/dim]")
+        console.print()
+
+        builder = FigureBuilder(config=config, run_dir=run_dir, dpi=dpi, fields=field_list)
+        saved = builder.build_all(skip=skip)
+
+        if not saved:
+            console.print("[yellow]No figures produced. Check that the run directory contains snapshot files.[/yellow]")
+        else:
+            console.print(f"[bold green]{len(saved)} figure(s) saved to:[/bold green] {builder.plot_dir}")
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Visualisation interrupted by user.[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        if os.environ.get("TUD_LBM_DEBUG"):
+            raise
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("parent_dir", type=click.Path(exists=True, file_okay=False))
+def compare(parent_dir: str) -> None:
+    """Build CSV metrics and comparison plots for all runs in PARENT_DIR."""
+    from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
+    from tud_lbm.io.plotting.analysis import process_parent_dir
+
+    console.print()
+    console.print(
+        Panel.fit(
+            "[bold blue]TUD-LBM[/bold blue] - Comparison Analysis",
+            subtitle=_CLI_SUBTITLE,
+        ),
+    )
+    console.print()
+
+    try:
+        console.print(f"[dim]Parent directory : {parent_dir}[/dim]")
+        console.print()
+
+        n_runs, n_ok = process_parent_dir(parent_dir)
+        if n_runs == 0:
+            console.print("[yellow]No simulation run directories found.[/yellow]")
+            return
+        if n_ok == 0:
+            console.print("[yellow]No runs produced CSV data. Check sim_type and snapshot files.[/yellow]")
+            return
+
+        out_dir = Path(parent_dir) / _COMPARISON_DIR
+        console.print()
+        console.print(
+            Panel.fit(
+                f"[bold green]Comparison analysis complete![/bold green]  {n_ok}/{n_runs} run(s) processed",
+                title="Success",
+            ),
+        )
+        console.print(f"[bold green]Plots saved to:[/bold green] {out_dir}")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Analysis interrupted by user.[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        if os.environ.get("TUD_LBM_DEBUG"):
+            raise
+        sys.exit(1)
+
+
 @click.command(
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
     add_help_option=False,
@@ -939,8 +1288,8 @@ def main(args: tuple[str, ...]) -> None:
     """
     forwarded = list(args)
 
-    # New-style help/version and explicit animate should use the command group.
-    if forwarded and forwarded[0] in {"--help", "-h", "--version", "animate"}:
+    # New-style help/version and subcommands should use the command group.
+    if forwarded and forwarded[0] in {"--help", "-h", "--version", "animate", "visualise", "compare"}:
         cli.main(args=forwarded, standalone_mode=False)
         return
 

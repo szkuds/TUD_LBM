@@ -165,3 +165,42 @@ def test_build_field_only_does_not_create_analysis_dir(tmp_path):
     assert out is not None
     assert out.exists()
     assert not (run_dir / "plots" / "analysis").exists()
+
+
+def test_build_csv_runs_when_simulation_csv_selected(monkeypatch, tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True)
+
+    config = SimulationConfig(plot_fields=["simulation_csv"])
+    builder = FigureBuilder(config, run_dir=run_dir)
+
+    called = {"n": 0}
+
+    def _fake_export(run_dir_arg, config_arg):
+        called["n"] += 1
+        assert Path(run_dir_arg) == run_dir
+        assert config_arg == config
+        return run_dir / "simulation_data.csv"
+
+    monkeypatch.setattr("tud_lbm.io.plotting.analysis.build_simulation_csv", _fake_export)
+
+    out = builder.build_csv()
+    assert called["n"] == 1
+    assert out == run_dir / "simulation_data.csv"
+
+
+def test_build_csv_skips_when_simulation_csv_not_selected(monkeypatch, tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True)
+
+    config = SimulationConfig(plot_fields=["density"])
+    builder = FigureBuilder(config, run_dir=run_dir)
+
+    def _fail_if_called(*_args, **_kwargs):
+        msg = "build_simulation_csv should not be called"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr("tud_lbm.io.plotting.analysis.build_simulation_csv", _fail_if_called)
+
+    out = builder.build_csv()
+    assert out is None

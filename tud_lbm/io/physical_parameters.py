@@ -239,6 +239,14 @@ def _format_bond_number_row(
     ]
 
 
+def _format_archimedes_number_row(
+    drho: float, g_val: float, length: float, length_label: str, nu: float, rho_l: float
+) -> str:
+    """Build Archimedes-number row: Ar = gL^3Δρ / (ν^2ρ_l)."""
+    ar = (g_val * (length**3) * drho) / ((nu**2) * rho_l)
+    return _row("Ar (Archimedes number):", f"{ar:.6g}  [gL³Δρ/(ν²ρ_l), {length_label}]")
+
+
 def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     if "multiphase" not in config.sim_type:
         return
@@ -266,6 +274,8 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
 
     angle_deg = _resolve_gravity_inclination(config)
     lines.extend(_format_bond_number_row(drho, gamma, g_val, length, length_label, angle_deg))
+    nu = _nu(float(config.tau))
+    lines.append(_format_archimedes_number_row(drho, g_val, length, length_label, nu, float(config.rho_l)))
 
 
 def _add_key_value_section(lines: list[str], title: str, values: dict | None) -> None:

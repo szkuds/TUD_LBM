@@ -150,12 +150,13 @@ def step_multiphase_hysteresis(setup: SimulationSetup, state: State) -> State:
     f_out, rho, u, force_tot = _multiphase_pipeline(setup, state.f, force_ext, grad, lap)
 
     # 4. Create new state (wetting updated by plugin via trial_step_fn in context)
-    new_state = state._replace(f=f_out, rho=rho, u=u, force=force_tot, t=state.t + 1)
+    new_state = state._replace(f=f_out, rho=rho, u=u, force=force_tot, force_ext=force_ext, t=state.t + 1)
 
     # 5. Update extra state — trial_step_fn forwarded so wetting plugin can run optimiser
     return update_extra_state(
         setup,
         state,
         new_state,
+        force_ext=force_ext,
         trial_step_fn=partial(_trial_step, setup, f_out, force_ext),
     )
