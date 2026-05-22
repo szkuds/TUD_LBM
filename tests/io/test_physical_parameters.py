@@ -1,8 +1,14 @@
 """Tests for physical parameter overview generation."""
 
 from __future__ import annotations
+from types import SimpleNamespace
 import numpy as np
+import pytest
 from tud_lbm.config import SimulationConfig
+from tud_lbm.io.physical_parameters import _contact_line_length_from_rho
+from tud_lbm.io.physical_parameters import _get_contact_line_length_from_file
+from tud_lbm.io.physical_parameters import _resolve_gravity_inclination
+from tud_lbm.io.physical_parameters import _resolve_gravity_value
 from tud_lbm.io.physical_parameters import build_overview
 from tud_lbm.io.physical_parameters import write_physical_parameters
 
@@ -88,3 +94,34 @@ def test_build_overview_falls_back_when_init_from_file_rho_missing(tmp_path):
     text = build_overview(cfg)
 
     assert "L=40.0 (grid_x)" in text
+
+
+def test_resolve_gravity_value_prefers_scalar_g_over_force_dict():
+    cfg = _mp_config(g=2e-6, gravity_force={"force_g": 1e-6})
+    assert _resolve_gravity_value(cfg) == pytest.approx(2e-6)
+
+
+def test_resolve_gravity_value_supports_masked_force():
+    cfg = _mp_config(gravity_force=None, gravity_masked_force={"force_g": 3e-6})
+    assert _resolve_gravity_value(cfg) == pytest.approx(3e-6)
+
+
+def test_resolve_gravity_value_rejects_both_force_variants():
+    cfg = SimpleNamespace(g=None, gravity_force={"force_g": 1e-6}, gravity_masked_force={"force_g": 2e-6})
+    with pytest.raises(ValueError, match="Only one gravity force"):
+        _resolve_gravity_value(cfg)
+
+
+def test_resolve_gravity_inclination_defaults_to_zero_when_missing_key():
+    cfg = _mp_config(gravity_force={"force_g": 1e-6})
+    assert _resolve_gravity_inclination(cfg) == pytest.approx(0.0)
+
+
+def test_contact_line_length_from_rho_returns_none_for_degenerate_profile():
+    rho = np.ones((12, 6, 1, 1, 1)) * 0.5
+    assert _contact_line_length_from_rho(rho, rho_mean=0.5) is None
+
+
+def test_get_contact_line_length_from_file_returns_none_for_missing_file(tmp_path):
+    cfg = _mp_config(init_type="init_from_file", init_dir=str(tmp_path / "missing.npz"), initialisation={})
+    assert _get_contact_line_length_from_file(cfg) is None

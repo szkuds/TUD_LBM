@@ -102,6 +102,20 @@ class TestInitState:
 
         assert int(final_state.t) == 15
 
+    def test_t_from_snapshot_returns_zero_for_non_digit_suffix(self):
+        from tud_lbm.config.simulation_config import SimulationConfig
+        from tud_lbm.pipeline.runner import _t_from_snapshot
+
+        cfg = SimulationConfig(
+            grid_shape=(8, 8),
+            tau=0.8,
+            nt=10,
+            init_type="init_from_file",
+            init_dir="/tmp/timestep_12a.npz",
+        )
+
+        assert int(_t_from_snapshot(cfg)) == 0
+
 
 # =====================================================================
 # IO callbacks

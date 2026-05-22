@@ -204,3 +204,35 @@ def test_build_csv_skips_when_simulation_csv_not_selected(monkeypatch, tmp_path)
 
     out = builder.build_csv()
     assert out is None
+
+
+def test_layout_falls_back_to_squareish_grid_for_five_panels():
+    assert FigureBuilder.layout(5) == (3, 2)
+
+
+def test_build_analysis_renders_error_panel_when_operator_fails(tmp_path):
+    run_dir = tmp_path / "run"
+    data_dir = run_dir / "data"
+    data_dir.mkdir(parents=True)
+    np.savez(data_dir / "timestep_1.npz", rho=np.ones((4, 4, 1, 1, 1)), u=np.zeros((4, 4, 1, 1, 2)))
+
+    config = SimulationConfig(plot_fields=["density"])
+    builder = FigureBuilder(config, run_dir=run_dir)
+
+    class _FailingAnalysisOperator:
+        name = "failing_analysis"
+
+        def compute(self, _files):
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        def render(self, _ax, _precomputed):
+            return None
+
+    builder._analysis_operators = [_FailingAnalysisOperator()]
+
+    saved = builder.build_analysis()
+
+    assert len(saved) == 1
+    assert saved[0].name == "failing_analysis.png"
+    assert saved[0].exists()
