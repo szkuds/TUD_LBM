@@ -53,6 +53,7 @@ def step_multiphase(setup: SimulationSetup, state: State) -> State:
         rho=rho,
         u=u,
         force=force_tot,
+        force_ext=force_ext,
         t=state.t + 1,
     )
 

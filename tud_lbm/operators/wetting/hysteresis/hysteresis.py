@@ -126,6 +126,20 @@ def _cost_ca(ca_target: jnp.ndarray, ca_current: jnp.ndarray) -> jnp.ndarray:
     return jnp.where(err < delta, 0.5 * err**2, delta * (err - 0.5 * delta))
 
 
+def _cost_above(ca_adv: jnp.ndarray, ca_current: jnp.ndarray) -> jnp.ndarray:
+    """One-sided Huber loss that penalises only CA values above ca_adv."""
+    excess = jnp.maximum(ca_current - ca_adv, 0.0)
+    delta = 5.0  # Degrees
+    return jnp.where(excess < delta, 0.5 * excess**2, delta * (excess - 0.5 * delta))
+
+
+def _cost_below(ca_rec: jnp.ndarray, ca_current: jnp.ndarray) -> jnp.ndarray:
+    """One-sided Huber loss that penalises only CA values below ca_rec."""
+    deficit = jnp.maximum(ca_rec - ca_current, 0.0)
+    delta = 5.0  # Degrees
+    return jnp.where(deficit < delta, 0.5 * deficit**2, delta * (deficit - 0.5 * delta))
+
+
 def _mask_left_d_rho(g: WettingParams) -> WettingParams:
     z = jnp.zeros_like
     return WettingParams(
@@ -297,15 +311,15 @@ def _update_wetting_state_impl(
     def left_objective(p: WettingParams) -> jnp.ndarray:
         ca_l, _, cll_l, _ = evaluate_fn(p)
         cost_in = _cost_cll(wetting.cll_left, cll_l)
-        cost_below = _cost_ca(ca_rec_left, ca_l)
-        cost_above = _cost_ca(ca_adv_left, ca_l)
+        cost_below = _cost_below(ca_rec_left, ca_l)
+        cost_above = _cost_above(ca_adv_left, ca_l)
         return jnp.where(in_window_left, cost_in, jnp.where(above_window_left, cost_above, cost_below))
 
     def right_objective(p: WettingParams) -> jnp.ndarray:
         _, ca_r, _, cll_r = evaluate_fn(p)
         cost_in = _cost_cll(wetting.cll_right, cll_r)
-        cost_below = _cost_ca(ca_rec_right, ca_r)
-        cost_above = _cost_ca(ca_adv_right, ca_r)
+        cost_below = _cost_below(ca_rec_right, ca_r)
+        cost_above = _cost_above(ca_adv_right, ca_r)
         return jnp.where(in_window_right, cost_in, jnp.where(above_window_right, cost_above, cost_below))
 
     def _opt_left(p: WettingParams) -> WettingParams:
@@ -326,35 +340,89 @@ def _update_wetting_state_impl(
 
     new_params = _opt_right(_opt_left(params))
 
+    # Fallback: if phi path is selected but stays neutral, retry with d_rho
+    # warm-started from the stored accumulated value.
+    def _fallback_d_rho_left(p: WettingParams) -> WettingParams:
+        fallback = WettingParams(
+            phi_left=_PHI_NEUTRAL,
+            phi_right=p.phi_right,
+            d_rho_left=wetting.d_rho_left,
+            d_rho_right=p.d_rho_right,
+        )
+        return _optimise_single_param(left_objective, fallback, _mask_left_d_rho, optimiser, max_iter)[0]
+
+    def _fallback_d_rho_right(p: WettingParams) -> WettingParams:
+        fallback = WettingParams(
+            phi_left=p.phi_left,
+            phi_right=_PHI_NEUTRAL,
+            d_rho_left=p.d_rho_left,
+            d_rho_right=wetting.d_rho_right,
+        )
+        return _optimise_single_param(right_objective, fallback, _mask_right_d_rho, optimiser, max_iter)[0]
+
+    final_params = jax.lax.cond(
+        phi_active_left & (new_params.phi_left <= _PHI_NEUTRAL),
+        _fallback_d_rho_left,
+        lambda p: p,
+        new_params,
+    )
+    final_params = jax.lax.cond(
+        phi_active_right & (new_params.phi_right <= _PHI_NEUTRAL),
+        _fallback_d_rho_right,
+        lambda p: p,
+        final_params,
+    )
+
     if DEBUG_FLAG:
+        phi_engaged_right = phi_active_right & (final_params.phi_right > _PHI_NEUTRAL)
+        fallback_right = phi_active_right & ~phi_engaged_right
+        phi_engaged_left = phi_active_left & (final_params.phi_left > _PHI_NEUTRAL)
+        fallback_left = phi_active_left & ~phi_engaged_left
+
+        # mode: 0=d_rho(normal), 1=phi(engaged), 2=d_rho(fallback)
+        mode_right = jnp.where(phi_engaged_right, jnp.array(1), jnp.where(fallback_right, jnp.array(2), jnp.array(0)))
+        mode_left = jnp.where(phi_engaged_left, jnp.array(1), jnp.where(fallback_left, jnp.array(2), jnp.array(0)))
+
         jax.debug.print(
-            "ca_right={ca} cll_right={cll} phi_active={a} phi={p} d_rho={d} loss={l}",
+            "\n[R] CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | "
+            "mode={mode}(0=d_rho,1=phi,2=fb) | "
+            "phi: {phi:.6f} | "
+            "d_rho: {d_rho:.6f} | "
+            "loss={loss:.3e}",
             ca=ca_right_tplus1,
+            ca_adv=ca_adv_right,
+            ca_rec=ca_rec_right,
             cll=cll_right_tplus1,
-            a=phi_active_right,
-            p=new_params.phi_right,
-            d=new_params.d_rho_right,
-            l=right_objective(new_params),
+            mode=mode_right,
+            phi=final_params.phi_right,
+            d_rho=final_params.d_rho_right,
+            loss=right_objective(final_params),
         )
         jax.debug.print(
-            "ca_left={ca}  cll_left={cll}  phi_active={a} phi={p} d_rho={d} loss={l}",
+            "[L] CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | "
+            "mode={mode}(0=d_rho,1=phi,2=fb) | "
+            "phi: {phi:.6f} | "
+            "d_rho: {d_rho:.6f} | "
+            "loss={loss:.3e}",
             ca=ca_left_tplus1,
+            ca_adv=ca_adv_left,
+            ca_rec=ca_rec_left,
             cll=cll_left_tplus1,
-            a=phi_active_left,
-            p=new_params.phi_left,
-            d=new_params.d_rho_left,
-            l=left_objective(new_params),
+            mode=mode_left,
+            phi=final_params.phi_left,
+            d_rho=final_params.d_rho_left,
+            loss=left_objective(final_params),
         )
 
     return wetting._replace(
-        phi_left=new_params.phi_left,
-        phi_right=new_params.phi_right,
-        d_rho_left=new_params.d_rho_left,
-        d_rho_right=new_params.d_rho_right,
+        phi_left=final_params.phi_left,
+        phi_right=final_params.phi_right,
+        d_rho_left=final_params.d_rho_left,
+        d_rho_right=final_params.d_rho_right,
         ca_left=ca_left_tplus1,
         ca_right=ca_right_tplus1,
-        cll_left=cll_left_tplus1,
-        cll_right=cll_right_tplus1,
+        cll_left=jnp.where(in_window_left, wetting.cll_left, cll_left_tplus1),
+        cll_right=jnp.where(in_window_right, wetting.cll_right, cll_right_tplus1),
     )
 
 

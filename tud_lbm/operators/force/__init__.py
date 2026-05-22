@@ -151,10 +151,12 @@ def compute_total_force_ext(
         - *total_force* is the summed force array, or None if no forces are active.
         - *updated_state* is the unchanged state (extra-state plugins handle updates).
     """
-    total_force = state.force_ext
-
     if force_setup is None or not force_setup.specs:
-        return total_force, state
+        return state.force_ext, state
+
+    # Recompute per-step external force from active contributions only.
+    # Do not seed from state.force_ext, otherwise values accumulate over time.
+    total_force: jnp.ndarray | None = None
 
     for spec in force_setup.specs:
         contribution = spec.compute_fn(

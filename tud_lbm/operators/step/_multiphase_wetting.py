@@ -78,6 +78,7 @@ def step_multiphase_wetting(setup: SimulationSetup, state: State) -> State:
         rho=rho,
         u=u,
         force=force_tot,
+        force_ext=force_ext,
         t=state.t + 1,
         wetting=updated_wetting,
     )

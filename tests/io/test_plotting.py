@@ -77,6 +77,7 @@ def test_analysis_operators_registered():
     assert "max_velocity" in names
     assert "density_ratio" in names
     assert "avg_density" in names
+    assert "simulation_csv" in names
 
 
 def test_build_all_creates_one_figure_per_snapshot(plotting_run_dir, simple_config):

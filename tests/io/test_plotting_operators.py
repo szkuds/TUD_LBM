@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 import tempfile
+import matplotlib.pyplot as plt
 import numpy as np
 from tud_lbm.config import SimulationConfig
 from tud_lbm.io.plotting import FigureBuilder
+from tud_lbm.io.plotting.force import ExternalForcePlotOperator
+from tud_lbm.io.plotting.force import ForcePlotOperator
 
 
 class TestPlottingOperatorsShapeHandling:
@@ -12,7 +15,6 @@ class TestPlottingOperatorsShapeHandling:
 
     def test_density_operator_2d_shape(self):
         """Density operator should produce correct 2D array from data."""
-        import matplotlib.pyplot as plt
         from tud_lbm.io.plotting.density import DensityPlotOperator
 
         config = SimulationConfig(
@@ -35,7 +37,6 @@ class TestPlottingOperatorsShapeHandling:
 
     def test_velocity_operator_2d_shape(self):
         """Velocity operator should produce correct 2D array from data."""
-        import matplotlib.pyplot as plt
         from tud_lbm.io.plotting.velocity import VelocityPlotOperator
 
         config = SimulationConfig(
@@ -76,3 +77,49 @@ class TestPlottingOperatorsShapeHandling:
             result = builder.build(data, timestep=0)
             assert result is not None
             assert result.exists()
+
+
+def test_force_plot_operator_availability_and_render():
+    """Force operator should be available for force data and render labels/title."""
+    config = SimulationConfig(grid_shape=(16, 16, 1), tau=0.8, nt=2)
+    op = ForcePlotOperator(config)
+
+    force = np.zeros((16, 16, 1, 1, 2), dtype=float)
+    force[:, :, 0, 0, 0] = 1.0
+    data = {"force": force}
+
+    assert op.is_available(data)
+    assert not op.is_available({})
+
+    fig, ax = plt.subplots()
+    try:
+        op(ax, data, timestep=3)
+        assert ax.get_title() == "Total force  t=3"
+        assert ax.get_xlabel() == "x"
+        assert ax.get_ylabel() == "y"
+        assert len(ax.images) == 1
+    finally:
+        plt.close(fig)
+
+
+def test_external_force_plot_operator_availability_and_render():
+    """External-force operator should use the dedicated field and render."""
+    config = SimulationConfig(grid_shape=(16, 16, 1), tau=0.8, nt=2)
+    op = ExternalForcePlotOperator(config)
+
+    force_ext = np.zeros((16, 16, 1, 1, 2), dtype=float)
+    force_ext[:, :, 0, 0, 1] = 2.0
+    data = {"force_ext": force_ext}
+
+    assert op.is_available(data)
+    assert not op.is_available({"force": force_ext})
+
+    fig, ax = plt.subplots()
+    try:
+        op(ax, data, timestep=4)
+        assert ax.get_title() == "External force  t=4"
+        assert ax.get_xlabel() == "x"
+        assert ax.get_ylabel() == "y"
+        assert len(ax.images) == 1
+    finally:
+        plt.close(fig)

@@ -33,6 +33,17 @@ def _sp_setup():
     return build_setup(cfg)
 
 
+def _sp_setup_with_gravity():
+    """Build a tiny single-phase setup with gravity enabled."""
+    cfg = SimulationConfig(
+        grid_shape=(NX, NY, NZ),
+        tau=0.8,
+        nt=10,
+        gravity_force={"force_g": 1e-6, "inclination_angle_deg": 10.0},
+    )
+    return build_setup(cfg)
+
+
 def _mp_setup():
     """Build a tiny multiphase SimulationSetup."""
     cfg = SimulationConfig(
@@ -45,6 +56,23 @@ def _mp_setup():
         rho_l=1.0,
         rho_v=0.33,
         interface_width=4,
+    )
+    return build_setup(cfg)
+
+
+def _mp_setup_with_gravity():
+    """Build a tiny multiphase setup with gravity enabled."""
+    cfg = SimulationConfig(
+        sim_type="multiphase",
+        grid_shape=(16, 16),
+        tau=0.99,
+        nt=5,
+        eos="double-well",
+        kappa=0.017,
+        rho_l=1.0,
+        rho_v=0.33,
+        interface_width=4,
+        gravity_force={"force_g": 1e-6, "inclination_angle_deg": 10.0},
     )
     return build_setup(cfg)
 
@@ -211,6 +239,32 @@ class TestStepSinglePhasePure:
         assert not jnp.isnan(state.f).any()
         assert int(state.t) == 5
 
+    def test_persists_force_ext_when_forces_active(self):
+        """Single-phase step should persist computed external force on the state."""
+        from tud_lbm.operators.step import build_step_fn
+
+        step_single_phase = build_step_fn("single_phase")
+        setup = _sp_setup_with_gravity()
+        state = init_state(setup)
+        new_state = step_single_phase(setup, state)
+
+        assert new_state.force_ext is not None
+        assert new_state.force_ext.shape == (NX, NY, NZ, 1, 2)
+        assert not np.allclose(np.array(new_state.force_ext), 0.0)
+
+    def test_force_ext_does_not_accumulate_between_steps(self):
+        """Constant gravity should produce a stable per-step external force field."""
+        from tud_lbm.operators.step import build_step_fn
+
+        step_single_phase = build_step_fn("single_phase")
+        setup = _sp_setup_with_gravity()
+        state0 = init_state(setup)
+
+        state1 = step_single_phase(setup, state0)
+        state2 = step_single_phase(setup, state1)
+
+        np.testing.assert_allclose(np.array(state2.force_ext), np.array(state1.force_ext), rtol=1e-6, atol=1e-12)
+
 
 # =====================================================================
 # step_multiphase
@@ -261,6 +315,32 @@ class TestStepMultiphasePure:
 
         assert new_state.force is not None
         assert new_state.force.shape == (16, 16, 1, 1, 2)
+
+    def test_persists_force_ext_when_forces_active(self):
+        """Multiphase step should persist computed external force on the state."""
+        from tud_lbm.operators.step import build_step_fn
+
+        step_multiphase = build_step_fn("multiphase")
+        setup = _mp_setup_with_gravity()
+        state = init_state(setup)
+        new_state = step_multiphase(setup, state)
+
+        assert new_state.force_ext is not None
+        assert new_state.force_ext.shape == (16, 16, 1, 1, 2)
+        assert not np.allclose(np.array(new_state.force_ext), 0.0)
+
+    def test_force_ext_does_not_accumulate_between_steps(self):
+        """Constant gravity should produce a stable per-step external force field."""
+        from tud_lbm.operators.step import build_step_fn
+
+        step_multiphase = build_step_fn("multiphase")
+        setup = _mp_setup_with_gravity()
+        state0 = init_state(setup)
+
+        state1 = step_multiphase(setup, state0)
+        state2 = step_multiphase(setup, state1)
+
+        np.testing.assert_allclose(np.array(state2.force_ext), np.array(state1.force_ext), rtol=1e-6, atol=1e-12)
 
 
 # =====================================================================
