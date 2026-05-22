@@ -532,7 +532,7 @@ def _load_raw_config(
     from tud_lbm.config.adapter_toml import TomlAdapter
 
     console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
-    raw_config = TomlAdapter().load_raw(config_path)
+    raw_config = TomlAdapter().load_raw(config_path) or {}
     if init_dir is not None:
         raw_config["init_dir"] = str(init_dir)
         raw_config["init_type"] = "init_from_file"
