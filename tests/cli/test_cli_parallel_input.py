@@ -454,8 +454,9 @@ def test_cli_init_wetting_runs_two_phase_flow(monkeypatch, tmp_path):
 
     monkeypatch.setattr("tud_lbm.cli.cli._run_simulation", _fake_run_simulation)
     monkeypatch.setattr("tud_lbm.cli.cli._display_config_summary", lambda cfg: None)
+    monkeypatch.setattr("tud_lbm.cli.cli.Confirm.ask", lambda *args, **kwargs: True)
 
-    result = CliRunner().invoke(main, [str(cfg_path), "--no-prompt", "--init-wetting"])
+    result = CliRunner().invoke(main, [str(cfg_path), "--init-wetting"])
 
     assert result.exit_code == 0
     assert len(expanded_raws) == 2
