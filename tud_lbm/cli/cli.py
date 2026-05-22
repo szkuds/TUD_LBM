@@ -533,6 +533,9 @@ def _load_raw_config(
 
     console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
     raw_config = TomlAdapter().load_raw(config_path)
+    if raw_config is None:
+        msg = f"Failed to load configuration from: {config_path}"
+        raise ValueError(msg)
     if init_dir is not None:
         raw_config["init_dir"] = str(init_dir)
         raw_config["init_type"] = "init_from_file"
