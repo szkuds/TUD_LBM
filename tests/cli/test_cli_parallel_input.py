@@ -1,4 +1,5 @@
 from __future__ import annotations
+from pathlib import Path
 from click.testing import CliRunner
 from tud_lbm.config import SimulationConfig
 from tud_lbm.config.array_expansion import ArrayParameterSet
@@ -396,7 +397,7 @@ def _assert_phase2_raw(phase2_raw: dict[str, object], phase1_data_dir: str) -> N
     assert phase2_raw["gravity_masked_force"]["force_g"] == 7e-7
     assert phase2_raw["sim_type"] == "multiphase_hysteresis_chemical_step"
     assert phase2_raw["init_type"] == "init_from_file"
-    assert phase2_raw["init_dir"] == f"{phase1_data_dir}/timestep_50000.npz"
+    assert Path(str(phase2_raw["init_dir"])) == Path(phase1_data_dir) / "timestep_50000.npz"
     assert phase2_raw["wetting_config"]["contact_angle"] == 90.0
     assert phase2_raw["wetting_config"]["phi_left"] == 1.2
     assert phase2_raw["wetting_config"]["phi_right"] == 1.2

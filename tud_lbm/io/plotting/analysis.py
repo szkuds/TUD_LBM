@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
 from matplotlib.colors import TABLEAU_COLORS
+from tud_lbm.io.physical_parameters import _get_setup_contact_line_length
 from tud_lbm.io.plotting.base import AnalysisPlot
 from tud_lbm.registry import analysis_operator
 
@@ -456,10 +457,15 @@ _COMPARISON_DIR = "comparison_analysis"
 def _resolve_r_zero(config: SimulationConfig) -> float:
     """Initial droplet radius in lattice units.
 
-    Derived from ``initialisation.radii[0] * min(nx, ny)``, matching the
-    computation already used in ``physical_parameters._get_setup_contact_line_length``.
-    Falls back to 27.0 when the key is absent.
+    Derived from half of the setup contact-line length if available.
+    Otherwise, defaults to ``initialisation.radii[0] * min(nx, ny)``, matching the
+    computation used when the contact line length cannot be determined.
+    Falls back to 27.0 when all keys are absent.
     """
+    length = _get_setup_contact_line_length(config)
+    if length is not None:
+        return length / 2.0
+
     init = config.initialisation
     radii = init.get("radii", []) if isinstance(init, dict) else []
     if radii:
@@ -512,10 +518,10 @@ def _center_of_mass(rho_2d: np.ndarray, rho_mean: float) -> tuple[float, float]:
     return float(np.sum(xi * mask * rho_2d) / total), float(np.sum(yi * mask * rho_2d) / total)
 
 
-def _avg_x_location(rho_2d: np.ndarray, rho_mean: float) -> float:
+def _avg_x_location(rho_2d: np.ndarray, rho_mean: float, offset_x: float) -> float:
     nx = rho_2d.shape[0]
     mask = rho_2d > rho_mean
-    x_idx = np.arange(nx, dtype=float) - nx // 2
+    x_idx = np.arange(nx, dtype=float) - offset_x
     return float(np.sum(x_idx[:, None] * mask) / np.sum(mask))
 
 
@@ -556,7 +562,7 @@ def _extract_optional_contact_metrics(
     return ca_l, ca_r, cll_l, cll_r
 
 
-def _collect_csv_rows(files: list[Path], rho_mean: float) -> dict[str, list[float | int]]:
+def _collect_csv_rows(files: list[Path], rho_mean: float, offset_x: float) -> dict[str, list[float | int]]:
     rows = _empty_csv_rows()
     for fp in files:
         it = _parse_timestep(fp.stem)
@@ -581,7 +587,7 @@ def _collect_csv_rows(files: list[Path], rho_mean: float) -> dict[str, list[floa
             ca_l, ca_r = _ca_from_rho(rho_2d, rho_mean)
 
         cm_x, cm_y = _center_of_mass(rho_2d, rho_mean)
-        avg_x = _avg_x_location(rho_2d, rho_mean)
+        avg_x = _avg_x_location(rho_2d, rho_mean, offset_x)
         _append_csv_row(
             rows,
             {
@@ -684,7 +690,10 @@ def build_simulation_csv(run_dir: str | Path, config: SimulationConfig) -> Path 
     incl_deg = _inclination_angle_deg(config)
     save_iv = max(config.save_interval, 1)
 
-    rows = _collect_csv_rows(files, rho_mean)
+    step_x = _resolve_step_x(config)
+    offset_x = step_x if step_x is not None else float(config.grid_shape[0] // 2)
+
+    rows = _collect_csv_rows(files, rho_mean, offset_x)
 
     df = pd.DataFrame(rows)
     if df.empty:
