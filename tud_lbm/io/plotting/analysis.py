@@ -900,7 +900,9 @@ def compare_runs(parent_dir: str | Path) -> None:
         ax.set_xlabel(pc["xlabel"], fontsize=24)
         ax.set_ylabel(pc["ylabel"], fontsize=24)
         ax.tick_params(axis="both", labelsize=16)
-        ax.legend(fontsize=12, loc="best")
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
+            ax.legend(handles, labels, fontsize=12, loc="best")
         ax.grid(True, alpha=0.3)
         plt.tight_layout()
         out_path = out_dir / pc["filename"]

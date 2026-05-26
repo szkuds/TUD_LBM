@@ -154,7 +154,11 @@ def run(
         io_handler: Optional :class:`~util.io.SimulationIO`.  When
             supplied, snapshots are streamed to disk via host callbacks
             and the returned *trajectory* is ``None``.
-        skip_interval: Number of initial steps to skip before saving
+        skip_interval: Absolute simulation-time threshold; steps with
+            ``state.t <= skip_interval`` are not saved.  For a fresh
+            run this equals the number of initial steps to skip.  For
+            a resumed ``init_from_file`` run, compare against the
+            *absolute* timestep, not the number of new steps
             (only used with *io_handler*).
         save_fields: Subset of field names to write, e.g.
             ``("rho", "u")``.  ``None`` means all fields.
@@ -184,9 +188,9 @@ def run(
         )
 
         @jax.jit
-        def scan_body_io(state: State, t: int) -> tuple[State, None]:
+        def scan_body_io(state: State, _t: int) -> tuple[State, None]:
             new_state = setup.step_fn(setup, state)
-            do_save(new_state, t)
+            do_save(new_state, new_state.t)
             return new_state, None
 
         final_state, _ = jax.lax.scan(
