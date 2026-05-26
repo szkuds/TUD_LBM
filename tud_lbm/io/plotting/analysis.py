@@ -620,8 +620,10 @@ def _finalize_csv_dataframe(
     incl_deg: float,
     save_iv: int,
 ) -> pd.DataFrame:
+    it_min = df["iteration"].min()
     it_max = df["iteration"].max()
-    df["normalised_iteration"] = df["iteration"] / it_max
+    span = it_max - it_min
+    df["normalised_iteration"] = (df["iteration"] - it_min) / span if span > 0 else 0.0
     df["avg_x_location_norm"] = df["avg_x_location"] / r_zero
     df["v_left"] = _backward_diff(df["cll_left"].to_numpy(), save_iv)
     df["v_right"] = _backward_diff(df["cll_right"].to_numpy(), save_iv)
