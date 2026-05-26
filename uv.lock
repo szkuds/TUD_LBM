@@ -2745,7 +2745,7 @@ wheels = [
 
 [[package]]
 name = "tud-lbm"
-version = "2026.0.0a1"
+version = "2026.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
