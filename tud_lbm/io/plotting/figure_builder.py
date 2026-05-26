@@ -80,7 +80,7 @@ class FigureBuilder:
             requested = list(get_operators("plotting").keys())
 
         all_ops = get_operators("plotting")
-        all_analysis_ops = get_operators("analysis")
+        all_analysis_ops = get_operators("comparison")
         for name in requested:
             entry = all_ops.get(name)
             if entry is not None:

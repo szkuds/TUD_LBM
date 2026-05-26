@@ -25,9 +25,9 @@ Usage (strategy 2)::
     )
 
     # Inside scan body:
-    def scan_body(state, t):
+    def scan_body(state, _t):
         new_state = step_fn(state)
-        do_save(new_state, t)
+        do_save(new_state, new_state.t)
         return new_state, None
 """
 
@@ -104,9 +104,9 @@ def make_save_callback(
 
         do_save = make_save_callback(io_handler, save_interval=100)
 
-        def scan_body(state, t):
+        def scan_body(state, _t):
             new_state = step_fn(state)
-            do_save(new_state, t)
+            do_save(new_state, new_state.t)
             return new_state, None
     """
 

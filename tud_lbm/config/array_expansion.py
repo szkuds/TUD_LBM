@@ -426,6 +426,24 @@ def expand_config(
     return result.configs, result.metadata
 
 
+def _iter_combinations(
+    result: _ExpandResult,
+) -> Iterator[tuple[int, dict[str, Any], SimulationConfig]]:
+    """Yield ``(index, parameters, config)`` for every axis combination in *result*.
+
+    Args:
+        result: Fully populated :class:`_ExpandResult` with at least one axis.
+
+    Yields:
+        ``(index, parameters, config)`` tuples.
+    """
+    axis_lists = [result.all_axes[k] for k in result.axis_keys]
+    for idx, combo in enumerate(product(*axis_lists)):
+        parameters = dict(zip(result.axis_keys, combo, strict=False))
+        combo_dict = _apply_combo_to_dict(result.scalar_dict, parameters)
+        yield idx, parameters, SimulationConfig(**combo_dict)
+
+
 def enumerate_configs(
     config_dict: dict[str, Any],
     *,
@@ -452,9 +470,4 @@ def enumerate_configs(
         yield 0, {}, result.configs[0]
         return
 
-    axis_lists = [result.all_axes[k] for k in result.axis_keys]
-    for idx, combo in enumerate(product(*axis_lists)):
-        parameters = dict(zip(result.axis_keys, combo, strict=False))
-        combo_dict = _apply_combo_to_dict(result.scalar_dict, parameters)
-        config = SimulationConfig(**combo_dict)
-        yield idx, parameters, config
+    yield from _iter_combinations(result)

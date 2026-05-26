@@ -73,7 +73,7 @@ def test_velocity_operator_registered():
 
 
 def test_analysis_operators_registered():
-    names = get_operator_names("analysis")
+    names = get_operator_names("comparison")
     assert "max_velocity" in names
     assert "density_ratio" in names
     assert "avg_density" in names
