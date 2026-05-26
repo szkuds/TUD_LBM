@@ -1,13 +1,13 @@
 # YAML 1.2
 ---
-cff-version: "2026.0.1"
+cff-version: "1.2.0"
 title: "tud_lbm"
 authors:
   - family-names: Szkudlarek
     given-names: Sacha
     orcid: "https://orcid.org/0009-0003-7915-874X"
 date-released: 2026-03-23
-version: "0.0.1"
+version: "2026.0.1"
 repository-code: "https://github.com/szkuds/tud_lbm"
 keywords:
   - "LBM"
