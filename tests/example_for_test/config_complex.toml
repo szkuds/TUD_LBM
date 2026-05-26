@@ -50,6 +50,6 @@ force_g = 2e-6
 inclination_angle_deg = 0
 
 [output]
-results_dir = "~/TUD_LBM_data/results"
+results_dir = "~/TUD_LBM_data/test_runs"
 save_fields = ["rho", "u"]
 plot_fields = ["density", "velocity"]

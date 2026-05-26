@@ -43,6 +43,7 @@ Usage::
 """
 
 from __future__ import annotations
+from pathlib import Path
 from typing import TYPE_CHECKING
 import jax
 import jax.numpy as jnp
@@ -50,10 +51,31 @@ from tud_lbm.pipeline.state.state import State
 
 if TYPE_CHECKING:
     from setup import SimulationSetup
+    from tud_lbm.config import SimulationConfig
     from tud_lbm.io import SimulationIO
 
 
 # ── State initialisation ─────────────────────────────────────────────
+
+
+def _t_from_snapshot(config: SimulationConfig) -> jnp.ndarray:
+    """Infer the starting timestep from an ``init_from_file`` snapshot name.
+
+    Expected filename format is ``timestep_{N}.npz``. Any non-conforming
+    name, parse failure, or non-file-based init type falls back to ``0``.
+    """
+    if config.init_type != "init_from_file" or config.init_dir is None:
+        return jnp.array(0)
+
+    stem = Path(config.init_dir).stem
+    if not stem.startswith("timestep_"):
+        return jnp.array(0)
+
+    step_str = stem.removeprefix("timestep_")
+    if not step_str.isdigit():
+        return jnp.array(0)
+
+    return jnp.array(int(step_str))
 
 
 def init_state(
@@ -94,7 +116,7 @@ def init_state(
 
     rho = jnp.sum(f, axis=-2, keepdims=True)
     u = jnp.zeros((nx, ny, nz, 1, lattice.d))
-    t = jnp.array(0)
+    t = _t_from_snapshot(setup.config)
 
     force, force_ext = build_optional_fields(setup, nx, ny, nz, lattice.d)
     extra_state = build_extra_state(setup)

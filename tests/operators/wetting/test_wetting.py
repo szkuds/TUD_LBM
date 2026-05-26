@@ -419,6 +419,52 @@ class TestUpdateWettingState:
         assert not np.isclose(float(new_wetting.phi_right), float(wetting.phi_right))
         assert float(new_wetting.phi_right) > float(wetting.phi_right)
 
+    def test_cll_targets_are_frozen_while_in_window(self, monkeypatch):
+        import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
+
+        setup = self._make_setup()
+        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float32)
+        wetting = self._make_wetting_state()
+
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_angle",
+            lambda rho_in, rho_mean: (jnp.array(90.0), jnp.array(90.0)),
+        )
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_line_location",
+            lambda rho_in, ca_l, ca_r, rho_mean: (jnp.array(20.0), jnp.array(52.0)),
+        )
+
+        new_wetting = hysteresis_module.update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+
+        np.testing.assert_allclose(float(new_wetting.cll_left), float(wetting.cll_left), atol=1e-6)
+        np.testing.assert_allclose(float(new_wetting.cll_right), float(wetting.cll_right), atol=1e-6)
+
+    def test_cll_target_refreshes_when_side_leaves_window(self, monkeypatch):
+        import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
+
+        setup = self._make_setup()
+        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float32)
+        wetting = self._make_wetting_state()
+
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_angle",
+            lambda rho_in, rho_mean: (jnp.array(130.0), jnp.array(90.0)),
+        )
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_line_location",
+            lambda rho_in, ca_l, ca_r, rho_mean: (jnp.array(22.0), jnp.array(53.0)),
+        )
+
+        new_wetting = hysteresis_module.update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+
+        np.testing.assert_allclose(float(new_wetting.cll_left), 22.0, atol=1e-6)
+        np.testing.assert_allclose(float(new_wetting.cll_right), float(wetting.cll_right), atol=1e-6)
+
     def test_skips_only_in_dead_zone(self, monkeypatch):
         import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
         from tud_lbm.config.simulation_config import SimulationConfig

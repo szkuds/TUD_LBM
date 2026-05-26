@@ -272,8 +272,15 @@ class SimulationConfig:
         self._validate_tau()
         self._validate_time_steps()
         self._validate_collision()
+        self._validate_forces()
         self._validate_init()
         self._validate_save_fields()
+
+    def _validate_forces(self) -> None:
+        """Validate force configuration consistency."""
+        if self.gravity_force is not None and self.gravity_masked_force is not None:
+            msg = "Only one gravity force can be applied: set either gravity_force or gravity_masked_force, not both."
+            raise ValueError(msg)
 
     def _validate_grid_shape(self) -> None:
         """Validate grid_shape dimensions."""

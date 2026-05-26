@@ -89,3 +89,35 @@ def test_main_dispatch_strips_run_token(monkeypatch):
 
     cli_module.main.callback(("run", "config.toml", "--dry-run"))
     assert calls == [["config.toml", "--dry-run"]]
+
+
+@pytest.mark.parametrize("token", ["animate", "visualise", "compare"])
+def test_main_dispatches_subcommands_to_click_group(monkeypatch, token):
+    cli_module = importlib.import_module("tud_lbm.cli.cli")
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(cli_module.cli, "main", lambda args, standalone_mode: calls.append(args))
+
+    cli_module.main.callback((token, "run_dir"))
+    assert calls == [[token, "run_dir"]]
+
+
+def test_validate_run_dir_has_config_success(tmp_path):
+    from tud_lbm.cli.cli import _validate_run_dir_has_config
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    config_path = run_dir / "config.toml"
+    config_path.write_text("[simulation_type]\ntype='single_phase'\n", encoding="utf-8")
+
+    assert _validate_run_dir_has_config(str(run_dir)) == config_path
+
+
+def test_validate_run_dir_has_config_missing_file_raises(tmp_path):
+    from tud_lbm.cli.cli import _validate_run_dir_has_config
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    with pytest.raises(FileNotFoundError, match=r"No config\.toml found"):
+        _validate_run_dir_has_config(str(run_dir))
