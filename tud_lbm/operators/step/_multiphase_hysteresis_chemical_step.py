@@ -53,6 +53,7 @@ def step_multiphase_hysteresis_chemical_step(setup: SimulationSetup, state: Stat
         rho=rho,
         u=u,
         force=force_tot,
+        force_ext=force_ext,
         t=state.t + 1,
     )
 

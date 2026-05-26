@@ -165,3 +165,74 @@ def test_build_field_only_does_not_create_analysis_dir(tmp_path):
     assert out is not None
     assert out.exists()
     assert not (run_dir / "plots" / "analysis").exists()
+
+
+def test_build_csv_runs_when_simulation_csv_selected(monkeypatch, tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True)
+
+    config = SimulationConfig(plot_fields=["simulation_csv"])
+    builder = FigureBuilder(config, run_dir=run_dir)
+
+    called = {"n": 0}
+
+    def _fake_export(run_dir_arg, config_arg):
+        called["n"] += 1
+        assert Path(run_dir_arg) == run_dir
+        assert config_arg == config
+        return run_dir / "simulation_data.csv"
+
+    monkeypatch.setattr("tud_lbm.io.plotting.analysis.build_simulation_csv", _fake_export)
+
+    out = builder.build_csv()
+    assert called["n"] == 1
+    assert out == run_dir / "simulation_data.csv"
+
+
+def test_build_csv_skips_when_simulation_csv_not_selected(monkeypatch, tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True)
+
+    config = SimulationConfig(plot_fields=["density"])
+    builder = FigureBuilder(config, run_dir=run_dir)
+
+    def _fail_if_called(*_args, **_kwargs):
+        msg = "build_simulation_csv should not be called"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr("tud_lbm.io.plotting.analysis.build_simulation_csv", _fail_if_called)
+
+    out = builder.build_csv()
+    assert out is None
+
+
+def test_layout_falls_back_to_squareish_grid_for_five_panels():
+    assert FigureBuilder.layout(5) == (3, 2)
+
+
+def test_build_analysis_renders_error_panel_when_operator_fails(tmp_path):
+    run_dir = tmp_path / "run"
+    data_dir = run_dir / "data"
+    data_dir.mkdir(parents=True)
+    np.savez(data_dir / "timestep_1.npz", rho=np.ones((4, 4, 1, 1, 1)), u=np.zeros((4, 4, 1, 1, 2)))
+
+    config = SimulationConfig(plot_fields=["density"])
+    builder = FigureBuilder(config, run_dir=run_dir)
+
+    class _FailingAnalysisOperator:
+        name = "failing_analysis"
+
+        def compute(self, _files):
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        def render(self, _ax, _precomputed):
+            return None
+
+    builder._analysis_operators = [_FailingAnalysisOperator()]
+
+    saved = builder.build_analysis()
+
+    assert len(saved) == 1
+    assert saved[0].name == "failing_analysis.png"
+    assert saved[0].exists()

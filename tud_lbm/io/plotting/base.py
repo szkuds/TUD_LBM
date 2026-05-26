@@ -46,6 +46,17 @@ class AnalysisPlot(ABC):
 
     name: str
 
+    def __init__(self, config: SimulationConfig | None = None) -> None:
+        """Initialize with optional simulation config.
+
+        Args:
+            config: Simulation configuration object. Required by config-aware
+                operators (for example, capillary-number or normalized
+                contact-line operators). Operators that do not need config can
+                ignore it.
+        """
+        self.config = config
+
     @abstractmethod
     def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
         """Compute time-series arrays from snapshot files."""

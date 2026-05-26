@@ -47,7 +47,7 @@ Full API Reference
 See https://github.com/tudelft-ceg/tud-lbm for documentation.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 
 # Lazy imports to avoid circular dependencies

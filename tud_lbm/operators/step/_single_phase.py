@@ -38,4 +38,5 @@ def step_single_phase(setup: SimulationSetup, state: State) -> State:
 
     # 3-6. Equilibrium → collision → streaming → BCs (shared)
     new_state = _apply_common_step(setup, state, rho, u, force_tot)
+    new_state = new_state._replace(force=force_tot, force_ext=force_ext)
     return update_extra_state(setup, state, new_state, force_ext=force_ext)

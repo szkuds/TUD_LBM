@@ -56,6 +56,7 @@ class FigureBuilder:
         self._analysis_dir = self._plot_dir / "analysis"
         self._field_operators: list = []
         self._analysis_operators: list = []
+        self._analysis_export_operators: list = []
         # Backward-compatible alias used in existing tests.
         self._operators = self._field_operators
 
@@ -88,7 +89,11 @@ class FigureBuilder:
 
             analysis_entry = all_analysis_ops.get(name)
             if analysis_entry is not None:
-                self._analysis_operators.append(analysis_entry.target())
+                operator_instance = analysis_entry.target(config=self.config)
+                if getattr(operator_instance, "export_only", False):
+                    self._analysis_export_operators.append(operator_instance)
+                else:
+                    self._analysis_operators.append(operator_instance)
                 continue
 
             known = sorted(set(all_ops.keys()) | set(all_analysis_ops.keys()))
@@ -164,6 +169,20 @@ class FigureBuilder:
             plt.close(fig)
             saved.append(out_path)
         return saved
+
+    def build_csv(self) -> Path | None:
+        """Run registry-selected export analysis operators.
+
+        Returns the last non-``None`` output path (if any).
+        """
+        result: Path | None = None
+        for op in self._analysis_export_operators:
+            export_fn = getattr(op, "export", None)
+            if callable(export_fn):
+                out = export_fn(self.run_dir)
+                if out is not None:
+                    result = out
+        return result
 
     def render_figure(
         self,
@@ -271,6 +290,7 @@ class FigureBuilder:
                 saved.append(path)
 
         self.build_analysis()
+        self.build_csv()
         return saved
 
     @staticmethod
