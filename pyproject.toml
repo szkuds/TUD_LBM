@@ -174,7 +174,7 @@ no-lines-before = ["future","standard-library","third-party","first-party","loca
 # bumpversion
 # ---------------------------------------------------------------------------
 [tool.bumpversion]
-current_version = "2026.0.0a1"
+current_version = "2026.0.1"
 
 [[tool.bumpversion.files]]
 filename = "tud_lbm/__init__.py"
