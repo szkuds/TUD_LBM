@@ -17,8 +17,6 @@
 
 A lattice Boltzmann method package developed at Delft University of Technology. This package provides tools for simulating fluid dynamics using the lattice Boltzmann method, supporting both single-phase and multi-phase simulations.
 
-The project setup is documented in [project_setup.md](project_setup.md).
-
 ## Installation
 
 TUD-LBM requires Python 3.10 or newer.
@@ -63,7 +61,7 @@ uv pip install -e .[dev]
 
 ### Optional: conda
 
-If you prefer conda for scientific Python environments, you can still use the conda-based workflow documented in [project_setup.md](project_setup.md).
+If you prefer conda for scientific Python environments, you can still use the conda-based workflow documented in [developer documentation](README.dev.md#package-reference).
 
 ## Documentation
 

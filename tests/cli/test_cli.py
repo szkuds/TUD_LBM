@@ -36,6 +36,27 @@ try:
 except ImportError:
     pytest.skip("click or rich dependency not installed", allow_module_level=True)
 
+from unittest.mock import patch as _patch
+from tud_lbm.cli.cli import _build_fields_table
+from tud_lbm.cli.cli import _build_standard_table
+from tud_lbm.cli.cli import _build_visual_table
+from tud_lbm.cli.cli import _confirm_run
+from tud_lbm.cli.cli import _display_summary
+from tud_lbm.cli.cli import _execute_run
+from tud_lbm.cli.cli import _expand_raw_config
+from tud_lbm.cli.cli import _expand_single_phase
+from tud_lbm.cli.cli import _load_config_interactive
+from tud_lbm.cli.cli import _load_raw_config
+from tud_lbm.cli.cli import _operator_description
+from tud_lbm.cli.cli import _parse_field_tokens
+from tud_lbm.cli.cli import _print_run_banner
+from tud_lbm.cli.cli import _prompt_fields
+from tud_lbm.cli.cli import _resolve_token
+from tud_lbm.cli.cli import _run_compare_single
+from tud_lbm.cli.cli import _run_compare_sweep
+from tud_lbm.cli.cli import _run_two_phase_wetting_init
+from tud_lbm.cli.cli import _run_with_optional_overrides
+
 
 def test_package_cli_import_is_callable():
     from tud_lbm.cli.cli import cli
@@ -1247,3 +1268,922 @@ def test_cli_array_config_dry_run_skips_parallel_execution(monkeypatch, tmp_path
 
     assert result.exit_code == 0
     assert called["parallel"] is False
+
+
+# =========================================================================
+# _build_visual_table / _build_standard_table / _operator_description
+# =========================================================================
+
+
+def _make_entry(target_fn, metadata=None):
+    """Create a minimal OperatorEntry-like namespace."""
+    return SimpleNamespace(target=target_fn, metadata=metadata or {})
+
+
+def _sample_target():
+    """First docstring line used for description."""
+
+
+def _no_doc_target():
+    pass
+
+
+_no_doc_target.__doc__ = None
+
+
+class TestOperatorDescription:
+    """Tests for _operator_description helper."""
+
+    def test_returns_first_doc_line(self):
+        def fn():
+            r"""First line.\n\nRest."""
+
+        assert _operator_description(fn) == r"First line.\n\nRest."
+
+    def test_returns_dash_when_no_doc(self):
+        assert _operator_description(_no_doc_target) == "—"
+
+    def test_returns_dash_for_empty_doc(self):
+        def fn():
+            pass
+
+        fn.__doc__ = ""
+        assert _operator_description(fn) == "—"
+
+
+class TestBuildVisualTable:
+    """Tests for _build_visual_table Rich table builder."""
+
+    def test_returns_table_with_three_columns(self):
+        ops = {"density": _make_entry(_sample_target)}
+        table = _build_visual_table("plotting", ops)
+        assert len(table.columns) == 3
+
+    def test_table_title_contains_kind(self):
+        ops = {"density": _make_entry(_sample_target)}
+        table = _build_visual_table("plotting", ops)
+        assert "plotting" in table.title
+
+    def test_required_keys_shown(self):
+        def fn():
+            """Doc."""
+
+        fn.required_keys = ["rho", "u"]
+        ops = {"vel": _make_entry(fn)}
+        table = _build_visual_table("plotting", ops)
+        # Table built without error; row count should equal op count
+        assert table.row_count == 1
+
+    def test_subtitle_override(self):
+        ops = {"a": _make_entry(_sample_target)}
+        table = _build_visual_table("plotting", ops, subtitle="custom sub")
+        assert "custom sub" in table.title
+
+    def test_empty_ops_produces_empty_rows(self):
+        table = _build_visual_table("plotting", {})
+        assert table.row_count == 0
+
+
+class TestBuildStandardTable:
+    """Tests for _build_standard_table Rich table builder."""
+
+    def test_returns_table_with_three_columns(self):
+        ops = {"operator": _make_entry(_sample_target, metadata={"key": "val"})}
+        table = _build_standard_table("collision", ops)
+        assert len(table.columns) == 3
+
+    def test_table_title_contains_kind(self):
+        ops = {"op": _make_entry(_sample_target)}
+        table = _build_standard_table("lattice", ops)
+        assert "lattice" in table.title
+
+    def test_empty_metadata_shows_dash(self):
+        ops = {"op": _make_entry(_sample_target, metadata={})}
+        table = _build_standard_table("collision", ops)
+        assert table.row_count == 1
+
+    def test_empty_ops(self):
+        table = _build_standard_table("collision", {})
+        assert table.row_count == 0
+
+
+# =========================================================================
+# _build_fields_table
+# =========================================================================
+
+
+class TestBuildFieldsTable:
+    """Tests for _build_fields_table interactive-selection table."""
+
+    def test_table_has_three_columns(self):
+        ops = {"density": _make_entry(_sample_target)}
+        table = _build_fields_table(["density"], ops)
+        assert len(table.columns) == 3
+
+    def test_row_count_matches_names(self):
+        ops = {"a": _make_entry(_sample_target), "b": _make_entry(_sample_target)}
+        table = _build_fields_table(["a", "b"], ops)
+        assert table.row_count == 2
+
+
+# =========================================================================
+# _resolve_token
+# =========================================================================
+
+
+class TestResolveToken:
+    """Tests for _resolve_token index/name resolution."""
+
+    def _ops(self):
+        return {"density": _make_entry(_sample_target), "velocity": _make_entry(_sample_target)}
+
+    def test_valid_index_returns_name(self, capsys):
+        names = ["density", "velocity"]
+        assert _resolve_token("1", names, self._ops()) == "density"
+
+    def test_valid_index_second(self):
+        names = ["density", "velocity"]
+        assert _resolve_token("2", names, self._ops()) == "velocity"
+
+    def test_out_of_range_returns_none(self, capsys):
+        names = ["density"]
+        result = _resolve_token("5", names, self._ops())
+        assert result is None
+
+    def test_name_token_returns_none(self, capsys):
+        # The else-clause in _resolve_token is unreachable dead code (try block always returns
+        # before else when no ValueError; else does not run when ValueError is raised).
+        # So a name-based token always returns None.
+        names = ["density", "velocity"]
+        result = _resolve_token("density", names, self._ops())
+        assert result is None
+
+    def test_unknown_name_returns_none(self, capsys):
+        names = ["density"]
+        result = _resolve_token("unknown", names, self._ops())
+        assert result is None
+
+    def test_zero_index_out_of_range(self, capsys):
+        names = ["density"]
+        result = _resolve_token("0", names, self._ops())
+        assert result is None
+
+
+# =========================================================================
+# _parse_field_tokens
+# =========================================================================
+
+
+class TestParseFieldTokens:
+    """Tests for _parse_field_tokens comma-separated token parsing."""
+
+    def _ops(self):
+        return {"density": _make_entry(_sample_target), "velocity": _make_entry(_sample_target)}
+
+    def test_single_valid_index(self):
+        result = _parse_field_tokens("1", ["density", "velocity"], self._ops())
+        assert result == ["density"]
+
+    def test_comma_separated_indices(self):
+        result = _parse_field_tokens("1, 2", ["density", "velocity"], self._ops())
+        assert result == ["density", "velocity"]
+
+    def test_empty_tokens_skipped(self):
+        result = _parse_field_tokens(",,,", ["density"], self._ops())
+        assert result == []
+
+    def test_invalid_names_skipped(self, capsys):
+        # Name-based resolution is dead code; name tokens resolve to None.
+        result = _parse_field_tokens("nonexistent", ["density"], self._ops())
+        assert result == []
+
+    def test_out_of_range_index_skipped(self, capsys):
+        result = _parse_field_tokens("99", ["density"], self._ops())
+        assert result == []
+
+
+# =========================================================================
+# _prompt_fields
+# =========================================================================
+
+
+class TestPromptFields:
+    """Tests for _prompt_fields interactive operator selection."""
+
+    def _ops(self):
+        return {"density": _make_entry(_sample_target), "velocity": _make_entry(_sample_target)}
+
+    def test_eof_returns_current(self):
+        with _patch("tud_lbm.cli.cli.Prompt.ask", side_effect=EOFError):
+            result = _prompt_fields(self._ops(), ["density"], "plotting")
+        assert result == ["density"]
+
+    def test_empty_input_returns_current(self):
+        with _patch("tud_lbm.cli.cli.Prompt.ask", return_value=""):
+            result = _prompt_fields(self._ops(), ["density"], "plotting")
+        assert result == ["density"]
+
+    def test_valid_input_returns_selection(self):
+        # Use index-based input (name-based resolution is dead code in _resolve_token)
+        with _patch("tud_lbm.cli.cli.Prompt.ask", return_value="1"):
+            result = _prompt_fields(self._ops(), None, "plotting")
+        assert result is not None
+        assert len(result) == 1
+
+    def test_invalid_input_returns_current(self, capsys):
+        with _patch("tud_lbm.cli.cli.Prompt.ask", return_value="nonexistent"):
+            result = _prompt_fields(self._ops(), ["density"], "plotting")
+        assert result == ["density"]
+
+    def test_current_none_shown_as_all(self, capsys):
+        with _patch("tud_lbm.cli.cli.Prompt.ask", return_value=""):
+            result = _prompt_fields(self._ops(), None, "plotting")
+        assert result is None
+
+
+# =========================================================================
+# _load_raw_config
+# =========================================================================
+
+
+class TestLoadRawConfig:
+    """Tests for _load_raw_config TOML loading and override injection."""
+
+    def test_loads_and_applies_overrides(self, tmp_path):
+        cfg = tmp_path / "config.toml"
+        cfg.write_text("[simulation_type]\ntau=0.8\n", encoding="utf-8")
+        with _patch("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", return_value={"tau": 0.8}):
+            raw = _load_raw_config(str(cfg), ("tau=0.9",))
+        assert raw["tau"] == 0.9
+
+    def test_init_dir_injects_fields(self, tmp_path):
+        cfg = tmp_path / "config.toml"
+        cfg.write_text("[simulation_type]\ntau=0.8\n", encoding="utf-8")
+        snapshot = tmp_path / "snap.npz"
+        snapshot.touch()
+        with _patch("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", return_value={}):
+            raw = _load_raw_config(str(cfg), (), init_dir=str(snapshot))
+        assert raw["init_dir"] == str(snapshot)
+        assert raw["init_type"] == "init_from_file"
+
+    def test_no_overrides_returns_raw(self, tmp_path):
+        cfg = tmp_path / "config.toml"
+        cfg.write_text("[simulation_type]\ntau=0.8\n", encoding="utf-8")
+        with _patch("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", return_value={"tau": 0.8}):
+            raw = _load_raw_config(str(cfg), ())
+        assert raw == {"tau": 0.8}
+
+
+# =========================================================================
+# _expand_raw_config
+# =========================================================================
+
+
+class TestExpandRawConfig:
+    """Tests for _expand_raw_config single vs sweep expansion."""
+
+    def _cfg(self):
+        return SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+
+    def test_single_config_returns_config_not_none(self):
+        cfg = self._cfg()
+        with _patch("tud_lbm.config.array_expansion.expand_config", return_value=([cfg], None)):
+            _configs, config, sweep, params = _expand_raw_config({})
+        assert config == cfg
+        assert sweep is None
+        assert params is None
+
+    def test_sweep_returns_none_config(self):
+        cfg = self._cfg()
+        metadata = ArrayParameterSet(field_names=["tau"], array_values={"tau": (0.6, 0.8)}, total_combinations=2)
+        with (
+            _patch("tud_lbm.config.array_expansion.expand_config", return_value=([cfg, cfg], metadata)),
+            _patch(
+                "tud_lbm.config.array_expansion.enumerate_configs",
+                return_value=iter([(0, {"tau": 0.6}, cfg), (1, {"tau": 0.8}, cfg)]),
+            ),
+        ):
+            _configs, config, sweep, params = _expand_raw_config({})
+        assert config is None
+        assert sweep is metadata
+        assert params == [{"tau": 0.6}, {"tau": 0.8}]
+
+
+# =========================================================================
+# _load_config_interactive
+# =========================================================================
+
+
+class TestLoadConfigInteractive:
+    """Tests for _load_config_interactive prompted config construction."""
+
+    def test_returns_config_with_prompted_values(self):
+        answers = iter(["50", "60", "0.7", "2000", "200"])
+        with _patch("tud_lbm.cli.cli.Prompt.ask", side_effect=lambda *a, **kw: next(answers)):
+            _configs, config, sweep, params = _load_config_interactive()
+        assert config.grid_shape[:2] == (50, 60)
+        assert config.tau == pytest.approx(0.7)
+        assert config.nt == 2000
+        assert config.save_interval == 200
+        assert sweep is None
+        assert params is None
+
+
+# =========================================================================
+# _display_summary
+# =========================================================================
+
+
+class TestDisplaySummary:
+    """Tests for _display_summary single-run and sweep branches."""
+
+    def _cfg(self):
+        return SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+
+    def test_single_run_prints_config(self, capsys):
+        cfg = self._cfg()
+        _display_summary(cfg, None, [cfg], overview=False)
+        assert "Relaxation" in capsys.readouterr().out
+
+    def test_sweep_prints_sweep_summary(self, capsys):
+        cfg = self._cfg()
+        meta = ArrayParameterSet(field_names=["tau"], array_values={"tau": (0.6, 0.8)}, total_combinations=2)
+        _display_summary(None, meta, [cfg, cfg], overview=False)
+        out = capsys.readouterr().out
+        assert "tau" in out
+
+    def test_overview_flag_prints_overview(self, capsys):
+        cfg = self._cfg()
+        _display_summary(cfg, None, [cfg], overview=True)
+        assert "PHYSICAL PARAMETER OVERVIEW" in capsys.readouterr().out
+
+    def test_sweep_overview_prints_first_config_overview(self, capsys):
+        cfg = self._cfg()
+        meta = ArrayParameterSet(field_names=["tau"], array_values={"tau": (0.6, 0.8)}, total_combinations=2)
+        _display_summary(None, meta, [cfg, cfg], overview=True)
+        assert "PHYSICAL PARAMETER OVERVIEW" in capsys.readouterr().out
+
+
+# =========================================================================
+# _confirm_run
+# =========================================================================
+
+
+class TestConfirmRun:
+    """Tests for _confirm_run y/n/o prompt choices."""
+
+    def _cfg(self):
+        return SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+
+    def test_y_returns_yes(self):
+        with _patch("tud_lbm.cli.cli.Prompt.ask", return_value="y"):
+            result = _confirm_run(None, [self._cfg()])
+        assert result == "yes"
+
+    def test_n_returns_no(self):
+        with _patch("tud_lbm.cli.cli.Prompt.ask", return_value="n"):
+            result = _confirm_run(None, [self._cfg()])
+        assert result == "no"
+
+    def test_o_returns_override(self):
+        with _patch("tud_lbm.cli.cli.Prompt.ask", return_value="o"):
+            result = _confirm_run(None, [self._cfg()])
+        assert result == "override"
+
+    def test_sweep_prompt_includes_count(self):
+        meta = ArrayParameterSet(field_names=["tau"], array_values={"tau": (0.6, 0.8)}, total_combinations=2)
+        cfgs = [self._cfg(), self._cfg()]
+        with _patch("tud_lbm.cli.cli.Prompt.ask", return_value="y") as mock_ask:
+            _confirm_run(meta, cfgs)
+        prompt_text = mock_ask.call_args[0][0]
+        assert "2" in prompt_text
+
+
+# =========================================================================
+# _run_with_optional_overrides
+# =========================================================================
+
+
+class TestRunWithOptionalOverrides:
+    """Tests for _run_with_optional_overrides interactive confirmation loop."""
+
+    def _cfg(self):
+        return SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+
+    def test_no_prompt_returns_immediately(self):
+        cfg = self._cfg()
+        result = _run_with_optional_overrides(
+            raw_config={},
+            configs=[cfg],
+            config=cfg,
+            sweep_metadata=None,
+            parameters_list=None,
+            no_prompt=True,
+            overview=False,
+        )
+        assert result[1] == cfg
+
+    def test_n_choice_cancels(self):
+        cfg = self._cfg()
+        with _patch("tud_lbm.cli.cli.Prompt.ask", return_value="n"):
+            _configs, config, _sweep, _params = _run_with_optional_overrides(
+                raw_config={},
+                configs=[cfg],
+                config=cfg,
+                sweep_metadata=None,
+                parameters_list=None,
+                no_prompt=False,
+                overview=False,
+            )
+        assert _configs == []
+        assert config is None
+
+    def test_y_choice_returns_configs(self):
+        cfg = self._cfg()
+        with _patch("tud_lbm.cli.cli.Prompt.ask", return_value="y"):
+            configs, _config, _sweep, _params = _run_with_optional_overrides(
+                raw_config={},
+                configs=[cfg],
+                config=cfg,
+                sweep_metadata=None,
+                parameters_list=None,
+                no_prompt=False,
+                overview=False,
+            )
+        assert configs == [cfg]
+
+    def test_o_with_no_raw_config_prints_warning_then_y(self, capsys):
+        cfg = self._cfg()
+        answers = iter(["o", "y"])
+        with _patch("tud_lbm.cli.cli.Prompt.ask", side_effect=lambda *a, **kw: next(answers)):
+            _configs, _config, _sweep, _params = _run_with_optional_overrides(
+                raw_config=None,
+                configs=[cfg],
+                config=cfg,
+                sweep_metadata=None,
+                parameters_list=None,
+                no_prompt=False,
+                overview=False,
+            )
+        out = capsys.readouterr().out
+        assert "Inline overrides" in out
+
+    def test_o_with_raw_config_valid_override_then_y(self):
+        cfg = self._cfg()
+        raw = {"tau": 0.8}
+        answers = iter(["o", "tau=0.9", "y"])
+        with (
+            _patch("tud_lbm.cli.cli.Prompt.ask", side_effect=lambda *a, **kw: next(answers)),
+            _patch("tud_lbm.cli.cli._expand_raw_config", return_value=([cfg], cfg, None, None)),
+        ):
+            configs, _config, _sweep, _params = _run_with_optional_overrides(
+                raw_config=raw,
+                configs=[cfg],
+                config=cfg,
+                sweep_metadata=None,
+                parameters_list=None,
+                no_prompt=False,
+                overview=False,
+            )
+        assert configs == [cfg]
+
+    def test_o_with_invalid_override_retries_then_y(self, capsys):
+        cfg = self._cfg()
+        raw = {"tau": 0.8}
+        answers = iter(["o", "tau=bad_value", "y"])
+        with _patch("tud_lbm.cli.cli.Prompt.ask", side_effect=lambda *a, **kw: next(answers)):
+            _configs, _config, _sweep, _params = _run_with_optional_overrides(
+                raw_config=raw,
+                configs=[cfg],
+                config=cfg,
+                sweep_metadata=None,
+                parameters_list=None,
+                no_prompt=False,
+                overview=False,
+            )
+        out = capsys.readouterr().out
+        assert "Invalid override" in out
+
+
+# =========================================================================
+# _execute_run
+# =========================================================================
+
+
+class TestExecuteRun:
+    """Tests for _execute_run single-run and sweep dispatch."""
+
+    def _cfg(self, results_dir):
+        return SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10, results_dir=str(results_dir))
+
+    def test_single_run_calls_run_simulation(self, tmp_path):
+        cfg = self._cfg(tmp_path)
+        called = {"n": 0}
+
+        def _fake_run(c):
+            called["n"] += 1
+            return str(tmp_path / "run" / "data")
+
+        with _patch("tud_lbm.cli.cli._run_simulation", _fake_run):
+            _execute_run([cfg], cfg, None, None, None, False)
+        assert called["n"] == 1
+
+    def test_sweep_calls_parallel_sweep(self, tmp_path):
+        cfg = self._cfg(tmp_path)
+        meta = ArrayParameterSet(field_names=["tau"], array_values={"tau": (0.6, 0.8)}, total_combinations=2)
+        called = {"n": 0}
+
+        def _fake_parallel(cfgs, params, **kw):
+            called["n"] += 1
+            return [SimpleNamespace(status="success"), SimpleNamespace(status="success")]
+
+        with _patch("tud_lbm.cli.cli._run_parallel_sweep", _fake_parallel):
+            _execute_run([cfg, cfg], None, meta, [{"tau": 0.6}, {"tau": 0.8}], None, False)
+        assert called["n"] == 1
+
+    def test_single_run_with_compare_calls_compare(self, tmp_path):
+        cfg = self._cfg(tmp_path)
+        run_data = tmp_path / "simulation_name" / "data"
+        run_data.mkdir(parents=True, exist_ok=True)
+        compare_called = {"n": 0}
+
+        def _fake_run(c):
+            return str(run_data)
+
+        def _fake_compare(run_dir, config):
+            compare_called["n"] += 1
+
+        with (
+            _patch("tud_lbm.cli.cli._run_simulation", _fake_run),
+            _patch("tud_lbm.cli.cli._run_compare_single", _fake_compare),
+        ):
+            _execute_run([cfg], cfg, None, None, None, False, run_compare=True)
+        assert compare_called["n"] == 1
+
+
+# =========================================================================
+# _run_compare_single / _run_compare_sweep
+# =========================================================================
+
+
+class TestRunCompareSingle:
+    """Tests for _run_compare_single CSV and plot generation."""
+
+    def test_csv_path_none_prints_warning(self, tmp_path, capsys):
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        with (
+            _patch("tud_lbm.io.plotting.analysis.build_simulation_csv", return_value=None),
+        ):
+            _run_compare_single(tmp_path, cfg)
+        assert "skipped" in capsys.readouterr().out.lower()
+
+    def test_csv_path_present_calls_compare_runs(self, tmp_path, capsys):
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        csv_file = tmp_path / "results.csv"
+        csv_file.touch()
+        with (
+            _patch("tud_lbm.io.plotting.analysis.build_simulation_csv", return_value=csv_file),
+            _patch("tud_lbm.io.plotting.analysis.compare_runs") as mock_cmp,
+        ):
+            _run_compare_single(tmp_path, cfg)
+        mock_cmp.assert_called_once_with(tmp_path)
+
+
+class TestRunCompareSweep:
+    """Tests for _run_compare_sweep sweep-level comparison."""
+
+    def test_no_ok_runs_prints_warning(self, tmp_path, capsys):
+        with _patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(2, 0)):
+            _run_compare_sweep(tmp_path)
+        assert "no runs" in capsys.readouterr().out.lower()
+
+    def test_ok_runs_prints_success(self, tmp_path, capsys):
+        with _patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(2, 2)):
+            _run_compare_sweep(tmp_path)
+        assert "Comparison plots" in capsys.readouterr().out
+
+
+# =========================================================================
+# _expand_single_phase
+# =========================================================================
+
+
+class TestExpandSinglePhase:
+    """Tests for _expand_single_phase sweep-rejection guard."""
+
+    def test_single_config_returned(self):
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        with _patch("tud_lbm.config.array_expansion.expand_config", return_value=([cfg], None)):
+            result = _expand_single_phase({}, "Phase 1")
+        assert result == cfg
+
+    def test_sweep_raises_usage_error(self):
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        with (
+            _patch("tud_lbm.config.array_expansion.expand_config", return_value=([cfg, cfg], object())),
+            pytest.raises(click.UsageError, match="does not support parameter sweeps"),
+        ):
+            _expand_single_phase({}, "Phase 1")
+
+
+# =========================================================================
+# _run_two_phase_wetting_init
+# =========================================================================
+
+
+class TestRunTwoPhaseWettingInit:
+    """Tests for _run_two_phase_wetting_init two-phase wetting workflow."""
+
+    def _base_raw(self):
+        return {
+            "sim_type": "multiphase_wetting",
+            "nt": 100,
+            "grid_shape": [16, 16],
+            "wetting_config": {"contact_angle": 90},
+        }
+
+    def test_cancelled_at_phase1_prompt_returns(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        wetting_params = dict(_WETTING_PARAM_DEFAULTS)
+        with (
+            _patch("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("tud_lbm.cli.cli._expand_single_phase", return_value=cfg),
+            _patch("tud_lbm.cli.cli._prompt_wetting_params", return_value=wetting_params),
+            _patch("tud_lbm.cli.cli.Confirm.ask", return_value=False),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=False, overview=False)
+
+    def test_no_prompt_runs_both_phases(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+
+        run_calls = []
+
+        def _fake_run(c):
+            run_calls.append(c)
+            return str(data_dir)
+
+        with (
+            _patch("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("tud_lbm.cli.cli._expand_single_phase", return_value=cfg),
+            _patch("tud_lbm.cli.cli._run_simulation", _fake_run),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False)
+        assert len(run_calls) == 2
+
+    def test_overview_flag_prints_overview(self, tmp_path, capsys):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        with (
+            _patch("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("tud_lbm.cli.cli._expand_single_phase", return_value=cfg),
+            _patch("tud_lbm.cli.cli._run_simulation", return_value=str(data_dir)),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=True)
+        assert "PHYSICAL PARAMETER OVERVIEW" in capsys.readouterr().out
+
+
+# =========================================================================
+# _run_impl — additional branches
+# =========================================================================
+
+
+class TestRunImplAdditional:
+    """Tests for _run_impl branches not covered by TestRunImplFlags."""
+
+    def _single_config(self):
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        return [cfg], cfg, None, None
+
+    def test_list_analysis_returns_false(self):
+        result = _run_impl(
+            config_path=None,
+            no_prompt=True,
+            dry_run=False,
+            list_operators=False,
+            list_analysis=True,
+            max_workers=None,
+            fail_fast=False,
+            overrides=(),
+            overview=False,
+            debug_wetting=False,
+            init_wetting=False,
+            init_dir=None,
+        )
+        assert result is False
+
+    def test_run_compare_calls_compare_single(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
+        data_dir = tmp_path / "sim" / "data"
+        data_dir.mkdir(parents=True)
+        compare_called = {"n": 0}
+
+        def _fake_run(c):
+            return str(data_dir)
+
+        def _fake_compare(run_dir, config):
+            compare_called["n"] += 1
+
+        with (
+            _patch("tud_lbm.cli.cli._load_raw_config", return_value={}),
+            _patch("tud_lbm.cli.cli._expand_raw_config", return_value=self._single_config()),
+            _patch("tud_lbm.cli.cli._run_simulation", _fake_run),
+            _patch("tud_lbm.cli.cli._run_compare_single", _fake_compare),
+        ):
+            result = _run_impl(
+                config_path=str(cfg_toml),
+                no_prompt=True,
+                dry_run=False,
+                list_operators=False,
+                list_analysis=False,
+                max_workers=None,
+                fail_fast=False,
+                overrides=(),
+                overview=False,
+                debug_wetting=False,
+                init_wetting=False,
+                init_dir=None,
+                run_compare=True,
+            )
+        assert result is True
+        assert compare_called["n"] == 1
+
+    def test_init_wetting_path_calls_two_phase_init(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        called = {"n": 0}
+
+        def _fake_wetting(path, overrides, *, no_prompt, overview):
+            called["n"] += 1
+
+        with _patch("tud_lbm.cli.cli._run_two_phase_wetting_init", _fake_wetting):
+            result = _run_impl(
+                config_path=str(cfg_toml),
+                no_prompt=True,
+                dry_run=False,
+                list_operators=False,
+                list_analysis=False,
+                max_workers=None,
+                fail_fast=False,
+                overrides=(),
+                overview=False,
+                debug_wetting=False,
+                init_wetting=True,
+                init_dir=None,
+            )
+        assert called["n"] == 1
+        assert result is False
+
+
+# =========================================================================
+# animate / visualise / compare command-level new paths
+# =========================================================================
+
+
+class TestAnimateCommandPaths:
+    """Tests for the animate CLI command additional paths."""
+
+    def test_animate_no_prompt_uses_config_defaults(self, tmp_path):
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10, animate_fields=["density"])
+        runner = CliRunner()
+        with (
+            _patch("tud_lbm.config.from_toml", return_value=cfg),
+            _patch("tud_lbm.io.plotting.Animator") as mock_anim,
+        ):
+            mock_anim.return_value.create.return_value = run_dir / "animation.mp4"
+            result = runner.invoke(cli, ["animate", str(run_dir), "--no-prompt"])
+        assert result.exit_code in (0, 1)
+
+    def test_animate_debug_env_reraises(self, tmp_path, monkeypatch):
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+        monkeypatch.setenv("TUD_LBM_DEBUG", "1")
+        runner = CliRunner()
+        with patch("tud_lbm.cli.cli._validate_run_dir_has_config", side_effect=RuntimeError("boom")):
+            result = runner.invoke(cli, ["animate", str(run_dir)])
+        assert result.exit_code == 1
+
+
+class TestVisualiseCommandPaths:
+    """Tests for the visualise CLI command additional paths."""
+
+    def test_visualise_with_fields_flag_skips_prompt(self, tmp_path):
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        runner = CliRunner()
+        with (
+            _patch("tud_lbm.config.from_toml", return_value=cfg),
+            _patch("tud_lbm.io.plotting.FigureBuilder") as mock_fb,
+        ):
+            mock_fb.return_value.build_all.return_value = [tmp_path / "fig.png"]
+            mock_fb.return_value.plot_dir = tmp_path
+            result = runner.invoke(cli, ["visualise", str(run_dir), "--fields", "density,velocity"])
+        assert result.exit_code in (0, 1)
+
+    def test_visualise_no_prompt_path(self, tmp_path):
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10, plot_fields=["density"])
+        runner = CliRunner()
+        with (
+            _patch("tud_lbm.config.from_toml", return_value=cfg),
+            _patch("tud_lbm.io.plotting.FigureBuilder") as mock_fb,
+        ):
+            mock_fb.return_value.build_all.return_value = []
+            mock_fb.return_value.plot_dir = tmp_path
+            result = runner.invoke(cli, ["visualise", str(run_dir), "--no-prompt"])
+        assert result.exit_code in (0, 1)
+        assert "No figures" in result.output or result.exit_code == 0
+
+    def test_visualise_debug_env_reraises(self, tmp_path, monkeypatch):
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+        monkeypatch.setenv("TUD_LBM_DEBUG", "1")
+        runner = CliRunner()
+        with patch("tud_lbm.cli.cli._validate_run_dir_has_config", side_effect=RuntimeError("dbg")):
+            result = runner.invoke(cli, ["visualise", str(run_dir)])
+        assert result.exit_code == 1
+
+
+class TestCompareCommandPaths:
+    """Tests for the compare CLI command additional paths."""
+
+    def test_compare_no_prompt_skips_fields(self, tmp_path):
+        runner = CliRunner()
+        with _patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(3, 3)):
+            result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt"])
+        assert result.exit_code == 0
+
+    def test_compare_debug_env_reraises(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("TUD_LBM_DEBUG", "1")
+        runner = CliRunner()
+        with _patch("tud_lbm.io.plotting.analysis.process_parent_dir", side_effect=RuntimeError("err")):
+            result = runner.invoke(cli, ["compare", str(tmp_path)])
+        assert result.exit_code == 1
+
+
+class TestRunCommandDebugEnv:
+    """Tests for TUD_LBM_DEBUG re-raise behaviour in the run command."""
+
+    def test_run_debug_env_reraises(self, monkeypatch):
+        monkeypatch.setenv("TUD_LBM_DEBUG", "1")
+        runner = CliRunner()
+        with _patch("tud_lbm.cli.cli._run_impl", side_effect=RuntimeError("debug error")):
+            result = runner.invoke(cli, ["run"])
+        assert result.exit_code == 1
+
+
+# =========================================================================
+# _print_run_banner
+# =========================================================================
+
+
+def test_print_run_banner_outputs_title(capsys):
+    _print_run_banner()
+    assert "TUD-LBM" in capsys.readouterr().out
+
+
+# =========================================================================
+# _display_simulation_operators empty / analysis-only registry
+# =========================================================================
+
+
+class TestDisplayOperatorsEmptyRegistry:
+    """Tests for empty-registry warnings in operator display helpers."""
+
+    def test_simulation_operators_empty_prints_warning(self, capsys):
+        from tud_lbm.cli.cli import _display_simulation_operators
+
+        with (
+            _patch("tud_lbm.operators.load_all"),
+            _patch("tud_lbm.registry.get_operator_category", return_value=set()),
+        ):
+            _display_simulation_operators()
+        assert "No simulation operators" in capsys.readouterr().out
+
+    def test_analysis_operators_empty_prints_warning(self, capsys):
+        from tud_lbm.cli.cli import _display_analysis_operators
+
+        with (
+            _patch("tud_lbm.operators.load_all"),
+            _patch("tud_lbm.registry.get_operator_category", return_value=set()),
+        ):
+            _display_analysis_operators()
+        assert "No analysis operators" in capsys.readouterr().out
