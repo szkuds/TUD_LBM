@@ -9,7 +9,7 @@ import numpy as np
 from matplotlib.colors import TABLEAU_COLORS
 from tud_lbm.io.physical_parameters import _get_setup_contact_line_length
 from tud_lbm.io.plotting.base import AnalysisPlot
-from tud_lbm.registry import analysis_operator
+from tud_lbm.registry import comparison_operator
 
 if TYPE_CHECKING:
     import matplotlib.axes
@@ -212,7 +212,7 @@ class _BaseAnalysisPlot(AnalysisPlot):
         )
 
 
-@analysis_operator(name="max_velocity")
+@comparison_operator(name="max_velocity")
 class MaxVelocityPlot(_BaseAnalysisPlot):
     """Plot maximum velocity magnitude over time."""
 
@@ -229,7 +229,7 @@ class MaxVelocityPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@analysis_operator(name="density_ratio")
+@comparison_operator(name="density_ratio")
 class DensityRatioPlot(_BaseAnalysisPlot):
     """Plot max/min density ratio over time."""
 
@@ -252,7 +252,7 @@ class DensityRatioPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": np.asarray(vals, dtype=float)}
 
 
-@analysis_operator(name="avg_density")
+@comparison_operator(name="avg_density")
 class AvgDensityPlot(_BaseAnalysisPlot):
     """Plot average density over time."""
 
@@ -269,7 +269,7 @@ class AvgDensityPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@analysis_operator(name="contact_angle_left")
+@comparison_operator(name="contact_angle_left")
 class ContactAngleLeftPlot(_BaseAnalysisPlot):
     """Plot left contact angle over time."""
 
@@ -286,7 +286,7 @@ class ContactAngleLeftPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@analysis_operator(name="contact_angle_right")
+@comparison_operator(name="contact_angle_right")
 class ContactAngleRightPlot(_BaseAnalysisPlot):
     """Plot right contact angle over time."""
 
@@ -321,7 +321,7 @@ class _ContactLineSpeedBase(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@analysis_operator(name="contact_line_speed_left")
+@comparison_operator(name="contact_line_speed_left")
 class ContactLineSpeedLeftPlot(_ContactLineSpeedBase):
     """Plot left contact-line speed over time."""
 
@@ -333,7 +333,7 @@ class ContactLineSpeedLeftPlot(_ContactLineSpeedBase):
     required_keys = ("cll_left",)
 
 
-@analysis_operator(name="contact_line_speed_right")
+@comparison_operator(name="contact_line_speed_right")
 class ContactLineSpeedRightPlot(_ContactLineSpeedBase):
     """Plot right contact-line speed over time."""
 
@@ -345,7 +345,7 @@ class ContactLineSpeedRightPlot(_ContactLineSpeedBase):
     required_keys = ("cll_right",)
 
 
-@analysis_operator(name="contact_angles_pair")
+@comparison_operator(name="contact_angles_pair")
 class ContactAnglesPairPlot(AnalysisPlot):
     """Render paired left/right contact-angle history."""
 
@@ -380,7 +380,7 @@ class ContactAnglesPairPlot(AnalysisPlot):
         ax.legend(loc="best", fontsize=8)
 
 
-@analysis_operator(name="contact_line_speeds_pair")
+@comparison_operator(name="contact_line_speeds_pair")
 class ContactLineSpeedsPairPlot(AnalysisPlot):
     """Render paired left/right contact-line speed history."""
 
@@ -417,7 +417,7 @@ class ContactLineSpeedsPairPlot(AnalysisPlot):
         ax.legend(loc="best", fontsize=8)
 
 
-@analysis_operator(name="simulation_csv")
+@comparison_operator(name="simulation_csv")
 class SimulationCsvExport(AnalysisPlot):
     """Export per-timestep droplet metrics to ``simulation_data.csv``."""
 
@@ -916,7 +916,10 @@ def compare_runs(parent_dir: str | Path) -> None:
 # -- CLI entry point ----------------------------------------------------------
 
 
-def process_parent_dir(parent_dir: str | Path) -> tuple[int, int]:
+def process_parent_dir(
+    parent_dir: str | Path,
+    fields: list[str] | None = None,
+) -> tuple[int, int]:
     """Discover runs, export per-run CSVs, and generate comparison plots.
 
     Discovers runs by searching for ``config.toml`` files recursively.
@@ -926,10 +929,14 @@ def process_parent_dir(parent_dir: str | Path) -> tuple[int, int]:
 
     Args:
         parent_dir: Absolute or relative path to the parent directory.
+        fields: Comparison operator names to run as per-run analysis plots.
+            When ``None``, no per-run analysis plots are generated beyond the CSV.
 
     Returns:
         A tuple ``(n_runs_found, n_runs_with_csv)``.
     """
+    from tud_lbm.io.plotting.figure_builder import FigureBuilder
+
     parent = Path(parent_dir)
     skip_dirs = {"init", _COMPARISON_DIR}
 
@@ -950,8 +957,12 @@ def process_parent_dir(parent_dir: str | Path) -> tuple[int, int]:
     n_ok = 0
     for rd in run_dirs:
         config = _safe_load_config(rd / _CONFIG_TOML)
-        if config and build_simulation_csv(rd, config) is not None:
+        if config is None:
+            continue
+        if build_simulation_csv(rd, config) is not None:
             n_ok += 1
+        if fields:
+            FigureBuilder(config=config, run_dir=rd, fields=fields).build_analysis()
 
     if n_ok > 0:
         print("\nGenerating comparison plots...")

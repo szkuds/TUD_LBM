@@ -487,6 +487,7 @@ class TestRunImplFlags:
             no_prompt=True,
             dry_run=False,
             list_operators=True,
+            list_analysis=False,
             max_workers=None,
             fail_fast=False,
             overrides=(),
@@ -513,6 +514,7 @@ class TestRunImplFlags:
                 no_prompt=True,
                 dry_run=True,
                 list_operators=False,
+                list_analysis=False,
                 max_workers=None,
                 fail_fast=False,
                 overrides=(),
@@ -535,6 +537,7 @@ class TestRunImplFlags:
                 no_prompt=True,
                 dry_run=True,
                 list_operators=False,
+                list_analysis=False,
                 max_workers=None,
                 fail_fast=False,
                 overrides=(),
@@ -566,6 +569,7 @@ class TestRunImplFlags:
                 no_prompt=True,
                 dry_run=True,
                 list_operators=False,
+                list_analysis=False,
                 max_workers=None,
                 fail_fast=False,
                 overrides=(),
@@ -590,6 +594,7 @@ class TestRunImplFlags:
             no_prompt=True,
             dry_run=True,
             list_operators=False,
+            list_analysis=False,
             max_workers=None,
             fail_fast=False,
             overrides=(),
@@ -617,6 +622,7 @@ class TestRunImplFlags:
                     no_prompt=True,
                     dry_run=True,
                     list_operators=False,
+                    list_analysis=False,
                     max_workers=None,
                     fail_fast=False,
                     overrides=(),
@@ -1143,11 +1149,11 @@ def test_cli_single_config_uses_single_run(monkeypatch, tmp_path):
 
 
 def test_cli_list_operators_includes_plotting_and_analysis():
-    result = CliRunner().invoke(main, ["--list-simulation-operators"])
+    result = CliRunner().invoke(main, ["--list-simulation-analysis"])
 
     assert result.exit_code == 0
     assert "plotting" in result.output
-    assert "analysis" in result.output
+    assert "comparison" in result.output
     assert "density" in result.output
     assert "max_velocity" in result.output
     assert "simulation_csv" in result.output
