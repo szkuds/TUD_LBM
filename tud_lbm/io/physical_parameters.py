@@ -212,7 +212,7 @@ def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple
 def _format_ohnesorge_number_row(config: SimulationConfig, gamma: float, length: float, length_label: str) -> str:
     """Build Ohnesorge-number row from lattice kinematic viscosity."""
     nu = _nu(float(config.tau))
-    oh = nu * (float(config.rho_l) / (gamma * length)) ** 0.5
+    oh = nu / (gamma * length * (config.rho_l)) ** 0.5
     return _row("Oh (Ohnesorge number):", f"{oh:.6g}  [ν√(ρ_l/(γL)), {length_label}]")
 
 
