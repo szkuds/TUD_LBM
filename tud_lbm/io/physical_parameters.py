@@ -25,6 +25,31 @@ if TYPE_CHECKING:
 
 _CS2 = 1.0 / 3.0  # Speed of sound squared for D2Q9/D3Q19
 
+# Prefix remaps for analysing runs downloaded off DelftBlue: data stored under
+# /scratch/user_cluster/LBM/ on the cluster lives under /Users/local_user/ locally.
+_INIT_PATH_REMAPS: tuple[tuple[str, str], ...] = (
+    ("/scratch/sbszkudlarek/LBM/26_TUD_LBM/TUD_LBM_data/", "/Users/sbszkudlarek/TUD_LBM_data/DB/"),
+)
+
+
+def _resolve_npz_path(path: str | None) -> str | None:
+    """Return an existing path for an init NPZ, remapping known prefixes.
+
+    Falls back to the remapped location when the literal path is absent, so
+    downloaded DelftBlue runs read their real init file instead of defaulting
+    to the nominal config radius. Returns None when no existing file is found.
+    """
+    if not path:
+        return None
+    if Path(path).exists():
+        return path
+    for old, new in _INIT_PATH_REMAPS:
+        if path.startswith(old):
+            remapped = new + path[len(old) :]
+            if Path(remapped).exists():
+                return remapped
+    return None
+
 
 def _nu(tau: float) -> float:
     """Kinematic viscosity from relaxation time: nu = cs2 * (tau - 0.5)."""
@@ -135,7 +160,7 @@ def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | N
 def _get_contact_line_length_from_file(config: SimulationConfig) -> float | None:
     """Load rho from NPZ and estimate setup contact-line spacing for init_from_file."""
     init = config.initialisation if isinstance(config.initialisation, dict) else {}
-    npz_path = config.init_dir or init.get("npz_path")
+    npz_path = _resolve_npz_path(config.init_dir or init.get("npz_path"))
     if not npz_path:
         return None
 

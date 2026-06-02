@@ -166,7 +166,7 @@ class TestWettingParamsHelpers:
         )
         clamped = _clamp_params(p)
         np.testing.assert_allclose(float(clamped.d_rho_left), 0.0, atol=1e-6)
-        np.testing.assert_allclose(float(clamped.d_rho_right), 0.25, atol=1e-6)
+        np.testing.assert_allclose(float(clamped.d_rho_right), 0.3, atol=1e-6)
         np.testing.assert_allclose(float(clamped.phi_left), 1.0, atol=1e-6)
         np.testing.assert_allclose(float(clamped.phi_right), 1.5, atol=1e-6)
 

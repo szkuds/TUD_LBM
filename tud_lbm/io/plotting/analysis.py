@@ -5,6 +5,7 @@ import math
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import NamedTuple
 import numpy as np
 from matplotlib.colors import TABLEAU_COLORS
 from tud_lbm.io.physical_parameters import _get_setup_contact_line_length
@@ -459,23 +460,30 @@ _CSV_FILENAME = "simulation_data.csv"
 _COMPARISON_DIR = "comparison_analysis"
 
 
-def _resolve_r_zero(config: SimulationConfig) -> float:
+class RZero(NamedTuple):
+    """Resolved R₀ plus whether the nominal-radius fallback was used."""
+
+    value: float
+    used_fallback: bool
+
+
+def _resolve_r_zero(config: SimulationConfig) -> RZero:
     """Initial droplet radius in lattice units.
 
-    Derived from half of the setup contact-line length if available.
-    Otherwise, defaults to ``initialisation.radii[0] * min(nx, ny)``, matching the
-    computation used when the contact line length cannot be determined.
-    Falls back to 27.0 when all keys are absent.
+    Derived from half of the setup contact-line length when the init file is
+    readable. Otherwise falls back to ``initialisation.radii[0] * min(nx, ny)``
+    (or 27.0 when no radii are given) and flags ``used_fallback=True``.
     """
     length = _get_setup_contact_line_length(config)
     if length is not None:
-        return length / 2.0
+        return RZero(length / 2.0, used_fallback=False)
 
     init = config.initialisation
     radii = init.get("radii", []) if isinstance(init, dict) else []
     if radii:
-        return float(radii[0]) * float(min(config.grid_shape[0], config.grid_shape[1]))
-    return 27.0
+        nominal = float(radii[0]) * float(min(config.grid_shape[0], config.grid_shape[1]))
+        return RZero(nominal, used_fallback=True)
+    return RZero(27.0, used_fallback=True)
 
 
 def _inclination_angle_deg(config: SimulationConfig) -> float:
@@ -694,6 +702,13 @@ def build_simulation_csv(run_dir: str | Path, config: SimulationConfig) -> Path 
     sigma_lg = _sigma_lg(config)
     nu = (float(config.tau) - 0.5) / 3.0
     r_zero = _resolve_r_zero(config)
+    if r_zero.used_fallback:
+        print(
+            f"WARNING: R_0 fell back to nominal radius ({r_zero.value:.4g} lu); "
+            f"init file not found (init_dir={config.init_dir!r}). "
+            "avg_x_location_norm uses radii*min_dim, not measured L/2.",
+            file=sys.stderr,
+        )
     incl_deg = _inclination_angle_deg(config)
     save_iv = max(config.save_interval, 1)
 
@@ -707,7 +722,7 @@ def build_simulation_csv(run_dir: str | Path, config: SimulationConfig) -> Path 
         return None
     df = _finalize_csv_dataframe(
         df,
-        r_zero=r_zero,
+        r_zero=r_zero.value,
         nu=nu,
         sigma_lg=sigma_lg,
         incl_deg=incl_deg,
