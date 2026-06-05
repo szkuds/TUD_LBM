@@ -31,8 +31,8 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import as_completed
 from dataclasses import dataclass
 from dataclasses import replace
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
@@ -314,7 +314,7 @@ def save_sweep_log(
 
     manifest = {
         "sweep_id": str(uuid.uuid4()),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "total_simulations": len(results),
         "successful": sum(1 for r in results if r.status == "success"),
         "failed": sum(1 for r in results if r.status == "failed"),

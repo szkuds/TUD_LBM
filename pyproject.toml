@@ -36,7 +36,7 @@ keywords = ["LBM", "TUD", "Delft University of Technology"]
 license = { file = "LICENSE" }
 name = "tud_lbm"
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 version = "2026.0.1"
 
 [project.optional-dependencies]
@@ -46,6 +46,7 @@ dev = [
   "coverage",
   "ruff",
   "python-dotenv",
+  "ty",
 ]
 docs = [
   "sphinx",
@@ -108,7 +109,7 @@ command_line = "-m pytest"
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = py310,py311,py312,py313,py314
+envlist = py311,py312,py313,py314
 skip_missing_interpreters = true
 [testenv]
 commands = pytest

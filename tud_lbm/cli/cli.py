@@ -14,11 +14,11 @@ Example Python usage::
 
 import os
 import sys
+import tomllib
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 import click
-import tomllib
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
@@ -901,10 +901,11 @@ def _execute_run(
 ) -> None:
     """Dispatch to single-run or parallel-sweep execution."""
     if sweep_metadata is None:
-        # Single-run path: _run_simulation returns the data directory (string)
-        data_dir = _run_simulation(config)
-        if run_compare:
-            _run_compare_single(Path(data_dir).parent, config)
+        if config is not None:
+            # Single-run path: _run_simulation returns the data directory (string)
+            data_dir = _run_simulation(config)
+            if run_compare:
+                _run_compare_single(Path(data_dir).parent, config)
     else:
         results = _run_parallel_sweep(
             configs,

@@ -2,8 +2,8 @@
 
 import logging
 import sys
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 from pathlib import Path
 from typing import Any
 from tud_lbm.config.simulation_config import SimulationConfig
@@ -95,7 +95,7 @@ class SimulationIO:
 
     def _create_timestamped_directory(self) -> str:
         """Creates a unique, timestamped directory for a single simulation run."""
-        timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d/%H-%M-%S")
+        timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%d/%H-%M-%S")
         base = Path(self.base_dir)
         suffix = f"{timestamp}_{self.simulation_name}" if self.simulation_name else timestamp
         run_dir = base / suffix

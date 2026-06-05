@@ -18,9 +18,9 @@ Example usage::
 
 from __future__ import annotations
 import dataclasses
+import tomllib
 from pathlib import Path
 from typing import Any
-import tomllib
 
 try:
     import tomli_w

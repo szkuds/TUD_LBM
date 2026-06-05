@@ -14,8 +14,8 @@ Public API::
 
 from __future__ import annotations
 import math
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
@@ -332,7 +332,7 @@ def build_overview(config: SimulationConfig) -> str:
     lines += [
         sep,
         "PHYSICAL PARAMETER OVERVIEW",
-        f"Generated : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+        f"Generated : {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}",
         sep,
     ]
 
