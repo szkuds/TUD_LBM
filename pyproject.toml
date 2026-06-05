@@ -91,6 +91,7 @@ markers = [
   "integration: Integration tests that validate end-to-end physics pipelines",
   "unit: Unit tests for individual operators",
   "conformance: Tests that verify operators satisfy protocol contracts",
+  "slow: Full-pipeline smoke tests (run with -m slow or on schedule, not in fast CI)",
 ]
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@
 
 [simulation_type]
 simulation_name = "Test complex simulation"
-type = "multiphase"
+type = "multiphase_hysteresis"
 grid_shape = [201, 201]
 lattice_type = "D2Q9"
 tau = 0.99
@@ -23,7 +23,7 @@ init_type = "wetting"
 [multiphase]
 kappa = 0.017
 rho_l = 1.0
-rho_v = 0.33
+rho_v = 0.001
 interface_width = 5
 eos = "double-well"
 
