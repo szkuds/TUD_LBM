@@ -443,6 +443,59 @@ class DifferentialOperator(Protocol):
         ...
 
 
+@runtime_checkable
+class EOSFunction(Protocol):
+    """Bound EOS callable — evaluates bulk chemical potential for a density field.
+
+    An ``EOSFunction`` is the *output* of an :class:`EOSOperator` builder.
+    All EOS parameters are already captured in the closure; the only
+    runtime argument is the density field.
+
+    Signature::
+
+        def eos_fn(rho) -> mu_0
+    """
+
+    def __call__(self, rho: jnp.ndarray) -> jnp.ndarray:
+        """Evaluate the bulk chemical potential μ₀(ρ).
+
+        Args:
+            rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
+
+        Returns:
+            Bulk chemical potential ``μ₀``, same shape as *rho*.
+        """
+        ...
+
+
+@runtime_checkable
+class EOSOperator(Protocol):
+    """EOS operator — builds a parameter-bound :class:`EOSFunction` from ``mp``.
+
+    Each registered EOS model exposes a builder that accepts a
+    :class:`~tud_lbm.operators.macroscopic.MultiphaseParams` and returns
+    a closure over the relevant scalars.  The returned callable is then
+    passed into the shared multiphase macroscopic computation.
+
+    Signature::
+
+        def build_eos(mp) -> EOSFunction
+    """
+
+    def __call__(self, mp: Any) -> EOSFunction:
+        """Build a bound EOS callable for the given multiphase parameters.
+
+        Args:
+            mp: :class:`~tud_lbm.operators.macroscopic.MultiphaseParams`
+                carrying all EOS-specific scalars (e.g. ``kappa``,
+                ``rho_l``, ``rho_v``, ``a_eos``, …).
+
+        Returns:
+            A bound :class:`EOSFunction` ``eos_fn(rho) -> mu_0``.
+        """
+        ...
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # IO / Persistence Ports
 # ══════════════════════════════════════════════════════════════════════════════
@@ -587,6 +640,8 @@ __all__ = [
     "CollisionOperator",
     "ConfigReader",
     "DifferentialOperator",
+    "EOSFunction",
+    "EOSOperator",
     "EquilibriumOperator",
     "ExtraState",
     "ExtraStatePlugin",

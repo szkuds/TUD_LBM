@@ -202,7 +202,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     equilibrium_fn = build_equilibrium_fn("wb")
     streaming_fn = build_streaming_fn("standard")
     macroscopic_fn = (
-        build_macroscopic_fn(mp_params.eos)  # EOS-aware for multiphase
+        build_macroscopic_fn("multiphase")  # unified multiphase op; EOS selected from mp.eos
         if "multiphase" in config.sim_type
         else build_macroscopic_fn("standard")  # single-phase
     )

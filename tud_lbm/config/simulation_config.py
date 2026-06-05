@@ -101,10 +101,10 @@ def _valid_collision_schemes() -> set[str]:
 def _valid_eos() -> set[str]:
     """Get valid EOS names. Returns empty set if operators not loaded."""
     try:
-        import tud_lbm.operators.macroscopic  # noqa: F401
+        import tud_lbm.operators.macroscopic.eos  # noqa: F401
         from tud_lbm.registry import get_operator_names
 
-        return get_operator_names("macroscopic") - {"standard"}
+        return get_operator_names("eos")
     except (ImportError, KeyError):
         return set()  # Operators not yet loaded - skip validation
 
@@ -153,7 +153,7 @@ class SimulationConfig:
 
     # ── Collision ────────────────────────────────────────────────
     collision_scheme: str = array_field(default="bgk")
-    k_diag: tuple[float, ...] | None = array_field(default=None)
+    k_diag: tuple[float, ...] | None = field(default=None)
 
     # ── Boundary conditions (ONLY topology: which BC on which face) ──
     bc_config: dict[str, Any] | None = field(
@@ -203,6 +203,10 @@ class SimulationConfig:
     rho_v: float | None = array_field(default=None, section="multiphase")
     interface_width: int | None = array_field(default=None, section="multiphase")
     g: float | None = array_field(default=None, section="multiphase")
+    a_eos: float | None = array_field(default=None, section="multiphase")
+    b_eos: float | None = array_field(default=None, section="multiphase")
+    r_eos: float | None = array_field(default=None, section="multiphase")
+    t_eos: float | None = array_field(default=None, section="multiphase")
 
     # ── Extra / extensible ───────────────────────────────────────
     extra: dict[str, Any] = field(default_factory=dict, metadata={CONFIG_SECTION: "extra"})
@@ -357,6 +361,12 @@ class SimulationConfig:
         if self.eos not in valid_eos:
             msg = f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'"
             raise ValueError(msg)
+
+        if self.eos == "carnahan-starling":
+            for name in ("a_eos", "b_eos", "r_eos", "t_eos"):
+                if getattr(self, name) is None:
+                    msg = f"'{name}' is required when eos = 'carnahan-starling'"
+                    raise ValueError(msg)
 
     @property
     def is_single_phase(self) -> bool:

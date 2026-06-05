@@ -145,7 +145,11 @@ class TestRegistryPopulated:
 
     def test_macroscopic_registered(self):
         names = get_operator_names("macroscopic")
-        assert names >= {"standard", "double-well"}
+        assert names >= {"standard", "multiphase"}
+
+    def test_eos_registered(self):
+        names = get_operator_names("eos")
+        assert names >= {"double-well", "carnahan-starling"}
 
     def test_force_registered(self):
         names = get_operator_names("force")

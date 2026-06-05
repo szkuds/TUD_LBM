@@ -131,6 +131,10 @@ class TomlAdapter(ConfigAdapter):
         if "grid_shape" in sim_table and not isinstance(sim_table["grid_shape"], list):
             sim_table["grid_shape"] = tuple(sim_table["grid_shape"])
 
+        # After the grid_shape conversion block, add:
+        if "k_diag" in sim_table and isinstance(sim_table["k_diag"], list):
+            sim_table["k_diag"] = tuple(sim_table["k_diag"])
+
         # ── Validate sim_type ────────────────────────────────────────
         valid_types = (
             "single_phase",
