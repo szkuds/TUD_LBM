@@ -22,7 +22,6 @@ from tud_lbm.operators.protocols import BoundaryOperator
 from tud_lbm.operators.protocols import CollisionOperator
 from tud_lbm.operators.protocols import DifferentialOperator
 from tud_lbm.operators.protocols import EOSFunction
-from tud_lbm.operators.protocols import EOSOperator
 from tud_lbm.operators.protocols import EquilibriumOperator
 from tud_lbm.operators.protocols import ForceOperator
 from tud_lbm.operators.protocols import InitialiserOperator
@@ -42,7 +41,6 @@ __all__ = [
     "CollisionOperator",
     "DifferentialOperator",
     "EOSFunction",
-    "EOSOperator",
     "EquilibriumOperator",
     "ForceOperator",
     "InitialiserOperator",

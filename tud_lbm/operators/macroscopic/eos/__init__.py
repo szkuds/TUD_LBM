@@ -11,7 +11,6 @@ from tud_lbm.operators.factory import build_operator
 if TYPE_CHECKING:
     from tud_lbm.operators.macroscopic import MultiphaseParams
     from tud_lbm.operators.protocols import EOSFunction
-    from tud_lbm.operators.protocols import EOSOperator
 
 # Auto-discover EOS modules in this subpackage.
 auto_load_operators("tud_lbm.operators.macroscopic.eos")
@@ -32,7 +31,7 @@ def build_eos_fn(eos: str, mp: MultiphaseParams) -> EOSFunction:
     Raises:
         ValueError: If *eos* is not registered in the EOS registry.
     """
-    eos_builder: EOSOperator = build_operator("eos", eos)
+    eos_builder = build_operator("eos", eos)
     return eos_builder(mp)
 
 

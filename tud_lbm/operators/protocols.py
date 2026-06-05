@@ -447,8 +447,8 @@ class DifferentialOperator(Protocol):
 class EOSFunction(Protocol):
     """Bound EOS callable — evaluates bulk chemical potential for a density field.
 
-    An ``EOSFunction`` is the *output* of an :class:`EOSOperator` builder.
-    All EOS parameters are already captured in the closure; the only
+    All EOS parameters are captured in the closure by
+    :func:`~tud_lbm.operators.macroscopic.eos.build_eos_fn`; the only
     runtime argument is the density field.
 
     Signature::
@@ -464,34 +464,6 @@ class EOSFunction(Protocol):
 
         Returns:
             Bulk chemical potential ``μ₀``, same shape as *rho*.
-        """
-        ...
-
-
-@runtime_checkable
-class EOSOperator(Protocol):
-    """EOS operator — builds a parameter-bound :class:`EOSFunction` from ``mp``.
-
-    Each registered EOS model exposes a builder that accepts a
-    :class:`~tud_lbm.operators.macroscopic.MultiphaseParams` and returns
-    a closure over the relevant scalars.  The returned callable is then
-    passed into the shared multiphase macroscopic computation.
-
-    Signature::
-
-        def build_eos(mp) -> EOSFunction
-    """
-
-    def __call__(self, mp: Any) -> EOSFunction:
-        """Build a bound EOS callable for the given multiphase parameters.
-
-        Args:
-            mp: :class:`~tud_lbm.operators.macroscopic.MultiphaseParams`
-                carrying all EOS-specific scalars (e.g. ``kappa``,
-                ``rho_l``, ``rho_v``, ``a_eos``, …).
-
-        Returns:
-            A bound :class:`EOSFunction` ``eos_fn(rho) -> mu_0``.
         """
         ...
 
@@ -641,7 +613,6 @@ __all__ = [
     "ConfigReader",
     "DifferentialOperator",
     "EOSFunction",
-    "EOSOperator",
     "EquilibriumOperator",
     "ExtraState",
     "ExtraStatePlugin",
