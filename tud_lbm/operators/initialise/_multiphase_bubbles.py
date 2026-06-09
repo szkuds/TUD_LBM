@@ -96,7 +96,8 @@ def init_multiphase_bubbles_2d(
             raise ValueError(msg)
 
         radius = float(radius_fraction) * min_dim
-        cx, cy = fx * nx, fy * ny
+        cx = round(fx * (nx - 1))
+        cy = round(fy * (ny - 1))
         distance = jnp.sqrt((x - cx) ** 2 + (y - cy) ** 2)
         profile = avg + sign * amp * jnp.tanh((distance - radius) / interface_width)
         rho_2d = combine(rho_2d, profile)

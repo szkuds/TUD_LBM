@@ -203,6 +203,15 @@ def macroscopic_operator(
     return register_operator("macroscopic", name=name, **meta)
 
 
+def eos_operator(
+    *,
+    name: str | None = None,
+    **meta: object,
+) -> Callable[[_OT], _OT]:
+    """Register an equation-of-state operator (kind ``"eos"``)."""
+    return register_operator("eos", name=name, **meta)
+
+
 def initialise_operator(
     *,
     name: str | None = None,

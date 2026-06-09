@@ -1,78 +1,38 @@
-"""Unit tests for optional dependencies pattern (optax for hysteresis optimization).
+"""Behavioral tests for optional dependency handling.
 
-These tests validate that:
-1. The package can be installed without optional dependencies
-2. Lazy imports work correctly to defer loading of optional packages
-3. Clear error messages guide users to install optional packages
-4. pyproject.toml is configured correctly
+Validates that the hysteresis path raises a clear, actionable ImportError
+when optax is absent, rather than an obscure AttributeError or crash.
+The ``mock_optax_missing`` fixture (defined in ``tests/conftest.py``)
+simulates a missing optax installation via monkeypatching.
 """
 
-from pathlib import Path
-
-# Get project root from environment or infer it
-PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
+from __future__ import annotations
+import pytest
 
 
-class TestEnvironmentConfiguration:
-    """Tests for conda and environment configuration."""
+class TestOptaxOptionalDependency:
+    """Hysteresis path raises ImportError with install hint when optax is absent."""
 
-    def test_environment_yml_exists(self):
-        """Environment.yml file exists for conda configuration.
+    def test_import_optax_raises_helpful_message_when_missing(self, mock_optax_missing) -> None:
+        """_import_optax() raises ImportError with pip-install hint when optax is missing.
 
-        Given: project directory
-        When: checking for environment.yml
-        Then: file should exist
+        Given: optax is not installed (simulated by mock_optax_missing)
+        When: the lazy optax importer is called
+        Then: ImportError is raised with an actionable message
         """
-        env_file = Path(PROJECT_ROOT) / "environment.yml"
-        assert env_file.exists(), "environment.yml should exist for conda app_setup"
+        from tud_lbm.operators.wetting.hysteresis.hysteresis import _import_optax
 
-    def test_environment_yml_contains_core_deps(self):
-        """Environment.yml contains runner dependencies.
+        with pytest.raises(ImportError, match="pip install optax"):
+            _import_optax()
 
-        Given: environment.yml exists
-        When: reading the file
-        Then: should list jax, numpy, scipy
+    def test_optax_available_in_normal_operation(self, mock_optax_present) -> None:
+        """_import_optax() returns the optax module when optax is installed.
+
+        Given: optax is installed
+        When: the lazy optax importer is called
+        Then: the optax module is returned without error
         """
-        env_file = Path(PROJECT_ROOT) / "environment.yml"
-        with env_file.open() as f:
-            env_content = f.read()
+        from tud_lbm.operators.wetting.hysteresis.hysteresis import _import_optax
 
-        for package in ["jax", "numpy", "scipy", "pytest"]:
-            assert package in env_content.lower(), f"{package} should be in environment.yml"
-
-    def test_environment_yml_comments_optax(self):
-        """Environment.yml comments out optax (optional).
-
-        Given: environment.yml exists
-        When: reading the file
-        Then: optax should be commented out, not in main dependencies
-        """
-        env_file = Path(PROJECT_ROOT) / "environment.yml"
-        with env_file.open() as f:
-            lines = f.readlines()
-
-        # Find optax - should be commented
-        optax_lines = [line for line in lines if "optax" in line.lower()]
-        assert len(optax_lines) > 0, "optax should be mentioned (as optional)"
-
-        # At least one should be commented
-        has_commented = any(line.strip().startswith("#") for line in optax_lines)
-        assert has_commented, "optax should be commented as optional in environment.yml"
-
-
-class TestInstallationMethods:
-    """Tests for different installation methods."""
-
-    def test_env_file_existzs(self):
-        """.env.example_for_test file exists for configuration.
-
-        Given: project directory
-        When: checking for .env.example_for_test
-        Then: file should exist with PROJECT_ROOT definition
-        """
-        env_example = Path(PROJECT_ROOT) / ".env.example"
-        assert env_example.exists(), ".env.example should exist"
-
-        with env_example.open() as f:
-            content = f.read()
-        assert "PROJECT_ROOT" in content, ".env.example_for_test should define PROJECT_ROOT"
+        optax = _import_optax()
+        assert optax is not None

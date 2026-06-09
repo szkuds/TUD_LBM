@@ -107,8 +107,8 @@ def _clamp_params(params: WettingParams) -> WettingParams:
     return WettingParams(
         phi_left=jnp.clip(params.phi_left, 1.0, 1.5),
         phi_right=jnp.clip(params.phi_right, 1.0, 1.5),
-        d_rho_left=jnp.clip(params.d_rho_left, 0.0, 0.25),
-        d_rho_right=jnp.clip(params.d_rho_right, 0.0, 0.25),
+        d_rho_left=jnp.clip(params.d_rho_left, 0.0, 0.3),
+        d_rho_right=jnp.clip(params.d_rho_right, 0.0, 0.3),
     )
 
 
@@ -361,13 +361,13 @@ def _update_wetting_state_impl(
         return _optimise_single_param(right_objective, fallback, _mask_right_d_rho, optimiser, max_iter)[0]
 
     final_params = jax.lax.cond(
-        phi_active_left & (new_params.phi_left <= _PHI_NEUTRAL),
+        phi_active_left & (new_params.phi_left < _PHI_NEUTRAL),
         _fallback_d_rho_left,
         lambda p: p,
         new_params,
     )
     final_params = jax.lax.cond(
-        phi_active_right & (new_params.phi_right <= _PHI_NEUTRAL),
+        phi_active_right & (new_params.phi_right < _PHI_NEUTRAL),
         _fallback_d_rho_right,
         lambda p: p,
         final_params,

@@ -92,7 +92,7 @@ def _apply_common_step(
     rho: jnp.ndarray,
     u: jnp.ndarray,
     force_tot: jnp.ndarray,
-    gradient_density: DifferentialOperator = None,
+    gradient_density: DifferentialOperator | None = None,
 ) -> State:
     """Apply equilibrium → collision (+source) → streaming → BCs.
 

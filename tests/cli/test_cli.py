@@ -30,7 +30,7 @@ from tud_lbm.pipeline.parallel_runner import SimulationResult
 
 try:
     from tud_lbm.cli.cli import _apply_overrides
-    from tud_lbm.cli.cli import _normalize_override_path
+    from tud_lbm.cli.cli import _normalise_override_path
     from tud_lbm.cli.cli import _parse_override_argument
     from tud_lbm.cli.cli import _set_nested_override
 except ImportError:
@@ -163,67 +163,67 @@ class TestNormalizeOverridePath:
     """Tests for normalizing TOML section paths to field names."""
 
     def test_simple_field_no_normalization(self):
-        result = _normalize_override_path("tau")
+        result = _normalise_override_path("tau")
         assert result == ["tau"]
 
     def test_nested_field_no_normalization(self):
-        result = _normalize_override_path("gravity_force.force_g")
+        result = _normalise_override_path("gravity_force.force_g")
         assert result == ["gravity_force", "force_g"]
 
     def test_simulation_type_prefix_removed(self):
-        result = _normalize_override_path("simulation_type.tau")
+        result = _normalise_override_path("simulation_type.tau")
         assert result == ["tau"]
 
     def test_simulation_type_with_nested_field(self):
-        result = _normalize_override_path("simulation_type.simulation_name")
+        result = _normalise_override_path("simulation_type.simulation_name")
         assert result == ["simulation_name"]
 
     def test_boundary_conditions_mapped_to_bc_config(self):
-        result = _normalize_override_path("boundary_conditions.top")
+        result = _normalise_override_path("boundary_conditions.top")
         assert result == ["bc_config", "top"]
 
     def test_wetting_mapped_to_wetting_config(self):
-        result = _normalize_override_path("wetting.contact_angle")
+        result = _normalise_override_path("wetting.contact_angle")
         assert result == ["wetting_config", "contact_angle"]
 
     def test_hysteresis_mapped_to_hysteresis_config(self):
-        result = _normalize_override_path("hysteresis.angle_max")
+        result = _normalise_override_path("hysteresis.angle_max")
         assert result == ["hysteresis_config", "angle_max"]
 
     def test_gravity_force_not_mapped(self):
-        result = _normalize_override_path("gravity_force.force_g")
+        result = _normalise_override_path("gravity_force.force_g")
         assert result == ["gravity_force", "force_g"]
 
     def test_electric_force_not_mapped(self):
-        result = _normalize_override_path("electric_force.permittivity")
+        result = _normalise_override_path("electric_force.permittivity")
         assert result == ["electric_force", "permittivity"]
 
     def test_multiphase_prefix_removed(self):
-        result = _normalize_override_path("multiphase.kappa")
+        result = _normalise_override_path("multiphase.kappa")
         assert result == ["kappa"]
 
     def test_output_prefix_removed(self):
-        result = _normalize_override_path("output.results_dir")
+        result = _normalise_override_path("output.results_dir")
         assert result == ["results_dir"]
 
     def test_reject_empty_path(self):
         with pytest.raises(ValueError, match="cannot be empty"):
-            _normalize_override_path("")
+            _normalise_override_path("")
 
     def test_reject_dots_only(self):
         with pytest.raises(ValueError, match="cannot be empty"):
-            _normalize_override_path("...")
+            _normalise_override_path("...")
 
     def test_reject_prefix_without_field(self):
         with pytest.raises(ValueError, match="does not reference a field"):
-            _normalize_override_path("simulation_type")
+            _normalise_override_path("simulation_type")
 
     def test_reject_prefix_with_dots_only(self):
         with pytest.raises(ValueError, match="does not reference a field"):
-            _normalize_override_path("simulation_type...")
+            _normalise_override_path("simulation_type...")
 
     def test_strip_whitespace_in_segments(self):
-        result = _normalize_override_path("gravity_force . force_g")
+        result = _normalise_override_path("gravity_force . force_g")
         assert result == ["gravity_force", "force_g"]
 
 

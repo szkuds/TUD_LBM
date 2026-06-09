@@ -95,12 +95,14 @@ class StreamingOperator(Protocol):
         self,
         f: jnp.ndarray,
         lattice: Lattice,
+        bc_config: dict | None = None,
     ) -> jnp.ndarray:
         """Propagate populations across the domain.
 
         Args:
             f: Populations, shape ``(nx, ny, nz, q, 1)``.
             lattice: :class:`~setup.lattice.Lattice` with velocity vectors ``c``.
+            bc_config: Optional bc configuration, shape ``(nx, ny, nz, 1, 1)``.
 
         Returns:
             Post-streaming populations, same shape as *f*.
@@ -431,14 +433,41 @@ class DifferentialOperator(Protocol):
         def compute_derivative(field) → derivative_field
     """
 
-    def __call__(self, field: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, field: jnp.ndarray, *args: Any, **kwargs: Any) -> jnp.ndarray:
         """Compute a spatial derivative.
 
         Args:
             field: Scalar or vector field, shape ``(nx, ny, 1, 1)`` or ``(nx, ny, 1, 2)``.
+            *args: Extra positional args accepted by parametric wetting variants.
+            **kwargs: Extra keyword args accepted by parametric wetting variants.
 
         Returns:
             Derivative field, matching or broadened shape.
+        """
+        ...
+
+
+@runtime_checkable
+class EOSFunction(Protocol):
+    """Bound EOS callable — evaluates bulk chemical potential for a density field.
+
+    All EOS parameters are captured in the closure by
+    :func:`~tud_lbm.operators.macroscopic.eos.build_eos_fn`; the only
+    runtime argument is the density field.
+
+    Signature::
+
+        def eos_fn(rho) -> mu_0
+    """
+
+    def __call__(self, rho: jnp.ndarray) -> jnp.ndarray:
+        """Evaluate the bulk chemical potential μ₀(ρ).
+
+        Args:
+            rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
+
+        Returns:
+            Bulk chemical potential ``μ₀``, same shape as *rho*.
         """
         ...
 
@@ -587,6 +616,7 @@ __all__ = [
     "CollisionOperator",
     "ConfigReader",
     "DifferentialOperator",
+    "EOSFunction",
     "EquilibriumOperator",
     "ExtraState",
     "ExtraStatePlugin",

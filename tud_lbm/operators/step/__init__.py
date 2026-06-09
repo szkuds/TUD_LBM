@@ -14,6 +14,7 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import cast
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 
@@ -44,7 +45,7 @@ def build_step_fn(scheme: str = "single_phase") -> StepOperator:
         >>> step = build_step_fn("single_phase")
         >>> new_state = step(setup, state)
     """
-    return build_operator("update_timestep", scheme)
+    return cast("StepOperator", build_operator("update_timestep", scheme))
 
 
 __all__ = [

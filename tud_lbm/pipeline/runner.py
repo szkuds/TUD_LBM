@@ -50,9 +50,9 @@ import jax.numpy as jnp
 from tud_lbm.pipeline.state.state import State
 
 if TYPE_CHECKING:
-    from setup import SimulationSetup
     from tud_lbm.config import SimulationConfig
     from tud_lbm.io import SimulationIO
+    from tud_lbm.pipeline.setup import SimulationSetup
 
 
 # ── State initialisation ─────────────────────────────────────────────

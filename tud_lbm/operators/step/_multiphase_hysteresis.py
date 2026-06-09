@@ -11,13 +11,13 @@ operators from setup (gradient_density_wetting, laplacian_density_wetting).
 from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
+import jax.numpy as jnp
 from tud_lbm.operators.force import compute_total_force_ext
 from tud_lbm.operators.step._common import _multiphase_pipeline
 from tud_lbm.pipeline.state import update_extra_state
 from tud_lbm.registry import update_timestep_operator
 
 if TYPE_CHECKING:
-    import jax.numpy as jnp
     from jax import Array
     from tud_lbm.operators.protocols import DifferentialOperator
     from tud_lbm.operators.wetting._params import WettingParams
@@ -153,10 +153,11 @@ def step_multiphase_hysteresis(setup: SimulationSetup, state: State) -> State:
     new_state = state._replace(f=f_out, rho=rho, u=u, force=force_tot, force_ext=force_ext, t=state.t + 1)
 
     # 5. Update extra state — trial_step_fn forwarded so wetting plugin can run optimiser
+    _force_ext_arr = force_ext if force_ext is not None else jnp.zeros(1)
     return update_extra_state(
         setup,
         state,
         new_state,
         force_ext=force_ext,
-        trial_step_fn=partial(_trial_step, setup, f_out, force_ext),
+        trial_step_fn=partial(_trial_step, setup, f_out, _force_ext_arr),
     )

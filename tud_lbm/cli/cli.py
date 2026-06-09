@@ -14,11 +14,11 @@ Example Python usage::
 
 import os
 import sys
+import tomllib
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 import click
-import tomllib
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
@@ -132,7 +132,7 @@ def _parse_override_argument(raw_override: str) -> tuple[str, object]:
     return path, value
 
 
-def _normalize_override_path(path: str) -> list[str]:
+def _normalise_override_path(path: str) -> list[str]:
     """Map TOML table paths to raw-config keys and split into segments.
 
     Normalizes TOML section aliases to their field names:
@@ -150,16 +150,16 @@ def _normalize_override_path(path: str) -> list[str]:
         List of path segments (e.g., ["tau"] or ["gravity_force", "force_g"]).
 
     Raises:
-        ValueError: If path is empty or becomes empty after normalization.
+        ValueError: If path is empty or becomes empty after normalisation.
 
     Examples:
-        _normalize_override_path('simulation_type.tau')
+        _normalise_override_path('simulation_type.tau')
         # ['tau']
 
-        _normalize_override_path('gravity_force.force_g')
+        _normalise_override_path('gravity_force.force_g')
         # ['gravity_force', 'force_g']
 
-        _normalize_override_path('boundary_conditions.top')
+        _normalise_override_path('boundary_conditions.top')
         # ['bc_config', 'top']
     """
     parts = [segment.strip() for segment in path.split(".") if segment.strip()]
@@ -188,7 +188,7 @@ def _set_nested_override(raw_config: dict[str, Any], path: str, value: object) -
 
     Args:
         raw_config: The raw configuration dict to mutate.
-        path: Dotted-path string (normalized or already valid).
+        path: Dotted-path string (normalised or already valid).
         value: The typed value to assign.
 
     Raises:
@@ -203,7 +203,7 @@ def _set_nested_override(raw_config: dict[str, Any], path: str, value: object) -
         _set_nested_override(raw, 'gravity_force.force_g', 5e-7)
         # raw == {'gravity_force': {'force_g': 5e-7}}
     """
-    parts = _normalize_override_path(path)
+    parts = _normalise_override_path(path)
 
     if len(parts) == 1:
         raw_config[parts[0]] = value
@@ -790,7 +790,7 @@ def _run_two_phase_wetting_init(
 
     Phase 1 equilibrates the droplet without gravity for ``_WETTING_INIT_NT``
     steps and writes one final snapshot. Phase 2 then runs with gravity,
-    initialized from the Phase 1 snapshot.
+    initialised from the Phase 1 snapshot.
     """
     from tud_lbm.config.adapter_toml import TomlAdapter
 
@@ -901,10 +901,11 @@ def _execute_run(
 ) -> None:
     """Dispatch to single-run or parallel-sweep execution."""
     if sweep_metadata is None:
-        # Single-run path: _run_simulation returns the data directory (string)
-        data_dir = _run_simulation(config)
-        if run_compare:
-            _run_compare_single(Path(data_dir).parent, config)
+        if config is not None:
+            # Single-run path: _run_simulation returns the data directory (string)
+            data_dir = _run_simulation(config)
+            if run_compare:
+                _run_compare_single(Path(data_dir).parent, config)
     else:
         results = _run_parallel_sweep(
             configs,

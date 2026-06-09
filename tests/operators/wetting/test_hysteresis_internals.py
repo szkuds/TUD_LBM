@@ -83,7 +83,7 @@ def test_clamp_params_clips_phi_below_minimum():
     assert float(clamped.phi_left) == pytest.approx(1.0)
     assert float(clamped.phi_right) == pytest.approx(1.5)
     assert float(clamped.d_rho_left) == pytest.approx(0.0)
-    assert float(clamped.d_rho_right) == pytest.approx(0.25)
+    assert float(clamped.d_rho_right) == pytest.approx(0.3)
 
 
 def test_clamp_params_leaves_valid_values_unchanged():

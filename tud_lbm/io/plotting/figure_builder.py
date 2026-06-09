@@ -279,17 +279,19 @@ class FigureBuilder:
 
         files = [fp for _, fp in self._sorted_timed_files()]
         saved: list[Path] = []
-        for fp in files[skip:]:
-            timestep = self._extract_timestep(fp.stem)
-            if timestep is None:
-                continue
-            with np.load(fp) as raw:
-                data = {key: raw[key] for key in raw.files}
-            path = self.build(data, timestep)
-            if path is not None:
-                saved.append(path)
 
-        self.build_analysis()
+        if self._field_operators:
+            for fp in files[skip:]:
+                timestep = self._extract_timestep(fp.stem)
+                if timestep is None:
+                    continue
+                with np.load(fp) as raw:
+                    data = {key: raw[key] for key in raw.files}
+                path = self.build(data, timestep)
+                if path is not None:
+                    saved.append(path)
+
+        saved.extend(self.build_analysis())
         self.build_csv()
         return saved
 
