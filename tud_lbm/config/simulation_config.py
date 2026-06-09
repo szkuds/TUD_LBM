@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
 from typing import Literal
+from typing import cast
 from tud_lbm.config.config_overview import BASE_RESULTS_DIR
 
 CONFIG_SECTION: str = "config_section"
@@ -37,7 +38,7 @@ def array_field(
     section: str | None = None,
     nested_sweepable: bool = False,
     **kwargs: object,
-) -> field:
+) -> Any:  # noqa: ANN401
     """Field factory for array-eligible SimulationConfig fields.
 
     Args:
@@ -52,18 +53,22 @@ def array_field(
     Returns:
         A dataclass field with array-eligible metadata.
     """
-    metadata = dict(kwargs.pop("metadata", {}))
+    metadata: dict[str, Any] = cast("dict[str, Any]", kwargs.pop("metadata", {}))
     metadata[ARRAY_ELIGIBLE] = True
     if nested_sweepable:
         metadata[NESTED_SWEEPABLE] = True
     if section is not None:
         metadata[CONFIG_SECTION] = section
-    return field(default=default, default_factory=default_factory, metadata=metadata, **kwargs)
+    if default is not dataclasses.MISSING:
+        return field(default=default, metadata=metadata, **kwargs)  # ty: ignore[no-matching-overload]
+    if default_factory is not dataclasses.MISSING:
+        return field(default_factory=default_factory, metadata=metadata, **kwargs)  # ty: ignore[no-matching-overload]
+    return field(metadata=metadata, **kwargs)  # ty: ignore[no-matching-overload]
 
 
 def _normalize_sequence(value: object) -> tuple[Any, ...]:
     """Ensure value is a tuple."""
-    return tuple(value) if not isinstance(value, tuple) else value  # type: ignore[arg-type]
+    return tuple(value) if not isinstance(value, tuple) else value  # ty: ignore[invalid-argument-type]
 
 
 def _first_if_list(value: object) -> object:
@@ -75,14 +80,14 @@ def _first_if_list(value: object) -> object:
 
 def _validate_positive(value: object, name: str) -> None:
     """Validate that value is positive."""
-    if value is not None and value <= 0:  # type: ignore[operator]
+    if value is not None and value <= 0:  # ty: ignore[unsupported-operator]
         msg = f"{name} must be positive, got {value}"
         raise ValueError(msg)
 
 
 def _validate_nonnegative(value: object, name: str) -> None:
     """Validate that value is non-negative."""
-    if value is not None and value < 0:  # type: ignore[operator]
+    if value is not None and value < 0:  # ty: ignore[unsupported-operator]
         msg = f"{name} must be non-negative, got {value}"
         raise ValueError(msg)
 
@@ -265,6 +270,8 @@ class SimulationConfig:
 
     def _set_all_bcs(self) -> None:
         """Set missing BCs in bc_config to 'periodic'."""
+        if self.bc_config is None:
+            return
         for edge in ("top", "bottom", "left", "right", "front", "back"):
             if edge not in self.bc_config:
                 self.bc_config[edge] = "periodic"

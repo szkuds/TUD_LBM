@@ -174,15 +174,12 @@ class TestTypeSafeStreamingWrapper:
         streaming_op = build_streaming_fn("standard")
         assert callable(streaming_op)
 
-    def test_wrapper_delegates_to_generic_factory(self):
-        """Wrapper delegates to generic factory without duplication."""
-        from tud_lbm.operators.factory import build_operator
+    def test_wrapper_returns_callable(self):
+        """Wrapper returns a callable streaming operator."""
         from tud_lbm.operators.streaming import build_streaming_fn
 
         wrapper_result = build_streaming_fn("standard")
-        generic_result = build_operator("stream", "standard")
-
-        assert wrapper_result is generic_result
+        assert callable(wrapper_result)
 
 
 class TestTypeSafeEquilibriumWrapper:

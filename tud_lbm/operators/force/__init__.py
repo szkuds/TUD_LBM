@@ -118,7 +118,7 @@ def build_forces(
         build_fn = op.build
         compute_fn = op.compute
 
-        precomputed = build_fn(params, grid_shape, config=config, lattice=lattice)
+        precomputed = build_fn(params, grid_shape, config=config, lattice=lattice)  # ty: ignore[unknown-argument]
 
         specs.append(
             ForceParams(

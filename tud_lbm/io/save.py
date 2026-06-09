@@ -1,13 +1,19 @@
 """Input/Output handler for simulation management and logging."""
 
+from __future__ import annotations
 import logging
 import sys
 from datetime import UTC
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
-from tud_lbm.config.simulation_config import SimulationConfig
 from .output_data import output_writers
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    import numpy as np
+    from tud_lbm.config.simulation_config import SimulationConfig
 
 
 class SimulationIO:
@@ -48,7 +54,9 @@ class SimulationIO:
             write_physical_parameters(config, Path(self.run_dir) / "physical_parameters.txt")
 
         _fmt: str = (output_format[0] if isinstance(output_format, list) else output_format) or "numpy"
-        self.save_data_step = output_writers[_fmt].save_data_step.__get__(self, type(self))
+        self.save_data_step: Callable[[int, dict[str, np.ndarray]], None] = output_writers[_fmt].save_data_step.__get__(
+            self, type(self)
+        )
 
     def _setup_logging(self) -> None:
         """Configure root logger so everything printed to the console is also written to <run_dir>/simulation.log.

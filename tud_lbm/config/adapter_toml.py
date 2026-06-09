@@ -25,7 +25,7 @@ from typing import Any
 try:
     import tomli_w
 except ImportError:
-    tomli_w = None  # Optional dependency
+    tomli_w = None  # ty: ignore[invalid-assignment]  # Optional dependency
 
 from tud_lbm.config.adapter_base import ConfigAdapter
 from tud_lbm.config.simulation_config import SimulationConfig

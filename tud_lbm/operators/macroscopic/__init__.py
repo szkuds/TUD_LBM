@@ -74,7 +74,7 @@ def build_macroscopic_fn(scheme: str = "standard") -> MacroscopicOperator:
         >>> macroscopic = build_macroscopic_fn("standard")
         >>> rho, u = macroscopic(f, lattice)
     """
-    return cast("MacroscopicOperator", build_operator("macroscopic", scheme))  # type: ignore[type-var]
+    return cast("MacroscopicOperator", build_operator("macroscopic", scheme))
 
 
 def build_multiphase_params(config: SimulationConfig) -> MultiphaseParams:
@@ -94,6 +94,16 @@ def build_multiphase_params(config: SimulationConfig) -> MultiphaseParams:
         if getattr(config, name, None) is None:
             msg = f"'{name}' is required for multiphase simulations"
             raise ValueError(msg)
+
+    if (
+        config.eos is None
+        or config.kappa is None
+        or config.rho_l is None
+        or config.rho_v is None
+        or config.interface_width is None
+    ):
+        msg = "Required multiphase fields are None after validation"
+        raise ValueError(msg)
 
     return MultiphaseParams(
         eos=config.eos,

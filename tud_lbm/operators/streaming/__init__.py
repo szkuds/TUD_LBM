@@ -18,8 +18,6 @@ from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 
 if TYPE_CHECKING:
-    import jax.numpy as jnp
-    from tud_lbm.lattice.lattice import Lattice
     from tud_lbm.operators.protocols import StreamingOperator
 
 # Auto-discover and import private operator modules for registry registration
@@ -57,11 +55,16 @@ def build_streaming_fn(
         >>> f_streamed = stream(f, lattice)
     """
     op = build_operator("stream", scheme)
+    _bc = bc_config
 
-    def _stream(f: jnp.ndarray, lattice: Lattice) -> jnp.ndarray:
-        return cast("jnp.ndarray", op(f, lattice, bc_config))
+    def _stream(
+        f: object,
+        lattice: object,
+        bc_config: dict | None = None,  # noqa: ARG001
+    ) -> object:
+        return op(f, lattice, _bc)
 
-    return _stream
+    return cast("StreamingOperator", _stream)
 
 
 __all__ = [

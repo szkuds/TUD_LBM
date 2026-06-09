@@ -24,4 +24,8 @@ def _eos_carnahan_starling(
 @eos_operator(name="carnahan-starling")
 def build_carnahan_starling_eos(mp: MultiphaseParams) -> EOSFunction:
     """Return ``eos_fn(rho)`` for the Carnahan-Starling EOS using bound params."""
-    return lambda rho: _eos_carnahan_starling(rho, mp.a_eos, mp.b_eos, mp.r_eos, mp.t_eos)
+    if mp.a_eos is None or mp.b_eos is None or mp.r_eos is None or mp.t_eos is None:
+        msg = "a_eos, b_eos, r_eos, t_eos are all required for Carnahan-Starling EOS"
+        raise ValueError(msg)
+    a, b, r, t = mp.a_eos, mp.b_eos, mp.r_eos, mp.t_eos
+    return lambda rho: _eos_carnahan_starling(rho, a, b, r, t)
