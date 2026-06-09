@@ -12,6 +12,7 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import cast
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 
@@ -39,7 +40,7 @@ def build_differential_fn(scheme: str) -> DifferentialOperator:
     Raises:
         ValueError: If scheme is not registered.
     """
-    return build_operator("differential", scheme)
+    return cast("DifferentialOperator", build_operator("differential", scheme))
 
 
 def build_diff_ops(

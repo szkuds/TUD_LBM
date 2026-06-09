@@ -5,6 +5,7 @@ Public API: build_eos_fn()
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import cast
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 
@@ -32,7 +33,7 @@ def build_eos_fn(eos: str, mp: MultiphaseParams) -> EOSFunction:
         ValueError: If *eos* is not registered in the EOS registry.
     """
     eos_builder = build_operator("eos", eos)
-    return eos_builder(mp)
+    return cast("EOSFunction", eos_builder(mp))
 
 
 __all__ = ["build_eos_fn"]

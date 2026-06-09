@@ -13,26 +13,35 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import cast
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 
 if TYPE_CHECKING:
+    import jax.numpy as jnp
+    from tud_lbm.lattice.lattice import Lattice
     from tud_lbm.operators.protocols import StreamingOperator
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("tud_lbm.operators.streaming")
 
 
-def build_streaming_fn(scheme: str = "standard") -> StreamingOperator:
+def build_streaming_fn(
+    scheme: str = "standard",
+    bc_config: dict | None = None,
+) -> StreamingOperator:
     """Return a streaming operator satisfying StreamingOperator protocol.
 
     Args:
         scheme: Streaming model name ("standard" or others).
                 Defaults to "standard" (pull-style streaming).
+        bc_config: Boundary-condition config used to determine which axes
+            are non-periodic. ``None`` means fully periodic — no zero-fill.
 
     Returns:
-        A callable satisfying the StreamingOperator protocol.
-        Can be called as: operator(f, lattice) → f_streamed
+        A callable ``(f, lattice) -> f_streamed`` satisfying StreamingOperator.
+        The *bc_config* is bound in a thin closure so all call sites keep
+        the two-argument signature ``streaming_fn(f, lattice)``.
 
         Type-checkers see this as a StreamingOperator, so:
             op: StreamingOperator = build_streaming_fn("standard")
@@ -44,10 +53,15 @@ def build_streaming_fn(scheme: str = "standard") -> StreamingOperator:
 
     Examples:
         >>> from tud_lbm.operators.streaming import build_streaming_fn
-        >>> stream = build_streaming_fn("standard")
+        >>> stream = build_streaming_fn("standard", bc_config={"top": "bounce-back"})
         >>> f_streamed = stream(f, lattice)
     """
-    return build_operator("stream", scheme)
+    op = build_operator("stream", scheme)
+
+    def _stream(f: jnp.ndarray, lattice: Lattice) -> jnp.ndarray:
+        return cast("jnp.ndarray", op(f, lattice, bc_config))
+
+    return _stream
 
 
 __all__ = [

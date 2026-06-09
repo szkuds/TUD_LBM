@@ -15,12 +15,12 @@ _LOW_FRAC = 0.05
 
 def _apply_wetting_modification(
     edge_slice: jnp.ndarray,
-    rho_l: jnp.ndarray,
-    rho_v: jnp.ndarray,
-    phi_l: jnp.ndarray,
-    phi_r: jnp.ndarray,
-    d_rho_l: jnp.ndarray,
-    d_rho_r: jnp.ndarray,
+    rho_l: float | jnp.ndarray,
+    rho_v: float | jnp.ndarray,
+    phi_l: float | jnp.ndarray,
+    phi_r: float | jnp.ndarray,
+    d_rho_l: float | jnp.ndarray,
+    d_rho_r: float | jnp.ndarray,
     width: int,
 ) -> jnp.ndarray:
     """Apply wetting density modification at the liquid-vapour interface.

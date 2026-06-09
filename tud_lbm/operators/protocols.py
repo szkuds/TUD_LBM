@@ -95,12 +95,14 @@ class StreamingOperator(Protocol):
         self,
         f: jnp.ndarray,
         lattice: Lattice,
+        bc_config: dict | None = None,
     ) -> jnp.ndarray:
         """Propagate populations across the domain.
 
         Args:
             f: Populations, shape ``(nx, ny, nz, q, 1)``.
             lattice: :class:`~setup.lattice.Lattice` with velocity vectors ``c``.
+            bc_config: Optional bc configuration, shape ``(nx, ny, nz, 1, 1)``.
 
         Returns:
             Post-streaming populations, same shape as *f*.
@@ -431,11 +433,13 @@ class DifferentialOperator(Protocol):
         def compute_derivative(field) → derivative_field
     """
 
-    def __call__(self, field: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, field: jnp.ndarray, *args: Any, **kwargs: Any) -> jnp.ndarray:
         """Compute a spatial derivative.
 
         Args:
             field: Scalar or vector field, shape ``(nx, ny, 1, 1)`` or ``(nx, ny, 1, 2)``.
+            *args: Extra positional args accepted by parametric wetting variants.
+            **kwargs: Extra keyword args accepted by parametric wetting variants.
 
         Returns:
             Derivative field, matching or broadened shape.

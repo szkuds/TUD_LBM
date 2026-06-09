@@ -26,8 +26,8 @@ if TYPE_CHECKING:
     import jax.numpy as jnp
     from tud_lbm.config import SimulationConfig
     from tud_lbm.operators.protocols import ForceOperator
+    from tud_lbm.pipeline.setup import SimulationSetup
     from tud_lbm.pipeline.state import State
-    from tud_lbm.setup import SimulationSetup
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("tud_lbm.operators.force")
@@ -62,7 +62,7 @@ class ForceSetup(NamedTuple):
     """
 
     specs: tuple[ForceParams, ...]
-    source_term: Callable[[Any, Any, Any, Any], Any]
+    source_term: Callable[..., Any]
 
 
 def _build_force_fn(scheme: str) -> Callable[..., object] | type:

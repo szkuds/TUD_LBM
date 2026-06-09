@@ -16,6 +16,7 @@ Example:
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import NamedTuple
+from typing import cast
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 from tud_lbm.operators.macroscopic import eos as _eos  # noqa: F401
@@ -73,7 +74,7 @@ def build_macroscopic_fn(scheme: str = "standard") -> MacroscopicOperator:
         >>> macroscopic = build_macroscopic_fn("standard")
         >>> rho, u = macroscopic(f, lattice)
     """
-    return build_operator("macroscopic", scheme)
+    return cast("MacroscopicOperator", build_operator("macroscopic", scheme))  # type: ignore[type-var]
 
 
 def build_multiphase_params(config: SimulationConfig) -> MultiphaseParams:

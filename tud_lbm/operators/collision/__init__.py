@@ -13,6 +13,7 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import cast
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 
@@ -46,7 +47,7 @@ def build_collision_fn(scheme: str) -> CollisionOperator:
         >>> bgk = build_collision_fn("bgk")
         >>> f_col = bgk(f, feq, tau)
     """
-    return build_operator("collision_models", scheme)
+    return cast("CollisionOperator", build_operator("collision_models", scheme))
 
 
 __all__ = [

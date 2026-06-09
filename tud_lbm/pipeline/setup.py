@@ -200,7 +200,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     # Build operator closures (pre-resolved at setup time)
     collision_fn = build_collision_fn(config.collision_scheme)
     equilibrium_fn = build_equilibrium_fn("wb")
-    streaming_fn = build_streaming_fn("standard")
+    streaming_fn = build_streaming_fn("standard", config.bc_config)
     macroscopic_fn = (
         build_macroscopic_fn("multiphase")  # unified multiphase op; EOS selected from mp.eos
         if "multiphase" in config.sim_type

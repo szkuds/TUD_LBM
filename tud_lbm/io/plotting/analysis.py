@@ -43,7 +43,7 @@ _WIDTH_EPS = 1e-15
 _DIR_SPLIT_PARTS = 2
 
 _LABEL_CA = r"$\mathrm{Ca}$"
-_LABEL_IT_NORM = r"$\mathrm{it}/\mathrm{it}_{\mathrm{max}}$"
+_LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
 _LABEL_X_AVG_NORM = r"$X_{\mathrm{avg}}/R_0$"
 _CONFIG_TOML = "config.toml"
 
@@ -267,6 +267,23 @@ class AvgDensityPlot(_BaseAnalysisPlot):
         """Compute average density values for each timestep file."""
         iters, snapshots = _load_timesteps(files, ("rho",))
         vals = np.asarray([float(np.mean(_extract_rho_2d(snap["rho"]))) for snap in snapshots], dtype=float)
+        return {"iters": iters, "values": vals}
+
+
+@comparison_operator(name="total_mass")
+class TotalMassPlot(_BaseAnalysisPlot):
+    """Plot total domain mass (sum of rho) over time."""
+
+    name = "total_mass"
+    title = "Total mass vs timestep"
+    ylabel = "sum(rho)"
+    color = "tab:olive"
+    required_keys = ("rho",)
+
+    def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
+        """Compute total mass values for each timestep file."""
+        iters, snapshots = _load_timesteps(files, ("rho",))
+        vals = np.asarray([float(np.sum(_extract_rho_2d(snap["rho"]))) for snap in snapshots], dtype=float)
         return {"iters": iters, "values": vals}
 
 

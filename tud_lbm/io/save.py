@@ -18,7 +18,7 @@ class SimulationIO:
         base_dir: str = "results",
         config: SimulationConfig | None = None,
         simulation_name: str | None = None,
-        output_format: str = "numpy",
+        output_format: str | list[str] | None = "numpy",
         config_file_type: str = ".toml",
     ):
         """Initialises the IO handler.
@@ -47,7 +47,8 @@ class SimulationIO:
 
             write_physical_parameters(config, Path(self.run_dir) / "physical_parameters.txt")
 
-        self.save_data_step = output_writers[output_format].save_data_step.__get__(self, type(self))
+        _fmt: str = (output_format[0] if isinstance(output_format, list) else output_format) or "numpy"
+        self.save_data_step = output_writers[_fmt].save_data_step.__get__(self, type(self))
 
     def _setup_logging(self) -> None:
         """Configure root logger so everything printed to the console is also written to <run_dir>/simulation.log.

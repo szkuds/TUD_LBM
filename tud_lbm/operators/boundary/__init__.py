@@ -117,7 +117,7 @@ def build_bc(
     ops = []
     for edge in _edge_order:
         bc_type = bc_config.get(edge, "periodic")
-        fn = bc_dispatch.get(bc_type)
+        fn = bc_dispatch.get("bounce-back") if bc_type == "wetting" else bc_dispatch.get(bc_type)
         if fn is not None and bc_type != "periodic":
             ops.append((edge, fn))
 

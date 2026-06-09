@@ -39,7 +39,7 @@ from typing import Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from config.simulation_config import SimulationConfig
+    from tud_lbm.config.simulation_config import SimulationConfig
 
 
 @dataclass(frozen=True)
