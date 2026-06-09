@@ -17,6 +17,7 @@ from tud_lbm.config.simulation_config import SimulationConfig
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 
+
 SIMPLE_TOML = textwrap.dedent("""\
     [simulation_type]
     simulation_name = "Test simple simulation_type"
