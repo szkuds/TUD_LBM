@@ -46,7 +46,7 @@ class TestGetHysteresisWindowChemicalStep:
         """CLL < step_x (50) → pre-step advancing/receding CA."""
         setup = _make_setup()
         cll = jnp.array(20.0)  # 20 < 50
-        ca_adv, ca_rec = _get_hysteresis_window_chemical_step(setup, cll)
+        ca_adv, ca_rec = _get_hysteresis_window_chemical_step(setup, cll)  # ty: ignore[invalid-argument-type]
 
         assert float(ca_adv) == pytest.approx(110.0)
         assert float(ca_rec) == pytest.approx(85.0)
@@ -55,7 +55,7 @@ class TestGetHysteresisWindowChemicalStep:
         """CLL >= step_x (50) → post-step advancing/receding CA."""
         setup = _make_setup()
         cll = jnp.array(60.0)  # 60 >= 50
-        ca_adv, ca_rec = _get_hysteresis_window_chemical_step(setup, cll)
+        ca_adv, ca_rec = _get_hysteresis_window_chemical_step(setup, cll)  # ty: ignore[invalid-argument-type]
 
         assert float(ca_adv) == pytest.approx(95.0)
         assert float(ca_rec) == pytest.approx(70.0)
@@ -64,7 +64,7 @@ class TestGetHysteresisWindowChemicalStep:
         """CLL exactly at step_x (50) → post-step window (condition is cll < step_x)."""
         setup = _make_setup()
         cll = jnp.array(50.0)  # exactly at boundary → NOT < 50 → post-step
-        ca_adv, ca_rec = _get_hysteresis_window_chemical_step(setup, cll)
+        ca_adv, ca_rec = _get_hysteresis_window_chemical_step(setup, cll)  # ty: ignore[invalid-argument-type]
 
         assert float(ca_adv) == pytest.approx(95.0)
         assert float(ca_rec) == pytest.approx(70.0)
@@ -75,8 +75,8 @@ class TestGetHysteresisWindowChemicalStep:
         cll_pre = jnp.array(80.0)  # 80 < 100 → pre-step
         cll_post = jnp.array(120.0)  # 120 >= 100 → post-step
 
-        ca_adv_pre, _ = _get_hysteresis_window_chemical_step(setup, cll_pre)
-        ca_adv_post, _ = _get_hysteresis_window_chemical_step(setup, cll_post)
+        ca_adv_pre, _ = _get_hysteresis_window_chemical_step(setup, cll_pre)  # ty: ignore[invalid-argument-type]
+        ca_adv_post, _ = _get_hysteresis_window_chemical_step(setup, cll_post)  # ty: ignore[invalid-argument-type]
 
         assert float(ca_adv_pre) == pytest.approx(110.0)
         assert float(ca_adv_post) == pytest.approx(95.0)

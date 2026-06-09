@@ -997,7 +997,7 @@ def _run_with_optional_overrides(
 
 
 def _run_impl(
-    config_path: str,
+    config_path: str | None,
     no_prompt: bool,
     dry_run: bool,
     list_operators: bool,
@@ -1029,6 +1029,9 @@ def _run_impl(
     _validate_cli_args(overrides, config_path, init_wetting=init_wetting, init_dir=init_dir)
 
     if init_wetting:
+        if config_path is None:
+            msg = "config_path is required for wetting initialisation"
+            raise ValueError(msg)
         _run_two_phase_wetting_init(config_path, overrides, no_prompt=no_prompt, overview=overview)
         console.print()
         console.print(

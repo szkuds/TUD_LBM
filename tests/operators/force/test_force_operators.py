@@ -354,4 +354,5 @@ class TestElectricExtraStateUpdate:
         state = make_state(lattice, rho_value=1.0, h=hi)
 
         state_new = ElectricExtraStatePlugin.update_state(setup, state, state)
+        assert state_new.h is not None
         assert state_new.h.shape == hi.shape

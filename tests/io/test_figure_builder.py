@@ -147,10 +147,10 @@ def test_build_all_calls_build_analysis_once(tmp_path):
 
     config = SimulationConfig(plot_fields=["density", "max_velocity"])
     builder = FigureBuilder(config, run_dir=run_dir)
-    builder.build_analysis = MagicMock(return_value=[])
+    builder.build_analysis = MagicMock(return_value=[])  # ty: ignore[invalid-assignment]
 
     builder.build_all()
-    builder.build_analysis.assert_called_once()
+    builder.build_analysis.assert_called_once()  # ty: ignore[unresolved-attribute]
 
 
 def test_build_field_only_does_not_create_analysis_dir(tmp_path):

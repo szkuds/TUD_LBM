@@ -27,9 +27,9 @@ def test_cfg_value_reads_alias_and_default():
 def test_is_active_detects_wetting_or_hysteresis():
     from tud_lbm.operators.wetting._extra_state import WettingExtraStatePlugin
 
-    assert WettingExtraStatePlugin.is_active(SimpleNamespace(wetting_config={}))
-    assert WettingExtraStatePlugin.is_active(SimpleNamespace(wetting_config=None, hysteresis_config={}))
-    assert not WettingExtraStatePlugin.is_active(SimpleNamespace(wetting_config=None, hysteresis_config=None))
+    assert WettingExtraStatePlugin.is_active(SimpleNamespace(wetting_config={}))  # ty: ignore[invalid-argument-type]
+    assert WettingExtraStatePlugin.is_active(SimpleNamespace(wetting_config=None, hysteresis_config={}))  # ty: ignore[invalid-argument-type]
+    assert not WettingExtraStatePlugin.is_active(SimpleNamespace(wetting_config=None, hysteresis_config=None))  # ty: ignore[invalid-argument-type]
 
 
 def test_init_state_uses_defaults_when_wetting_cfg_missing(monkeypatch):
@@ -48,7 +48,7 @@ def test_init_state_uses_defaults_when_wetting_cfg_missing(monkeypatch):
         multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.5),
     )
 
-    out = mod.WettingExtraStatePlugin.init_state(setup)
+    out = mod.WettingExtraStatePlugin.init_state(setup)  # ty: ignore[invalid-argument-type]
     wet = out["wetting"]
     assert float(wet.phi_left) == 1.0
     assert float(wet.phi_right) == 1.0
@@ -63,7 +63,7 @@ def test_update_state_early_return_and_update_path():
     prev_state = _state_template(wetting=None)
     setup = SimpleNamespace(wetting_fn=None)
 
-    assert WettingExtraStatePlugin.update_state(setup, prev_state, new_state) is new_state
+    assert WettingExtraStatePlugin.update_state(setup, prev_state, new_state) is new_state  # ty: ignore[invalid-argument-type]
 
     previous_wetting = WettingState(*(jnp.array(v) for v in (1, 1, 0, 0, 80, 81, 2, 3)))
     prev_state = _state_template(wetting=previous_wetting)
@@ -77,7 +77,8 @@ def test_update_state_early_return_and_update_path():
 
     marker = object()
     setup = SimpleNamespace(wetting_fn=_fake_wetting_fn)
-    updated = WettingExtraStatePlugin.update_state(setup, prev_state, new_state, trial_step_fn=marker)
+    updated = WettingExtraStatePlugin.update_state(setup, prev_state, new_state, trial_step_fn=marker)  # ty: ignore[invalid-argument-type]
 
-    assert float(updated.wetting.phi_left) == 1.5
+    assert updated.wetting is not None
+    assert float(updated.wetting.phi_left) == 1.5  # ty: ignore[unresolved-attribute]
     assert calls["trial"] is marker

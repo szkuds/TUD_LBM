@@ -250,6 +250,7 @@ class TestTomlAdapterMultiphase:
     def test_wetting_params_nested(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
         bc = bundle.bc_config
+        assert bc is not None
         assert "wetting_params" in bc
         wp = bc["wetting_params"]
         assert wp["phi_left"] == 1.0
@@ -258,6 +259,7 @@ class TestTomlAdapterMultiphase:
     def test_hysteresis_params_nested(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
         bc = bundle.bc_config
+        assert bc is not None
         assert "hysteresis_params" in bc
         hp = bc["hysteresis_params"]
         assert hp["ca_advancing"] == 90.0
@@ -287,6 +289,7 @@ class TestTomlAdapterForces:
 
     def test_gravity_force_contains_correct_params(self, multiphase_force_toml_file):
         bundle = TomlAdapter().load(multiphase_force_toml_file)
+        assert bundle.gravity_force is not None
         assert bundle.gravity_force["force_g"] == 2e-6
         assert bundle.gravity_force["inclination_angle_deg"] == 60
 

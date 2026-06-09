@@ -41,7 +41,7 @@ def test_make_wetting_ops_forwards_live_wetting_params():
     )
     wetting = _make_wetting_state()
 
-    grad, lap = mh._make_wetting_ops(setup, wetting)
+    grad, lap = mh._make_wetting_ops(setup, wetting)  # ty: ignore[invalid-argument-type]
 
     _ = grad(jnp.array(5.0))
     _ = lap(jnp.array(5.0))
@@ -83,7 +83,7 @@ def test_trial_step_defaults_to_two_steps_and_uses_last_rho(monkeypatch):
         phi_right=jnp.array(2.0),
     )
 
-    f_out, rho = mh._trial_step(setup, jnp.array(1.0), jnp.array(9.0), params)
+    f_out, rho = mh._trial_step(setup, jnp.array(1.0), jnp.array(9.0), params)  # ty: ignore[invalid-argument-type]
 
     assert float(f_out) == 3.0
     assert float(rho) == 102.0
@@ -113,7 +113,7 @@ def test_trial_step_single_step_branch(monkeypatch):
         phi_right=jnp.array(0.0),
     )
 
-    f_out, rho = mh._trial_step(setup, jnp.array(1.0), jnp.array(0.0), params)
+    f_out, rho = mh._trial_step(setup, jnp.array(1.0), jnp.array(0.0), params)  # ty: ignore[invalid-argument-type]
 
     assert float(f_out) == 3.0
     assert float(rho) == 51.0
@@ -206,6 +206,6 @@ def test_step_multiphase_hysteresis_new_state_and_trial_partial(monkeypatch):
     monkeypatch.setattr(mh, "_trial_step", fake_trial_step)
     monkeypatch.setattr(mh, "update_extra_state", fake_update_extra_state)
 
-    out_state = mh.step_multiphase_hysteresis(setup, state)
+    out_state = mh.step_multiphase_hysteresis(setup, state)  # ty: ignore[invalid-argument-type]
 
     assert int(out_state.t) == 99

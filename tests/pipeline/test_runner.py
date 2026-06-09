@@ -84,7 +84,7 @@ def _mp_setup_with_gravity():
 def _cfg(**kwargs) -> SimulationConfig:
     base = {"grid_shape": (8, 8), "tau": 0.8, "nt": 10}
     base.update(kwargs)
-    return SimulationConfig(**base)
+    return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
 # =====================================================================
@@ -175,7 +175,7 @@ class TestTFromSnapshot:
 
     def test_init_from_file_no_init_dir_returns_zero(self):
         cfg = SimpleNamespace(init_type="init_from_file", init_dir=None)
-        assert int(_t_from_snapshot(cfg)) == 0
+        assert int(_t_from_snapshot(cfg)) == 0  # ty: ignore[invalid-argument-type]
 
     def test_stem_without_timestep_prefix_returns_zero(self, tmp_path):
         npz = tmp_path / "snapshot_1000.npz"
@@ -592,6 +592,7 @@ class TestRunPure:
         final_state, trajectory = run(setup, state, nt=5)
 
         assert int(final_state.t) == 5
+        assert trajectory is not None
         assert trajectory.f.shape[0] == 5
 
     def test_final_state_no_nan(self):
@@ -614,6 +615,7 @@ class TestRunPure:
         final_state, trajectory = run(setup, state, nt=3)
 
         assert int(final_state.t) == 3
+        assert trajectory is not None
         assert trajectory.f.shape[0] == 3
 
     def test_save_interval(self):
@@ -625,6 +627,7 @@ class TestRunPure:
         final_state, trajectory = run(setup, state, nt=10, save_interval=5)
 
         assert int(final_state.t) == 10
+        assert trajectory is not None
         assert trajectory.f.shape[0] == 2
 
     def test_mass_conservation_over_trajectory(self):
@@ -647,6 +650,7 @@ class TestRunPure:
 
         _, trajectory = run(setup, state, nt=5)
 
+        assert trajectory is not None
         ts = np.array(trajectory.t)
         np.testing.assert_array_equal(ts, np.arange(1, 6))
 

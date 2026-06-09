@@ -311,7 +311,7 @@ def test_simulation_csv_export_render_shows_placeholder():
 
 def test_build_simulation_csv_skips_wrong_sim_type(tmp_path):
     cfg = SimulationConfig(
-        sim_type="single",
+        sim_type="single",  # ty: ignore[invalid-argument-type]
         grid_shape=(8, 8),
         tau=0.8,
         nt=10,

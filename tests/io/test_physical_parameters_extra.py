@@ -101,7 +101,7 @@ def test_ensure_single_source_raises_on_both():
 
     cfg = SimpleNamespace(gravity_force={"force_g": 1e-6}, gravity_masked_force={"force_g": 2e-6})
     with pytest.raises(ValueError, match="Only one gravity force"):
-        _ensure_single_gravity_force_source(cfg)
+        _ensure_single_gravity_force_source(cfg)  # ty: ignore[invalid-argument-type]
 
 
 def test_ensure_single_source_ok_with_one():
