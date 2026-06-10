@@ -217,7 +217,7 @@ class TestOptimiseSingleParam:
             phi_right=jnp.array(1.2),
         )
         opt = optax.adam(0.01)
-        _p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50)
+        _p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50)  # ty: ignore[invalid-argument-type]
         initial_loss = float(objective(p0))
         assert float(loss_final) < initial_loss
 
@@ -247,7 +247,7 @@ class TestOptimiseSingleParam:
 
         @jax.jit
         def run_opt(initial_params):
-            return _optimise_single_param(objective, initial_params, mask_fn, opt, 10)
+            return _optimise_single_param(objective, initial_params, mask_fn, opt, 10)  # ty: ignore[invalid-argument-type]
 
         _p_final, loss = run_opt(p0)
         assert not jnp.isnan(loss)
@@ -601,7 +601,7 @@ class TestUpdateWettingState:
         setup = build_setup(cfg)
 
         assert setup.wetting_fn is not None
-        assert setup.wetting_fn.__name__ == "update_wetting_state_chemical_step"
+        assert setup.wetting_fn.__name__ == "update_wetting_state_chemical_step"  # ty: ignore[unresolved-attribute]
         assert setup.config.wetting_config is not None
 
 

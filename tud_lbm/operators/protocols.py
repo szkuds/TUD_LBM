@@ -292,7 +292,6 @@ class HysteresisOperator(Protocol):
         wetting: Any,  # state.state.WettingState (Any avoids circular import)
         rho: jnp.ndarray,
         setup: Any,  # setup.simulation_setup.SimulationSetup (Any avoids circular import)
-        f_t: jnp.ndarray,
         **kwargs: Any,
     ) -> WettingState:  # state.state.WettingState
         """Update wetting state with hysteresis.
@@ -301,8 +300,7 @@ class HysteresisOperator(Protocol):
             wetting: Current :class:`~state.state.WettingState`.
             rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
             setup: :class:`~setup.simulation_setup.SimulationSetup`.
-            f_t: Pre-step populations, shape ``(nx, ny, nz, q, 1)``.
-            **kwargs: Operator-specific parameters (e.g., ``force_ext``).
+            **kwargs: Operator-specific parameters (e.g., ``trial_step_fn``).
 
         Returns:
             Updated :class:`~state.state.WettingState`.

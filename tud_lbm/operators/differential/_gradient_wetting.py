@@ -16,6 +16,7 @@ from tud_lbm.operators.differential._pad_utils import to_2d
 from tud_lbm.registry import register_operator
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     import jax.numpy as jnp
 
 
@@ -28,7 +29,7 @@ def build_wetting_gradient(
     rho_l: float | None = None,
     rho_v: float | None = None,
     width: int | None = None,
-) -> callable:
+) -> Callable[..., jnp.ndarray]:
     """Return a wetting-corrected gradient closure.
 
     Closes over static config (w, c, pad_mode, bc_config, rho_l, rho_v, width).

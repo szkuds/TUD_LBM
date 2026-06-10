@@ -298,6 +298,7 @@ class TestDummyOperatorAutoExposure:
             assert ops["_dummy_test_force"].target is _dummy_force_builder
 
             # Metadata carries result_field
+            assert ops["_dummy_test_force"].metadata is not None
             assert ops["_dummy_test_force"].metadata["result_field"] == "gravity_template"
         finally:
             unregister_operator("force", "_dummy_test_force")

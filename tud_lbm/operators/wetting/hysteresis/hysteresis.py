@@ -30,6 +30,8 @@ can differentiate through it.
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import Protocol
+from typing import cast
 import jax
 import jax.numpy as jnp
 from tud_lbm.config.config_overview import DEBUG_FLAG
@@ -45,12 +47,19 @@ if TYPE_CHECKING:
     from tud_lbm.pipeline.state.state import WettingState
 
 
+class _OptaxLike(Protocol):
+    """Minimal structural type for optax-compatible optimisers."""
+
+    def init(self, params: object) -> object: ...
+    def update(self, updates: object, state: object, params: object | None = ...) -> tuple[object, object]: ...
+
+
 # ── Helpers ──────────────────────────────────────────────────────────
 
 # Neutral values — the inactive parameter is snapped to these when the
 # directional split is applied.
-_PHI_NEUTRAL: float = 1.0
-_D_RHO_NEUTRAL: float = 0.0
+_PHI_NEUTRAL: jnp.ndarray = jnp.array(1.0)
+_D_RHO_NEUTRAL: jnp.ndarray = jnp.array(0.0)
 
 
 def _import_optax() -> types.ModuleType:
@@ -187,7 +196,7 @@ def _optimise_single_param(
     objective_fn: Callable[[WettingParams], jnp.ndarray],
     initial_params: WettingParams,
     grad_mask_fn: Callable[[WettingParams], WettingParams],
-    optimiser: object,
+    optimiser: _OptaxLike,
     max_iterations: int,
 ) -> tuple[WettingParams, jnp.ndarray]:
     """Run an ``optax`` optimisation loop with masked gradients.
@@ -221,8 +230,7 @@ def _optimise_single_param(
         loss, grads = jax.value_and_grad(objective_fn)(params)
         grads = grad_mask_fn(grads)
         updates, new_opt_state = optimiser.update(grads, opt_state, params)
-        new_params = optax.apply_updates(params, updates)
-        new_params = _clamp_params(new_params)
+        new_params = _clamp_params(cast("WettingParams", optax.apply_updates(params, cast("WettingParams", updates))))
         return (new_params, new_opt_state, loss, iteration + 1)
 
     init_carry = (initial_params, opt_state, initial_loss, jnp.array(0))
@@ -239,16 +247,20 @@ def _optimise_single_param(
 
 def _get_hysteresis_window_chemical_step(setup: SimulationSetup, cll: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Return (ca_advancing, ca_receding) based on CLL position relative to chemical step."""
-    step_x = setup.config.chemical_step_config["chemical_step_location"] * setup.config.grid_shape[0]
+    if setup.config.chemical_step_config is None:
+        msg = "chemical_step_config is required for chemical step hysteresis"
+        raise TypeError(msg)
+    csc = setup.config.chemical_step_config
+    step_x = csc["chemical_step_location"] * setup.config.grid_shape[0]
     return jax.lax.cond(
         cll < step_x,
         lambda: (
-            setup.config.chemical_step_config["ca_advancing_pre_step"],
-            setup.config.chemical_step_config["ca_receding_pre_step"],
+            csc["ca_advancing_pre_step"],
+            csc["ca_receding_pre_step"],
         ),
         lambda: (
-            setup.config.chemical_step_config["ca_advancing_post_step"],
-            setup.config.chemical_step_config["ca_receding_post_step"],
+            csc["ca_advancing_post_step"],
+            csc["ca_receding_post_step"],
         ),
     )
 
@@ -265,6 +277,12 @@ def _update_wetting_state_impl(
     ca_rec_right: jnp.ndarray,
 ) -> WettingState:
     """Shared implementation for hysteresis wetting updates."""
+    if setup.multiphase_params is None:
+        msg = "multiphase_params is required for hysteresis wetting update"
+        raise TypeError(msg)
+    if setup.config.hysteresis_config is None:
+        msg = "hysteresis_config is required for hysteresis wetting update"
+        raise TypeError(msg)
     mp = setup.multiphase_params
     rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
 
@@ -432,7 +450,7 @@ def update_wetting_state(
     rho_t_plus1: jnp.ndarray,
     setup: SimulationSetup,
     *,
-    trial_step_fn: Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray]] | None = None,
+    trial_step_fn: Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray]],
 ) -> WettingState:
     """Pure JAX update of wetting / hysteresis parameters.
 
@@ -465,6 +483,9 @@ def update_wetting_state(
     Returns:
         Updated :class:`WettingState`.
     """
+    if setup.config.hysteresis_config is None:
+        msg = "hysteresis_config is required for wetting state update"
+        raise TypeError(msg)
     hc = setup.config.hysteresis_config
     ca_adv = hc["ca_advancing"]
     ca_rec = hc["ca_receding"]
@@ -507,6 +528,9 @@ def update_wetting_state_chemical_step(
     Returns:
         Updated WettingState with optimised wetting parameters and measured CA/CLL.
     """
+    if setup.multiphase_params is None:
+        msg = "multiphase_params is required for chemical step hysteresis"
+        raise TypeError(msg)
     mp = setup.multiphase_params
     rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
 

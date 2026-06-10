@@ -55,6 +55,7 @@ class TestExpandConfig:
         configs, metadata = expand_config(config_dict)
 
         assert len(configs) == 4  # 2 × 2
+        assert metadata is not None
         assert metadata.total_combinations == 4
         assert metadata.field_names == frozenset({"tau", "nt"})
 
@@ -289,7 +290,7 @@ class TestNestedSweepGravityForce:
         assert len(configs) == 3
         assert meta is not None
         assert meta.field_names == frozenset({"gravity_force.inclination_angle_deg"})
-        angles = [c.gravity_force["inclination_angle_deg"] for c in configs]
+        angles = [c.gravity_force["inclination_angle_deg"] for c in configs]  # ty: ignore[not-subscriptable]
         assert angles == [30, 60, 90]
 
     def test_scalar_subkeys_preserved(self):
@@ -299,6 +300,7 @@ class TestNestedSweepGravityForce:
         )
         configs, _ = expand_config(cfg)
         for c in configs:
+            assert c.gravity_force is not None
             assert c.gravity_force["force_g"] == 5e-7
 
     def test_multiple_subkeys_cartesian_product(self):
@@ -309,6 +311,7 @@ class TestNestedSweepGravityForce:
         configs, meta = expand_config(cfg)
 
         assert len(configs) == 4  # 2 × 2
+        assert meta is not None
         assert meta.total_combinations == 4
         assert "gravity_force.force_g" in meta.field_names
         assert "gravity_force.inclination_angle_deg" in meta.field_names
@@ -322,6 +325,7 @@ class TestNestedSweepGravityForce:
         configs, meta = expand_config(cfg)
 
         assert len(configs) == 4  # 2 tau × 2 angles
+        assert meta is not None
         assert "tau" in meta.field_names
         assert "gravity_force.inclination_angle_deg" in meta.field_names
 
@@ -335,6 +339,7 @@ class TestNestedSweepGravityForce:
         for idx, (i, params, config) in enumerate(results):
             assert i == idx
             assert "gravity_force.inclination_angle_deg" in params
+            assert config.gravity_force is not None
             assert config.gravity_force["inclination_angle_deg"] == params["gravity_force.inclination_angle_deg"]
 
     def test_no_array_subkeys_returns_single(self):
@@ -368,8 +373,9 @@ class TestNestedSweepElectricForce:
         configs, meta = expand_config(cfg)
 
         assert len(configs) == 3
+        assert meta is not None
         assert "electric_force.field_strength" in meta.field_names
-        strengths = [c.electric_force["field_strength"] for c in configs]
+        strengths = [c.electric_force["field_strength"] for c in configs]  # ty: ignore[not-subscriptable]
         assert strengths == [0.01, 0.05, 0.1]
 
     def test_scalar_subkeys_preserved(self):
@@ -378,6 +384,7 @@ class TestNestedSweepElectricForce:
         )
         configs, _ = expand_config(cfg)
         for c in configs:
+            assert c.electric_force is not None
             assert c.electric_force["charge_density"] == 1.0
 
     def test_cross_axis_with_gravity_force(self):
@@ -389,6 +396,7 @@ class TestNestedSweepElectricForce:
         configs, meta = expand_config(cfg)
 
         assert len(configs) == 4  # 2 × 2
+        assert meta is not None
         assert "gravity_force.inclination_angle_deg" in meta.field_names
         assert "electric_force.field_strength" in meta.field_names
 
@@ -411,8 +419,9 @@ class TestNestedSweepWettingConfig:
         configs, meta = expand_config(cfg)
 
         assert len(configs) == 3
+        assert meta is not None
         assert "wetting_config.phi_left" in meta.field_names
-        phi_vals = [c.wetting_config["phi_left"] for c in configs]
+        phi_vals = [c.wetting_config["phi_left"] for c in configs]  # ty: ignore[not-subscriptable]
         assert phi_vals == [1.0, 1.1, 1.2]
 
     def test_scalar_subkeys_preserved(self):
@@ -426,6 +435,7 @@ class TestNestedSweepWettingConfig:
         )
         configs, _ = expand_config(cfg)
         for c in configs:
+            assert c.wetting_config is not None
             assert c.wetting_config["phi_right"] == 1.0
             assert c.wetting_config["d_rho_left"] == 0.0
 
@@ -440,6 +450,7 @@ class TestNestedSweepWettingConfig:
         )
         configs, meta = expand_config(cfg)
         assert len(configs) == 4
+        assert meta is not None
         assert "wetting_config.phi_left" in meta.field_names
         assert "wetting_config.phi_right" in meta.field_names
 
@@ -455,6 +466,7 @@ class TestNestedSweepWettingConfig:
         )
         configs, meta = expand_config(cfg)
         assert len(configs) == 4
+        assert meta is not None
         assert "tau" in meta.field_names
         assert "wetting_config.phi_left" in meta.field_names
 
@@ -469,6 +481,7 @@ class TestNestedSweepWettingConfig:
         )
         for _, params, config in enumerate_configs(cfg):
             assert "wetting_config.phi_left" in params
+            assert config.wetting_config is not None
             assert config.wetting_config["phi_left"] == params["wetting_config.phi_left"]
 
 
@@ -496,8 +509,9 @@ class TestNestedSweepHysteresisConfig:
         configs, meta = expand_config(cfg)
 
         assert len(configs) == 2
+        assert meta is not None
         assert "hysteresis_config.ca_advancing" in meta.field_names
-        angles = [c.hysteresis_config["ca_advancing"] for c in configs]
+        angles = [c.hysteresis_config["ca_advancing"] for c in configs]  # ty: ignore[not-subscriptable]
         assert angles == [100.0, 120.0]
 
     def test_scalar_subkeys_preserved(self):
@@ -511,6 +525,7 @@ class TestNestedSweepHysteresisConfig:
         )
         configs, _ = expand_config(cfg)
         for c in configs:
+            assert c.hysteresis_config is not None
             assert c.hysteresis_config["ca_receding"] == 60.0
             assert c.hysteresis_config["learning_rate"] == 0.01
             assert c.hysteresis_config["max_iterations"] == 20
@@ -526,6 +541,7 @@ class TestNestedSweepHysteresisConfig:
         )
         configs, meta = expand_config(cfg)
         assert len(configs) == 4
+        assert meta is not None
         assert "hysteresis_config.ca_advancing" in meta.field_names
         assert "hysteresis_config.ca_receding" in meta.field_names
 
@@ -548,6 +564,7 @@ class TestNestedSweepHysteresisConfig:
         )
         configs, meta = expand_config(cfg)
         assert len(configs) == 8  # 2 × 2 × 2
+        assert meta is not None
         assert "tau" in meta.field_names
         assert "wetting_config.phi_left" in meta.field_names
         assert "hysteresis_config.ca_advancing" in meta.field_names
@@ -563,6 +580,7 @@ class TestNestedSweepHysteresisConfig:
         )
         for _, params, config in enumerate_configs(cfg):
             assert "hysteresis_config.ca_advancing" in params
+            assert config.hysteresis_config is not None
             assert config.hysteresis_config["ca_advancing"] == params["hysteresis_config.ca_advancing"]
 
     def test_allow_arrays_false_raises_on_hysteresis(self):
@@ -601,6 +619,7 @@ class TestEnumerateConfigsNestedIndex:
             if "tau" in params:
                 assert config.tau == params["tau"]
             if "gravity_force.force_g" in params:
+                assert config.gravity_force is not None
                 assert config.gravity_force["force_g"] == params["gravity_force.force_g"]
 
     def test_total_count_matches_metadata(self):
@@ -610,4 +629,5 @@ class TestEnumerateConfigsNestedIndex:
         )
         configs, meta = expand_config(cfg)
         results = list(enumerate_configs(cfg))
+        assert meta is not None
         assert len(results) == meta.total_combinations == len(configs) == 6

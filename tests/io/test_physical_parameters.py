@@ -25,7 +25,7 @@ def _mp_config(**kwargs) -> SimulationConfig:
         "gravity_force": {"force_g": 1e-6},
     }
     base.update(kwargs)
-    return SimulationConfig(**base)
+    return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
 def test_build_overview_uses_contact_line_length_when_available():
@@ -109,7 +109,7 @@ def test_resolve_gravity_value_supports_masked_force():
 def test_resolve_gravity_value_rejects_both_force_variants():
     cfg = SimpleNamespace(g=None, gravity_force={"force_g": 1e-6}, gravity_masked_force={"force_g": 2e-6})
     with pytest.raises(ValueError, match="Only one gravity force"):
-        _resolve_gravity_value(cfg)
+        _resolve_gravity_value(cfg)  # ty: ignore[invalid-argument-type]
 
 
 def test_resolve_gravity_inclination_defaults_to_zero_when_missing_key():

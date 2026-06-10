@@ -16,4 +16,4 @@ class Numpy(OutputWriter):
             data: Dictionary mapping field names to numpy arrays.
         """
         filename = str(Path(self.data_dir) / f"timestep_{iteration}.npz")
-        np.savez(filename, **data)
+        np.savez(filename, **data)  # ty: ignore[invalid-argument-type]

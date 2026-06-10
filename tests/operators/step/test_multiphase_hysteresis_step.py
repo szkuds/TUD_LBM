@@ -41,7 +41,7 @@ def test_make_wetting_ops_forwards_live_wetting_params():
     )
     wetting = _make_wetting_state()
 
-    grad, lap = mh._make_wetting_ops(setup, wetting)
+    grad, lap = mh._make_wetting_ops(setup, wetting)  # ty: ignore[invalid-argument-type]
 
     _ = grad(jnp.array(5.0))
     _ = lap(jnp.array(5.0))
@@ -83,7 +83,7 @@ def test_trial_step_defaults_to_two_steps_and_uses_last_rho(monkeypatch):
         phi_right=jnp.array(2.0),
     )
 
-    f_out, rho = mh._trial_step(setup, jnp.array(1.0), jnp.array(9.0), params)
+    f_out, rho = mh._trial_step(setup, jnp.array(1.0), jnp.array(9.0), params)  # ty: ignore[invalid-argument-type]
 
     assert float(f_out) == 3.0
     assert float(rho) == 102.0
@@ -113,7 +113,7 @@ def test_trial_step_single_step_branch(monkeypatch):
         phi_right=jnp.array(0.0),
     )
 
-    f_out, rho = mh._trial_step(setup, jnp.array(1.0), jnp.array(0.0), params)
+    f_out, rho = mh._trial_step(setup, jnp.array(1.0), jnp.array(0.0), params)  # ty: ignore[invalid-argument-type]
 
     assert float(f_out) == 3.0
     assert float(rho) == 51.0
@@ -206,6 +206,91 @@ def test_step_multiphase_hysteresis_new_state_and_trial_partial(monkeypatch):
     monkeypatch.setattr(mh, "_trial_step", fake_trial_step)
     monkeypatch.setattr(mh, "update_extra_state", fake_update_extra_state)
 
-    out_state = mh.step_multiphase_hysteresis(setup, state)
+    out_state = mh.step_multiphase_hysteresis(setup, state)  # ty: ignore[invalid-argument-type]
 
     assert int(out_state.t) == 99
+
+
+# ── Guard branches ───────────────────────────────────────────────────
+
+
+import pytest  # noqa: E402
+
+
+class TestMakeWettingOpsGuards:
+    """_make_wetting_ops raises TypeError when required operators are absent."""
+
+    def test_raises_when_gradient_density_wetting_none(self):
+        setup = SimpleNamespace(gradient_density_wetting=None, laplacian_density_wetting=lambda *_a: None)
+        with pytest.raises(TypeError, match="gradient_density_wetting is required"):
+            mh._make_wetting_ops(setup, _make_wetting_state())  # ty: ignore[invalid-argument-type]
+
+    def test_raises_when_laplacian_density_wetting_none(self):
+        setup = SimpleNamespace(gradient_density_wetting=lambda *_a: None, laplacian_density_wetting=None)
+        with pytest.raises(TypeError, match="laplacian_density_wetting is required"):
+            mh._make_wetting_ops(setup, _make_wetting_state())  # ty: ignore[invalid-argument-type]
+
+
+class TestTrialStepGuards:
+    """_trial_step raises TypeError when required setup fields are absent."""
+
+    def test_raises_when_gradient_density_wetting_none(self):
+        setup = SimpleNamespace(
+            gradient_density_wetting=None,
+            laplacian_density_wetting=lambda *_a: None,
+            config=SimpleNamespace(hysteresis_config={}),
+        )
+        params = WettingParams(
+            phi_left=jnp.array(0.0),
+            phi_right=jnp.array(0.0),
+            d_rho_left=jnp.array(0.0),
+            d_rho_right=jnp.array(0.0),
+        )
+        with pytest.raises(TypeError, match="gradient_density_wetting is required"):
+            mh._trial_step(setup, jnp.array(1.0), jnp.array(0.0), params)  # ty: ignore[invalid-argument-type]
+
+    def test_raises_when_laplacian_density_wetting_none(self):
+        setup = SimpleNamespace(
+            gradient_density_wetting=lambda *_a: None,
+            laplacian_density_wetting=None,
+            config=SimpleNamespace(hysteresis_config={}),
+        )
+        params = WettingParams(
+            phi_left=jnp.array(0.0),
+            phi_right=jnp.array(0.0),
+            d_rho_left=jnp.array(0.0),
+            d_rho_right=jnp.array(0.0),
+        )
+        with pytest.raises(TypeError, match="laplacian_density_wetting is required"):
+            mh._trial_step(setup, jnp.array(1.0), jnp.array(0.0), params)  # ty: ignore[invalid-argument-type]
+
+    def test_raises_when_hysteresis_config_none(self):
+        setup = SimpleNamespace(
+            gradient_density_wetting=lambda *_a: None,
+            laplacian_density_wetting=lambda *_a: None,
+            config=SimpleNamespace(hysteresis_config=None),
+        )
+        params = WettingParams(
+            phi_left=jnp.array(0.0),
+            phi_right=jnp.array(0.0),
+            d_rho_left=jnp.array(0.0),
+            d_rho_right=jnp.array(0.0),
+        )
+        with pytest.raises(TypeError, match="hysteresis_config is required"):
+            mh._trial_step(setup, jnp.array(1.0), jnp.array(0.0), params)  # ty: ignore[invalid-argument-type]
+
+
+class TestStepHysteresisGuard:
+    """step_multiphase_hysteresis raises TypeError when state.wetting is None."""
+
+    def test_raises_when_wetting_none(self):
+        state = State(
+            f=jnp.array(1.0),
+            rho=jnp.array(1.0),
+            u=jnp.array(0.0),
+            t=jnp.array(0),
+            wetting=None,
+        )
+        setup = SimpleNamespace(forces=None)
+        with pytest.raises(TypeError, match=r"state\.wetting is required"):
+            mh.step_multiphase_hysteresis(setup, state)  # ty: ignore[invalid-argument-type]

@@ -213,8 +213,9 @@ def _resolve_gravity_inclination(config: SimulationConfig) -> float:
 
 def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, float] | None:
     """Return (delta_rho_phases, gamma) when multiphase parameters are available and valid."""
-    has_params = all(x is not None for x in (config.kappa, config.interface_width, config.rho_l, config.rho_v))
-    if not has_params or config.interface_width == 0:
+    if config.kappa is None or config.interface_width is None or config.rho_l is None or config.rho_v is None:
+        return None
+    if config.interface_width == 0:
         return None
 
     drho = float(config.rho_l) - float(config.rho_v)
@@ -237,7 +238,10 @@ def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple
 def _format_ohnesorge_number_row(config: SimulationConfig, gamma: float, length: float, length_label: str) -> str:
     """Build Ohnesorge-number row from lattice kinematic viscosity."""
     nu = _nu(float(config.tau))
-    oh = nu / (gamma * length * (config.rho_l)) ** 0.5
+    if config.rho_l is None:
+        msg = "rho_l is required for Ohnesorge number"
+        raise ValueError(msg)
+    oh = nu / (gamma * length * config.rho_l) ** 0.5
     return _row("Oh (Ohnesorge number):", f"{oh:.6g}  [ν√(ρ_l/(γL)), {length_label}]")
 
 
@@ -300,6 +304,9 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     angle_deg = _resolve_gravity_inclination(config)
     lines.extend(_format_bond_number_row(drho, gamma, g_val, length, length_label, angle_deg))
     nu = _nu(float(config.tau))
+    if config.rho_l is None:
+        msg = "rho_l is required for Archimedes number"
+        raise ValueError(msg)
     lines.append(_format_archimedes_number_row(drho, g_val, length, length_label, nu, float(config.rho_l)))
 
 

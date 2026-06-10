@@ -77,6 +77,6 @@ def build_extra_state(setup: SimulationSetup) -> dict[str, Any]:
     return _build_extra_state(setup)
 
 
-def update_extra_state(setup: SimulationSetup, prev_state: State, new_state: State, **context: dict[str, Any]) -> State:
+def update_extra_state(setup: SimulationSetup, prev_state: State, new_state: State, **context: Any) -> State:  # noqa: ANN401
     """Apply plugin-driven extra-state updates after one step."""
     return _update_extra_state(setup, prev_state, new_state, **context)

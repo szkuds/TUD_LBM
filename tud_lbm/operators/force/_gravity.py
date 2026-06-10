@@ -34,7 +34,7 @@ def _build_gravity_template(
 ) -> jnp.ndarray:
     """Build a constant gravity template shared by gravity force variants."""
     lattice = kwargs.get("lattice")
-    d = lattice.d if lattice is not None else min(len(grid_shape), 3)
+    d = lattice.d if lattice is not None else min(len(grid_shape), 3)  # ty: ignore[unresolved-attribute]
 
     nx, ny, nz = grid_shape[0], grid_shape[1], grid_shape[2] if len(grid_shape) > 2 else 1  # noqa: PLR2004
 

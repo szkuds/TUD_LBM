@@ -119,7 +119,7 @@ class TestConfigAdapterABCSave:
         """A subclass that only implements load() should fail to instantiate."""
 
         class IncompleteAdapter(ConfigAdapter):
-            def load(self, path) -> None: ...
+            def load(self, path) -> None: ...  # ty: ignore[invalid-method-override]
 
             # save() not implemented
 
