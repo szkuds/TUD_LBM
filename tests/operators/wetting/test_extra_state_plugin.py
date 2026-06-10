@@ -82,3 +82,16 @@ def test_update_state_early_return_and_update_path():
     assert updated.wetting is not None
     assert float(updated.wetting.phi_left) == 1.5  # ty: ignore[unresolved-attribute]
     assert calls["trial"] is marker
+
+
+def test_init_state_raises_when_initial_f_fn_none():
+    import pytest
+    from tud_lbm.operators.wetting._extra_state import WettingExtraStatePlugin
+
+    setup = SimpleNamespace(
+        config=SimpleNamespace(wetting_config=None),
+        initial_f_fn=None,
+        multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.5),
+    )
+    with pytest.raises(TypeError, match="initial_f_fn is required"):
+        WettingExtraStatePlugin.init_state(setup)  # ty: ignore[invalid-argument-type]

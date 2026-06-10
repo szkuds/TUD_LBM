@@ -396,3 +396,58 @@ class TestCsEosPipeline:
         assert float(jnp.max(jnp.abs(force_cs))) > 0.0, "CS force should be non-zero at interface"
         assert float(jnp.max(jnp.abs(force_dw))) > 0.0, "DW force should be non-zero at interface"
         assert not np.allclose(np.array(force_cs), np.array(force_dw)), "CS and DW forces should differ"
+
+
+# ---------------------------------------------------------------------------
+# build_multiphase_params
+# ---------------------------------------------------------------------------
+
+
+class TestBuildMultiphaseParams:
+    """build_multiphase_params raises on missing fields and builds correctly."""
+
+    def test_raises_when_required_field_missing(self):
+        from types import SimpleNamespace
+        from tud_lbm.operators.macroscopic import build_multiphase_params
+
+        cfg = SimpleNamespace(eos=None, kappa=0.01, rho_l=1.0, rho_v=0.1, interface_width=4)
+        with pytest.raises(ValueError, match="'eos' is required"):
+            build_multiphase_params(cfg)  # ty: ignore[invalid-argument-type]
+
+    def test_raises_for_each_required_field(self):
+        from types import SimpleNamespace
+        from tud_lbm.operators.macroscopic import build_multiphase_params
+
+        base = {"eos": "double-well", "kappa": 0.01, "rho_l": 1.0, "rho_v": 0.1, "interface_width": 4}
+        for field in ("kappa", "rho_l", "rho_v", "interface_width"):
+            kwargs = {**base, field: None}
+            with pytest.raises(ValueError, match=f"'{field}' is required"):
+                build_multiphase_params(SimpleNamespace(**kwargs))  # ty: ignore[invalid-argument-type]
+
+    def test_builds_correctly_with_valid_config(self):
+        from types import SimpleNamespace
+        from tud_lbm.operators.macroscopic import MultiphaseParams
+        from tud_lbm.operators.macroscopic import build_multiphase_params
+
+        cfg = SimpleNamespace(
+            eos="carnahan-starling",
+            kappa=_KAPPA,
+            rho_l=_RHO_L,
+            rho_v=_RHO_V,
+            interface_width=_INTERFACE_WIDTH,
+            a_eos=_A,
+            b_eos=_B,
+            r_eos=_R,
+            t_eos=_T,
+        )
+        mp = build_multiphase_params(cfg)  # ty: ignore[invalid-argument-type]
+        assert isinstance(mp, MultiphaseParams)
+        assert mp.eos == "carnahan-starling"
+        assert mp.kappa == _KAPPA
+        assert mp.a_eos == _A
+
+    def test_build_macroscopic_fn_invalid_scheme_raises(self):
+        from tud_lbm.operators.macroscopic import build_macroscopic_fn
+
+        with pytest.raises(ValueError, match="not_a_scheme"):
+            build_macroscopic_fn("not_a_scheme")

@@ -448,3 +448,47 @@ class TestExampleFiles:
             "force_g": 2e-6,
             "inclination_angle_deg": 0,
         }
+
+
+# ── TomlAdapter: save() ──────────────────────────────────────────────
+
+
+class TestTomlAdapterSave:
+    """Tests for TomlAdapter.save()."""
+
+    def test_save_round_trip(self, simple_toml_file, tmp_path):
+        pytest.importorskip("tomli_w")
+        original = TomlAdapter().load(simple_toml_file)
+        out = tmp_path / "saved.toml"
+        TomlAdapter().save(original, str(out))
+        reloaded = TomlAdapter().load(str(out))
+        assert reloaded.sim_type == original.sim_type
+        assert reloaded.tau == original.tau
+        assert reloaded.grid_shape == original.grid_shape
+
+    def test_save_creates_parent_dirs(self, simple_toml_file, tmp_path):
+        pytest.importorskip("tomli_w")
+        original = TomlAdapter().load(simple_toml_file)
+        nested = tmp_path / "a" / "b" / "out.toml"
+        TomlAdapter().save(original, str(nested))
+        assert nested.exists()
+
+    def test_save_raises_without_tomli_w(self, simple_toml_file, monkeypatch):
+        import tud_lbm.config.adapter_toml as mod
+
+        monkeypatch.setattr(mod, "tomli_w", None)
+        config = TomlAdapter().load(simple_toml_file)
+        with pytest.raises(ImportError, match="tomli_w is required"):
+            TomlAdapter().save(config, "/tmp/ignored.toml")
+
+
+# ── _validate_and_process_forces: TypeError branch ───────────────────
+
+
+class TestValidateAndProcessForces:
+    """Tests for _validate_and_process_forces static helper."""
+
+    def test_non_dict_force_value_raises_type_error(self):
+        adapter = TomlAdapter()
+        with pytest.raises(TypeError, match="must be a table"):
+            adapter._validate_and_process_forces({"gravity_force": "not_a_dict"}, {})

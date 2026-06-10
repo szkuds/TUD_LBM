@@ -2187,3 +2187,23 @@ class TestDisplayOperatorsEmptyRegistry:
         ):
             _display_analysis_operators()
         assert "No analysis operators" in capsys.readouterr().out
+
+
+class TestRunCommandListFlags:
+    """CliRunner invocations for --list-simulation-analysis and related flags."""
+
+    def test_list_simulation_analysis_via_runner(self):
+        runner = CliRunner()
+        with _patch("tud_lbm.cli.cli._display_analysis_operators"):
+            result = runner.invoke(cli, ["run", "--list-simulation-analysis"])
+        assert result.exit_code == 0
+
+    def test_list_simulation_operators_and_analysis_operators_precedence(self):
+        """list_operators check fires first; list_analysis check is skipped."""
+        runner = CliRunner()
+        with _patch("tud_lbm.cli.cli._display_simulation_operators"):
+            result = runner.invoke(
+                cli,
+                ["run", "--list-simulation-operators", "--list-simulation-analysis"],
+            )
+        assert result.exit_code == 0

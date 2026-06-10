@@ -356,3 +356,87 @@ class TestElectricExtraStateUpdate:
         state_new = ElectricExtraStatePlugin.update_state(setup, state, state)
         assert state_new.h is not None
         assert state_new.h.shape == hi.shape
+
+    def test_update_returns_new_state_when_h_is_none(self, lattice, electric_params):
+        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+
+        setup = make_electric_setup(lattice, electric_params)
+        state_no_h = make_state(lattice, rho_value=1.0, h=None)
+        result = ElectricExtraStatePlugin.update_state(setup, state_no_h, state_no_h)
+        assert result is state_no_h
+
+    def test_update_returns_new_state_when_no_electric_force_spec(self, lattice):
+        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+
+        setup = SimpleNamespace(forces=None)
+        state = make_state(lattice)
+        result = ElectricExtraStatePlugin.update_state(setup, state, state)  # ty: ignore[invalid-argument-type]
+        assert result is state
+
+    def test_update_raises_when_streaming_fn_none(self, lattice, electric_params):
+        from tud_lbm.operators.force import ForceParams
+        from tud_lbm.operators.force import ForceSetup
+        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+
+        hi = jnp.ones((NX, NY, NZ, 9, 1))
+        state = make_state(lattice, rho_value=1.0, h=hi)
+        specs = (ForceParams(name="electric_force", compute_fn=None, precomputed=electric_params),)
+        setup = SimpleNamespace(
+            grid_shape=(NX, NY, NZ),
+            lattice=lattice,
+            streaming_fn=None,
+            forces=ForceSetup(specs=specs, source_term=lambda *_a, **_k: None),
+        )
+        with pytest.raises(TypeError, match="streaming_fn is required"):
+            ElectricExtraStatePlugin.update_state(setup, state, state)  # ty: ignore[invalid-argument-type]
+
+
+# =====================================================================
+# Electric is_active + compute error branches
+# =====================================================================
+
+
+class TestElectricIsActive:
+    """ElectricExtraStatePlugin.is_active reflects config.electric_force."""
+
+    def test_active_when_electric_force_set(self):
+        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+
+        cfg = SimpleNamespace(electric_force={"strength": 1.0})
+        assert ElectricExtraStatePlugin.is_active(cfg) is True  # ty: ignore[invalid-argument-type]
+
+    def test_inactive_when_electric_force_none(self):
+        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+
+        assert ElectricExtraStatePlugin.is_active(SimpleNamespace(electric_force=None)) is False  # ty: ignore[invalid-argument-type]
+
+    def test_inactive_when_attribute_absent(self):
+        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+
+        assert ElectricExtraStatePlugin.is_active(SimpleNamespace()) is False  # ty: ignore[invalid-argument-type]
+
+
+class TestElectricForceComputeErrors:
+    """ElectricForceModule.compute raises TypeError on missing prerequisites."""
+
+    def test_raises_without_gradient_standard(self, lattice):
+        from tud_lbm.operators.force._electric import ElectricForceModule
+        from tud_lbm.operators.force._electric import ElectricParams
+
+        params = ElectricParams(
+            permittivity_liquid=80.0,
+            permittivity_vapour=1.0,
+            conductivity_liquid=0.01,
+            conductivity_vapour=0.001,
+            gradient_standard=None,
+        )
+        state = make_state(lattice)
+        with pytest.raises(TypeError, match="gradient_standard is required"):
+            ElectricForceModule.compute(state, params)
+
+    def test_raises_when_h_is_none(self, lattice, electric_params):
+        from tud_lbm.operators.force._electric import ElectricForceModule
+
+        state = make_state(lattice, h=None)
+        with pytest.raises(TypeError, match=r"state\.h"):
+            ElectricForceModule.compute(state, electric_params)
