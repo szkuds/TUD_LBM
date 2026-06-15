@@ -31,15 +31,16 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import as_completed
 from dataclasses import dataclass
 from dataclasses import replace
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from config.simulation_config import SimulationConfig
+    from tud_lbm.config.simulation_config import SimulationConfig
 
 
 @dataclass(frozen=True)
@@ -203,19 +204,22 @@ def run_parallel_simulations(
         return []
 
     n_configs = len(configs)
+    params_iter: list[dict[str, Any] | None]
     if parameters_list is None:
-        parameters_list = [None] * n_configs
+        params_iter = [None] * n_configs
     elif len(parameters_list) != n_configs:
         msg = f"parameters_list length ({len(parameters_list)}) must match configs length ({n_configs})"
         raise ValueError(
             msg,
         )
+    else:
+        params_iter = cast("list[dict[str, Any] | None]", parameters_list)
 
     results: list[SimulationResult] = []
     futures_to_idx: dict[Any, int] = {}
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        for idx, (config, params) in enumerate(zip(configs, parameters_list, strict=False)):
+        for idx, (config, params) in enumerate(zip(configs, params_iter, strict=False)):
             future = executor.submit(
                 run_single_simulation,
                 index=idx,
@@ -279,7 +283,7 @@ def print_result_line(result: SimulationResult, completed: int, total: int) -> N
     """Print a single progress line for a completed simulation."""
     status_icon = "✓" if result.status == "success" else "✗"
     params_str = f" [{', '.join(f'{k}={v}' for k, v in result.parameters.items())}]" if result.parameters else ""
-    error_str = f" - {result.error.split(chr(10))[0]}" if result.status == "failed" else ""
+    error_str = f" - {result.error.split(chr(10))[0]}" if result.status == "failed" and result.error is not None else ""
 
     print(f"{status_icon} Sim {result.index}{params_str} ({completed}/{total}) [{result.duration:.2f}s]{error_str}")
 
@@ -292,6 +296,8 @@ def generate_plots(results: list[SimulationResult], *, verbose: bool) -> None:
         if result.status != "success" or not result.config.plot_fields:
             continue
         try:
+            if result.output_dir is None:
+                continue
             FigureBuilder(result.config, result.output_dir).build_all()
             if verbose:
                 print(f"Generated plots for simulation {result.index}")
@@ -314,7 +320,7 @@ def save_sweep_log(
 
     manifest = {
         "sweep_id": str(uuid.uuid4()),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "total_simulations": len(results),
         "successful": sum(1 for r in results if r.status == "success"),
         "failed": sum(1 for r in results if r.status == "failed"),

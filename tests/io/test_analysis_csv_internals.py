@@ -27,6 +27,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from tud_lbm.config import SimulationConfig
+from tud_lbm.io.plotting.analysis import RZero
 from tud_lbm.io.plotting.analysis import SimulationCsvExport
 from tud_lbm.io.plotting.analysis import _avg_x_location
 from tud_lbm.io.plotting.analysis import _backward_diff
@@ -101,7 +102,7 @@ def test_resolve_r_zero_from_contact_line_length(tmp_path):
         init_dir=str(npz),
     )
     r = _resolve_r_zero(cfg)
-    assert r > 0.0
+    assert r[0] > 0.0
 
 
 def test_resolve_r_zero_from_init_radii():
@@ -119,7 +120,7 @@ def test_resolve_r_zero_from_init_radii():
     )
     r = _resolve_r_zero(cfg)
     # 0.3 * min(30, 10) = 3.0
-    assert r == pytest.approx(3.0)
+    assert r == RZero(value=3.0, used_fallback=True)
 
 
 def test_resolve_r_zero_fallback_27():
@@ -135,7 +136,7 @@ def test_resolve_r_zero_fallback_27():
         interface_width=2,
         initialisation={},
     )
-    assert _resolve_r_zero(cfg) == pytest.approx(27.0)
+    assert _resolve_r_zero(cfg) == RZero(value=27.0, used_fallback=True)
 
 
 # ---------------------------------------------------------------------------
@@ -310,7 +311,7 @@ def test_simulation_csv_export_render_shows_placeholder():
 
 def test_build_simulation_csv_skips_wrong_sim_type(tmp_path):
     cfg = SimulationConfig(
-        sim_type="single",
+        sim_type="single",  # ty: ignore[invalid-argument-type]
         grid_shape=(8, 8),
         tau=0.8,
         nt=10,

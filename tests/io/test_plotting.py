@@ -73,7 +73,7 @@ def test_velocity_operator_registered():
 
 
 def test_analysis_operators_registered():
-    names = get_operator_names("analysis")
+    names = get_operator_names("comparison")
     assert "max_velocity" in names
     assert "density_ratio" in names
     assert "avg_density" in names
@@ -127,7 +127,7 @@ def test_build_analysis_writes_analysis_plots(plotting_run_dir):
 
 def test_build_all_accepts_run_directory(plotting_run_dir: str):
     np.savez(
-        plotting_run_dir / "data" / "timestep_1.npz",
+        plotting_run_dir / "data" / "timestep_1.npz",  # ty: ignore[unsupported-operator]
         rho=np.ones((6, 6, 1, 1, 1)),
         u=np.zeros((6, 6, 1, 1, 2)),
     )
@@ -139,5 +139,5 @@ def test_build_all_accepts_run_directory(plotting_run_dir: str):
     assert len(saved) == 1
     assert saved[0].exists()
 
-    plots = list((plotting_run_dir / "plots").glob("*.png"))
+    plots = list((plotting_run_dir / "plots").glob("*.png"))  # ty: ignore[unsupported-operator]
     assert len(plots) == 1

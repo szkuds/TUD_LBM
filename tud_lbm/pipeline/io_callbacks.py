@@ -25,9 +25,9 @@ Usage (strategy 2)::
     )
 
     # Inside scan body:
-    def scan_body(state, t):
+    def scan_body(state, _t):
         new_state = step_fn(state)
-        do_save(new_state, t)
+        do_save(new_state, new_state.t)
         return new_state, None
 """
 
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from tud_lbm.pipeline.state import State
 
 
-def _state_to_numpy(state: State, fields: tuple | None = None, t: int | None = None) -> dict:
+def _state_to_numpy(state: State, fields: tuple | None = None, t: int | None = None) -> dict[str, np.ndarray]:
     """Convert a :class:`~state.state.State` pytree to a NumPy dict.
 
     Only includes non-``None`` array fields suitable for saving.
@@ -104,9 +104,9 @@ def make_save_callback(
 
         do_save = make_save_callback(io_handler, save_interval=100)
 
-        def scan_body(state, t):
+        def scan_body(state, _t):
             new_state = step_fn(state)
-            do_save(new_state, t)
+            do_save(new_state, new_state.t)
             return new_state, None
     """
 

@@ -8,12 +8,13 @@ density array.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Any
+import jax.numpy as jnp
 from tud_lbm.operators.wetting._apply_edge import _apply_wetting_edge
 from tud_lbm.operators.wetting._edge_config import _resolve_wetting_edges
 from tud_lbm.registry import wetting_operator
 
 if TYPE_CHECKING:
-    import jax.numpy as jnp
+    from collections.abc import Callable
 
 
 @wetting_operator(name="applicator")
@@ -22,7 +23,7 @@ def build_wetting_applicator(
     rho_v: float,
     width: int,
     bc_config: dict[str, Any] | None = None,
-) -> jnp.ndarray:
+) -> Callable[..., jnp.ndarray]:
     """Build a wetting ghost-cell applicator with baked-in static parameters.
 
     Args:
@@ -36,8 +37,8 @@ def build_wetting_applicator(
     Returns:
         ``(gp, phi_l, phi_r, d_rho_l, d_rho_r) → gp``
     """
-    _rho_l = float(rho_l)
-    _rho_v = float(rho_v)
+    _rho_l = jnp.array(float(rho_l))
+    _rho_v = jnp.array(float(rho_v))
     _width = int(width)
     _bc_config = bc_config if bc_config is not None else {}
 

@@ -12,11 +12,11 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import cast
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     import jax.numpy as jnp
     from tud_lbm.config.simulation_config import SimulationConfig
     from tud_lbm.lattice.lattice import Lattice
@@ -39,14 +39,20 @@ def build_differential_fn(scheme: str) -> DifferentialOperator:
     Raises:
         ValueError: If scheme is not registered.
     """
-    return build_operator("differential", scheme)
+    return cast("DifferentialOperator", build_operator("differential", scheme))
 
 
 def build_diff_ops(
     config: SimulationConfig,
     mp_params: MultiphaseParams | None,
     lattice: Lattice,
-) -> tuple[Callable, Callable, Callable, Callable | None, Callable | None]:
+) -> tuple[
+    DifferentialOperator,
+    DifferentialOperator,
+    DifferentialOperator,
+    DifferentialOperator | None,
+    DifferentialOperator | None,
+]:
     """Build gradient/laplacian closures, wetting-aware if applicable.
 
     Ensures boundary-condition modules are imported so that their
@@ -114,22 +120,28 @@ def build_diff_ops(
         _gradient_wetting_factory = build_differential_fn("gradient_wetting")
         _laplacian_wetting_factory = build_differential_fn("laplacian_wetting")
 
-        _grad_wetting = _gradient_wetting_factory(
-            lattice.w,
-            lattice.c,
-            tuple(determine_pad_modes(config.bc_config)),
-            config.bc_config,
-            rho_l=mp_params.rho_l,
-            rho_v=mp_params.rho_v,
-            width=config.interface_width,
+        _grad_wetting = cast(
+            "DifferentialOperator",
+            _gradient_wetting_factory(
+                lattice.w,
+                lattice.c,
+                tuple(determine_pad_modes(config.bc_config)),
+                config.bc_config,
+                rho_l=mp_params.rho_l,
+                rho_v=mp_params.rho_v,
+                width=config.interface_width,
+            ),
         )
-        _lap_wetting = _laplacian_wetting_factory(
-            lattice.w,
-            tuple(determine_pad_modes(config.bc_config)),
-            config.bc_config,
-            rho_l=mp_params.rho_l,
-            rho_v=mp_params.rho_v,
-            width=config.interface_width,
+        _lap_wetting = cast(
+            "DifferentialOperator",
+            _laplacian_wetting_factory(
+                lattice.w,
+                tuple(determine_pad_modes(config.bc_config)),
+                config.bc_config,
+                rho_l=mp_params.rho_l,
+                rho_v=mp_params.rho_v,
+                width=config.interface_width,
+            ),
         )
 
         # Extract wetting params once, used in both branches below.

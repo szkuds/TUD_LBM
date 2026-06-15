@@ -50,9 +50,9 @@ import jax.numpy as jnp
 from tud_lbm.pipeline.state.state import State
 
 if TYPE_CHECKING:
-    from setup import SimulationSetup
     from tud_lbm.config import SimulationConfig
     from tud_lbm.io import SimulationIO
+    from tud_lbm.pipeline.setup import SimulationSetup
 
 
 # ── State initialisation ─────────────────────────────────────────────
@@ -112,6 +112,9 @@ def init_state(
     nx, ny, nz = setup.grid_shape[0], setup.grid_shape[1], setup.grid_shape[2]
 
     if f is None:
+        if setup.initial_f_fn is None:
+            msg = "initial_f_fn is required in SimulationSetup to initialize state"
+            raise TypeError(msg)
         f = setup.initial_f_fn(init_kwargs)
 
     rho = jnp.sum(f, axis=-2, keepdims=True)
@@ -154,7 +157,11 @@ def run(
         io_handler: Optional :class:`~util.io.SimulationIO`.  When
             supplied, snapshots are streamed to disk via host callbacks
             and the returned *trajectory* is ``None``.
-        skip_interval: Number of initial steps to skip before saving
+        skip_interval: Absolute simulation-time threshold; steps with
+            ``state.t <= skip_interval`` are not saved.  For a fresh
+            run this equals the number of initial steps to skip.  For
+            a resumed ``init_from_file`` run, compare against the
+            *absolute* timestep, not the number of new steps
             (only used with *io_handler*).
         save_fields: Subset of field names to write, e.g.
             ``("rho", "u")``.  ``None`` means all fields.
@@ -171,6 +178,11 @@ def run(
     if nt is None:
         nt = setup.config.nt
 
+    if setup.step_fn is None:
+        msg = "step_fn is required in SimulationSetup to run simulation"
+        raise TypeError(msg)
+    _step_fn = setup.step_fn  # capture narrowed value for closures
+
     # ── Streaming I/O mode ───────────────────────────────────────
     if io_handler is not None:
         from tud_lbm.pipeline.io_callbacks import _state_to_numpy
@@ -184,9 +196,9 @@ def run(
         )
 
         @jax.jit
-        def scan_body_io(state: State, t: int) -> tuple[State, None]:
-            new_state = setup.step_fn(setup, state)
-            do_save(new_state, t)
+        def scan_body_io(state: State, _t: int) -> tuple[State, None]:
+            new_state = _step_fn(setup, state)
+            do_save(new_state, new_state.t)
             return new_state, None
 
         final_state, _ = jax.lax.scan(
@@ -205,7 +217,7 @@ def run(
     # ── In-memory trajectory mode ────────────────────────────────
     @jax.jit
     def scan_body(state: State, _t: int) -> tuple[State, State]:
-        new_state = setup.step_fn(setup, state)
+        new_state = _step_fn(setup, state)
         return new_state, new_state
 
     final_state, trajectory = jax.lax.scan(

@@ -5,11 +5,13 @@ import math
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import NamedTuple
+from typing import TypedDict
 import numpy as np
 from matplotlib.colors import TABLEAU_COLORS
 from tud_lbm.io.physical_parameters import _get_setup_contact_line_length
 from tud_lbm.io.plotting.base import AnalysisPlot
-from tud_lbm.registry import analysis_operator
+from tud_lbm.registry import comparison_operator
 
 if TYPE_CHECKING:
     import matplotlib.axes
@@ -42,7 +44,7 @@ _WIDTH_EPS = 1e-15
 _DIR_SPLIT_PARTS = 2
 
 _LABEL_CA = r"$\mathrm{Ca}$"
-_LABEL_IT_NORM = r"$\mathrm{it}/\mathrm{it}_{\mathrm{max}}$"
+_LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
 _LABEL_X_AVG_NORM = r"$X_{\mathrm{avg}}/R_0$"
 _CONFIG_TOML = "config.toml"
 
@@ -158,8 +160,9 @@ def _derive_surface_tension(config: SimulationConfig) -> float | None:
     width = getattr(config, "interface_width", None)
     rho_l = getattr(config, "rho_l", None)
     rho_v = getattr(config, "rho_v", None)
-    width_val = float(width) if width is not None else 0.0
-    if any(x is None for x in (kappa, width, rho_l, rho_v)) or abs(width_val) < _WIDTH_EPS:
+    if kappa is None or width is None or rho_l is None or rho_v is None:
+        return None
+    if abs(float(width)) < _WIDTH_EPS:
         return None
     drho = float(rho_l) - float(rho_v)
     return (2.0 / 3.0) * (float(kappa) / float(width)) * drho**2
@@ -212,7 +215,7 @@ class _BaseAnalysisPlot(AnalysisPlot):
         )
 
 
-@analysis_operator(name="max_velocity")
+@comparison_operator(name="max_velocity")
 class MaxVelocityPlot(_BaseAnalysisPlot):
     """Plot maximum velocity magnitude over time."""
 
@@ -229,7 +232,7 @@ class MaxVelocityPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@analysis_operator(name="density_ratio")
+@comparison_operator(name="density_ratio")
 class DensityRatioPlot(_BaseAnalysisPlot):
     """Plot max/min density ratio over time."""
 
@@ -252,7 +255,7 @@ class DensityRatioPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": np.asarray(vals, dtype=float)}
 
 
-@analysis_operator(name="avg_density")
+@comparison_operator(name="avg_density")
 class AvgDensityPlot(_BaseAnalysisPlot):
     """Plot average density over time."""
 
@@ -269,7 +272,24 @@ class AvgDensityPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@analysis_operator(name="contact_angle_left")
+@comparison_operator(name="total_mass")
+class TotalMassPlot(_BaseAnalysisPlot):
+    """Plot total domain mass (sum of rho) over time."""
+
+    name = "total_mass"
+    title = "Total mass vs timestep"
+    ylabel = "sum(rho)"
+    color = "tab:olive"
+    required_keys = ("rho",)
+
+    def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
+        """Compute total mass values for each timestep file."""
+        iters, snapshots = _load_timesteps(files, ("rho",))
+        vals = np.asarray([float(np.sum(_extract_rho_2d(snap["rho"]))) for snap in snapshots], dtype=float)
+        return {"iters": iters, "values": vals}
+
+
+@comparison_operator(name="contact_angle_left")
 class ContactAngleLeftPlot(_BaseAnalysisPlot):
     """Plot left contact angle over time."""
 
@@ -286,7 +306,7 @@ class ContactAngleLeftPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@analysis_operator(name="contact_angle_right")
+@comparison_operator(name="contact_angle_right")
 class ContactAngleRightPlot(_BaseAnalysisPlot):
     """Plot right contact angle over time."""
 
@@ -321,7 +341,7 @@ class _ContactLineSpeedBase(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@analysis_operator(name="contact_line_speed_left")
+@comparison_operator(name="contact_line_speed_left")
 class ContactLineSpeedLeftPlot(_ContactLineSpeedBase):
     """Plot left contact-line speed over time."""
 
@@ -333,7 +353,7 @@ class ContactLineSpeedLeftPlot(_ContactLineSpeedBase):
     required_keys = ("cll_left",)
 
 
-@analysis_operator(name="contact_line_speed_right")
+@comparison_operator(name="contact_line_speed_right")
 class ContactLineSpeedRightPlot(_ContactLineSpeedBase):
     """Plot right contact-line speed over time."""
 
@@ -345,7 +365,7 @@ class ContactLineSpeedRightPlot(_ContactLineSpeedBase):
     required_keys = ("cll_right",)
 
 
-@analysis_operator(name="contact_angles_pair")
+@comparison_operator(name="contact_angles_pair")
 class ContactAnglesPairPlot(AnalysisPlot):
     """Render paired left/right contact-angle history."""
 
@@ -380,7 +400,7 @@ class ContactAnglesPairPlot(AnalysisPlot):
         ax.legend(loc="best", fontsize=8)
 
 
-@analysis_operator(name="contact_line_speeds_pair")
+@comparison_operator(name="contact_line_speeds_pair")
 class ContactLineSpeedsPairPlot(AnalysisPlot):
     """Render paired left/right contact-line speed history."""
 
@@ -417,7 +437,7 @@ class ContactLineSpeedsPairPlot(AnalysisPlot):
         ax.legend(loc="best", fontsize=8)
 
 
-@analysis_operator(name="simulation_csv")
+@comparison_operator(name="simulation_csv")
 class SimulationCsvExport(AnalysisPlot):
     """Export per-timestep droplet metrics to ``simulation_data.csv``."""
 
@@ -459,23 +479,30 @@ _CSV_FILENAME = "simulation_data.csv"
 _COMPARISON_DIR = "comparison_analysis"
 
 
-def _resolve_r_zero(config: SimulationConfig) -> float:
+class RZero(NamedTuple):
+    """Resolved R₀ plus whether the nominal-radius fallback was used."""
+
+    value: float
+    used_fallback: bool
+
+
+def _resolve_r_zero(config: SimulationConfig) -> RZero:
     """Initial droplet radius in lattice units.
 
-    Derived from half of the setup contact-line length if available.
-    Otherwise, defaults to ``initialisation.radii[0] * min(nx, ny)``, matching the
-    computation used when the contact line length cannot be determined.
-    Falls back to 27.0 when all keys are absent.
+    Derived from half of the setup contact-line length when the init file is
+    readable. Otherwise falls back to ``initialisation.radii[0] * min(nx, ny)``
+    (or 27.0 when no radii are given) and flags ``used_fallback=True``.
     """
     length = _get_setup_contact_line_length(config)
     if length is not None:
-        return length / 2.0
+        return RZero(length / 2.0, used_fallback=False)
 
     init = config.initialisation
     radii = init.get("radii", []) if isinstance(init, dict) else []
     if radii:
-        return float(radii[0]) * float(min(config.grid_shape[0], config.grid_shape[1]))
-    return 27.0
+        nominal = float(radii[0]) * float(min(config.grid_shape[0], config.grid_shape[1]))
+        return RZero(nominal, used_fallback=True)
+    return RZero(27.0, used_fallback=True)
 
 
 def _inclination_angle_deg(config: SimulationConfig) -> float:
@@ -486,6 +513,9 @@ def _inclination_angle_deg(config: SimulationConfig) -> float:
 
 
 def _sigma_lg(config: SimulationConfig) -> float:
+    if config.kappa is None or config.interface_width is None or config.rho_l is None or config.rho_v is None:
+        msg = "kappa, interface_width, rho_l, rho_v are required for surface tension"
+        raise ValueError(msg)
     return (
         (2.0 / 3.0)
         * (float(config.kappa) / float(config.interface_width))
@@ -586,9 +616,9 @@ def _collect_csv_rows(files: list[Path], rho_mean: float, offset_x: float) -> di
         avg_ux = float(np.sum(u_x * mask) / n_liq) if n_liq > 0 else 0.0
         avg_uy = float(np.sum(u_y * mask) / n_liq) if n_liq > 0 else 0.0
 
-        if cll_l is None:
+        if cll_l is None or cll_r is None:
             cll_l, cll_r = _cll_from_rho(rho_2d, rho_mean)
-        if ca_l is None:
+        if ca_l is None or ca_r is None:
             ca_l, ca_r = _ca_from_rho(rho_2d, rho_mean)
 
         cm_x, cm_y = _center_of_mass(rho_2d, rho_mean)
@@ -620,8 +650,10 @@ def _finalize_csv_dataframe(
     incl_deg: float,
     save_iv: int,
 ) -> pd.DataFrame:
+    it_min = df["iteration"].min()
     it_max = df["iteration"].max()
-    df["normalised_iteration"] = df["iteration"] / it_max
+    span = it_max - it_min
+    df["normalised_iteration"] = (df["iteration"] - it_min) / span if span > 0 else 0.0
     df["avg_x_location_norm"] = df["avg_x_location"] / r_zero
     df["v_left"] = _backward_diff(df["cll_left"].to_numpy(), save_iv)
     df["v_right"] = _backward_diff(df["cll_right"].to_numpy(), save_iv)
@@ -688,10 +720,20 @@ def build_simulation_csv(run_dir: str | Path, config: SimulationConfig) -> Path 
     if not files:
         return None
 
+    if config.rho_l is None or config.rho_v is None:
+        msg = "rho_l and rho_v are required for CSV export"
+        raise ValueError(msg)
     rho_mean = (float(config.rho_l) + float(config.rho_v)) / 2.0
     sigma_lg = _sigma_lg(config)
     nu = (float(config.tau) - 0.5) / 3.0
     r_zero = _resolve_r_zero(config)
+    if r_zero.used_fallback:
+        print(
+            f"WARNING: R_0 fell back to nominal radius ({r_zero.value:.4g} lu); "
+            f"init file not found (init_dir={config.init_dir!r}). "
+            "avg_x_location_norm uses radii*min_dim, not measured L/2.",
+            file=sys.stderr,
+        )
     incl_deg = _inclination_angle_deg(config)
     save_iv = max(config.save_interval, 1)
 
@@ -705,7 +747,7 @@ def build_simulation_csv(run_dir: str | Path, config: SimulationConfig) -> Path 
         return None
     df = _finalize_csv_dataframe(
         df,
-        r_zero=r_zero,
+        r_zero=r_zero.value,
         nu=nu,
         sigma_lg=sigma_lg,
         incl_deg=incl_deg,
@@ -727,7 +769,18 @@ def _parse_timestep_from_path(p: Path) -> int:
 
 # -- Comparison plots ---------------------------------------------------------
 
-_COMPARISON_PLOT_CONFIGS = [
+
+class _PlotConfig(TypedDict, total=False):
+    filename: str
+    x: str
+    y: str
+    y_pair: tuple[str, str]
+    pair_labels: tuple[str, str]
+    xlabel: str
+    ylabel: str
+
+
+_COMPARISON_PLOT_CONFIGS: list[_PlotConfig] = [
     {
         "filename": "01_Ca_vs_iteration.png",
         "x": "normalised_iteration",
@@ -844,7 +897,7 @@ def _clean_dir_label(dir_name: str) -> str:
 def _plot_comparison_entry(
     ax: matplotlib.axes.Axes,
     df: pd.DataFrame,
-    pc: dict,
+    pc: _PlotConfig,
     x_col: str,
     color: str,
     marker: str,
@@ -890,7 +943,7 @@ def compare_runs(parent_dir: str | Path) -> None:
     for pc in _COMPARISON_PLOT_CONFIGS:
         fig, ax = plt.subplots(figsize=(12, 8))
         for i, entry in enumerate(entries):
-            color = colors[i % len(colors)]
+            color = str(colors[i % len(colors)])
             marker = _COMPARISON_MARKERS[i % len(_COMPARISON_MARKERS)]
             x_col = pc["x"]
             if x_col not in entry["data"].columns:
@@ -900,7 +953,9 @@ def compare_runs(parent_dir: str | Path) -> None:
         ax.set_xlabel(pc["xlabel"], fontsize=24)
         ax.set_ylabel(pc["ylabel"], fontsize=24)
         ax.tick_params(axis="both", labelsize=16)
-        ax.legend(fontsize=12, loc="best")
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
+            ax.legend(handles, labels, fontsize=12, loc="best")
         ax.grid(True, alpha=0.3)
         plt.tight_layout()
         out_path = out_dir / pc["filename"]
@@ -912,7 +967,10 @@ def compare_runs(parent_dir: str | Path) -> None:
 # -- CLI entry point ----------------------------------------------------------
 
 
-def process_parent_dir(parent_dir: str | Path) -> tuple[int, int]:
+def process_parent_dir(
+    parent_dir: str | Path,
+    fields: list[str] | None = None,
+) -> tuple[int, int]:
     """Discover runs, export per-run CSVs, and generate comparison plots.
 
     Discovers runs by searching for ``config.toml`` files recursively.
@@ -922,10 +980,14 @@ def process_parent_dir(parent_dir: str | Path) -> tuple[int, int]:
 
     Args:
         parent_dir: Absolute or relative path to the parent directory.
+        fields: Comparison operator names to run as per-run analysis plots.
+            When ``None``, no per-run analysis plots are generated beyond the CSV.
 
     Returns:
         A tuple ``(n_runs_found, n_runs_with_csv)``.
     """
+    from tud_lbm.io.plotting.figure_builder import FigureBuilder
+
     parent = Path(parent_dir)
     skip_dirs = {"init", _COMPARISON_DIR}
 
@@ -946,8 +1008,12 @@ def process_parent_dir(parent_dir: str | Path) -> tuple[int, int]:
     n_ok = 0
     for rd in run_dirs:
         config = _safe_load_config(rd / _CONFIG_TOML)
-        if config and build_simulation_csv(rd, config) is not None:
+        if config is None:
+            continue
+        if build_simulation_csv(rd, config) is not None:
             n_ok += 1
+        if fields:
+            FigureBuilder(config=config, run_dir=rd, fields=fields).build_analysis()
 
     if n_ok > 0:
         print("\nGenerating comparison plots...")

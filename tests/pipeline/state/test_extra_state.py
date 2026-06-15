@@ -58,13 +58,13 @@ def test_duplicate_key_warns_once_per_process():
     setup = SimpleNamespace(extra_state_plugins=(_PluginA(), _PluginB()))
 
     with pytest.warns(RuntimeWarning, match="multiple plugins"):
-        extra = _build_extra_state(setup)
+        extra = _build_extra_state(setup)  # ty: ignore[invalid-argument-type]
     assert float(extra["dup"]) == 1.0
 
     # Warn-once policy: second call should not emit the same warning.
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
-        _build_extra_state(setup)
+        _build_extra_state(setup)  # ty: ignore[invalid-argument-type]
     assert len(record) == 0
 
 
@@ -73,5 +73,5 @@ def test_update_pipeline_applies_plugins_in_order():
     prev_state = _state_template(t=0)
     new_state = _state_template(t=1)
 
-    updated = _update_extra_state(setup, prev_state, new_state)
+    updated = _update_extra_state(setup, prev_state, new_state)  # ty: ignore[invalid-argument-type]
     assert int(updated.t) == 2

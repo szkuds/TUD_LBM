@@ -26,6 +26,10 @@ def step_single_phase(setup: SimulationSetup, state: State) -> State:
     Returns:
         Updated :class:`~tud_lbm.pipeline.state.state.State` after one time step.
     """
+    if setup.macroscopic_fn is None:
+        msg = "macroscopic_fn is required for single phase step"
+        raise TypeError(msg)
+
     # 1. External forces
     force_ext, state = compute_total_force_ext(setup, state, setup.forces)
 

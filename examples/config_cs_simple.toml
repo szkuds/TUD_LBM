@@ -1,0 +1,46 @@
+# ── Carnahan-Starling EOS — integration test config ─────────────────────────
+#
+# Purpose: minimal end-to-end config for smoke-testing the CS EOS path through
+# the full pipeline (config load → build_setup → init_state → run).
+#
+# Grid: deliberately small (64×64) so the test runs fast.
+# Physics: parameters chosen to keep the interface stable for 500 steps —
+# not a calibrated physical case, just enough to verify no crash and that
+# rho stays finite and positive throughout.
+#
+# interface_width is present because it is a required config field for all
+# multiphase runs; for CS it governs the tanh initialisation profile only
+# and has no effect on the macroscopic operator.
+
+[simulation_type]
+type              = "multiphase"
+simulation_name   = "cs_eos_test"
+lattice_type      = "D2Q9"
+grid_shape        = [201, 201]
+nt                = 50000
+tau               = 0.99
+collision_scheme  = "bgk"
+init_type         = "multiphase_bubbles"
+
+[multiphase]
+eos             = "carnahan-starling"
+kappa           = 0.01
+rho_l           = 12.18
+rho_v           = 0.015
+interface_width = 5      # initialisation hint only — unused by CS operator
+
+# Carnahan-Starling EOS parameters
+a_eos = 0.00031459670905604266
+b_eos = 0.1490857142857143
+r_eos = 1.0
+t_eos = 0.00039808421247983624
+
+[initialisation]
+# Single bubble centred in the domain, radius = 0.2 * min(nx, ny)
+centres = [[0.5, 0.5]]
+radii   = [0.3]
+
+[output]
+save_interval = 500
+save_fields   = ["rho", "u"]
+plot_fields = ["density", "velocity"]

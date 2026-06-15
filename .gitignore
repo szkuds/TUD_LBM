@@ -77,3 +77,4 @@ venv.bak/
 /stash/
 /simulations/Drop_top/
 /sonar-scanner-cli-4.8.0.2856-linux.zip
+/.claude/

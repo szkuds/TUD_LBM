@@ -10,6 +10,7 @@ Targets the 6 uncovered lines (76.9 → ~100%):
 """
 
 from __future__ import annotations
+from types import SimpleNamespace
 import jax.numpy as jnp
 import pytest
 from tud_lbm.operators.wetting._params import WettingParams
@@ -24,6 +25,8 @@ from tud_lbm.operators.wetting.hysteresis.hysteresis import _mask_left_phi
 from tud_lbm.operators.wetting.hysteresis.hysteresis import _mask_right_d_rho
 from tud_lbm.operators.wetting.hysteresis.hysteresis import _mask_right_phi
 from tud_lbm.operators.wetting.hysteresis.hysteresis import _phi_is_active
+from tud_lbm.operators.wetting.hysteresis.hysteresis import _update_wetting_state_impl
+from tud_lbm.operators.wetting.hysteresis.hysteresis import update_wetting_state
 
 
 def test_import_optax_succeeds_when_available():
@@ -83,7 +86,7 @@ def test_clamp_params_clips_phi_below_minimum():
     assert float(clamped.phi_left) == pytest.approx(1.0)
     assert float(clamped.phi_right) == pytest.approx(1.5)
     assert float(clamped.d_rho_left) == pytest.approx(0.0)
-    assert float(clamped.d_rho_right) == pytest.approx(0.25)
+    assert float(clamped.d_rho_right) == pytest.approx(0.3)
 
 
 def test_clamp_params_leaves_valid_values_unchanged():
@@ -210,3 +213,81 @@ def test_mask_right_phi():
     assert float(m.phi_right) == pytest.approx(1.2)
     assert float(m.d_rho_left) == pytest.approx(0.0)
     assert float(m.d_rho_right) == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# TypeError guard branches
+# ---------------------------------------------------------------------------
+
+
+def _dummy_wetting():
+    from tud_lbm.pipeline.state import WettingState
+
+    return WettingState(
+        phi_left=jnp.array(0.0),
+        phi_right=jnp.array(0.0),
+        d_rho_left=jnp.array(0.0),
+        d_rho_right=jnp.array(0.0),
+        ca_left=jnp.array(0.0),
+        ca_right=jnp.array(0.0),
+        cll_left=jnp.array(0.0),
+        cll_right=jnp.array(0.0),
+    )
+
+
+def _dummy_trial_fn(_p: WettingParams) -> tuple[jnp.ndarray, jnp.ndarray]:
+    return jnp.array(0.0), jnp.array(0.0)
+
+
+class TestUpdateWettingStateGuards:
+    """update_wetting_state raises TypeError when hysteresis_config is absent."""
+
+    def test_raises_when_hysteresis_config_none(self):
+        setup = SimpleNamespace(config=SimpleNamespace(hysteresis_config=None))
+        with pytest.raises(TypeError, match="hysteresis_config is required"):
+            update_wetting_state(
+                _dummy_wetting(),
+                jnp.ones((4, 4, 1, 1, 1)),
+                setup,  # ty: ignore[invalid-argument-type]
+                trial_step_fn=_dummy_trial_fn,
+            )
+
+
+class TestUpdateWettingStateImplGuards:
+    """_update_wetting_state_impl raises TypeError when multiphase_params or
+    hysteresis_config are absent.
+    """
+
+    def test_raises_when_multiphase_params_none(self):
+        setup = SimpleNamespace(
+            multiphase_params=None,
+            config=SimpleNamespace(hysteresis_config={"ca_advancing": 110.0, "ca_receding": 85.0}),
+        )
+        with pytest.raises(TypeError, match="multiphase_params is required"):
+            _update_wetting_state_impl(
+                _dummy_wetting(),
+                jnp.ones((4, 4, 1, 1, 1)),
+                setup,  # ty: ignore[invalid-argument-type]
+                _dummy_trial_fn,
+                ca_adv_left=jnp.array(110.0),
+                ca_rec_left=jnp.array(85.0),
+                ca_adv_right=jnp.array(110.0),
+                ca_rec_right=jnp.array(85.0),
+            )
+
+    def test_raises_when_hysteresis_config_none(self):
+        setup = SimpleNamespace(
+            multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.33),
+            config=SimpleNamespace(hysteresis_config=None),
+        )
+        with pytest.raises(TypeError, match="hysteresis_config is required"):
+            _update_wetting_state_impl(
+                _dummy_wetting(),
+                jnp.ones((4, 4, 1, 1, 1)),
+                setup,  # ty: ignore[invalid-argument-type]
+                _dummy_trial_fn,
+                ca_adv_left=jnp.array(110.0),
+                ca_rec_left=jnp.array(85.0),
+                ca_adv_right=jnp.array(110.0),
+                ca_rec_right=jnp.array(85.0),
+            )

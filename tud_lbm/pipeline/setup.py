@@ -200,9 +200,9 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     # Build operator closures (pre-resolved at setup time)
     collision_fn = build_collision_fn(config.collision_scheme)
     equilibrium_fn = build_equilibrium_fn("wb")
-    streaming_fn = build_streaming_fn("standard")
+    streaming_fn = build_streaming_fn("standard", config.bc_config)
     macroscopic_fn = (
-        build_macroscopic_fn(mp_params.eos)  # EOS-aware for multiphase
+        build_macroscopic_fn("multiphase")  # unified multiphase op; EOS selected from mp.eos
         if "multiphase" in config.sim_type
         else build_macroscopic_fn("standard")  # single-phase
     )
@@ -231,7 +231,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
             kw.update(init_kwargs)
         if config.init_type == "init_from_file" and "npz_path" not in kw and config.init_dir is not None:
             kw["npz_path"] = config.init_dir
-        return build_initialise_fn(config.init_type)(config.grid_shape, lattice, **kw)
+        return build_initialise_fn(config.init_type)(cast("tuple[int, int, int]", config.grid_shape), lattice, **kw)
 
     return SimulationSetup(
         config=config,

@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
+from typing import cast
 import jax.numpy as jnp
 from tud_lbm.operators.boundary import _bounce_back as _bb  # noqa: F401
 from tud_lbm.operators.boundary import _periodic as _per  # noqa: F401
@@ -117,7 +118,7 @@ def build_bc(
     ops = []
     for edge in _edge_order:
         bc_type = bc_config.get(edge, "periodic")
-        fn = bc_dispatch.get(bc_type)
+        fn = bc_dispatch.get("bounce-back") if bc_type == "wetting" else bc_dispatch.get(bc_type)
         if fn is not None and bc_type != "periodic":
             ops.append((edge, fn))
 
@@ -143,7 +144,7 @@ def build_bc(
             f = _fn(f, f_collision, lattice, _edge)
         return f
 
-    return bc_fn
+    return cast("BoundaryOperator", bc_fn)
 
 
 __all__ = ["BCMasks", "build_bc", "build_bc_masks"]

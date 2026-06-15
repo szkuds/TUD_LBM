@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import jax.numpy as jnp
 import pytest
 from tud_lbm.operators.wetting.hysteresis.hysteresis import _get_hysteresis_window_chemical_step
+from tud_lbm.operators.wetting.hysteresis.hysteresis import update_wetting_state_chemical_step
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,7 +47,7 @@ class TestGetHysteresisWindowChemicalStep:
         """CLL < step_x (50) → pre-step advancing/receding CA."""
         setup = _make_setup()
         cll = jnp.array(20.0)  # 20 < 50
-        ca_adv, ca_rec = _get_hysteresis_window_chemical_step(setup, cll)
+        ca_adv, ca_rec = _get_hysteresis_window_chemical_step(setup, cll)  # ty: ignore[invalid-argument-type]
 
         assert float(ca_adv) == pytest.approx(110.0)
         assert float(ca_rec) == pytest.approx(85.0)
@@ -55,7 +56,7 @@ class TestGetHysteresisWindowChemicalStep:
         """CLL >= step_x (50) → post-step advancing/receding CA."""
         setup = _make_setup()
         cll = jnp.array(60.0)  # 60 >= 50
-        ca_adv, ca_rec = _get_hysteresis_window_chemical_step(setup, cll)
+        ca_adv, ca_rec = _get_hysteresis_window_chemical_step(setup, cll)  # ty: ignore[invalid-argument-type]
 
         assert float(ca_adv) == pytest.approx(95.0)
         assert float(ca_rec) == pytest.approx(70.0)
@@ -64,7 +65,7 @@ class TestGetHysteresisWindowChemicalStep:
         """CLL exactly at step_x (50) → post-step window (condition is cll < step_x)."""
         setup = _make_setup()
         cll = jnp.array(50.0)  # exactly at boundary → NOT < 50 → post-step
-        ca_adv, ca_rec = _get_hysteresis_window_chemical_step(setup, cll)
+        ca_adv, ca_rec = _get_hysteresis_window_chemical_step(setup, cll)  # ty: ignore[invalid-argument-type]
 
         assert float(ca_adv) == pytest.approx(95.0)
         assert float(ca_rec) == pytest.approx(70.0)
@@ -75,8 +76,8 @@ class TestGetHysteresisWindowChemicalStep:
         cll_pre = jnp.array(80.0)  # 80 < 100 → pre-step
         cll_post = jnp.array(120.0)  # 120 >= 100 → post-step
 
-        ca_adv_pre, _ = _get_hysteresis_window_chemical_step(setup, cll_pre)
-        ca_adv_post, _ = _get_hysteresis_window_chemical_step(setup, cll_post)
+        ca_adv_pre, _ = _get_hysteresis_window_chemical_step(setup, cll_pre)  # ty: ignore[invalid-argument-type]
+        ca_adv_post, _ = _get_hysteresis_window_chemical_step(setup, cll_post)  # ty: ignore[invalid-argument-type]
 
         assert float(ca_adv_pre) == pytest.approx(110.0)
         assert float(ca_adv_post) == pytest.approx(95.0)
@@ -95,3 +96,40 @@ def test_chemical_step_hysteresis_operator_is_registered():
     assert "chemical_step_hysteresis" in ops, (
         f"Expected 'chemical_step_hysteresis' in wetting registry. Available: {sorted(ops.keys())}"
     )
+
+
+# ---------------------------------------------------------------------------
+# TypeError guard branches
+# ---------------------------------------------------------------------------
+
+
+def test_get_hysteresis_window_raises_when_chemical_step_config_none():
+    setup = SimpleNamespace(config=SimpleNamespace(chemical_step_config=None))
+    with pytest.raises(TypeError, match="chemical_step_config is required"):
+        _get_hysteresis_window_chemical_step(setup, jnp.array(20.0))  # ty: ignore[invalid-argument-type]
+
+
+def test_update_wetting_state_chemical_step_raises_when_multiphase_params_none():
+    from tud_lbm.pipeline.state import WettingState
+
+    setup = SimpleNamespace(
+        multiphase_params=None,
+        config=SimpleNamespace(chemical_step_config=_CHEM_CFG, grid_shape=(100, 50, 1)),
+    )
+    dummy_wetting = WettingState(
+        phi_left=jnp.array(0.0),
+        phi_right=jnp.array(0.0),
+        d_rho_left=jnp.array(0.0),
+        d_rho_right=jnp.array(0.0),
+        ca_left=jnp.array(0.0),
+        ca_right=jnp.array(0.0),
+        cll_left=jnp.array(0.0),
+        cll_right=jnp.array(0.0),
+    )
+    with pytest.raises(TypeError, match="multiphase_params is required"):
+        update_wetting_state_chemical_step(
+            dummy_wetting,
+            jnp.ones((4, 4, 1, 1, 1)),
+            setup,  # ty: ignore[invalid-argument-type]
+            trial_step_fn=lambda _p: (jnp.array(0.0), jnp.array(0.0)),
+        )

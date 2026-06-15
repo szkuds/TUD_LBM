@@ -51,7 +51,7 @@ def test_make_save_callback_runs_only_on_matching_interval(monkeypatch):
     )
     monkeypatch.setattr(io_callbacks.jax.debug, "callback", lambda fn, state, t, ordered=True: fn(state, t))
 
-    do_save = io_callbacks.make_save_callback(_IO(), save_interval=2, skip_interval=1, save_fields=("rho",))
+    do_save = io_callbacks.make_save_callback(_IO(), save_interval=2, skip_interval=1, save_fields=("rho",))  # ty: ignore[invalid-argument-type]
     state = _state_with_wetting()
 
     do_save(state, 1)

@@ -14,11 +14,11 @@ Example Python usage::
 
 import os
 import sys
+import tomllib
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 import click
-import tomllib
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
@@ -42,11 +42,18 @@ _SECTION_ALIAS_MAP = {
 
 _VISUAL_KINDS = {
     "plotting": "Field plots - rendered per timestep snapshot",
-    "analysis": "Analysis plots - computed over snapshot history",
+    "comparison": "Comparison plots - computed over snapshot history",
+}
+
+# Which CLI commands consume each analysis kind — shown in --list-simulation-analysis output.
+_ANALYSIS_USAGE = {
+    "plotting": "tud-lbm animate, tud-lbm visualise",
+    "comparison": "tud-lbm animate, tud-lbm visualise, tud-lbm compare",
 }
 
 # Number of timesteps for the no-gravity wetting equilibration phase.
 _WETTING_INIT_NT = 50_000
+_BOLD_CYAN = "bold cyan"
 
 
 def _parse_override_argument(raw_override: str) -> tuple[str, object]:
@@ -125,7 +132,7 @@ def _parse_override_argument(raw_override: str) -> tuple[str, object]:
     return path, value
 
 
-def _normalize_override_path(path: str) -> list[str]:
+def _normalise_override_path(path: str) -> list[str]:
     """Map TOML table paths to raw-config keys and split into segments.
 
     Normalizes TOML section aliases to their field names:
@@ -143,16 +150,16 @@ def _normalize_override_path(path: str) -> list[str]:
         List of path segments (e.g., ["tau"] or ["gravity_force", "force_g"]).
 
     Raises:
-        ValueError: If path is empty or becomes empty after normalization.
+        ValueError: If path is empty or becomes empty after normalisation.
 
     Examples:
-        _normalize_override_path('simulation_type.tau')
+        _normalise_override_path('simulation_type.tau')
         # ['tau']
 
-        _normalize_override_path('gravity_force.force_g')
+        _normalise_override_path('gravity_force.force_g')
         # ['gravity_force', 'force_g']
 
-        _normalize_override_path('boundary_conditions.top')
+        _normalise_override_path('boundary_conditions.top')
         # ['bc_config', 'top']
     """
     parts = [segment.strip() for segment in path.split(".") if segment.strip()]
@@ -181,7 +188,7 @@ def _set_nested_override(raw_config: dict[str, Any], path: str, value: object) -
 
     Args:
         raw_config: The raw configuration dict to mutate.
-        path: Dotted-path string (normalized or already valid).
+        path: Dotted-path string (normalised or already valid).
         value: The typed value to assign.
 
     Raises:
@@ -196,7 +203,7 @@ def _set_nested_override(raw_config: dict[str, Any], path: str, value: object) -
         _set_nested_override(raw, 'gravity_force.force_g', 5e-7)
         # raw == {'gravity_force': {'force_g': 5e-7}}
     """
-    parts = _normalize_override_path(path)
+    parts = _normalise_override_path(path)
 
     if len(parts) == 1:
         raw_config[parts[0]] = value
@@ -249,12 +256,12 @@ def _apply_overrides(raw_config: dict[str, Any], overrides: tuple[str, ...]) -> 
     console.print()
 
 
-def _build_visual_table(kind: str, ops: dict) -> Table:
-    subtitle = _VISUAL_KINDS[kind]
+def _build_visual_table(kind: str, ops: dict, subtitle: str | None = None) -> Table:
+    sub = subtitle if subtitle is not None else _VISUAL_KINDS.get(kind, "")
     table = Table(
-        title=f"[bold magenta]{kind}[/bold magenta]  [dim]{subtitle}[/dim]",
+        title=f"[bold magenta]{kind}[/bold magenta]  [dim]{sub}[/dim]",
         show_header=True,
-        header_style="bold cyan",
+        header_style=_BOLD_CYAN,
         title_justify="left",
     )
     table.add_column("Name", style="green", no_wrap=True)
@@ -274,7 +281,7 @@ def _build_standard_table(kind: str, ops: dict) -> Table:
     table = Table(
         title=f"[bold magenta]{kind}[/bold magenta]",
         show_header=True,
-        header_style="bold cyan",
+        header_style=_BOLD_CYAN,
         title_justify="left",
     )
     table.add_column("Name", style="green", no_wrap=True)
@@ -291,37 +298,163 @@ def _build_standard_table(kind: str, ops: dict) -> Table:
     return table
 
 
-def _display_operators() -> None:
-    """Display all registered operators grouped by kind in Rich tables."""
-    # Import plotting package for side-effect registration of plotting/analysis operators.
+_ANALYSIS_KINDS = frozenset({"plotting", "comparison"})
+
+
+def _display_simulation_operators() -> None:
+    """Display physics/model operators (excludes plotting and comparison kinds)."""
     import tud_lbm.io.plotting as _plotting_mod  # noqa: F401
     from tud_lbm.operators import load_all
-    from tud_lbm.registry import OPERATOR_REGISTRY
     from tud_lbm.registry import get_operator_category
     from tud_lbm.registry import get_operators
 
     load_all()
 
-    categories = sorted(get_operator_category())
-
+    categories = sorted(c for c in get_operator_category() if c not in _ANALYSIS_KINDS)
     if not categories:
-        console.print("[yellow]No operators registered.[/yellow]")
+        console.print("[yellow]No simulation operators registered.[/yellow]")
         return
 
+    n_total = sum(len(get_operators(c)) for c in categories)
     console.print()
     console.print(
         Panel.fit(
-            f"[bold blue]Registered Operators[/bold blue]  "
-            f"({len(OPERATOR_REGISTRY)} total across {len(categories)} categories)",
+            f"[bold blue]Simulation Operators[/bold blue]  ({n_total} total across {len(categories)} categories)",
         ),
     )
     console.print()
 
     for kind in categories:
         ops = get_operators(kind)
-        table = _build_visual_table(kind, ops) if kind in _VISUAL_KINDS else _build_standard_table(kind, ops)
-        console.print(table)
+        console.print(_build_standard_table(kind, ops))
         console.print()
+
+
+def _display_analysis_operators() -> None:
+    """Display plotting and comparison operators with their CLI usage context."""
+    import tud_lbm.io.plotting as _plotting_mod  # noqa: F401
+    from tud_lbm.operators import load_all
+    from tud_lbm.registry import get_operator_category
+    from tud_lbm.registry import get_operators
+
+    load_all()
+
+    categories = sorted(c for c in get_operator_category() if c in _ANALYSIS_KINDS)
+    if not categories:
+        console.print("[yellow]No analysis operators registered.[/yellow]")
+        return
+
+    n_total = sum(len(get_operators(c)) for c in categories)
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold blue]Analysis Operators[/bold blue]  ({n_total} total across {len(categories)} categories)",
+        ),
+    )
+    console.print()
+
+    for kind in categories:
+        ops = get_operators(kind)
+        usage = _ANALYSIS_USAGE.get(kind, "")
+        base = _VISUAL_KINDS.get(kind, "")
+        subtitle = f"{base}  │  used by: {usage}" if usage else base
+        console.print(_build_visual_table(kind, ops, subtitle=subtitle))
+        console.print()
+
+
+def _operator_description(target: object) -> str:
+    """Return the first line of *target*'s docstring, or '—' when absent."""
+    doc = (getattr(target, "__doc__", None) or "").strip().splitlines()
+    return doc[0] if doc else "—"
+
+
+def _build_fields_table(names: list[str], available: dict) -> Table:
+    """Build a Rich table listing selectable operator fields."""
+    table = Table(show_header=True, header_style=_BOLD_CYAN, box=None, padding=(0, 1))
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Name", style="green", no_wrap=True)
+    table.add_column("Description", style="white")
+    for i, name in enumerate(names, 1):
+        description = _operator_description(available[name].target)
+        table.add_row(str(i), name, description)
+    return table
+
+
+def _resolve_token(token: str, names: list[str], available: dict) -> str | None:
+    """Resolve a single user token (number or name) to an operator name.
+
+    Returns the resolved name, or ``None`` when the token is invalid.
+    """
+    try:
+        idx = int(token) - 1
+        if 0 <= idx < len(names):
+            return names[idx]
+        console.print(f"[yellow]Number {token} out of range — skipped[/yellow]")
+        return None
+    except ValueError:
+        pass
+    else:
+        if token in available:
+            return token
+        console.print(f"[yellow]Unknown field '{token}' — skipped[/yellow]")
+        return None
+
+
+def _parse_field_tokens(raw: str, names: list[str], available: dict) -> list[str]:
+    """Parse a comma-separated user input string into a list of valid operator names."""
+    selected: list[str] = []
+    for raw_token in raw.split(","):
+        token = raw_token.strip()
+        if not token:
+            continue
+        resolved = _resolve_token(token, names, available)
+        if resolved is not None:
+            selected.append(resolved)
+    return selected
+
+
+def _prompt_fields(
+    available: dict,
+    current: list[str] | None,
+    label: str,
+) -> list[str] | None:
+    """Interactively select plot operators from *available*.
+
+    Args:
+        available: ``{name: OperatorEntry}`` dict of all selectable operators.
+        current: Pre-selected names (from config), or ``None`` for all.
+        label: Human-readable context shown in the prompt header.
+
+    Returns:
+        Validated list of operator names, or ``None`` when the user accepts the
+        default (meaning "use all available / whatever the builder defaults to").
+    """
+    names = sorted(available.keys())
+
+    console.print()
+    console.print(f"[bold cyan]Available {label}:[/bold cyan]")
+    console.print(_build_fields_table(names, available))
+
+    default_str = ", ".join(current) if current else "(all)"
+    console.print(f"\n[dim]Current selection:[/dim] {default_str}")
+    console.print("[dim]Enter comma-separated numbers (e.g. 1,3) or names (e.g. density,force).[/dim]")
+    console.print("[dim]Press Enter to keep current selection.[/dim]")
+
+    try:
+        raw = Prompt.ask("Select fields", default="")
+    except EOFError:
+        return current
+
+    if not raw.strip():
+        return current  # None → builder default; list → exact config selection
+
+    selected = _parse_field_tokens(raw, names, available)
+
+    if not selected:
+        console.print("[dim]No valid selection — keeping current.[/dim]")
+        return current
+
+    return selected
 
 
 def _display_config_summary(config: SimulationConfig | None) -> None:
@@ -657,7 +790,7 @@ def _run_two_phase_wetting_init(
 
     Phase 1 equilibrates the droplet without gravity for ``_WETTING_INIT_NT``
     steps and writes one final snapshot. Phase 2 then runs with gravity,
-    initialized from the Phase 1 snapshot.
+    initialised from the Phase 1 snapshot.
     """
     from tud_lbm.config.adapter_toml import TomlAdapter
 
@@ -768,10 +901,11 @@ def _execute_run(
 ) -> None:
     """Dispatch to single-run or parallel-sweep execution."""
     if sweep_metadata is None:
-        # Single-run path: _run_simulation returns the data directory (string)
-        data_dir = _run_simulation(config)
-        if run_compare:
-            _run_compare_single(Path(data_dir).parent, config)
+        if config is not None:
+            # Single-run path: _run_simulation returns the data directory (string)
+            data_dir = _run_simulation(config)
+            if run_compare:
+                _run_compare_single(Path(data_dir).parent, config)
     else:
         results = _run_parallel_sweep(
             configs,
@@ -863,10 +997,11 @@ def _run_with_optional_overrides(
 
 
 def _run_impl(
-    config_path: str,
+    config_path: str | None,
     no_prompt: bool,
     dry_run: bool,
     list_operators: bool,
+    list_analysis: bool,
     max_workers: int | None,
     fail_fast: bool,
     overrides: tuple[str, ...],
@@ -877,7 +1012,11 @@ def _run_impl(
     run_compare: bool = False,
 ) -> bool:
     if list_operators:
-        _display_operators()
+        _display_simulation_operators()
+        return False
+
+    if list_analysis:
+        _display_analysis_operators()
         return False
 
     if debug_wetting:
@@ -890,6 +1029,9 @@ def _run_impl(
     _validate_cli_args(overrides, config_path, init_wetting=init_wetting, init_dir=init_dir)
 
     if init_wetting:
+        if config_path is None:
+            msg = "config_path is required for wetting initialisation"
+            raise ValueError(msg)
         _run_two_phase_wetting_init(config_path, overrides, no_prompt=no_prompt, overview=overview)
         console.print()
         console.print(
@@ -950,7 +1092,13 @@ def cli() -> None:
     "--list-simulation-operators",
     "list_operators",
     is_flag=True,
-    help="List all registered operators with metadata and exit",
+    help="List simulation operators (physics, models, lattices) and exit.",
+)
+@click.option(
+    "--list-simulation-analysis",
+    "list_analysis",
+    is_flag=True,
+    help="List analysis operators (plotting, comparison) with CLI usage context and exit.",
 )
 @click.option(
     "--max-workers",
@@ -1009,6 +1157,7 @@ def run(
     no_prompt: bool,
     dry_run: bool,
     list_operators: bool,
+    list_analysis: bool,
     max_workers: int | None,
     fail_fast: bool,
     overrides: tuple[str, ...],
@@ -1059,8 +1208,11 @@ def run(
         # Interactive mode
         tud-lbm run
 
-        # List all registered operators
+        # List simulation operators (physics, models, lattices)
         tud-lbm run --list-simulation-operators
+
+        # List analysis operators (plotting, comparison) with CLI usage
+        tud-lbm run --list-simulation-analysis
 
         # Enable wetting debug output
         tud-lbm run config.toml --debug-wetting
@@ -1079,6 +1231,7 @@ def run(
             no_prompt,
             dry_run,
             list_operators,
+            list_analysis,
             max_workers,
             fail_fast,
             overrides,
@@ -1120,10 +1273,17 @@ def run(
     show_default=True,
     help="Frames per second for the output video.",
 )
-def animate(run_dir: str, output: str | None, fps: int) -> None:
+@click.option(
+    "--no-prompt",
+    "no_prompt",
+    is_flag=True,
+    help="Skip interactive field selection and use config defaults.",
+)
+def animate(run_dir: str, output: str | None, fps: int, no_prompt: bool) -> None:
     """Animate saved snapshots in RUN_DIR."""
     from tud_lbm.config import from_toml
     from tud_lbm.io.plotting import Animator
+    from tud_lbm.registry import get_operators
 
     console.print()
     console.print(
@@ -1136,17 +1296,24 @@ def animate(run_dir: str, output: str | None, fps: int) -> None:
 
     try:
         config_path = _validate_run_dir_has_config(run_dir)
-
         config = from_toml(str(config_path))
 
         console.print(f"[dim]Run directory : {run_dir}[/dim]")
-        fields = config.animate_fields or config.plot_fields
+        console.print(f"[dim]FPS           : {fps}[/dim]")
+
+        default_fields = list(config.animate_fields or config.plot_fields or []) or None
+
+        if no_prompt:
+            fields = default_fields
+        else:
+            all_ops = {**get_operators("plotting"), **get_operators("comparison")}
+            fields = _prompt_fields(all_ops, default_fields, "animation fields")
+
         if fields:
             console.print(f"[dim]Fields        : {', '.join(fields)}[/dim]")
-        console.print(f"[dim]FPS           : {fps}[/dim]")
         console.print()
 
-        animator = Animator(config=config, run_dir=run_dir, fps=fps)
+        animator = Animator(config=config, run_dir=run_dir, fps=fps, fields=fields)
         output_path = animator.create(output)
 
         console.print(f"[bold green]Animation saved to:[/bold green] {output_path}")
@@ -1178,12 +1345,19 @@ def animate(run_dir: str, output: str | None, fps: int) -> None:
 @click.option(
     "--fields",
     default=None,
-    help="Comma-separated list of plot operator names to activate (overrides config.plot_fields).",
+    help="Comma-separated operator names to activate — skips the interactive prompt.",
 )
-def visualise(run_dir: str, skip: int, dpi: int, fields: str | None) -> None:
+@click.option(
+    "--no-prompt",
+    "no_prompt",
+    is_flag=True,
+    help="Skip interactive field selection and use config defaults.",
+)
+def visualise(run_dir: str, skip: int, dpi: int, fields: str | None, no_prompt: bool) -> None:
     """Build static figures for saved snapshots in RUN_DIR."""
     from tud_lbm.config import from_toml
     from tud_lbm.io.plotting import FigureBuilder
+    from tud_lbm.registry import get_operators
 
     console.print()
     console.print(
@@ -1198,12 +1372,20 @@ def visualise(run_dir: str, skip: int, dpi: int, fields: str | None) -> None:
         config_path = _validate_run_dir_has_config(run_dir)
         config = from_toml(str(config_path))
 
-        field_list = [f.strip() for f in fields.split(",")] if fields else None
-
         console.print(f"[dim]Run directory : {run_dir}[/dim]")
-        active_fields = field_list or config.plot_fields
-        if active_fields:
-            console.print(f"[dim]Fields        : {', '.join(active_fields)}[/dim]")
+
+        if fields:
+            # Explicit --fields flag: parse and skip prompt.
+            field_list: list[str] | None = [f.strip() for f in fields.split(",")]
+        elif no_prompt:
+            field_list = list(config.plot_fields or []) or None
+        else:
+            all_ops = {**get_operators("plotting"), **get_operators("comparison")}
+            default_fields = list(config.plot_fields or []) or None
+            field_list = _prompt_fields(all_ops, default_fields, "visualisation fields")
+
+        if field_list:
+            console.print(f"[dim]Fields        : {', '.join(field_list)}[/dim]")
         if skip:
             console.print(f"[dim]Skip          : {skip}[/dim]")
         console.print(f"[dim]DPI           : {dpi}[/dim]")
@@ -1229,10 +1411,17 @@ def visualise(run_dir: str, skip: int, dpi: int, fields: str | None) -> None:
 
 @cli.command()
 @click.argument("parent_dir", type=click.Path(exists=True, file_okay=False))
-def compare(parent_dir: str) -> None:
+@click.option(
+    "--no-prompt",
+    "no_prompt",
+    is_flag=True,
+    help="Skip interactive operator selection; run CSV export only (no per-run analysis plots).",
+)
+def compare(parent_dir: str, no_prompt: bool) -> None:
     """Build CSV metrics and comparison plots for all runs in PARENT_DIR."""
     from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
     from tud_lbm.io.plotting.analysis import process_parent_dir
+    from tud_lbm.registry import get_operators
 
     console.print()
     console.print(
@@ -1245,9 +1434,18 @@ def compare(parent_dir: str) -> None:
 
     try:
         console.print(f"[dim]Parent directory : {parent_dir}[/dim]")
+
+        if no_prompt:
+            fields: list[str] | None = None
+        else:
+            comparison_ops = get_operators("comparison")
+            fields = _prompt_fields(comparison_ops, None, "per-run comparison operators")
+
+        if fields:
+            console.print(f"[dim]Operators     : {', '.join(fields)}[/dim]")
         console.print()
 
-        n_runs, n_ok = process_parent_dir(parent_dir)
+        n_runs, n_ok = process_parent_dir(parent_dir, fields=fields)
         if n_runs == 0:
             console.print("[yellow]No simulation run directories found.[/yellow]")
             return
