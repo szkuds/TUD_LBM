@@ -88,6 +88,12 @@ class TestComputeContactAngle:
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         jitted = jax.jit(partial(compute_contact_angle, rho_mean=RHO_MEAN))
         ca_l, ca_r = jitted(rho)
+
+class TestComputeContactLineLocation:
+    """Pure-function contact-line-location computation."""
+
+    def test_returns_two_scalars(self):
+        from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
         assert not jnp.isnan(ca_l)
         assert not jnp.isnan(ca_r)
 
@@ -96,12 +102,6 @@ class TestComputeContactAngle:
 # compute_contact_line_location
 # =====================================================================
 
-
-class TestComputeContactLineLocation:
-    """Pure-function contact-line-location computation."""
-
-    def test_returns_two_scalars(self):
-        from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
         from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
 
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)

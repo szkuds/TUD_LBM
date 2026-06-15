@@ -6,12 +6,10 @@ grid_shape = [
     101,
     1,
 ]
-nt = 20000
+nt = 200
 tau = 0.99
 collision_scheme = "bgk"
 init_type = "multiphase_bubbles"
-init_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_test/2026-05-04/13-30-21_Test chemical step simulation/data/timestep_12000.npz"
-skip_interval = 1
 type = "multiphase_hysteresis_chemical_step"
 
 [boundary_conditions]
@@ -58,7 +56,7 @@ rho_v = 0.001
 interface_width = 5
 
 [output]
-results_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_test"
+results_dir = "~/TUD_LBM_data/results"
 save_fields = [
     "rho",
     "u",

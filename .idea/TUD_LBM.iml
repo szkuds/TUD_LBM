@@ -11,7 +11,7 @@
       <excludeFolder url="file://$MODULE_DIR$/dist" />
       <excludeFolder url="file://$MODULE_DIR$/docs/_build" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.14 (TUD_LBM)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="uv (TUD_LBM)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="TestRunnerService">
