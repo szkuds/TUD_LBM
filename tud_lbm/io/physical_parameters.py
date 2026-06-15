@@ -331,6 +331,7 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
         msg = "rho_l is required for Archimedes number"
         raise ValueError(msg)
     lines.append(_format_archimedes_number_row(drho, g_val, length, length_label, nu, float(config.rho_l)))
+    lines.append(_format_critical_inclination_angle_row(config, gamma))
 
 
 def _add_key_value_section(lines: list[str], title: str, values: dict | None) -> None:
