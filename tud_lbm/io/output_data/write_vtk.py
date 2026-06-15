@@ -6,7 +6,7 @@ import numpy as np
 try:
     import pyevtk
 except ModuleNotFoundError:  # pragma: no cover
-    pyevtk = None  # VTK writer unavailable; will raise at call time
+    pyevtk = None  # ty: ignore[invalid-assignment]  # VTK writer unavailable; will raise at call time
 
 
 from .base import OutputWriter

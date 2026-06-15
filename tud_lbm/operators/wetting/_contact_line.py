@@ -17,7 +17,7 @@ def compute_contact_line_location(
     rho: jnp.ndarray,
     ca_left: jnp.ndarray,
     ca_right: jnp.ndarray,
-    rho_mean: jnp.ndarray,
+    rho_mean: float | jnp.ndarray,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Compute contact-line locations at the solid wall.
 

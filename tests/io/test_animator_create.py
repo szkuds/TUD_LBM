@@ -68,7 +68,7 @@ def test_create_writes_gif_with_fake_moviepy(tmp_path, monkeypatch):
             calls["close"] += 1
 
     module = types.ModuleType("moviepy.video.io.ImageSequenceClip")
-    module.ImageSequenceClip = _FakeClip
+    module.ImageSequenceClip = _FakeClip  # ty: ignore[unresolved-attribute]
     monkeypatch.setitem(sys.modules, "moviepy", types.ModuleType("moviepy"))
     monkeypatch.setitem(sys.modules, "moviepy.video", types.ModuleType("moviepy.video"))
     monkeypatch.setitem(sys.modules, "moviepy.video.io", types.ModuleType("moviepy.video.io"))

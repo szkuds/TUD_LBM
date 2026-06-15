@@ -11,24 +11,27 @@ operators from setup (gradient_density_wetting, laplacian_density_wetting).
 from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
+import jax.numpy as jnp
 from tud_lbm.operators.force import compute_total_force_ext
 from tud_lbm.operators.step._common import _multiphase_pipeline
 from tud_lbm.pipeline.state import update_extra_state
 from tud_lbm.registry import update_timestep_operator
 
 if TYPE_CHECKING:
-    import jax.numpy as jnp
     from jax import Array
     from tud_lbm.operators.protocols import DifferentialOperator
     from tud_lbm.operators.wetting._params import WettingParams
     from tud_lbm.pipeline.setup import SimulationSetup
     from tud_lbm.pipeline.state.state import State
+    from tud_lbm.pipeline.state.state import WettingState
 
 
 # ── Part A: Helper to build operators from live wetting state ──
 
 
-def _make_wetting_ops(setup: SimulationSetup, wetting: State) -> tuple[DifferentialOperator, DifferentialOperator]:
+def _make_wetting_ops(
+    setup: SimulationSetup, wetting: WettingState
+) -> tuple[DifferentialOperator, DifferentialOperator]:
     """Build (grid)->result operators from live wetting parameters.
 
     Wraps the wetting parametric operators (gradient_density_wetting, laplacian_density_wetting)
@@ -42,16 +45,21 @@ def _make_wetting_ops(setup: SimulationSetup, wetting: State) -> tuple[Different
         Tuple of (gradient_closure, laplacian_closure) where each is
         a callable (grid) -> result.
     """
+    if setup.gradient_density_wetting is None:
+        msg = "gradient_density_wetting is required for wetting operators"
+        raise TypeError(msg)
+    if setup.laplacian_density_wetting is None:
+        msg = "laplacian_density_wetting is required for wetting operators"
+        raise TypeError(msg)
+
+    _grad_wetting = setup.gradient_density_wetting
+    _lap_wetting = setup.laplacian_density_wetting
 
     def grad(grid: jnp.ndarray) -> jnp.ndarray:
-        return setup.gradient_density_wetting(
-            grid, wetting.phi_left, wetting.phi_right, wetting.d_rho_left, wetting.d_rho_right
-        )
+        return _grad_wetting(grid, wetting.phi_left, wetting.phi_right, wetting.d_rho_left, wetting.d_rho_right)
 
     def lap(grid: jnp.ndarray) -> jnp.ndarray:
-        return setup.laplacian_density_wetting(
-            grid, wetting.phi_left, wetting.phi_right, wetting.d_rho_left, wetting.d_rho_right
-        )
+        return _lap_wetting(grid, wetting.phi_left, wetting.phi_right, wetting.d_rho_left, wetting.d_rho_right)
 
     return grad, lap
 
@@ -82,16 +90,24 @@ def _trial_step(
         Tuple (f_out, rho_out) where f_out is post-BC populations and
         rho_out is the post-step density field.
     """
+    if setup.gradient_density_wetting is None:
+        msg = "gradient_density_wetting is required for trial step"
+        raise TypeError(msg)
+    if setup.laplacian_density_wetting is None:
+        msg = "laplacian_density_wetting is required for trial step"
+        raise TypeError(msg)
+    if setup.config.hysteresis_config is None:
+        msg = "hysteresis_config is required for trial step"
+        raise TypeError(msg)
+
+    _grad_wetting = setup.gradient_density_wetting
+    _lap_wetting = setup.laplacian_density_wetting
 
     def grad(grid: jnp.ndarray) -> jnp.ndarray:
-        return setup.gradient_density_wetting(
-            grid, params.phi_left, params.phi_right, params.d_rho_left, params.d_rho_right
-        )
+        return _grad_wetting(grid, params.phi_left, params.phi_right, params.d_rho_left, params.d_rho_right)
 
     def lap(grid: jnp.ndarray) -> jnp.ndarray:
-        return setup.laplacian_density_wetting(
-            grid, params.phi_left, params.phi_right, params.d_rho_left, params.d_rho_right
-        )
+        return _lap_wetting(grid, params.phi_left, params.phi_right, params.d_rho_left, params.d_rho_right)
 
     num_steps: int = setup.config.hysteresis_config.get("trial_steps", 2)
 
@@ -144,6 +160,9 @@ def step_multiphase_hysteresis(setup: SimulationSetup, state: State) -> State:
     force_ext, state = compute_total_force_ext(setup, state, setup.forces)
 
     # 2. Build operators from live wetting parameters
+    if state.wetting is None:
+        msg = "state.wetting is required for hysteresis step"
+        raise TypeError(msg)
     grad, lap = _make_wetting_ops(setup, state.wetting)
 
     # 3. Run multiphase physics kernel
@@ -153,10 +172,11 @@ def step_multiphase_hysteresis(setup: SimulationSetup, state: State) -> State:
     new_state = state._replace(f=f_out, rho=rho, u=u, force=force_tot, force_ext=force_ext, t=state.t + 1)
 
     # 5. Update extra state — trial_step_fn forwarded so wetting plugin can run optimiser
+    _force_ext_arr = force_ext if force_ext is not None else jnp.zeros(1)
     return update_extra_state(
         setup,
         state,
         new_state,
         force_ext=force_ext,
-        trial_step_fn=partial(_trial_step, setup, f_out, force_ext),
+        trial_step_fn=partial(_trial_step, setup, f_out, _force_ext_arr),
     )

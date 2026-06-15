@@ -176,6 +176,12 @@ class ElectricForceModule:
         Returns:
             Electric force field, shape ``(nx, ny, nz, 1, d)``.
         """
+        if precomputed.gradient_standard is None:
+            msg = "gradient_standard is required for electric force computation"
+            raise TypeError(msg)
+        if state.h is None:
+            msg = "state.h (electric potential distributions) is required for electric force"
+            raise TypeError(msg)
         grad = precomputed.gradient_standard
 
         # Sum over q-axis (axis 3) to get density; extract z-slice to 2D

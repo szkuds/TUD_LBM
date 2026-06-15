@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import NamedTuple
+from typing import TypedDict
 import numpy as np
 from matplotlib.colors import TABLEAU_COLORS
 from tud_lbm.io.physical_parameters import _get_setup_contact_line_length
@@ -43,7 +44,7 @@ _WIDTH_EPS = 1e-15
 _DIR_SPLIT_PARTS = 2
 
 _LABEL_CA = r"$\mathrm{Ca}$"
-_LABEL_IT_NORM = r"$\mathrm{it}/\mathrm{it}_{\mathrm{max}}$"
+_LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
 _LABEL_X_AVG_NORM = r"$X_{\mathrm{avg}}/R_0$"
 _CONFIG_TOML = "config.toml"
 
@@ -159,8 +160,9 @@ def _derive_surface_tension(config: SimulationConfig) -> float | None:
     width = getattr(config, "interface_width", None)
     rho_l = getattr(config, "rho_l", None)
     rho_v = getattr(config, "rho_v", None)
-    width_val = float(width) if width is not None else 0.0
-    if any(x is None for x in (kappa, width, rho_l, rho_v)) or abs(width_val) < _WIDTH_EPS:
+    if kappa is None or width is None or rho_l is None or rho_v is None:
+        return None
+    if abs(float(width)) < _WIDTH_EPS:
         return None
     drho = float(rho_l) - float(rho_v)
     return (2.0 / 3.0) * (float(kappa) / float(width)) * drho**2
@@ -267,6 +269,23 @@ class AvgDensityPlot(_BaseAnalysisPlot):
         """Compute average density values for each timestep file."""
         iters, snapshots = _load_timesteps(files, ("rho",))
         vals = np.asarray([float(np.mean(_extract_rho_2d(snap["rho"]))) for snap in snapshots], dtype=float)
+        return {"iters": iters, "values": vals}
+
+
+@comparison_operator(name="total_mass")
+class TotalMassPlot(_BaseAnalysisPlot):
+    """Plot total domain mass (sum of rho) over time."""
+
+    name = "total_mass"
+    title = "Total mass vs timestep"
+    ylabel = "sum(rho)"
+    color = "tab:olive"
+    required_keys = ("rho",)
+
+    def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
+        """Compute total mass values for each timestep file."""
+        iters, snapshots = _load_timesteps(files, ("rho",))
+        vals = np.asarray([float(np.sum(_extract_rho_2d(snap["rho"]))) for snap in snapshots], dtype=float)
         return {"iters": iters, "values": vals}
 
 
@@ -494,6 +513,9 @@ def _inclination_angle_deg(config: SimulationConfig) -> float:
 
 
 def _sigma_lg(config: SimulationConfig) -> float:
+    if config.kappa is None or config.interface_width is None or config.rho_l is None or config.rho_v is None:
+        msg = "kappa, interface_width, rho_l, rho_v are required for surface tension"
+        raise ValueError(msg)
     return (
         (2.0 / 3.0)
         * (float(config.kappa) / float(config.interface_width))
@@ -594,9 +616,9 @@ def _collect_csv_rows(files: list[Path], rho_mean: float, offset_x: float) -> di
         avg_ux = float(np.sum(u_x * mask) / n_liq) if n_liq > 0 else 0.0
         avg_uy = float(np.sum(u_y * mask) / n_liq) if n_liq > 0 else 0.0
 
-        if cll_l is None:
+        if cll_l is None or cll_r is None:
             cll_l, cll_r = _cll_from_rho(rho_2d, rho_mean)
-        if ca_l is None:
+        if ca_l is None or ca_r is None:
             ca_l, ca_r = _ca_from_rho(rho_2d, rho_mean)
 
         cm_x, cm_y = _center_of_mass(rho_2d, rho_mean)
@@ -698,6 +720,9 @@ def build_simulation_csv(run_dir: str | Path, config: SimulationConfig) -> Path 
     if not files:
         return None
 
+    if config.rho_l is None or config.rho_v is None:
+        msg = "rho_l and rho_v are required for CSV export"
+        raise ValueError(msg)
     rho_mean = (float(config.rho_l) + float(config.rho_v)) / 2.0
     sigma_lg = _sigma_lg(config)
     nu = (float(config.tau) - 0.5) / 3.0
@@ -744,7 +769,18 @@ def _parse_timestep_from_path(p: Path) -> int:
 
 # -- Comparison plots ---------------------------------------------------------
 
-_COMPARISON_PLOT_CONFIGS = [
+
+class _PlotConfig(TypedDict, total=False):
+    filename: str
+    x: str
+    y: str
+    y_pair: tuple[str, str]
+    pair_labels: tuple[str, str]
+    xlabel: str
+    ylabel: str
+
+
+_COMPARISON_PLOT_CONFIGS: list[_PlotConfig] = [
     {
         "filename": "01_Ca_vs_iteration.png",
         "x": "normalised_iteration",
@@ -861,7 +897,7 @@ def _clean_dir_label(dir_name: str) -> str:
 def _plot_comparison_entry(
     ax: matplotlib.axes.Axes,
     df: pd.DataFrame,
-    pc: dict,
+    pc: _PlotConfig,
     x_col: str,
     color: str,
     marker: str,
@@ -907,7 +943,7 @@ def compare_runs(parent_dir: str | Path) -> None:
     for pc in _COMPARISON_PLOT_CONFIGS:
         fig, ax = plt.subplots(figsize=(12, 8))
         for i, entry in enumerate(entries):
-            color = colors[i % len(colors)]
+            color = str(colors[i % len(colors)])
             marker = _COMPARISON_MARKERS[i % len(_COMPARISON_MARKERS)]
             x_col = pc["x"]
             if x_col not in entry["data"].columns:

@@ -76,9 +76,12 @@ class GravityForceModule:
         template = _build_gravity_template(params, grid_shape, **kwargs)
 
         # Extract optional reference densities from config (if provided).
+        # getattr is intentional here: config is typed as object from **kwargs.
         config = kwargs.get("config")
-        rho_l = float(config.rho_l) if (config is not None and getattr(config, "rho_l", None) is not None) else None
-        rho_v = float(config.rho_v) if (config is not None and getattr(config, "rho_v", None) is not None) else None
+        _rho_l_raw = getattr(config, "rho_l", None) if config is not None else None
+        _rho_v_raw = getattr(config, "rho_v", None) if config is not None else None
+        rho_l = float(_rho_l_raw) if _rho_l_raw is not None else None
+        rho_v = float(_rho_v_raw) if _rho_v_raw is not None else None
 
         return GravityPrecomputed(template=template, rho_l=rho_l, rho_v=rho_v)
 

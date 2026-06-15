@@ -43,6 +43,9 @@ class WettingExtraStatePlugin:
                 "d_rho_right": 0.0,
             }
 
+        if setup.initial_f_fn is None:
+            msg = "initial_f_fn is required for wetting initial state"
+            raise TypeError(msg)
         f_init = setup.initial_f_fn()
         rho_init = jnp.sum(f_init, axis=-2, keepdims=True)
 

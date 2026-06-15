@@ -66,7 +66,7 @@ class TestSimulationResult:
             status="success",
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
-            result.status = "failed"
+            result.status = "failed"  # ty: ignore[invalid-assignment]
 
     def test_default_field_values(self, simple_config):
         """Verify default field values are correct."""
@@ -345,8 +345,8 @@ class TestRunSingleSimulation:
             )
 
         assert result.status == "failed"
-        assert "ValueError" in result.error
-        assert "Test error" in result.error
+        assert "ValueError" in result.error  # ty: ignore[unsupported-operator]
+        assert "Test error" in result.error  # ty: ignore[unsupported-operator]
 
     def test_exception_contains_traceback(self, simple_config, temp_results_dir):
         """Verify error message contains full traceback."""
@@ -370,7 +370,7 @@ class TestRunSingleSimulation:
                 run_fn=mock_run_fn,
             )
 
-        assert "Traceback" in result.error or "traceback" in result.error.lower()
+        assert "Traceback" in result.error or "traceback" in result.error.lower()  # ty: ignore[unsupported-operator, unresolved-attribute]
 
     def test_duration_still_set_on_failure(self, simple_config, temp_results_dir):
         """Verify duration is recorded even on failure."""

@@ -16,7 +16,7 @@ from tud_lbm.registry import wetting_operator
 @wetting_operator(name="contact_angle")
 def compute_contact_angle(
     rho: jnp.ndarray,
-    rho_mean: jnp.ndarray,
+    rho_mean: float | jnp.ndarray,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Compute contact angles (left and right) from a density field.
 

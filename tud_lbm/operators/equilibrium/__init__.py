@@ -13,6 +13,7 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import cast
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 
@@ -47,7 +48,7 @@ def build_equilibrium_fn(scheme: str = "wb") -> EquilibriumOperator:
         >>> equilibrium = build_equilibrium_fn("wb")
         >>> feq = equilibrium(rho, u, lattice)
     """
-    return build_operator("equilibrium", scheme)
+    return cast("EquilibriumOperator", build_operator("equilibrium", scheme))
 
 
 __all__ = [

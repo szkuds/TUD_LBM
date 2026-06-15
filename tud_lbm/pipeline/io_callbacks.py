@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from tud_lbm.pipeline.state import State
 
 
-def _state_to_numpy(state: State, fields: tuple | None = None, t: int | None = None) -> dict:
+def _state_to_numpy(state: State, fields: tuple | None = None, t: int | None = None) -> dict[str, np.ndarray]:
     """Convert a :class:`~state.state.State` pytree to a NumPy dict.
 
     Only includes non-``None`` array fields suitable for saving.

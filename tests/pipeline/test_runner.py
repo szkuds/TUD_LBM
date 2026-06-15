@@ -84,7 +84,7 @@ def _mp_setup_with_gravity():
 def _cfg(**kwargs) -> SimulationConfig:
     base = {"grid_shape": (8, 8), "tau": 0.8, "nt": 10}
     base.update(kwargs)
-    return SimulationConfig(**base)
+    return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
 # =====================================================================
@@ -175,7 +175,7 @@ class TestTFromSnapshot:
 
     def test_init_from_file_no_init_dir_returns_zero(self):
         cfg = SimpleNamespace(init_type="init_from_file", init_dir=None)
-        assert int(_t_from_snapshot(cfg)) == 0
+        assert int(_t_from_snapshot(cfg)) == 0  # ty: ignore[invalid-argument-type]
 
     def test_stem_without_timestep_prefix_returns_zero(self, tmp_path):
         npz = tmp_path / "snapshot_1000.npz"
@@ -592,6 +592,7 @@ class TestRunPure:
         final_state, trajectory = run(setup, state, nt=5)
 
         assert int(final_state.t) == 5
+        assert trajectory is not None
         assert trajectory.f.shape[0] == 5
 
     def test_final_state_no_nan(self):
@@ -614,6 +615,7 @@ class TestRunPure:
         final_state, trajectory = run(setup, state, nt=3)
 
         assert int(final_state.t) == 3
+        assert trajectory is not None
         assert trajectory.f.shape[0] == 3
 
     def test_save_interval(self):
@@ -625,6 +627,7 @@ class TestRunPure:
         final_state, trajectory = run(setup, state, nt=10, save_interval=5)
 
         assert int(final_state.t) == 10
+        assert trajectory is not None
         assert trajectory.f.shape[0] == 2
 
     def test_mass_conservation_over_trajectory(self):
@@ -647,6 +650,7 @@ class TestRunPure:
 
         _, trajectory = run(setup, state, nt=5)
 
+        assert trajectory is not None
         ts = np.array(trajectory.t)
         np.testing.assert_array_equal(ts, np.arange(1, 6))
 
@@ -733,3 +737,56 @@ class TestLegacyAPIUnchanged:
 
         new_state = step_single_phase(setup, state)
         assert int(new_state.t) == 1
+
+
+# =====================================================================
+# Guard branches in init_state and run
+# =====================================================================
+
+
+import pytest  # noqa: E402
+
+
+class TestInitStateGuards:
+    """TypeError guards inside init_state."""
+
+    def test_raises_when_initial_f_fn_none_and_no_f_provided(self):
+        setup = _single_phase_setup()._replace(initial_f_fn=None)
+        with pytest.raises(TypeError, match="initial_f_fn is required"):
+            init_state(setup)
+
+    def test_init_kwargs_forwarded_to_initial_f_fn(self):
+        """init_kwargs dict is forwarded verbatim to the initialisation function."""
+        received: dict = {}
+
+        def fake_f_fn(kwargs):
+            received.update(kwargs or {})
+            return jnp.ones((NX, NY, NZ, 9, 1)) / 9.0
+
+        setup = _single_phase_setup()._replace(initial_f_fn=fake_f_fn)
+        init_state(setup, init_kwargs={"density": 2.0})
+        assert received == {"density": 2.0}
+
+
+class TestRunGuards:
+    """TypeError and nt-default guards in run()."""
+
+    def test_raises_when_step_fn_none(self):
+        from tud_lbm.pipeline.runner import run
+
+        setup = _single_phase_setup()
+        state = init_state(setup)
+        setup_no_step = setup._replace(step_fn=None)
+        with pytest.raises(TypeError, match="step_fn is required"):
+            run(setup_no_step, state)
+
+    def test_nt_defaults_to_config_nt(self):
+        from tud_lbm.pipeline.runner import run
+
+        cfg = SimulationConfig(grid_shape=(NX, NY), tau=0.8, nt=4)
+        setup = build_setup(cfg)
+        state = init_state(setup)
+        final, trajectory = run(setup, state)  # no nt arg — uses config.nt=4
+        assert int(final.t) == 4
+        assert trajectory is not None
+        assert trajectory.f.shape[0] == 4

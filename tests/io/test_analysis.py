@@ -50,7 +50,7 @@ def _wetting_cfg(**extra) -> SimulationConfig:
         "interface_width": 2,
     }
     base.update(extra)
-    return SimulationConfig(**base)
+    return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
 def _write_snapshot(data_dir: Path, step: int) -> None:
