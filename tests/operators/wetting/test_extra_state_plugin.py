@@ -80,7 +80,7 @@ def test_update_state_early_return_and_update_path():
     updated = WettingExtraStatePlugin.update_state(setup, prev_state, new_state, trial_step_fn=marker)  # ty: ignore[invalid-argument-type]
 
     assert updated.wetting is not None
-    assert float(updated.wetting.phi_left) == 1.5  # ty: ignore[unresolved-attribute]
+    assert float(updated.wetting.phi_left) == 1.5
     assert calls["trial"] is marker
 
 

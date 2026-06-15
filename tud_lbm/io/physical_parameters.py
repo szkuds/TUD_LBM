@@ -276,6 +276,29 @@ def _format_archimedes_number_row(
     return _row("Ar (Archimedes number):", f"{ar:.6g}  [gL³Δρ/(ν²ρ_l), {length_label}]")
 
 
+def _format_critical_inclination_angle_row(config: SimulationConfig, gamma: float) -> str:
+    if config.chemical_step_config is None or config.gravity_masked_force is None or config.rho_l is None:
+        msg = "chemical_step_config, gravity_masked_force, and rho_l must be set"
+        raise RuntimeError(msg)
+    ca_adv = math.radians(float(config.chemical_step_config["ca_advancing_pre_step"]))
+    ca_rec = math.radians(float(config.chemical_step_config["ca_receding_pre_step"]))
+    g = float(config.gravity_masked_force["force_g"])
+    radius = float(config.initialisation["radii"][0])
+    nx = int(config.grid_shape[0])
+    rho_l = float(config.rho_l)
+
+    a = (np.pi * (radius * nx) ** 2) / 2  # Assuming perfectly spherical cap
+    hysteresis_force = (np.cos(ca_rec) - np.cos(ca_adv)) * gamma
+    sina = hysteresis_force / (g * a * rho_l)
+    a_rad = np.arcsin(sina)
+    a_deg = math.degrees(a_rad)
+
+    if -1 <= sina <= 1:
+        return _row("Critical Inclination Angle", f"{a_deg:.6g}  [arcsin((cos(ca_rec)-cos(ca_adv)) / g*a*rho_l)]")
+
+    return _row("Critical Inclination Angle", "This droplet will remain pinned")
+
+
 def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     if "multiphase" not in config.sim_type:
         return
@@ -308,6 +331,8 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
         msg = "rho_l is required for Archimedes number"
         raise ValueError(msg)
     lines.append(_format_archimedes_number_row(drho, g_val, length, length_label, nu, float(config.rho_l)))
+    if config.chemical_step_config is not None and config.gravity_masked_force is not None:
+        lines.append(_format_critical_inclination_angle_row(config, gamma))
 
 
 def _add_key_value_section(lines: list[str], title: str, values: dict | None) -> None:

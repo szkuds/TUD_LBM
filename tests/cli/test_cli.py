@@ -1410,13 +1410,10 @@ class TestResolveToken:
         result = _resolve_token("5", names, self._ops())
         assert result is None
 
-    def test_name_token_returns_none(self, capsys):
-        # The else-clause in _resolve_token is unreachable dead code (try block always returns
-        # before else when no ValueError; else does not run when ValueError is raised).
-        # So a name-based token always returns None.
+    def test_name_token_resolves_name(self, capsys):
         names = ["density", "velocity"]
         result = _resolve_token("density", names, self._ops())
-        assert result is None
+        assert result == "density"
 
     def test_unknown_name_returns_none(self, capsys):
         names = ["density"]
