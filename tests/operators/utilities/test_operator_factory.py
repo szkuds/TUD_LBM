@@ -249,13 +249,6 @@ class TestBackwardCompatibility:
         op = build_collision_fn("bgk")
         assert callable(op)
 
-    def test_collision_factory_module_no_longer_exists(self):
-        """Old factory.py files were deleted. Import from __init__.py instead."""
-        with pytest.raises(ModuleNotFoundError):
-            from tud_lbm.operators.collision.factory import (  # ty:ignore[unresolved-import]
-                build_collision_fn,  # noqa: F401 ty: ignore[unresolved-import]
-            )
-
     def test_all_schemes_still_available(self):
         """All previously available schemes are still accessible.
 

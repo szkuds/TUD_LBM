@@ -387,16 +387,15 @@ def _resolve_token(token: str, names: list[str], available: dict) -> str | None:
     """
     try:
         idx = int(token) - 1
-        if 0 <= idx < len(names):
-            return names[idx]
-        console.print(f"[yellow]Number {token} out of range — skipped[/yellow]")
-        return None
     except ValueError:
-        pass
-    else:
         if token in available:
             return token
         console.print(f"[yellow]Unknown field '{token}' — skipped[/yellow]")
+        return None
+    else:
+        if 0 <= idx < len(names):
+            return names[idx]
+        console.print(f"[yellow]Number {token} out of range — skipped[/yellow]")
         return None
 
 
