@@ -923,9 +923,9 @@ def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
     Uses the in-memory config to avoid re-loading from disk which loses
     expanded/flattened fields.
     """
-    from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
-    from tud_lbm.io.plotting.analysis import build_simulation_csv
-    from tud_lbm.io.plotting.analysis import compare_runs
+    from tud_lbm.io.plotting.run_comparison import _COMPARISON_DIR
+    from tud_lbm.io.plotting.run_comparison import compare_runs
+    from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
     console.print("[dim]Running comparison analysis...[/dim]")
     csv_path = build_simulation_csv(run_dir, config)
@@ -940,8 +940,8 @@ def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
 
 def _run_compare_sweep(results_dir: Path) -> None:
     """Build CSVs and comparison plots across all runs in a sweep directory."""
-    from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
-    from tud_lbm.io.plotting.analysis import process_parent_dir
+    from tud_lbm.io.plotting.run_comparison import _COMPARISON_DIR
+    from tud_lbm.io.plotting.run_comparison import process_parent_dir
 
     console.print("[dim]Running comparison analysis...[/dim]")
     _n_runs, n_ok = process_parent_dir(results_dir)
@@ -1418,8 +1418,8 @@ def visualise(run_dir: str, skip: int, dpi: int, fields: str | None, no_prompt: 
 )
 def compare(parent_dir: str, no_prompt: bool) -> None:
     """Build CSV metrics and comparison plots for all runs in PARENT_DIR."""
-    from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
-    from tud_lbm.io.plotting.analysis import process_parent_dir
+    from tud_lbm.io.plotting.run_comparison import _COMPARISON_DIR
+    from tud_lbm.io.plotting.run_comparison import process_parent_dir
     from tud_lbm.registry import get_operators
 
     console.print()

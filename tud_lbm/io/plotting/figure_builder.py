@@ -12,7 +12,12 @@ from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 import numpy as np
 from tud_lbm.registry import get_operators
-from . import analysis as _analysis_mod  # noqa: F401
+from . import ca_theta_plot as _ca_theta_plot_mod  # noqa: F401
+from . import contact_angle_plot as _contact_angle_plot_mod  # noqa: F401
+from . import contact_line_speed_plot as _contact_line_speed_plot_mod  # noqa: F401
+from . import scalar_history_plot as _scalar_history_plot_mod  # noqa: F401
+from . import simulation_csv as _simulation_csv_mod  # noqa: F401
+from .figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
     import os
@@ -35,7 +40,7 @@ class FigureBuilder:
         self,
         config: SimulationConfig,
         run_dir: str | os.PathLike,
-        dpi: int = 150,
+        dpi: int = DEFAULT_STYLE.dpi,
         fields: list[str] | None = None,
     ) -> None:
         """Initialize figure builder with simulation config and output directory.
@@ -147,7 +152,7 @@ class FigureBuilder:
         self._analysis_dir.mkdir(parents=True, exist_ok=True)
         saved: list[Path] = []
         for op in self._analysis_operators:
-            fig, ax = plt.subplots(1, 1, figsize=(7, 4.5), squeeze=False)
+            fig, ax = plt.subplots(1, 1, figsize=DEFAULT_STYLE.analysis_figsize, squeeze=False)
             try:
                 precomputed = op.compute(files)
                 op.render(ax[0][0], precomputed)
@@ -160,7 +165,7 @@ class FigureBuilder:
                     ha="center",
                     va="center",
                     transform=ax[0][0].transAxes,
-                    fontsize=8,
+                    fontsize=DEFAULT_STYLE.error_text_fontsize,
                     color="red",
                 )
             plt.tight_layout()
@@ -199,10 +204,11 @@ class FigureBuilder:
             return None
 
         ncols, nrows = self._layout(len(panels))
+        panel_w, panel_h = DEFAULT_STYLE.panel_figsize
         fig, axes = plt.subplots(
             nrows,
             ncols,
-            figsize=(5 * ncols, 4 * nrows),
+            figsize=(panel_w * ncols, panel_h * nrows),
             squeeze=False,
         )
 
@@ -219,7 +225,7 @@ class FigureBuilder:
                     ha="center",
                     va="center",
                     transform=axes[row][col].transAxes,
-                    fontsize=7,
+                    fontsize=DEFAULT_STYLE.error_text_fontsize,
                     color="red",
                 )
 
@@ -237,7 +243,7 @@ class FigureBuilder:
                     ha="center",
                     va="center",
                     transform=axes[row][col].transAxes,
-                    fontsize=7,
+                    fontsize=DEFAULT_STYLE.error_text_fontsize,
                     color="red",
                 )
 
@@ -246,7 +252,7 @@ class FigureBuilder:
             axes[row][col].set_visible(False)
 
         title = self.config.simulation_name or "simulation"
-        fig.suptitle(f"{title} - Timestep {timestep}", fontsize=12)
+        fig.suptitle(f"{title} - Timestep {timestep}", fontsize=DEFAULT_STYLE.suptitle_fontsize)
         plt.tight_layout(rect=(0, 0.03, 1, 0.95))
 
         return fig

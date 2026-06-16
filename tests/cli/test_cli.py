@@ -710,33 +710,33 @@ class TestClickCommandPaths:
 
     def test_compare_no_runs_prints_message(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(0, 0)):
+        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(0, 0)):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 0
         assert "No simulation" in result.output
 
     def test_compare_runs_with_zero_ok(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(1, 0)):
+        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(1, 0)):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 0
         assert "no runs produced" in result.output.lower()
 
     def test_compare_runs_with_success(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(2, 2)):
+        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(2, 2)):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 0
 
     def test_compare_keyboard_interrupt_exits_130(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.analysis.process_parent_dir", side_effect=KeyboardInterrupt):
+        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", side_effect=KeyboardInterrupt):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 130
 
     def test_compare_general_exception_exits_1(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.analysis.process_parent_dir", side_effect=RuntimeError("fail")):
+        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", side_effect=RuntimeError("fail")):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 1
 
@@ -794,7 +794,7 @@ class TestClickCommandPaths:
 
     def test_main_shim_compare_route(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(0, 0)):
+        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(0, 0)):
             result = runner.invoke(main, ["compare", str(tmp_path)])
         assert result.exit_code in (0, 1, 2)
 
@@ -1829,7 +1829,7 @@ class TestRunCompareSingle:
     def test_csv_path_none_prints_warning(self, tmp_path, capsys):
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
         with (
-            _patch("tud_lbm.io.plotting.analysis.build_simulation_csv", return_value=None),
+            _patch("tud_lbm.io.plotting.simulation_csv.build_simulation_csv", return_value=None),
         ):
             _run_compare_single(tmp_path, cfg)
         assert "skipped" in capsys.readouterr().out.lower()
@@ -1839,8 +1839,8 @@ class TestRunCompareSingle:
         csv_file = tmp_path / "results.csv"
         csv_file.touch()
         with (
-            _patch("tud_lbm.io.plotting.analysis.build_simulation_csv", return_value=csv_file),
-            _patch("tud_lbm.io.plotting.analysis.compare_runs") as mock_cmp,
+            _patch("tud_lbm.io.plotting.simulation_csv.build_simulation_csv", return_value=csv_file),
+            _patch("tud_lbm.io.plotting.run_comparison.compare_runs") as mock_cmp,
         ):
             _run_compare_single(tmp_path, cfg)
         mock_cmp.assert_called_once_with(tmp_path)
@@ -1850,12 +1850,12 @@ class TestRunCompareSweep:
     """Tests for _run_compare_sweep sweep-level comparison."""
 
     def test_no_ok_runs_prints_warning(self, tmp_path, capsys):
-        with _patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(2, 0)):
+        with _patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(2, 0)):
             _run_compare_sweep(tmp_path)
         assert "no runs" in capsys.readouterr().out.lower()
 
     def test_ok_runs_prints_success(self, tmp_path, capsys):
-        with _patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(2, 2)):
+        with _patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(2, 2)):
             _run_compare_sweep(tmp_path)
         assert "Comparison plots" in capsys.readouterr().out
 
@@ -2124,14 +2124,14 @@ class TestCompareCommandPaths:
 
     def test_compare_no_prompt_skips_fields(self, tmp_path):
         runner = CliRunner()
-        with _patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(3, 3)):
+        with _patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(3, 3)):
             result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt"])
         assert result.exit_code == 0
 
     def test_compare_debug_env_reraises(self, tmp_path, monkeypatch):
         monkeypatch.setenv("TUD_LBM_DEBUG", "1")
         runner = CliRunner()
-        with _patch("tud_lbm.io.plotting.analysis.process_parent_dir", side_effect=RuntimeError("err")):
+        with _patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", side_effect=RuntimeError("err")):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 1
 
