@@ -12,9 +12,9 @@ class FigureStyle:
     dpi: int = 150
     panel_figsize: tuple[float, float] = (5.0, 4.0)
     analysis_figsize: tuple[float, float] = (7.0, 4.5)
-    comparison_figsize: tuple[float, float] = (12.0, 8.0)
+    comparison_figsize: tuple[float, float] = (10.0, 6.0)
     dual_axis_figsize: tuple[float, float] = (10.0, 6.0)
-    ca_theta_figsize: tuple[float, float] = (8.0, 6.0)
+    ca_theta_figsize: tuple[float, float] = (10.0, 6.0)
 
     suptitle_fontsize: int = 12
     title_fontsize: int = 14
