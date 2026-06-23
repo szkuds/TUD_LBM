@@ -101,4 +101,9 @@ class ContactAnglesPairPlot(AnalysisPlot):
         ax.set_xlabel(_X_LABEL_TIMESTEP)
         ax.set_ylabel(_CONTACT_ANGLE_Y_LABEL)
         ax.grid(False)
-        ax.legend(loc="best", fontsize=DEFAULT_STYLE.pair_legend_fontsize)
+        ax.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.02),
+            ncols=2,
+            fontsize=DEFAULT_STYLE.panel_legend_fontsize,
+        )

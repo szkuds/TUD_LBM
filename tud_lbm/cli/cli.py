@@ -17,6 +17,7 @@ import sys
 import tomllib
 from copy import deepcopy
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
 import click
 from rich.console import Console
@@ -26,6 +27,9 @@ from rich.prompt import Prompt
 from rich.table import Table
 from tud_lbm.config import SimulationConfig
 from tud_lbm.config.array_expansion import ArrayParameterSet
+
+if TYPE_CHECKING:
+    from tud_lbm.io.plotting import FigureBuilder
 
 console = Console()
 _CLI_SUBTITLE = "Delft University of Technology"
@@ -456,6 +460,27 @@ def _prompt_fields(
     return selected
 
 
+def _prompt_snapshot_timesteps(available: list[int]) -> list[int]:
+    """Interactively collect the timesteps to snapshot for the ``snapshot_fig`` plot."""
+    console.print(f"[dim]Available timesteps: {', '.join(str(t) for t in available)}[/dim]")
+    try:
+        raw_ts = Prompt.ask("Enter snapshot timesteps (comma-separated)")
+    except EOFError:
+        return []
+    return [int(tok.strip()) for tok in raw_ts.split(",") if tok.strip()]
+
+
+def _configure_snapshot_fig(builder: "FigureBuilder", field_list: list[str] | None) -> None:
+    """Prompt for and wire up snapshot timesteps when ``snapshot_fig`` is requested."""
+    if not field_list or "snapshot_fig" not in field_list:
+        return
+    available = [t for t, _ in builder.sorted_timed_files()]
+    requested_ts = _prompt_snapshot_timesteps(available)
+    for op in builder.analysis_operators:
+        if op.name == "snapshot_fig":
+            op.timesteps = requested_ts
+
+
 def _display_config_summary(config: SimulationConfig | None) -> None:
     """Display a compact summary of the simulation configuration."""
     if config is None:
@@ -545,6 +570,10 @@ def _run_simulation(config: SimulationConfig) -> str:
         config=config,
         simulation_name=config.simulation_name,
     )
+
+    from tud_lbm.calibration import record_surface_tension
+
+    config = record_surface_tension(config, io.run_dir)
 
     console.print("[bold green]Starting simulation...[/bold green]")
     console.print(f"[dim]Results directory: {io.run_dir}[/dim]")
@@ -761,7 +790,8 @@ def _build_wetting_init_raw(base_raw: dict[str, Any], wetting_params: dict[str, 
     init_raw["nt"] = _WETTING_INIT_NT
     init_raw["save_interval"] = _WETTING_INIT_NT
     init_raw["output_format"] = "numpy"
-    init_raw["simulation_name"] = "wetting_init"
+    base_name = base_raw.get("simulation_name")
+    init_raw["simulation_name"] = f"wetting_init_{base_name}" if base_name else "wetting_init"
     init_raw.setdefault("wetting_config", {}).update(wetting_params)
     return init_raw
 
@@ -1391,6 +1421,7 @@ def visualise(run_dir: str, skip: int, dpi: int, fields: str | None, no_prompt: 
         console.print()
 
         builder = FigureBuilder(config=config, run_dir=run_dir, dpi=dpi, fields=field_list)
+        _configure_snapshot_fig(builder, field_list)
         saved = builder.build_all(skip=skip)
 
         if not saved:

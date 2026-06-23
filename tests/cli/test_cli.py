@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib
 from types import ModuleType
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 from unittest.mock import patch
 import click
 import pytest
@@ -901,6 +902,16 @@ class TestBuildWettingInitRaw:
         base = self._base_raw()
         _build_wetting_init_raw(base, {})
         assert base["sim_type"] == "multiphase_hysteresis"
+
+    def test_simulation_name_suffixed_with_base_name(self):
+        base = self._base_raw()
+        base["simulation_name"] = "droplet_run_42"
+        result = _build_wetting_init_raw(base, {})
+        assert result["simulation_name"] == "wetting_init_droplet_run_42"
+
+    def test_simulation_name_falls_back_when_unset(self):
+        result = _build_wetting_init_raw(self._base_raw(), {})
+        assert result["simulation_name"] == "wetting_init"
 
 
 class TestBuildWettingGravityRaw:
@@ -2117,6 +2128,30 @@ class TestVisualiseCommandPaths:
         with patch("tud_lbm.cli.cli._validate_run_dir_has_config", side_effect=RuntimeError("dbg")):
             result = runner.invoke(cli, ["visualise", str(run_dir)])
         assert result.exit_code == 1
+
+    def test_visualise_snapshot_fig_prompts_for_timesteps(self, tmp_path):
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        runner = CliRunner()
+
+        fake_op = MagicMock()
+        fake_op.name = "snapshot_fig"
+
+        with (
+            _patch("tud_lbm.config.from_toml", return_value=cfg),
+            _patch("tud_lbm.io.plotting.FigureBuilder") as mock_fb,
+            _patch("tud_lbm.cli.cli.Prompt.ask", return_value="5,10"),
+        ):
+            mock_fb.return_value.sorted_timed_files.return_value = [(0, tmp_path), (5, tmp_path), (10, tmp_path)]
+            mock_fb.return_value.analysis_operators = [fake_op]
+            mock_fb.return_value.build_all.return_value = [tmp_path / "fig.png"]
+            mock_fb.return_value.plot_dir = tmp_path
+            result = runner.invoke(cli, ["visualise", str(run_dir), "--fields", "snapshot_fig"])
+
+        assert result.exit_code in (0, 1)
+        assert fake_op.timesteps == [5, 10]
 
 
 class TestCompareCommandPaths:

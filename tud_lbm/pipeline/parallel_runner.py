@@ -129,6 +129,10 @@ def run_single_simulation(
             output_format=config.output_format,
         )
 
+        from tud_lbm.calibration import record_surface_tension
+
+        config = record_surface_tension(config, io.run_dir)
+
         # Run simulation with streaming I/O
         _, _ = run_fn(
             setup,

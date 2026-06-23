@@ -53,6 +53,10 @@ def _draw_dual_axis_on_ax(
     ca_limits: tuple[float, float] | None = None,
     angle_limits: tuple[float, float] | None = None,
     x_limits: tuple[float, float] | None = None,
+    legend_fontsize: int = DEFAULT_STYLE.legend_fontsize,
+    legend_outside: bool = False,
+    axis_label_fontsize: int = DEFAULT_STYLE.axis_label_fontsize,
+    tick_label_fontsize: int = DEFAULT_STYLE.tick_label_fontsize,
 ) -> matplotlib.axes.Axes:
     """Draw dual-axis Ca/θ scatter onto an existing primary axis.
 
@@ -66,9 +70,13 @@ def _draw_dual_axis_on_ax(
         theta_trailing: Contact angle (degrees) for the trailing contact line.
         theta_leading:  Contact angle (degrees) for the leading contact line.
         x_label:       Label for the shared x-axis.
-        ca_limits:     ``(y_min, y_max)`` for the Ca axis.
-        angle_limits:  ``(y_min, y_max)`` for the θ axis.
-        x_limits:      ``(x_min, x_max)`` for the shared x-axis.
+        ca_limits:       ``(y_min, y_max)`` for the Ca axis.
+        angle_limits:    ``(y_min, y_max)`` for the θ axis.
+        x_limits:        ``(x_min, x_max)`` for the shared x-axis.
+        legend_fontsize: Font size for legend entries.
+        legend_outside:  Place legend below axes when ``True``; inside when ``False``.
+        axis_label_fontsize: Font size for the x/y axis labels.
+        tick_label_fontsize: Font size for the tick labels.
 
     Returns:
         The twin axes object (right y = θ).
@@ -92,10 +100,10 @@ def _draw_dual_axis_on_ax(
         edgecolors=_COLOR_LEADING_CA,
         linewidths=1.5,
     )
-    ax1.set_xlabel(x_label, fontsize=DEFAULT_STYLE.axis_label_fontsize)
-    ax1.set_ylabel("Ca", color="black", fontsize=DEFAULT_STYLE.axis_label_fontsize)
+    ax1.set_xlabel(x_label, fontsize=axis_label_fontsize)
+    ax1.set_ylabel("Ca", color="black", fontsize=axis_label_fontsize)
     ax1.tick_params(axis="y", labelcolor="black")
-    ax1.tick_params(axis="both", labelsize=DEFAULT_STYLE.tick_label_fontsize)
+    ax1.tick_params(axis="both", labelsize=tick_label_fontsize)
     ax1.grid(False)
     if ca_limits is not None:
         ax1.set_ylim(ca_limits)
@@ -120,16 +128,26 @@ def _draw_dual_axis_on_ax(
         color=_COLOR_LEADING_THETA,
         label="Leading edge (θ)",
     )
-    ax2.set_ylabel(_LABEL_THETA, color="black", fontsize=DEFAULT_STYLE.axis_label_fontsize)
+    ax2.set_ylabel(_LABEL_THETA, color="black", fontsize=axis_label_fontsize)
     ax2.tick_params(axis="y", labelcolor="black")
-    ax2.tick_params(axis="both", labelsize=DEFAULT_STYLE.tick_label_fontsize)
+    ax2.tick_params(axis="both", labelsize=tick_label_fontsize)
     if angle_limits is not None:
         ax2.set_ylim(angle_limits)
 
     # Combine legends from both axes onto ax1
     h1, l1 = ax1.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
-    ax1.legend(h1 + h2, l1 + l2, loc="best", fontsize=DEFAULT_STYLE.legend_fontsize)
+    if legend_outside:
+        ax1.legend(
+            h1 + h2,
+            l1 + l2,
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.02),
+            ncols=2,
+            fontsize=legend_fontsize,
+        )
+    else:
+        ax1.legend(h1 + h2, l1 + l2, loc="best", fontsize=legend_fontsize)
 
     return ax2
 
@@ -370,6 +388,7 @@ def _compute_ca_theta_arrays(
         "ca_leading": np.array([]),
         "x_time": np.array([]),
         "x_pos": np.array([]),
+        "timesteps": np.array([], dtype=int),
     }
 
     if config.rho_l is None or config.rho_v is None:
@@ -452,6 +471,7 @@ def _compute_ca_theta_arrays(
         "ca_leading": v_right * nu / sigma,
         "x_time": x_time,
         "x_pos": x_pos,
+        "timesteps": np.array(timesteps, dtype=int),
     }
 
 
@@ -486,6 +506,8 @@ class CaThetaVsTimePlot(AnalysisPlot):
             precomputed["theta_trailing"],
             precomputed["theta_leading"],
             x_label=_LABEL_IT_NORM,
+            legend_fontsize=DEFAULT_STYLE.panel_legend_fontsize,
+            legend_outside=True,
         )
 
 
@@ -520,4 +542,6 @@ class CaThetaVsXPlot(AnalysisPlot):
             precomputed["theta_trailing"],
             precomputed["theta_leading"],
             x_label=_LABEL_X_AVG_NORM,
+            legend_fontsize=DEFAULT_STYLE.panel_legend_fontsize,
+            legend_outside=True,
         )

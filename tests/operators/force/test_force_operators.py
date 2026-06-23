@@ -290,18 +290,21 @@ class TestElectricExtraStateInit:
 class TestComputeElectricForce:
     """ElectricForceModule.compute returns correct shape and is jittable."""
 
-    def test_shape(self, lattice, electric_params):
+    def test_shape(self, lattice, sim_config, electric_params):
+        from tud_lbm.operators.differential import build_diff_ops
         from tud_lbm.operators.force._electric import ElectricForceModule
         from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
 
+        gradient_standard, *_ = build_diff_ops(sim_config, mp_params=None, lattice=lattice)
         setup = make_electric_setup(lattice, electric_params)
         hi = ElectricExtraStatePlugin.init_state(setup)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
-        force = ElectricForceModule.compute(state, electric_params)
+        force = ElectricForceModule.compute(state, electric_params, gradient_standard=gradient_standard)
         assert force.shape == (NX, NY, NZ, 1, 2)
 
     def test_zero_voltage_zero_force(self, lattice, sim_config):
+        from tud_lbm.operators.differential import build_diff_ops
         from tud_lbm.operators.force._electric import ElectricForceModule
         from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
 
@@ -318,22 +321,25 @@ class TestComputeElectricForce:
             config=sim_config,
             lattice=lattice,
         )
+        gradient_standard, *_ = build_diff_ops(sim_config, mp_params=None, lattice=lattice)
         setup = make_electric_setup(lattice, params)
         hi = ElectricExtraStatePlugin.init_state(setup)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
-        force = ElectricForceModule.compute(state, params)
+        force = ElectricForceModule.compute(state, params, gradient_standard=gradient_standard)
         np.testing.assert_allclose(np.array(force), 0.0, atol=1e-10)
 
-    def test_jittable(self, lattice, electric_params):
+    def test_jittable(self, lattice, sim_config, electric_params):
+        from tud_lbm.operators.differential import build_diff_ops
         from tud_lbm.operators.force._electric import ElectricForceModule
         from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
 
+        gradient_standard, *_ = build_diff_ops(sim_config, mp_params=None, lattice=lattice)
         setup = make_electric_setup(lattice, electric_params)
         hi = ElectricExtraStatePlugin.init_state(setup)["h"]
         state = make_state(lattice, rho_value=1.0, h=hi)
 
-        jitted = jax.jit(lambda s: ElectricForceModule.compute(s, electric_params))
+        jitted = jax.jit(lambda s: ElectricForceModule.compute(s, electric_params, gradient_standard=gradient_standard))
         force = jitted(state)
         assert force.shape == (NX, NY, NZ, 1, 2)
 
@@ -419,24 +425,29 @@ class TestElectricIsActive:
 class TestElectricForceComputeErrors:
     """ElectricForceModule.compute raises TypeError on missing prerequisites."""
 
-    def test_raises_without_gradient_standard(self, lattice):
+    def test_raises_without_gradient_standard(self, lattice, sim_config):
         from tud_lbm.operators.force._electric import ElectricForceModule
-        from tud_lbm.operators.force._electric import ElectricParams
 
-        params = ElectricParams(
-            permittivity_liquid=80.0,
-            permittivity_vapour=1.0,
-            conductivity_liquid=0.01,
-            conductivity_vapour=0.001,
-            gradient_standard=None,
+        params = ElectricForceModule.build(
+            {
+                "permittivity_liquid": 80.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.01,
+                "conductivity_vapour": 0.001,
+            },
+            (NX, NY, NZ),
+            config=sim_config,
+            lattice=lattice,
         )
         state = make_state(lattice)
         with pytest.raises(TypeError, match="gradient_standard is required"):
             ElectricForceModule.compute(state, params)
 
-    def test_raises_when_h_is_none(self, lattice, electric_params):
+    def test_raises_when_h_is_none(self, lattice, sim_config, electric_params):
+        from tud_lbm.operators.differential import build_diff_ops
         from tud_lbm.operators.force._electric import ElectricForceModule
 
+        gradient_standard, *_ = build_diff_ops(sim_config, mp_params=None, lattice=lattice)
         state = make_state(lattice, h=None)
         with pytest.raises(TypeError, match=r"state\.h"):
-            ElectricForceModule.compute(state, electric_params)
+            ElectricForceModule.compute(state, electric_params, gradient_standard=gradient_standard)

@@ -344,7 +344,7 @@ class TestTomlAdapterErrors:
         p.write_text("[output]\nresults_dir = '/tmp'\n")
         with pytest.raises(
             ValueError,
-            match="missing the required \\[simulation_type\\] table",
+            match="missing the required 'simulation_type' section",
         ):
             TomlAdapter().load(str(p))
 
@@ -489,6 +489,5 @@ class TestValidateAndProcessForces:
     """Tests for _validate_and_process_forces static helper."""
 
     def test_non_dict_force_value_raises_type_error(self):
-        adapter = TomlAdapter()
         with pytest.raises(TypeError, match="must be a table"):
-            adapter._validate_and_process_forces({"gravity_force": "not_a_dict"}, {})
+            TomlAdapter._process_forces({"gravity_force": "not_a_dict"}, {})

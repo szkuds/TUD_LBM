@@ -6,6 +6,7 @@ import jax.numpy as jnp
 from tud_lbm.registry import eos_operator
 
 if TYPE_CHECKING:
+    import numpy as np
     from tud_lbm.operators.macroscopic import MultiphaseParams
     from tud_lbm.operators.protocols import EOSFunction
 
@@ -19,6 +20,25 @@ def _eos_carnahan_starling(
 ) -> jnp.ndarray:
     """Carnahan-Starling EOS bulk chemical potential ``mu_0(rho)``."""
     return -2.0 * a * rho + r * t * (1.0 + jnp.log(rho)) + (16.0 * r * t * (b * rho - 12.0)) / (b * rho - 4.0) ** 3
+
+
+def carnahan_starling_pressure(
+    rho: jnp.ndarray | np.ndarray,
+    a: float,
+    b: float,
+    r: float,
+    t: float,
+) -> jnp.ndarray | np.ndarray:
+    """Carnahan-Starling bulk thermodynamic pressure ``p_0(rho)``.
+
+    Consistent with ``_eos_carnahan_starling`` (the two differ only by an
+    additive constant, which cancels in the Laplace pressure jump). Used by
+    the surface-tension calibration; not part of the force pipeline. Accepts
+    NumPy or JAX arrays.
+    """
+    eta = b * rho / 4.0
+    ideal = rho * r * t * (1.0 + eta + eta**2 - eta**3) / (1.0 - eta) ** 3
+    return ideal - a * rho**2
 
 
 @eos_operator(name="carnahan-starling")

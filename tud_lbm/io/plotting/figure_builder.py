@@ -15,6 +15,7 @@ from tud_lbm.registry import get_operators
 from . import ca_theta_plot as _ca_theta_plot_mod  # noqa: F401
 from . import contact_angle_plot as _contact_angle_plot_mod  # noqa: F401
 from . import contact_line_speed_plot as _contact_line_speed_plot_mod  # noqa: F401
+from . import overview_simulation_inc_snapshots as _overview_mod  # noqa: F401
 from . import scalar_history_plot as _scalar_history_plot_mod  # noqa: F401
 from . import simulation_csv as _simulation_csv_mod  # noqa: F401
 from .figure_config import DEFAULT_STYLE
@@ -29,6 +30,16 @@ _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
     3: (2, 2),
     4: (2, 2),
 }
+
+_WETTING_SIM_TYPES: frozenset[str] = frozenset(
+    {
+        "multiphase_wetting",
+        "multiphase_hysteresis",
+        "multiphase_hysteresis_chemical_step",
+    }
+)
+
+_ANALYSIS_PANEL_FACECOLOR = "#f5f5f5"
 
 
 class FigureBuilder:
@@ -79,10 +90,12 @@ class FigureBuilder:
 
         requested = fields or self.config.plot_fields
         if not requested:
-            # Default: only enable field plotting operators (density, velocity, force).
-            # Analysis operators (max_velocity, contact_angles, etc.) must be explicitly
-            # requested via plot_fields in the [output] section of the config.
-            requested = list(get_operators("plotting").keys())
+            if self.config.sim_type in _WETTING_SIM_TYPES:
+                # Wetting default: density field for droplet visibility + dual-axis Ca/θ vs position.
+                requested = ["density", "ca_theta_vs_x"]
+            else:
+                # Non-wetting default: all registered field plot operators.
+                requested = list(get_operators("plotting").keys())
 
         all_ops = get_operators("plotting")
         all_analysis_ops = get_operators("comparison")
@@ -152,6 +165,28 @@ class FigureBuilder:
         self._analysis_dir.mkdir(parents=True, exist_ok=True)
         saved: list[Path] = []
         for op in self._analysis_operators:
+            if getattr(op, "is_multi_panel", False):
+                try:
+                    fig = op.render_figure(files)
+                except Exception as exc:  # noqa: BLE001
+                    fig, ax = plt.subplots(1, 1, figsize=DEFAULT_STYLE.analysis_figsize, squeeze=False)
+                    ax[0][0].set_title(f"{op.name} - ERROR")
+                    ax[0][0].text(
+                        0.5,
+                        0.5,
+                        str(exc),
+                        ha="center",
+                        va="center",
+                        transform=ax[0][0].transAxes,
+                        fontsize=DEFAULT_STYLE.error_text_fontsize,
+                        color="red",
+                    )
+                out_path = self._analysis_dir / f"{op.name}.png"
+                fig.savefig(out_path, dpi=self.dpi)
+                plt.close(fig)
+                saved.append(out_path)
+                continue
+
             fig, ax = plt.subplots(1, 1, figsize=DEFAULT_STYLE.analysis_figsize, squeeze=False)
             try:
                 precomputed = op.compute(files)
@@ -232,20 +267,23 @@ class FigureBuilder:
         offset = len(field_ops)
         for idx, op in enumerate(analysis_ops):
             row, col = divmod(offset + idx, ncols)
+            ax = axes[row][col]
             try:
-                op.update(axes[row][col], history_files)
+                op.update(ax, history_files)
             except Exception as exc:  # noqa: BLE001
-                axes[row][col].set_title(f"{op.name} - ERROR")
-                axes[row][col].text(
+                ax.set_title(f"{op.name} - ERROR")
+                ax.text(
                     0.5,
                     0.5,
                     str(exc),
                     ha="center",
                     va="center",
-                    transform=axes[row][col].transAxes,
+                    transform=ax.transAxes,
                     fontsize=DEFAULT_STYLE.error_text_fontsize,
                     color="red",
                 )
+            # Apply after render so ax.clear() inside render() doesn't reset it
+            ax.set_facecolor(_ANALYSIS_PANEL_FACECOLOR)
 
         for idx in range(len(panels), nrows * ncols):
             row, col = divmod(idx, ncols)

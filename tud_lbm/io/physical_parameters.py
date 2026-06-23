@@ -223,6 +223,32 @@ def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, floa
     return drho, gamma
 
 
+# EOS without a closed-form surface tension; sigma is measured at run time and
+# stored in config.extra by tud_lbm.calibration.
+_EOS_REQUIRING_CALIBRATION = frozenset({"carnahan-starling"})
+
+
+def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, str] | None:
+    """Return ``(drho, gamma, source)`` preferring a measured value.
+
+    ``source`` is "measured" or "analytical". Returns ``None`` when no value is
+    available (e.g. a calibration-only EOS that has not been measured yet).
+    """
+    if config.rho_l is None or config.rho_v is None:
+        return None
+    drho = float(config.rho_l) - float(config.rho_v)
+
+    measured = config.extra.get("surface_tension") if isinstance(config.extra, dict) else None
+    if measured is not None:
+        return drho, float(measured), "measured"
+    if config.eos in _EOS_REQUIRING_CALIBRATION:
+        return None
+    derived = _derive_multiphase_parameters(config)
+    if derived is None:
+        return None
+    return derived[0], derived[1], "analytical"
+
+
 def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple[float, str]:
     """Resolve shared length scale and annotation for Oh/Bo rows."""
     cl_length = _get_setup_contact_line_length(config)
@@ -242,7 +268,7 @@ def _format_ohnesorge_number_row(config: SimulationConfig, gamma: float, length:
         msg = "rho_l is required for Ohnesorge number"
         raise ValueError(msg)
     oh = nu / (gamma * length * config.rho_l) ** 0.5
-    return _row("Oh (Ohnesorge number):", f"{oh:.6g}  [ν√(ρ_l/(γL)), {length_label}]")
+    return _row("Oh (Ohnesorge number):", f"{oh:.6g}  [ν√(ρ_l*γ*L)), {length_label}]")
 
 
 def _format_bond_number_row(
@@ -311,11 +337,14 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     if config.g is not None:
         lines.append(_row("g (gravity):", config.g))
 
-    derived = _derive_multiphase_parameters(config)
-    if derived is None:
+    resolved = _resolve_surface_tension(config)
+    if resolved is None:
+        if config.eos in _EOS_REQUIRING_CALIBRATION:
+            lines.append(_row("gamma (surface tension):", "requires Young–Laplace calibration"))
         return
-    drho, gamma = derived
-    lines.append(_row("gamma (surface tension):", f"{gamma:.6g}  [2/3(κ/W)(Δρ)²]"))
+    drho, gamma, source = resolved
+    note = "measured, Young–Laplace" if source == "measured" else "2/3(κ/W)(Δρ)²"
+    lines.append(_row("gamma (surface tension):", f"{gamma:.6g}  [{note}]"))
 
     length, length_label = _resolve_length_for_dimensionless_numbers(config)
     lines.append(_format_ohnesorge_number_row(config, gamma, length, length_label))

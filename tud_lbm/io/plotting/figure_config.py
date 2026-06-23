@@ -22,6 +22,7 @@ class FigureStyle:
     tick_label_fontsize: int = 12
     legend_fontsize: int = 12
     pair_legend_fontsize: int = 8
+    panel_legend_fontsize: int = 6
     empty_state_fontsize: int = 9
     error_text_fontsize: int = 8
 
