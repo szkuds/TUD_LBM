@@ -19,6 +19,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 import click
 from rich.console import Console
 from rich.panel import Panel
@@ -29,6 +30,7 @@ from tud_lbm.config import SimulationConfig
 from tud_lbm.config.array_expansion import ArrayParameterSet
 
 if TYPE_CHECKING:
+    from tud_lbm.io.analysis.accelerations import Smoothing
     from tud_lbm.io.plotting import FigureBuilder
 
 console = Console()
@@ -531,7 +533,7 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
 def _display_full_overview(config: SimulationConfig | None) -> None:
     """Display the full physical-parameter overview from build_overview()."""
     from rich.text import Text
-    from tud_lbm.io.physical_parameters import build_overview
+    from tud_lbm.io.analysis.physical_parameters import build_overview
 
     if config is None:
         console.print("[yellow]No configuration available.[/yellow]")
@@ -571,7 +573,7 @@ def _run_simulation(config: SimulationConfig) -> str:
         simulation_name=config.simulation_name,
     )
 
-    from tud_lbm.calibration import record_surface_tension
+    from tud_lbm.io.analysis.surface_tension import record_surface_tension
 
     config = record_surface_tension(config, io.run_dir)
 
@@ -1492,6 +1494,63 @@ def compare(parent_dir: str, no_prompt: bool) -> None:
             ),
         )
         console.print(f"[bold green]Plots saved to:[/bold green] {out_dir}")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Analysis interrupted by user.[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        if os.environ.get("TUD_LBM_DEBUG"):
+            raise
+        sys.exit(1)
+
+
+@cli.command(name="regime-map")
+@click.argument("dirs_txt", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--out-dir",
+    "out_dir",
+    type=click.Path(file_okay=False),
+    default=None,
+    help="Output directory for regime_map.png (default: <dirs_txt parent>/regime_map_analysis).",
+)
+@click.option(
+    "--smoothing",
+    "smoothing",
+    type=click.Choice(["raw", "savgol"]),
+    default="raw",
+    help="Acceleration-curve smoothing for peak detection: 'raw' (default, unsmoothed) or "
+    "'savgol' (Savitzky-Golay filtered, reduces spikiness).",
+)
+def regime_map(dirs_txt: str, out_dir: str | None, smoothing: str) -> None:
+    """Classify runs listed in DIRS_TXT into pinning/viscous/inertial/unknown and plot Bo_parallel vs Oh."""
+    from tud_lbm.io.plotting.regime_map_plot import build_regime_map
+
+    console.print()
+    console.print(
+        Panel.fit(
+            "[bold blue]TUD-LBM[/bold blue] - Regime Map",
+            subtitle=_CLI_SUBTITLE,
+        ),
+    )
+    console.print()
+
+    try:
+        console.print(f"[dim]Run-dir list : {dirs_txt}[/dim]")
+        console.print()
+
+        out_path = build_regime_map(dirs_txt, out_dir=out_dir, smoothing=cast("Smoothing", smoothing))
+        if out_path is None:
+            console.print("[yellow]No runs produced a usable classification.[/yellow]")
+            sys.exit(1)
+
+        console.print()
+        console.print(
+            Panel.fit(
+                "[bold green]Regime map complete![/bold green]",
+                title="Success",
+            ),
+        )
+        console.print(f"[bold green]Plot saved to:[/bold green] {out_path}")
     except KeyboardInterrupt:
         console.print("\n[yellow]Analysis interrupted by user.[/yellow]")
         sys.exit(130)

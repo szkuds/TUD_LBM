@@ -741,6 +741,40 @@ class TestClickCommandPaths:
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 1
 
+    def test_regime_map_success(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        runner = CliRunner()
+        out_path = tmp_path / "regime_map_analysis" / "regime_map.png"
+        with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", return_value=out_path):
+            result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
+        assert result.exit_code == 0
+        assert "regime_map.png" in result.output
+
+    def test_regime_map_no_usable_runs_exits_1(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        runner = CliRunner()
+        with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", return_value=None):
+            result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
+        assert result.exit_code == 1
+
+    def test_regime_map_keyboard_interrupt_exits_130(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        runner = CliRunner()
+        with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", side_effect=KeyboardInterrupt):
+            result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
+        assert result.exit_code == 130
+
+    def test_regime_map_general_exception_exits_1(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        runner = CliRunner()
+        with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", side_effect=RuntimeError("fail")):
+            result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
+        assert result.exit_code == 1
+
     def test_animate_with_mocked_internals(self, tmp_path):
         run_dir = tmp_path / "run"
         run_dir.mkdir()

@@ -10,7 +10,7 @@ import json
 from types import SimpleNamespace
 import numpy as np
 import pytest
-from tud_lbm.calibration import surface_tension as st
+from tud_lbm.io.analysis.surface_tension import surface_tension as st
 
 
 def _stub_config(**overrides):

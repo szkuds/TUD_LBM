@@ -8,7 +8,7 @@ fitted to ``dP = sigma / R`` (2-D Young-Laplace).
 
 The measurement is expensive, so results are cached on disk keyed by the
 thermodynamic parameters that determine sigma. The cache file lives at
-``tud_lbm/calibration/data/surface_tension_cache.json`` — inside the repo, so
+``tud_lbm/io/analysis/surface_tension/data/surface_tension_cache.json`` — inside the repo, so
 it's shared with the team via the normal git workflow rather than re-measured
 by everyone individually (commit it after adding a new entry). The
 calibration figure is written into the active run directory on every run,
@@ -63,7 +63,7 @@ def record_surface_tension(config: SimulationConfig, run_dir: str | Path) -> Sim
     if not (config.is_multiphase and config.eos in _EOS_REQUIRING_CALIBRATION):
         return config
 
-    from tud_lbm.io.physical_parameters import write_physical_parameters
+    from tud_lbm.io.analysis.physical_parameters import write_physical_parameters
 
     sigma = calibrate_surface_tension(config, run_dir)
     updated = replace(config, extra={**config.extra, "surface_tension": sigma})

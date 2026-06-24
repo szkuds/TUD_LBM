@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 import numpy as np
-from tud_lbm.io.physical_parameters import _get_setup_contact_line_length
+from tud_lbm.io.analysis.physical_parameters.physical_parameters import _get_setup_contact_line_length
 from tud_lbm.io.plotting._analysis_common import _parse_timestep
 from tud_lbm.io.plotting._analysis_common import _set_empty_state
 from tud_lbm.io.plotting.base import AnalysisPlot

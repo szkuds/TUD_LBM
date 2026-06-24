@@ -69,6 +69,7 @@ class FigureBuilder:
 
         self._data_dir = self.run_dir / "data"
         self._plot_dir = self.run_dir / "plots"
+        self._snapshots_dir = self._plot_dir / "snapshots"
         self._analysis_dir = self._plot_dir / "analysis"
         self._field_operators: list = []
         self._analysis_operators: list = []
@@ -87,6 +88,7 @@ class FigureBuilder:
             return  # leave operator lists empty, all build() calls become no-ops
 
         self._plot_dir.mkdir(parents=True, exist_ok=True)
+        self._snapshots_dir.mkdir(parents=True, exist_ok=True)
 
         requested = fields or self.config.plot_fields
         if not requested:
@@ -138,6 +140,11 @@ class FigureBuilder:
     def plot_dir(self) -> Path:
         """Directory where generated plots are written."""
         return self._plot_dir
+
+    @property
+    def snapshots_dir(self) -> Path:
+        """Directory where per-timestep snapshot figures are written."""
+        return self._snapshots_dir
 
     @property
     def field_operators(self) -> list:
@@ -311,7 +318,7 @@ class FigureBuilder:
             return None
 
         out_name = filename or f"timestep_{timestep}.png"
-        out_path = self._plot_dir / out_name
+        out_path = self._snapshots_dir / out_name
         fig.savefig(out_path, dpi=self.dpi)
         plt.close(fig)
         return out_path

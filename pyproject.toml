@@ -168,6 +168,7 @@ extend-immutable-calls = ["array_field"]
 "tud_lbm/operators/wetting/hysteresis/hysteresis.py" = ["C901", "PLR0915"]
 "tud_lbm/io/plotting/run_comparison.py"   = ["T201"]
 "tud_lbm/io/plotting/simulation_csv.py"   = ["T201"]
+"tud_lbm/io/plotting/regime_map_plot.py"  = ["T201"]
 "tud_lbm/io/plotting/ca_theta_plot.py"    = ["C901", "PLR0912", "PLR0915"]
 
 [tool.ruff.lint.isort]

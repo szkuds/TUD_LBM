@@ -8,7 +8,7 @@ kinematic viscosity.
 
 Public API::
 
-    from tud_lbm.io.physical_parameters import write_physical_parameters
+    from tud_lbm.io.analysis.physical_parameters import write_physical_parameters
     write_physical_parameters(config, "/path/to/run/physical_parameters.txt")
 """
 
@@ -18,6 +18,7 @@ from datetime import UTC
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import NamedTuple
 import numpy as np
 
 if TYPE_CHECKING:
@@ -224,7 +225,7 @@ def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, floa
 
 
 # EOS without a closed-form surface tension; sigma is measured at run time and
-# stored in config.extra by tud_lbm.calibration.
+# stored in config.extra by tud_lbm.io.analysis.surface_tension.
 _EOS_REQUIRING_CALIBRATION = frozenset({"carnahan-starling"})
 
 
@@ -261,13 +262,78 @@ def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple
     return length, f"L={length} (grid_x)"
 
 
-def _format_ohnesorge_number_row(config: SimulationConfig, gamma: float, length: float, length_label: str) -> str:
-    """Build Ohnesorge-number row from lattice kinematic viscosity."""
+def compute_ohnesorge_number(config: SimulationConfig, gamma: float, length: float) -> float:
+    """Oh = nu / sqrt(gamma * length * rho_l)."""
     nu = _nu(float(config.tau))
     if config.rho_l is None:
         msg = "rho_l is required for Ohnesorge number"
         raise ValueError(msg)
-    oh = nu / (gamma * length * config.rho_l) ** 0.5
+    return nu / (gamma * length * config.rho_l) ** 0.5
+
+
+class BondNumbers(NamedTuple):
+    """Bond number and its components along/across the inclined gravity vector."""
+
+    bo: float
+    bo_perp: float
+    bo_parallel: float
+
+
+def compute_bond_numbers(
+    delta_rho_phases: float,
+    gamma: float,
+    g_val: float,
+    length: float,
+    angle_deg: float = 0.0,
+) -> BondNumbers:
+    """Bo = (Δρ*g*L²)/γ, split into normal/tangential components by angle_deg."""
+    bo = (delta_rho_phases * (length**2) * g_val) / gamma
+    angle_rad = math.radians(angle_deg)
+    return BondNumbers(bo=bo, bo_perp=bo * math.cos(angle_rad), bo_parallel=bo * math.sin(angle_rad))
+
+
+class DimensionlessNumbers(NamedTuple):
+    """Oh/Bo/Bo_perp/Bo_parallel for one config; all-None when inputs are missing."""
+
+    oh: float | None
+    bo: float | None
+    bo_perp: float | None
+    bo_parallel: float | None
+
+
+_ALL_NONE_DIMENSIONLESS_NUMBERS = DimensionlessNumbers(oh=None, bo=None, bo_perp=None, bo_parallel=None)
+
+
+def compute_dimensionless_numbers(config: SimulationConfig) -> DimensionlessNumbers:
+    """Resolve Oh/Bo/Bo_perp/Bo_parallel for one config; never raises.
+
+    Mirrors the resolution sequence in :func:`_add_multiphase_section`: surface
+    tension via :func:`_resolve_surface_tension`, length via
+    :func:`_resolve_length_for_dimensionless_numbers`, gravity via
+    :func:`_resolve_gravity_value`, inclination via
+    :func:`_resolve_gravity_inclination`. Returns all-None when any required
+    input is missing (e.g. a calibration-only EOS with no measured surface
+    tension yet, or no gravity configured).
+    """
+    resolved = _resolve_surface_tension(config)
+    if resolved is None:
+        return _ALL_NONE_DIMENSIONLESS_NUMBERS
+    drho, gamma, _source = resolved
+
+    g_val = _resolve_gravity_value(config)
+    if g_val is None:
+        return _ALL_NONE_DIMENSIONLESS_NUMBERS
+
+    length, _length_label = _resolve_length_for_dimensionless_numbers(config)
+    oh = compute_ohnesorge_number(config, gamma, length)
+    angle_deg = _resolve_gravity_inclination(config)
+    bn = compute_bond_numbers(drho, gamma, g_val, length, angle_deg)
+    return DimensionlessNumbers(oh=oh, bo=bn.bo, bo_perp=bn.bo_perp, bo_parallel=bn.bo_parallel)
+
+
+def _format_ohnesorge_number_row(config: SimulationConfig, gamma: float, length: float, length_label: str) -> str:
+    """Build Ohnesorge-number row from lattice kinematic viscosity."""
+    oh = compute_ohnesorge_number(config, gamma, length)
     return _row("Oh (Ohnesorge number):", f"{oh:.6g}  [ν√(ρ_l*γ*L)), {length_label}]")
 
 
@@ -280,16 +346,13 @@ def _format_bond_number_row(
     angle_deg: float = 0.0,
 ) -> list[str]:
     """Build Bond-number row(s) from shared length scale."""
-    bo = (delta_rho_phases * (length**2) * g_val) / gamma
-    angle_rad = math.radians(angle_deg)
-    bo_normal = bo * math.cos(angle_rad)
-    bo_tangential = bo * math.sin(angle_rad)
+    bn = compute_bond_numbers(delta_rho_phases, gamma, g_val, length, angle_deg)
     return [
-        _row("Bo (Bond number):", f"{bo:.6g}  [(ΔρgL²)/γ, {length_label}]"),
-        _row("Bo_perp (Bond normal):", f"{bo_normal:.6g}  [(Δρ*g*cos({angle_deg:.4g}deg)*L^2)/gamma, {length_label}]"),
+        _row("Bo (Bond number):", f"{bn.bo:.6g}  [(ΔρgL²)/γ, {length_label}]"),
+        _row("Bo_perp (Bond normal):", f"{bn.bo_perp:.6g}  [(Δρ*g*cos({angle_deg:.4g}deg)*L^2)/gamma, {length_label}]"),
         _row(
             "Bo_parallel (Bond tangential):",
-            f"{bo_tangential:.6g}  [(Δρ*g*sin({angle_deg:.4g}deg)*L^2)/gamma, {length_label}]",
+            f"{bn.bo_parallel:.6g}  [(Δρ*g*sin({angle_deg:.4g}deg)*L^2)/gamma, {length_label}]",
         ),
     ]
 

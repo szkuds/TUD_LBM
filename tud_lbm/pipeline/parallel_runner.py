@@ -129,7 +129,7 @@ def run_single_simulation(
             output_format=config.output_format,
         )
 
-        from tud_lbm.calibration import record_surface_tension
+        from tud_lbm.io.analysis.surface_tension import record_surface_tension
 
         config = record_surface_tension(config, io.run_dir)
 
