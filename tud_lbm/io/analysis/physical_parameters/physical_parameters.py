@@ -334,7 +334,7 @@ def compute_dimensionless_numbers(config: SimulationConfig) -> DimensionlessNumb
 def _format_ohnesorge_number_row(config: SimulationConfig, gamma: float, length: float, length_label: str) -> str:
     """Build Ohnesorge-number row from lattice kinematic viscosity."""
     oh = compute_ohnesorge_number(config, gamma, length)
-    return _row("Oh (Ohnesorge number):", f"{oh:.6g}  [ν√(ρ_l*γ*L)), {length_label}]")
+    return _row("Oh (Ohnesorge number):", f"{oh:.6g}  [ν/(ρ_l*γ*L)), {length_label}]")
 
 
 def _format_bond_number_row(

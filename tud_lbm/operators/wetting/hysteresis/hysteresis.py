@@ -198,6 +198,7 @@ def _optimise_single_param(
     grad_mask_fn: Callable[[WettingParams], WettingParams],
     optimiser: _OptaxLike,
     max_iterations: int,
+    loss_tol: float = 1e-4,
 ) -> tuple[WettingParams, jnp.ndarray]:
     """Run an ``optax`` optimisation loop with masked gradients.
 
@@ -212,6 +213,10 @@ def _optimise_single_param(
             target parameter(s).
         optimiser: An ``optax`` optimiser instance.
         max_iterations: Maximum number of inner steps.
+        loss_tol: Convergence tolerance; the loop exits once the loss
+            drops to or below this value.  The default corresponds to
+            ~0.014° CA / ~0.014 l.u. CLL error in the quadratic regime
+            of the Huber objectives.
 
     Returns:
         ``(final_params, final_loss)``.
@@ -222,8 +227,8 @@ def _optimise_single_param(
     initial_loss = objective_fn(initial_params)
 
     def cond_fn(carry: tuple) -> jnp.ndarray:
-        _params, _opt_state, _loss, iteration = carry
-        return iteration < max_iterations
+        _params, _opt_state, loss, iteration = carry
+        return (iteration < max_iterations) & (loss > loss_tol)
 
     def body_fn(carry: tuple) -> tuple:
         params, opt_state, _loss, iteration = carry
@@ -234,11 +239,18 @@ def _optimise_single_param(
         return (new_params, new_opt_state, loss, iteration + 1)
 
     init_carry = (initial_params, opt_state, initial_loss, jnp.array(0))
-    final_params, _opt_state, final_loss, _iters = jax.lax.while_loop(
+    final_params, _opt_state, final_loss, iters = jax.lax.while_loop(
         cond_fn,
         body_fn,
         init_carry,
     )
+    if DEBUG_FLAG:
+        jax.debug.print(
+            "opt exit: iters={i}/{m} loss={l:.3e}",
+            i=iters,
+            m=max_iterations,
+            l=final_loss,
+        )
     return final_params, final_loss
 
 
@@ -309,6 +321,7 @@ def _update_wetting_state_impl(
     lr_default = hc.get("learning_rate", 0.01)
     lr = jnp.where(above_window_right | above_window_left, hc.get("learning_rate_above", 0.05), lr_default)
     max_iter = hc.get("max_iterations_above", 50) if hc.get("max_iterations_above") else hc.get("max_iterations", 50)
+    loss_tol = hc.get("loss_tol", 1e-4)
 
     params = WettingParams(
         phi_left=jnp.where(phi_active_left, wetting.phi_left, _PHI_NEUTRAL),
@@ -343,16 +356,16 @@ def _update_wetting_state_impl(
     def _opt_left(p: WettingParams) -> WettingParams:
         return jax.lax.cond(
             phi_active_left,
-            lambda pp: _optimise_single_param(left_objective, pp, _mask_left_phi, optimiser, max_iter)[0],
-            lambda pp: _optimise_single_param(left_objective, pp, _mask_left_d_rho, optimiser, max_iter)[0],
+            lambda pp: _optimise_single_param(left_objective, pp, _mask_left_phi, optimiser, max_iter, loss_tol)[0],
+            lambda pp: _optimise_single_param(left_objective, pp, _mask_left_d_rho, optimiser, max_iter, loss_tol)[0],
             p,
         )
 
     def _opt_right(p: WettingParams) -> WettingParams:
         return jax.lax.cond(
             phi_active_right,
-            lambda pp: _optimise_single_param(right_objective, pp, _mask_right_phi, optimiser, max_iter)[0],
-            lambda pp: _optimise_single_param(right_objective, pp, _mask_right_d_rho, optimiser, max_iter)[0],
+            lambda pp: _optimise_single_param(right_objective, pp, _mask_right_phi, optimiser, max_iter, loss_tol)[0],
+            lambda pp: _optimise_single_param(right_objective, pp, _mask_right_d_rho, optimiser, max_iter, loss_tol)[0],
             p,
         )
 
@@ -367,7 +380,7 @@ def _update_wetting_state_impl(
             d_rho_left=wetting.d_rho_left,
             d_rho_right=p.d_rho_right,
         )
-        return _optimise_single_param(left_objective, fallback, _mask_left_d_rho, optimiser, max_iter)[0]
+        return _optimise_single_param(left_objective, fallback, _mask_left_d_rho, optimiser, max_iter, loss_tol)[0]
 
     def _fallback_d_rho_right(p: WettingParams) -> WettingParams:
         fallback = WettingParams(
@@ -376,7 +389,7 @@ def _update_wetting_state_impl(
             d_rho_left=p.d_rho_left,
             d_rho_right=wetting.d_rho_right,
         )
-        return _optimise_single_param(right_objective, fallback, _mask_right_d_rho, optimiser, max_iter)[0]
+        return _optimise_single_param(right_objective, fallback, _mask_right_d_rho, optimiser, max_iter, loss_tol)[0]
 
     final_params = jax.lax.cond(
         phi_active_left & (new_params.phi_left < _PHI_NEUTRAL),

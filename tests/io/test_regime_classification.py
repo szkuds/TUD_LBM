@@ -39,7 +39,7 @@ def test_classify_regime_pinning_takes_priority_over_acceleration_data():
 
     result = classify_regime(cm_x, r_zero=10.0, accel_result=accel_result)
 
-    assert result.regime == "pinning"
+    assert result.regime == "Pinning"
     assert result.is_pinned
     assert result.slope is None
     assert result.window is None
@@ -53,7 +53,7 @@ def test_classify_regime_viscous_when_slope_negative_in_window():
 
     result = classify_regime(cm_x, r_zero=10.0, accel_result=accel_result)
 
-    assert result.regime == "viscous"
+    assert result.regime == "Dissipative"
     assert result.slope is not None
     assert result.slope < 0
     assert result.window == (7, 11)
@@ -67,7 +67,7 @@ def test_classify_regime_inertial_when_slope_nonnegative_in_window():
 
     result = classify_regime(cm_x, r_zero=10.0, accel_result=accel_result)
 
-    assert result.regime == "inertial"
+    assert result.regime == "Intertial"
     assert result.slope is not None
     assert result.slope >= 0
     assert result.window == (7, 11)

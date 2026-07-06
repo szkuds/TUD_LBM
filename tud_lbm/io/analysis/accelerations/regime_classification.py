@@ -7,8 +7,8 @@ the acceleration-derived slope window.
 """
 
 from __future__ import annotations
+from enum import StrEnum
 from typing import TYPE_CHECKING
-from typing import Literal
 from typing import NamedTuple
 import numpy as np
 from tud_lbm.io.analysis.accelerations.acceleration_analysis import find_slope_window
@@ -16,7 +16,15 @@ from tud_lbm.io.analysis.accelerations.acceleration_analysis import find_slope_w
 if TYPE_CHECKING:
     from tud_lbm.io.analysis.accelerations.acceleration_analysis import AccelerationResult
 
-Regime = Literal["pinning", "viscous", "inertial", "unknown"]
+
+class Regime(StrEnum):
+    """Centralized regime labels used by acceleration-based classification."""
+
+    PINNING = "Pinning"
+    DISSIPATIVE = "Dissipative"
+    INERTIAL = "Inertial"
+    UNKNOWN = "unknown"
+
 
 _PINNING_FRACTION_OF_R0 = 0.5
 
@@ -45,11 +53,11 @@ def classify_regime(cm_x: np.ndarray, r_zero: float, accel_result: AccelerationR
     """
     pinned = is_pinned(cm_x, r_zero)
     if pinned:
-        return RegimeResult(regime="pinning", slope=None, is_pinned=True, window=None)
+        return RegimeResult(regime=Regime.PINNING, slope=None, is_pinned=True, window=None)
 
     window = find_slope_window(accel_result)
     if window is None:
-        return RegimeResult(regime="unknown", slope=None, is_pinned=False, window=None)
+        return RegimeResult(regime=Regime.UNKNOWN, slope=None, is_pinned=False, window=None)
 
     start, end = window
     slope, _intercept = np.polyfit(
@@ -57,5 +65,5 @@ def classify_regime(cm_x: np.ndarray, r_zero: float, accel_result: AccelerationR
         accel_result.ca[start : end + 1],
         1,
     )
-    regime: Regime = "viscous" if slope < 0 else "inertial"
+    regime = Regime.DISSIPATIVE if slope < 0 else Regime.INERTIAL
     return RegimeResult(regime=regime, slope=float(slope), is_pinned=False, window=window)

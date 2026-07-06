@@ -91,6 +91,8 @@ class ConfigAdapter(ABC):
             sim_table["hysteresis_config"] = dict(raw["hysteresis"])
         if "chemical_step" in raw:
             sim_table["chemical_step_config"] = dict(raw["chemical_step"])
+        if "obstacle" in raw:
+            sim_table["obstacle_config"] = dict(raw["obstacle"])
 
         if "initialisation" in raw:
             sim_table["initialisation"] = dict(raw["initialisation"])

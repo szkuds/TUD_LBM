@@ -38,11 +38,11 @@ _ANALYSIS_DIR = "analysis"
 _MIN_CSV_ROWS = 2
 _MIN_QUOTED_LINE_LEN = 2
 
-_REGIME_MARKERS: dict[str, str] = {"pinning": "o", "viscous": "s", "inertial": "^", "unknown": "x"}
+_REGIME_MARKERS: dict[str, str] = {"Pinning": "o", "Dissipative": "s", "Inertial": "^", "unknown": "x"}
 _REGIME_COLORS: dict[str, str] = {
-    "pinning": "tab:blue",
-    "viscous": "tab:green",
-    "inertial": "tab:red",
+    "Pinning": "tab:blue",
+    "Dissipative": "tab:green",
+    "Inertial": "tab:red",
     "unknown": "tab:gray",
 }
 
