@@ -657,6 +657,36 @@ class TestRunImplFlags:
         finally:
             _flags.DEBUG_FLAG_WETTING = original
 
+    def test_debug_stability_sets_flag(self, tmp_path):
+        import tud_lbm.config.config_overview as _flags
+
+        original = _flags.DEBUG_FLAG_STABILITY
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
+        try:
+            with (
+                patch("tud_lbm.cli.cli._load_raw_config", return_value={}),
+                patch("tud_lbm.cli.cli._expand_raw_config", return_value=self._single_config()),
+            ):
+                _run_impl(
+                    config_path=str(cfg_toml),
+                    no_prompt=True,
+                    dry_run=True,
+                    list_operators=False,
+                    list_analysis=False,
+                    max_workers=None,
+                    fail_fast=False,
+                    overrides=(),
+                    overview=False,
+                    debug_wetting=False,
+                    init_wetting=False,
+                    init_dir=None,
+                    debug_stability=True,
+                )
+            assert _flags.DEBUG_FLAG_STABILITY is True
+        finally:
+            _flags.DEBUG_FLAG_STABILITY = original
+
 
 class TestClickCommandPaths:
     """CLI command error and success paths via CliRunner."""
@@ -666,6 +696,15 @@ class TestClickCommandPaths:
         with patch("tud_lbm.cli.cli._run_impl", side_effect=KeyboardInterrupt):
             result = runner.invoke(cli, ["run"])
         assert result.exit_code == 130
+
+    def test_run_debug_stability_option_forwards(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
+        runner = CliRunner()
+        with patch("tud_lbm.cli.cli._run_impl", return_value=False) as mock_impl:
+            result = runner.invoke(cli, ["run", str(cfg_toml), "--debug-stability", "--dry-run"])
+        assert result.exit_code == 0
+        assert mock_impl.call_args.kwargs["debug_stability"] is True
 
     def test_run_general_exception_exits_1(self):
         runner = CliRunner()

@@ -1027,6 +1027,24 @@ def _run_with_optional_overrides(
         _display_summary(config, sweep_metadata, configs, overview=overview)
 
 
+def _enable_debug_flags(*, debug_wetting: bool, debug_stability: bool) -> None:
+    """Set the module-global debug flags in config_overview before setup/run traces."""
+    if not (debug_wetting or debug_stability):
+        return
+
+    import tud_lbm.config.config_overview as _flags
+
+    if debug_wetting:
+        _flags.DEBUG_FLAG_WETTING = True
+        console.print("[dim]Wetting debug logging enabled.[/dim]")
+        console.print()
+
+    if debug_stability:
+        _flags.DEBUG_FLAG_STABILITY = True
+        console.print("[dim]Stability diagnostics enabled (stability_log.csv + NaN guard).[/dim]")
+        console.print()
+
+
 def _run_impl(
     config_path: str | None,
     no_prompt: bool,
@@ -1041,6 +1059,7 @@ def _run_impl(
     init_wetting: bool,
     init_dir: str | None,
     run_compare: bool = False,
+    debug_stability: bool = False,
 ) -> bool:
     if list_operators:
         _display_simulation_operators()
@@ -1050,12 +1069,7 @@ def _run_impl(
         _display_analysis_operators()
         return False
 
-    if debug_wetting:
-        import tud_lbm.config.config_overview as _flags
-
-        _flags.DEBUG_FLAG_WETTING = True
-        console.print("[dim]Wetting debug logging enabled.[/dim]")
-        console.print()
+    _enable_debug_flags(debug_wetting=debug_wetting, debug_stability=debug_stability)
 
     _validate_cli_args(overrides, config_path, init_wetting=init_wetting, init_dir=init_dir)
 
@@ -1160,6 +1174,15 @@ def cli() -> None:
     help="Enable wetting debug output (sets DEBUG_FLAG_WETTING in config_overview)",
 )
 @click.option(
+    "--debug-stability",
+    is_flag=True,
+    help=(
+        "Enable stability diagnostics: per-save-interval max|u|/max|grad mu|/rho-range/"
+        "checkerboard logging to stability_log.csv plus a NaN guard that aborts the run "
+        "(sets DEBUG_FLAG_STABILITY in config_overview; not propagated to sweep workers)"
+    ),
+)
+@click.option(
     "--init-wetting",
     is_flag=True,
     help=(
@@ -1194,6 +1217,7 @@ def run(
     overrides: tuple[str, ...],
     overview: bool,
     debug_wetting: bool,
+    debug_stability: bool,
     init_wetting: bool,
     init_dir: str | None,
     run_compare: bool,
@@ -1248,6 +1272,9 @@ def run(
         # Enable wetting debug output
         tud-lbm run config.toml --debug-wetting
 
+        # Enable stability diagnostics (stability_log.csv + NaN guard)
+        tud-lbm run config.toml --debug-stability
+
         # Two-phase wetting init: equilibrate without gravity then run with gravity
         tud-lbm run config.toml --init-wetting
 
@@ -1271,6 +1298,7 @@ def run(
             init_wetting,
             init_dir,
             run_compare,
+            debug_stability=debug_stability,
         )
         if completed:
             console.print()
