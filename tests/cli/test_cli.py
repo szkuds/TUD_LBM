@@ -631,7 +631,7 @@ class TestRunImplFlags:
     def test_debug_wetting_sets_flag(self, tmp_path):
         import tud_lbm.config.config_overview as _flags
 
-        original = _flags.DEBUG_FLAG
+        original = _flags.DEBUG_FLAG_WETTING
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         try:
@@ -653,9 +653,9 @@ class TestRunImplFlags:
                     init_wetting=False,
                     init_dir=None,
                 )
-            assert _flags.DEBUG_FLAG is True
+            assert _flags.DEBUG_FLAG_WETTING is True
         finally:
-            _flags.DEBUG_FLAG = original
+            _flags.DEBUG_FLAG_WETTING = original
 
 
 class TestClickCommandPaths:

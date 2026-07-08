@@ -34,7 +34,7 @@ from typing import Protocol
 from typing import cast
 import jax
 import jax.numpy as jnp
-from tud_lbm.config.config_overview import DEBUG_FLAG
+from tud_lbm.config.config_overview import DEBUG_FLAG_WETTING
 from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
 from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
 from tud_lbm.operators.wetting._params import WettingParams
@@ -244,7 +244,7 @@ def _optimise_single_param(
         body_fn,
         init_carry,
     )
-    if DEBUG_FLAG:
+    if DEBUG_FLAG_WETTING:
         jax.debug.print(
             "opt exit: iters={i}/{m} loss={l:.3e}",
             i=iters,
@@ -404,7 +404,7 @@ def _update_wetting_state_impl(
         final_params,
     )
 
-    if DEBUG_FLAG:
+    if DEBUG_FLAG_WETTING:
         phi_engaged_right = phi_active_right & (final_params.phi_right > _PHI_NEUTRAL)
         fallback_right = phi_active_right & ~phi_engaged_right
         phi_engaged_left = phi_active_left & (final_params.phi_left > _PHI_NEUTRAL)

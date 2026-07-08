@@ -1053,7 +1053,7 @@ def _run_impl(
     if debug_wetting:
         import tud_lbm.config.config_overview as _flags
 
-        _flags.DEBUG_FLAG = True
+        _flags.DEBUG_FLAG_WETTING = True
         console.print("[dim]Wetting debug logging enabled.[/dim]")
         console.print()
 
@@ -1157,7 +1157,7 @@ def cli() -> None:
 @click.option(
     "--debug-wetting",
     is_flag=True,
-    help="Enable wetting debug output (sets DEBUG_FLAG in config_overview)",
+    help="Enable wetting debug output (sets DEBUG_FLAG_WETTING in config_overview)",
 )
 @click.option(
     "--init-wetting",
