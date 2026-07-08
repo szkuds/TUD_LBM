@@ -158,10 +158,9 @@ def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | N
         return None
 
 
-def _get_contact_line_length_from_file(config: SimulationConfig) -> float | None:
-    """Load rho from NPZ and estimate setup contact-line spacing for init_from_file."""
-    init = config.initialisation if isinstance(config.initialisation, dict) else {}
-    npz_path = _resolve_npz_path(config.init_dir or init.get("npz_path"))
+def _load_init_rho(config: SimulationConfig) -> tuple[np.ndarray, float] | None:
+    """Load the init rho field from NPZ and return ``(rho, rho_mean)`` for init_from_file."""
+    npz_path = _resolve_npz_path(config.init_dir or config.initialisation.get("npz_path"))
     if not npz_path:
         return None
 
@@ -170,14 +169,75 @@ def _get_contact_line_length_from_file(config: SimulationConfig) -> float | None
             if "rho" not in data:
                 return None
             rho = np.asarray(data["rho"])
-
-        if config.rho_l is not None and config.rho_v is not None:
-            rho_mean = 0.5 * (float(config.rho_l) + float(config.rho_v))
-        else:
-            rho_mean = float(np.mean(rho))
-        return _contact_line_length_from_rho(rho, rho_mean)
     except (KeyError, OSError, TypeError, ValueError):
         return None
+
+    if config.rho_l is not None and config.rho_v is not None:
+        rho_mean = 0.5 * (float(config.rho_l) + float(config.rho_v))
+    else:
+        rho_mean = float(np.mean(rho))
+    return rho, rho_mean
+
+
+def _get_contact_line_length_from_file(config: SimulationConfig) -> float | None:
+    """Load rho from NPZ and estimate setup contact-line spacing for init_from_file."""
+    loaded = _load_init_rho(config)
+    if loaded is None:
+        return None
+    return _contact_line_length_from_rho(*loaded)
+
+
+def _get_setup_droplet_area(config: SimulationConfig) -> float | None:
+    """Analytic droplet area from init geometry: circle clipped by the nearest wall."""
+    init = config.initialisation
+    if not init or not isinstance(init, dict):
+        return None
+    try:
+        centres = init.get("centres", [])
+        radii = init.get("radii", [])
+        if not centres or not radii:
+            return None
+
+        nx = float(config.grid_shape[0])
+        ny = float(config.grid_shape[1])
+
+        fx, fy = float(centres[0][0]), float(centres[0][1])
+        r = float(radii[0]) * min(nx, ny)
+
+        dist_x = min(fx * nx, (1.0 - fx) * nx)
+        dist_y = min(fy * ny, (1.0 - fy) * ny)
+        wall_dist = min(dist_x, dist_y)
+
+        area = math.pi * r**2
+        if wall_dist < r:
+            # Subtract the circular segment cut off by the nearest wall.
+            area -= r**2 * math.acos(wall_dist / r) - wall_dist * math.sqrt(r**2 - wall_dist**2)
+        if area > 0.0:
+            return area
+    except (IndexError, ValueError, TypeError):
+        pass
+    return None
+
+
+def _droplet_area_from_rho(rho: np.ndarray, rho_mean: float) -> float | None:
+    """Droplet area as the liquid-cell count (rho > rho_mean) in the z=0 plane."""
+    try:
+        plane = np.asarray(rho[:, :, 0, 0, 0], dtype=float)
+        area = float(np.count_nonzero(plane > rho_mean))
+    except (IndexError, TypeError, ValueError):
+        return None
+    return area if area > 0.0 else None
+
+
+def _get_droplet_area(config: SimulationConfig) -> tuple[float, str] | None:
+    """Return ``(area, source)`` for the setup droplet, or None when unavailable."""
+    if config.init_type == "init_from_file":
+        loaded = _load_init_rho(config)
+        area = _droplet_area_from_rho(*loaded) if loaded is not None else None
+        return (area, "init_from_file") if area is not None else None
+
+    area = _get_setup_droplet_area(config)
+    return (area, "init geometry") if area is not None else None
 
 
 def _ensure_single_gravity_force_source(config: SimulationConfig) -> None:
@@ -239,7 +299,7 @@ def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, st
         return None
     drho = float(config.rho_l) - float(config.rho_v)
 
-    measured = config.extra.get("surface_tension") if isinstance(config.extra, dict) else None
+    measured = config.extra.get("surface_tension")
     if measured is not None:
         return drho, float(measured), "measured"
     if config.eos in _EOS_REQUIRING_CALIBRATION:
@@ -251,12 +311,16 @@ def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, st
 
 
 def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple[float, str]:
-    """Resolve shared length scale and annotation for Oh/Bo rows."""
-    cl_length = _get_setup_contact_line_length(config)
-    if cl_length is not None:
-        if config.init_type == "init_from_file":
-            return cl_length, f"L={cl_length:.4g} (init_from_file)"
-        return cl_length, f"L={cl_length:.4g} (contact line)"
+    """Resolve shared length scale and annotation for Oh/Bo rows.
+
+    Uses the effective droplet radius L_eff = sqrt(Area/pi) from the setup
+    droplet area, falling back to grid_x when no droplet can be resolved.
+    """
+    resolved = _get_droplet_area(config)
+    if resolved is not None:
+        area, source = resolved
+        l_eff = math.sqrt(area / math.pi)
+        return l_eff, f"L_eff={l_eff:.4g} (sqrt(A/pi), {source})"
 
     length = float(config.grid_shape[0])
     return length, f"L={length} (grid_x)"
