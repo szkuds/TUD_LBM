@@ -12,34 +12,36 @@ Usage::
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from typing import Any
-from tud_lbm.config.simulation_config import SimulationConfig
+from tud_lbm.config.adapter_base import ConfigAdapter
+
+if TYPE_CHECKING:
+    from tud_lbm.config.simulation_config import SimulationConfig
 
 
-class DictAdapter:
-    """Adapter that builds a :class:`SimulationConfig` from a dict."""
+class DictAdapter(ConfigAdapter):
+    """Adapter that builds a :class:`SimulationConfig` from a dict.
 
-    def load(self, d: dict[str, Any]) -> SimulationConfig:
-        """Build a :class:`SimulationConfig` from *d*.
+    Accepts two shapes:
 
-        Handles conversion from dict (e.g. from ``to_dict()`` or user input):
+    **Flat** (SimulationConfig field names at top level)::
 
-        - Strips ``simulation_type`` metadata (added by ``to_dict()``, not a ctor param)
-        - Normalises ``grid_shape`` list → tuple
-        - Separates known fields from extras (unknown keys are collected into ``extra``)
-        - Passes everything through to the ``SimulationConfig`` constructor
-          for full validation.
+        {"sim_type": "multiphase", "kappa": 0.04, ...}
 
-        Args:
-            d: Configuration dict.
+    **Nested** (mirrors TOML section structure)::
 
-        Returns:
-            A validated :class:`SimulationConfig`.
-        """
-        d = dict(d)  # shallow copy
+        {"simulation_type": {"type": "multiphase", ...}, "multiphase": {...}, ...}
+    """
 
-        # Normalise grid_shape to tuple
-        if "grid_shape" in d and not isinstance(d["grid_shape"], tuple):
-            d["grid_shape"] = tuple(d["grid_shape"])
+    def load_raw(self, source: dict[str, Any]) -> dict[str, Any]:
+        """Return a flat config dict from *source*, handling both flat and nested shapes."""
+        if isinstance(source.get("simulation_type"), dict):
+            return self._merge_sections(source)
+        return dict(source)
 
-        return SimulationConfig(**d)
+    def save(self, config: SimulationConfig, path: str) -> None:
+        """Save a simulation config to *path*."""
+        del config, path
+        msg = "DictAdapter does not write files; use TomlAdapter."
+        raise NotImplementedError(msg)

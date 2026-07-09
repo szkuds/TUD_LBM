@@ -17,7 +17,9 @@ import sys
 import tomllib
 from copy import deepcopy
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 import click
 from rich.console import Console
 from rich.panel import Panel
@@ -26,6 +28,10 @@ from rich.prompt import Prompt
 from rich.table import Table
 from tud_lbm.config import SimulationConfig
 from tud_lbm.config.array_expansion import ArrayParameterSet
+
+if TYPE_CHECKING:
+    from tud_lbm.io.analysis.accelerations import Smoothing
+    from tud_lbm.io.plotting import FigureBuilder
 
 console = Console()
 _CLI_SUBTITLE = "Delft University of Technology"
@@ -387,16 +393,15 @@ def _resolve_token(token: str, names: list[str], available: dict) -> str | None:
     """
     try:
         idx = int(token) - 1
-        if 0 <= idx < len(names):
-            return names[idx]
-        console.print(f"[yellow]Number {token} out of range — skipped[/yellow]")
-        return None
     except ValueError:
-        pass
-    else:
         if token in available:
             return token
         console.print(f"[yellow]Unknown field '{token}' — skipped[/yellow]")
+        return None
+    else:
+        if 0 <= idx < len(names):
+            return names[idx]
+        console.print(f"[yellow]Number {token} out of range — skipped[/yellow]")
         return None
 
 
@@ -457,6 +462,27 @@ def _prompt_fields(
     return selected
 
 
+def _prompt_snapshot_timesteps(available: list[int]) -> list[int]:
+    """Interactively collect the timesteps to snapshot for the ``snapshot_fig`` plot."""
+    console.print(f"[dim]Available timesteps: {', '.join(str(t) for t in available)}[/dim]")
+    try:
+        raw_ts = Prompt.ask("Enter snapshot timesteps (comma-separated)")
+    except EOFError:
+        return []
+    return [int(tok.strip()) for tok in raw_ts.split(",") if tok.strip()]
+
+
+def _configure_snapshot_fig(builder: "FigureBuilder", field_list: list[str] | None) -> None:
+    """Prompt for and wire up snapshot timesteps when ``snapshot_fig`` is requested."""
+    if not field_list or "snapshot_fig" not in field_list:
+        return
+    available = [t for t, _ in builder.sorted_timed_files()]
+    requested_ts = _prompt_snapshot_timesteps(available)
+    for op in builder.analysis_operators:
+        if op.name == "snapshot_fig":
+            op.timesteps = requested_ts
+
+
 def _display_config_summary(config: SimulationConfig | None) -> None:
     """Display a compact summary of the simulation configuration."""
     if config is None:
@@ -507,7 +533,7 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
 def _display_full_overview(config: SimulationConfig | None) -> None:
     """Display the full physical-parameter overview from build_overview()."""
     from rich.text import Text
-    from tud_lbm.io.physical_parameters import build_overview
+    from tud_lbm.io.analysis.physical_parameters import build_overview
 
     if config is None:
         console.print("[yellow]No configuration available.[/yellow]")
@@ -546,6 +572,10 @@ def _run_simulation(config: SimulationConfig) -> str:
         config=config,
         simulation_name=config.simulation_name,
     )
+
+    from tud_lbm.io.analysis.surface_tension import record_surface_tension
+
+    config = record_surface_tension(config, io.run_dir)
 
     console.print("[bold green]Starting simulation...[/bold green]")
     console.print(f"[dim]Results directory: {io.run_dir}[/dim]")
@@ -762,7 +792,8 @@ def _build_wetting_init_raw(base_raw: dict[str, Any], wetting_params: dict[str, 
     init_raw["nt"] = _WETTING_INIT_NT
     init_raw["save_interval"] = _WETTING_INIT_NT
     init_raw["output_format"] = "numpy"
-    init_raw["simulation_name"] = "wetting_init"
+    base_name = base_raw.get("simulation_name")
+    init_raw["simulation_name"] = f"wetting_init_{base_name}" if base_name else "wetting_init"
     init_raw.setdefault("wetting_config", {}).update(wetting_params)
     return init_raw
 
@@ -924,9 +955,9 @@ def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
     Uses the in-memory config to avoid re-loading from disk which loses
     expanded/flattened fields.
     """
-    from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
-    from tud_lbm.io.plotting.analysis import build_simulation_csv
-    from tud_lbm.io.plotting.analysis import compare_runs
+    from tud_lbm.io.plotting.run_comparison import _COMPARISON_DIR
+    from tud_lbm.io.plotting.run_comparison import compare_runs
+    from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
     console.print("[dim]Running comparison analysis...[/dim]")
     csv_path = build_simulation_csv(run_dir, config)
@@ -941,8 +972,8 @@ def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
 
 def _run_compare_sweep(results_dir: Path) -> None:
     """Build CSVs and comparison plots across all runs in a sweep directory."""
-    from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
-    from tud_lbm.io.plotting.analysis import process_parent_dir
+    from tud_lbm.io.plotting.run_comparison import _COMPARISON_DIR
+    from tud_lbm.io.plotting.run_comparison import process_parent_dir
 
     console.print("[dim]Running comparison analysis...[/dim]")
     _n_runs, n_ok = process_parent_dir(results_dir)
@@ -996,6 +1027,24 @@ def _run_with_optional_overrides(
         _display_summary(config, sweep_metadata, configs, overview=overview)
 
 
+def _enable_debug_flags(*, debug_wetting: bool, debug_stability: bool) -> None:
+    """Set the module-global debug flags in config_overview before setup/run traces."""
+    if not (debug_wetting or debug_stability):
+        return
+
+    import tud_lbm.config.config_overview as _flags
+
+    if debug_wetting:
+        _flags.DEBUG_FLAG_WETTING = True
+        console.print("[dim]Wetting debug logging enabled.[/dim]")
+        console.print()
+
+    if debug_stability:
+        _flags.DEBUG_FLAG_STABILITY = True
+        console.print("[dim]Stability diagnostics enabled (stability_log.csv + NaN guard).[/dim]")
+        console.print()
+
+
 def _run_impl(
     config_path: str | None,
     no_prompt: bool,
@@ -1010,6 +1059,7 @@ def _run_impl(
     init_wetting: bool,
     init_dir: str | None,
     run_compare: bool = False,
+    debug_stability: bool = False,
 ) -> bool:
     if list_operators:
         _display_simulation_operators()
@@ -1019,12 +1069,7 @@ def _run_impl(
         _display_analysis_operators()
         return False
 
-    if debug_wetting:
-        import tud_lbm.config.config_overview as _flags
-
-        _flags.DEBUG_FLAG = True
-        console.print("[dim]Wetting debug logging enabled.[/dim]")
-        console.print()
+    _enable_debug_flags(debug_wetting=debug_wetting, debug_stability=debug_stability)
 
     _validate_cli_args(overrides, config_path, init_wetting=init_wetting, init_dir=init_dir)
 
@@ -1126,7 +1171,16 @@ def cli() -> None:
 @click.option(
     "--debug-wetting",
     is_flag=True,
-    help="Enable wetting debug output (sets DEBUG_FLAG in config_overview)",
+    help="Enable wetting debug output (sets DEBUG_FLAG_WETTING in config_overview)",
+)
+@click.option(
+    "--debug-stability",
+    is_flag=True,
+    help=(
+        "Enable stability diagnostics: per-save-interval max|u|/max|grad mu|/rho-range/"
+        "checkerboard logging to stability_log.csv plus a NaN guard that aborts the run "
+        "(sets DEBUG_FLAG_STABILITY in config_overview; not propagated to sweep workers)"
+    ),
 )
 @click.option(
     "--init-wetting",
@@ -1163,6 +1217,7 @@ def run(
     overrides: tuple[str, ...],
     overview: bool,
     debug_wetting: bool,
+    debug_stability: bool,
     init_wetting: bool,
     init_dir: str | None,
     run_compare: bool,
@@ -1217,6 +1272,9 @@ def run(
         # Enable wetting debug output
         tud-lbm run config.toml --debug-wetting
 
+        # Enable stability diagnostics (stability_log.csv + NaN guard)
+        tud-lbm run config.toml --debug-stability
+
         # Two-phase wetting init: equilibrate without gravity then run with gravity
         tud-lbm run config.toml --init-wetting
 
@@ -1240,6 +1298,7 @@ def run(
             init_wetting,
             init_dir,
             run_compare,
+            debug_stability=debug_stability,
         )
         if completed:
             console.print()
@@ -1392,6 +1451,7 @@ def visualise(run_dir: str, skip: int, dpi: int, fields: str | None, no_prompt: 
         console.print()
 
         builder = FigureBuilder(config=config, run_dir=run_dir, dpi=dpi, fields=field_list)
+        _configure_snapshot_fig(builder, field_list)
         saved = builder.build_all(skip=skip)
 
         if not saved:
@@ -1419,8 +1479,8 @@ def visualise(run_dir: str, skip: int, dpi: int, fields: str | None, no_prompt: 
 )
 def compare(parent_dir: str, no_prompt: bool) -> None:
     """Build CSV metrics and comparison plots for all runs in PARENT_DIR."""
-    from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
-    from tud_lbm.io.plotting.analysis import process_parent_dir
+    from tud_lbm.io.plotting.run_comparison import _COMPARISON_DIR
+    from tud_lbm.io.plotting.run_comparison import process_parent_dir
     from tud_lbm.registry import get_operators
 
     console.print()
@@ -1462,6 +1522,63 @@ def compare(parent_dir: str, no_prompt: bool) -> None:
             ),
         )
         console.print(f"[bold green]Plots saved to:[/bold green] {out_dir}")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Analysis interrupted by user.[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        if os.environ.get("TUD_LBM_DEBUG"):
+            raise
+        sys.exit(1)
+
+
+@cli.command(name="regime-map")
+@click.argument("dirs_txt", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--out-dir",
+    "out_dir",
+    type=click.Path(file_okay=False),
+    default=None,
+    help="Output directory for regime_map.png (default: <dirs_txt parent>/regime_map_analysis).",
+)
+@click.option(
+    "--smoothing",
+    "smoothing",
+    type=click.Choice(["raw", "savgol"]),
+    default="raw",
+    help="Acceleration-curve smoothing for peak detection: 'raw' (default, unsmoothed) or "
+    "'savgol' (Savitzky-Golay filtered, reduces spikiness).",
+)
+def regime_map(dirs_txt: str, out_dir: str | None, smoothing: str) -> None:
+    """Classify runs listed in DIRS_TXT into pinning/viscous/inertial/unknown and plot Bo_parallel vs Oh."""
+    from tud_lbm.io.plotting.regime_map_plot import build_regime_map
+
+    console.print()
+    console.print(
+        Panel.fit(
+            "[bold blue]TUD-LBM[/bold blue] - Regime Map",
+            subtitle=_CLI_SUBTITLE,
+        ),
+    )
+    console.print()
+
+    try:
+        console.print(f"[dim]Run-dir list : {dirs_txt}[/dim]")
+        console.print()
+
+        out_path = build_regime_map(dirs_txt, out_dir=out_dir, smoothing=cast("Smoothing", smoothing))
+        if out_path is None:
+            console.print("[yellow]No runs produced a usable classification.[/yellow]")
+            sys.exit(1)
+
+        console.print()
+        console.print(
+            Panel.fit(
+                "[bold green]Regime map complete![/bold green]",
+                title="Success",
+            ),
+        )
+        console.print(f"[bold green]Plot saved to:[/bold green] {out_path}")
     except KeyboardInterrupt:
         console.print("\n[yellow]Analysis interrupted by user.[/yellow]")
         sys.exit(130)

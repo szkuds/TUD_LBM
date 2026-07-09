@@ -20,12 +20,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.analysis import _load_comparison_entries
-from tud_lbm.io.plotting.analysis import _set_empty_state
-from tud_lbm.io.plotting.analysis import build_simulation_csv
-from tud_lbm.io.plotting.analysis import compare_runs
-from tud_lbm.io.plotting.analysis import main
-from tud_lbm.io.plotting.analysis import process_parent_dir
+from tud_lbm.io.plotting._analysis_common import _set_empty_state
+from tud_lbm.io.plotting.run_comparison import _load_comparison_entries
+from tud_lbm.io.plotting.run_comparison import compare_runs
+from tud_lbm.io.plotting.run_comparison import main
+from tud_lbm.io.plotting.run_comparison import process_parent_dir
+from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -116,13 +116,13 @@ class TestCompareRunsActual:
         pytest.importorskip("pandas")
 
         entries = [{"label": "test_run", "sort_key": 100, "data": _minimal_csv_df()}]
-        with patch("tud_lbm.io.plotting.analysis._load_comparison_entries", return_value=entries):
+        with patch("tud_lbm.io.plotting.run_comparison._load_comparison_entries", return_value=entries):
             compare_runs(tmp_path)
 
         out_dir = tmp_path / "comparison_analysis"
         assert out_dir.exists()
         pngs = list(out_dir.glob("*.png"))
-        assert len(pngs) == 8
+        assert len(pngs) == 9
 
     def test_compare_runs_with_multiple_entries(self, tmp_path):
         """compare_runs should handle multiple runs without errors."""
@@ -132,11 +132,11 @@ class TestCompareRunsActual:
             {"label": "run_a", "sort_key": 90, "data": _minimal_csv_df()},
             {"label": "run_b", "sort_key": 100, "data": _minimal_csv_df()},
         ]
-        with patch("tud_lbm.io.plotting.analysis._load_comparison_entries", return_value=entries):
+        with patch("tud_lbm.io.plotting.run_comparison._load_comparison_entries", return_value=entries):
             compare_runs(tmp_path)
 
         pngs = list((tmp_path / "comparison_analysis").glob("*.png"))
-        assert len(pngs) == 8
+        assert len(pngs) == 9
 
     def test_compare_runs_skips_missing_x_column(self, tmp_path):
         """If x column is missing in a run's data, that run is skipped gracefully."""
@@ -144,7 +144,7 @@ class TestCompareRunsActual:
 
         df_no_x = _minimal_csv_df().drop(columns=["normalised_iteration"])
         entries = [{"label": "broken_run", "sort_key": 90, "data": df_no_x}]
-        with patch("tud_lbm.io.plotting.analysis._load_comparison_entries", return_value=entries):
+        with patch("tud_lbm.io.plotting.run_comparison._load_comparison_entries", return_value=entries):
             compare_runs(tmp_path)  # must not raise
 
     def test_compare_runs_skips_missing_y_column(self, tmp_path):
@@ -153,7 +153,7 @@ class TestCompareRunsActual:
 
         df_no_y = _minimal_csv_df().drop(columns=["Ca"])
         entries = [{"label": "no_Ca", "sort_key": 90, "data": df_no_y}]
-        with patch("tud_lbm.io.plotting.analysis._load_comparison_entries", return_value=entries):
+        with patch("tud_lbm.io.plotting.run_comparison._load_comparison_entries", return_value=entries):
             compare_runs(tmp_path)  # must not raise
 
 
@@ -201,7 +201,7 @@ class TestLoadComparisonEntries:
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
 
         cfg = _wetting_cfg(simulation_name="my_run", wetting_config={"advancing_ca": 100})
-        with patch("tud_lbm.io.plotting.analysis._safe_load_config", return_value=cfg):
+        with patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg):
             result = _load_comparison_entries(tmp_path)
 
         assert len(result) == 1
@@ -217,7 +217,7 @@ class TestLoadComparisonEntries:
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
 
         cfg = _wetting_cfg()  # no simulation_name
-        with patch("tud_lbm.io.plotting.analysis._safe_load_config", return_value=cfg):
+        with patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg):
             result = _load_comparison_entries(tmp_path)
 
         assert len(result) == 1
@@ -232,7 +232,7 @@ class TestLoadComparisonEntries:
         (run_dir / "simulation_data.csv").write_text("iteration,Ca\n", encoding="utf-8")
         (run_dir / "config.toml").write_text("bad=[", encoding="utf-8")
 
-        with patch("tud_lbm.io.plotting.analysis._safe_load_config", return_value=None):
+        with patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=None):
             result = _load_comparison_entries(tmp_path)
 
         assert result == []
@@ -258,7 +258,7 @@ class TestAnalysisMain:
 
         cfg = _wetting_cfg(sim_type="single_phase")  # unsupported type → no CSV
         with (
-            patch("tud_lbm.io.plotting.analysis._safe_load_config", return_value=cfg),
+            patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg),
             pytest.raises(SystemExit) as exc,
         ):
             main(str(tmp_path))
@@ -277,8 +277,8 @@ class TestAnalysisMain:
 
         cfg = _wetting_cfg(simulation_name="run1")
         with (
-            patch("tud_lbm.io.plotting.analysis._safe_load_config", return_value=cfg),
-            patch("tud_lbm.io.plotting.analysis.compare_runs"),
+            patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg),
+            patch("tud_lbm.io.plotting.run_comparison.compare_runs"),
         ):
             main(str(tmp_path))  # should not raise SystemExit
 
@@ -305,8 +305,8 @@ def test_process_parent_dir_calls_compare_runs_when_csv_produced(tmp_path):
         compare_called["n"] += 1
 
     with (
-        patch("tud_lbm.io.plotting.analysis._safe_load_config", return_value=cfg),
-        patch("tud_lbm.io.plotting.analysis.compare_runs", side_effect=_fake_compare),
+        patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg),
+        patch("tud_lbm.io.plotting.run_comparison.compare_runs", side_effect=_fake_compare),
     ):
         n_runs, n_ok = process_parent_dir(tmp_path)
 
@@ -325,7 +325,7 @@ def test_process_parent_dir_does_not_call_compare_when_all_fail(tmp_path):
     cfg = _wetting_cfg(sim_type="single_phase")
     compare_called = {"n": 0}
 
-    with patch("tud_lbm.io.plotting.analysis._safe_load_config", return_value=cfg):
+    with patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg):
         n_runs, n_ok = process_parent_dir(tmp_path)
 
     assert n_runs == 1

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 import numpy as np
-from tud_lbm.io.plotting.analysis import AvgDensityPlot
-from tud_lbm.io.plotting.analysis import ContactAngleLeftPlot
-from tud_lbm.io.plotting.analysis import ContactLineSpeedLeftPlot
-from tud_lbm.io.plotting.analysis import DensityRatioPlot
-from tud_lbm.io.plotting.analysis import MaxVelocityPlot
+from tud_lbm.io.plotting.contact_angle_plot import ContactAngleLeftPlot
+from tud_lbm.io.plotting.contact_line_speed_plot import ContactLineSpeedLeftPlot
+from tud_lbm.io.plotting.scalar_history_plot import AvgDensityPlot
+from tud_lbm.io.plotting.scalar_history_plot import DensityRatioPlot
+from tud_lbm.io.plotting.scalar_history_plot import MaxVelocityPlot
 
 
 def _make_snapshot(path, *, step: int, rho_val: float, ux: float, ca_left: float, cll_left: float):

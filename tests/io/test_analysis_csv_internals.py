@@ -27,21 +27,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.analysis import RZero
-from tud_lbm.io.plotting.analysis import SimulationCsvExport
-from tud_lbm.io.plotting.analysis import _avg_x_location
-from tud_lbm.io.plotting.analysis import _backward_diff
-from tud_lbm.io.plotting.analysis import _ca_from_rho
-from tud_lbm.io.plotting.analysis import _center_of_mass
-from tud_lbm.io.plotting.analysis import _clean_dir_label
-from tud_lbm.io.plotting.analysis import _cll_from_rho
-from tud_lbm.io.plotting.analysis import _inclination_angle_deg
-from tud_lbm.io.plotting.analysis import _interpolate_interface
-from tud_lbm.io.plotting.analysis import _parse_timestep_from_path
-from tud_lbm.io.plotting.analysis import _resolve_r_zero
-from tud_lbm.io.plotting.analysis import _sigma_lg
-from tud_lbm.io.plotting.analysis import build_simulation_csv
-from tud_lbm.io.plotting.analysis import process_parent_dir
+from tud_lbm.io.plotting.run_comparison import _clean_dir_label
+from tud_lbm.io.plotting.run_comparison import process_parent_dir
+from tud_lbm.io.plotting.simulation_csv import RZero
+from tud_lbm.io.plotting.simulation_csv import SimulationCsvExport
+from tud_lbm.io.plotting.simulation_csv import _avg_x_location
+from tud_lbm.io.plotting.simulation_csv import _backward_diff
+from tud_lbm.io.plotting.simulation_csv import _ca_from_rho
+from tud_lbm.io.plotting.simulation_csv import _center_of_mass
+from tud_lbm.io.plotting.simulation_csv import _cll_from_rho
+from tud_lbm.io.plotting.simulation_csv import _inclination_angle_deg
+from tud_lbm.io.plotting.simulation_csv import _interpolate_interface
+from tud_lbm.io.plotting.simulation_csv import _parse_timestep_from_path
+from tud_lbm.io.plotting.simulation_csv import _resolve_r_zero
+from tud_lbm.io.plotting.simulation_csv import _sigma_lg
+from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -440,8 +440,8 @@ def test_process_parent_dir_counts_valid_run(tmp_path):
     # Write a config.toml so the discovery loop finds the run
     (run_dir / "config.toml").write_text("", encoding="utf-8")
     with (
-        patch("tud_lbm.io.plotting.analysis._safe_load_config", return_value=cfg),
-        patch("tud_lbm.io.plotting.analysis.compare_runs"),
+        patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg),
+        patch("tud_lbm.io.plotting.run_comparison.compare_runs"),
     ):
         n_runs, _ = process_parent_dir(tmp_path)
 
