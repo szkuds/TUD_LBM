@@ -19,8 +19,8 @@ from __future__ import annotations
 import base64
 import json
 import re
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -87,7 +87,7 @@ class HtmlReport:
         """Assemble the JSON data payload for the template."""
         return {
             "sim_name": self.config.simulation_name or "Simulation Report",
-            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "generated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
             "params": self._extract_params(),
             "frames": self._load_frames(),
             "comments": [],
