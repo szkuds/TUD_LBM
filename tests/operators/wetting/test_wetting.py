@@ -252,6 +252,105 @@ class TestOptimiseSingleParam:
         _p_final, loss = run_opt(p0)
         assert not jnp.isnan(loss)
 
+    def test_early_exit_when_already_converged(self):
+        import optax
+        from tud_lbm.operators.wetting.hysteresis import WettingParams
+        from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
+
+        target = 0.1
+
+        def objective(p):
+            return (p.d_rho_left - target) ** 2
+
+        def mask_fn(g):
+            return WettingParams(
+                g.d_rho_left,
+                jnp.zeros_like(g.d_rho_right),
+                jnp.zeros_like(g.phi_left),
+                jnp.zeros_like(g.phi_right),
+            )
+
+        # Initial loss is 0.0 <= loss_tol, so the loop body must never run.
+        p0 = WettingParams(
+            d_rho_left=jnp.array(target),
+            d_rho_right=jnp.array(0.1),
+            phi_left=jnp.array(1.2),
+            phi_right=jnp.array(1.2),
+        )
+        opt = optax.adam(0.01)
+        p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50)  # ty: ignore[invalid-argument-type]
+        assert float(loss_final) == 0.0
+        for field_final, field_initial in zip(p_final, p0, strict=True):
+            assert float(field_final) == float(field_initial)
+
+    def test_converges_below_tolerance_before_cap(self):
+        import optax
+        from tud_lbm.operators.wetting.hysteresis import WettingParams
+        from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
+
+        target = 0.1
+        loss_tol = 1e-3
+
+        def objective(p):
+            return (p.d_rho_left - target) ** 2
+
+        def mask_fn(g):
+            return WettingParams(
+                g.d_rho_left,
+                jnp.zeros_like(g.d_rho_right),
+                jnp.zeros_like(g.phi_left),
+                jnp.zeros_like(g.phi_right),
+            )
+
+        p0 = WettingParams(
+            d_rho_left=jnp.array(0.15),
+            d_rho_right=jnp.array(0.1),
+            phi_left=jnp.array(1.2),
+            phi_right=jnp.array(1.2),
+        )
+        opt = optax.adam(0.01)
+        _p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 500, loss_tol=loss_tol)  # ty: ignore[invalid-argument-type]
+        assert float(loss_final) <= loss_tol
+
+    def test_loss_tol_zero_runs_full_budget(self):
+        import optax
+        from tud_lbm.operators.wetting.hysteresis import WettingParams
+        from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
+        from tud_lbm.operators.wetting.hysteresis.hysteresis import _clamp_params
+
+        target = 0.1
+
+        def objective(p):
+            return (p.d_rho_left - target) ** 2
+
+        def mask_fn(g):
+            return WettingParams(
+                g.d_rho_left,
+                jnp.zeros_like(g.d_rho_right),
+                jnp.zeros_like(g.phi_left),
+                jnp.zeros_like(g.phi_right),
+            )
+
+        p0 = WettingParams(
+            d_rho_left=jnp.array(0.15),
+            d_rho_right=jnp.array(0.1),
+            phi_left=jnp.array(1.2),
+            phi_right=jnp.array(1.2),
+        )
+        max_iterations = 5
+        opt = optax.adam(0.01)
+        p_final, _loss = _optimise_single_param(objective, p0, mask_fn, opt, max_iterations, loss_tol=0.0)  # ty: ignore[invalid-argument-type]
+
+        # Reference: plain optax loop running the full iteration budget.
+        params = p0
+        opt_state = opt.init(params)
+        for _ in range(max_iterations):
+            grads = mask_fn(jax.grad(objective)(params))
+            updates, opt_state = opt.update(grads, opt_state, params)
+            params = _clamp_params(optax.apply_updates(params, updates))  # ty: ignore[invalid-argument-type]
+
+        assert jnp.allclose(p_final.d_rho_left, params.d_rho_left)
+
 
 # =====================================================================
 # update_wetting_state

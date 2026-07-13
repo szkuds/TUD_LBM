@@ -13,14 +13,17 @@ Example:
 """
 
 from __future__ import annotations
+import functools
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
 from typing import cast
 import jax.numpy as jnp
 from tud_lbm.operators.boundary import _bounce_back as _bb  # noqa: F401
+from tud_lbm.operators.boundary import _outlet as _out  # noqa: F401
 from tud_lbm.operators.boundary import _periodic as _per  # noqa: F401
 from tud_lbm.operators.boundary import _symmetry as _sym  # noqa: F401
+from tud_lbm.operators.boundary import _velocity_inlet as _vin  # noqa: F401
 from tud_lbm.registry import get_operators
 
 if TYPE_CHECKING:
@@ -119,6 +122,9 @@ def build_bc(
     for edge in _edge_order:
         bc_type = bc_config.get(edge, "periodic")
         fn = bc_dispatch.get("bounce-back") if bc_type == "wetting" else bc_dispatch.get(bc_type)
+        if fn is not None and bc_type == "velocity-inlet":
+            inlet_params = bc_config.get(f"{edge}_velocity_inlet", {})
+            fn = functools.partial(fn, u0=inlet_params.get("u0", 0.05))
         if fn is not None and bc_type != "periodic":
             ops.append((edge, fn))
 

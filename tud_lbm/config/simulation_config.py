@@ -166,6 +166,12 @@ class SimulationConfig:
         metadata={CONFIG_SECTION: "boundary_conditions"},
     )
 
+    # ── Interior obstacle (geometry only — no sweep support) ──────
+    obstacle_config: dict[str, Any] | None = field(
+        default=None,
+        metadata={CONFIG_SECTION: "obstacle"},
+    )
+
     # ── Wetting model ──────────
     wetting_config: dict[str, Any] | None = array_field(default=None, section="wetting", nested_sweepable=True)
 
@@ -286,12 +292,53 @@ class SimulationConfig:
         self._validate_forces()
         self._validate_init()
         self._validate_save_fields()
+        self._validate_obstacle()
 
     def _validate_forces(self) -> None:
         """Validate force configuration consistency."""
         if self.gravity_force is not None and self.gravity_masked_force is not None:
             msg = "Only one gravity force can be applied: set either gravity_force or gravity_masked_force, not both."
             raise ValueError(msg)
+
+    def _validate_obstacle(self) -> None:
+        """Validate interior-obstacle geometry against the grid and BC topology."""
+        if self.obstacle_config is None:
+            return
+
+        nx, ny, nz = self.grid_shape[:3]
+        if nz > 1:
+            msg = "obstacle_config only supports 2D grids (nz=1)"
+            raise ValueError(msg)
+
+        cx = self.obstacle_config.get("center_x")
+        cy = self.obstacle_config.get("center_y")
+        radius = self.obstacle_config.get("radius")
+        if radius is None or radius <= 0:
+            msg = f"obstacle radius must be positive, got {radius}"
+            raise ValueError(msg)
+        if cx is None or not (radius <= cx <= nx - 1 - radius):
+            msg = f"obstacle x-extent [{cx - radius}, {cx + radius}] must fit within grid x in [0, {nx - 1}]"
+            raise ValueError(msg)
+        if cy is None or not (radius + 1 <= cy <= ny - 1 - radius - 1):
+            msg = (
+                f"obstacle must keep >=1 cell clearance from top/bottom walls, "
+                f"got center_y={cy}, radius={radius}, ny={ny}"
+            )
+            raise ValueError(msg)
+
+        if self.bc_config is not None:
+            left_bc = self.bc_config.get("left", "periodic")
+            right_bc = self.bc_config.get("right", "periodic")
+            if left_bc != "periodic" and cx - radius <= 1:
+                msg = (
+                    f"obstacle must keep >1 cell clearance from a non-periodic left edge, got cx={cx}, radius={radius}"
+                )
+                raise ValueError(msg)
+            if right_bc != "periodic" and cx + radius >= nx - 2:
+                msg = (
+                    f"obstacle must keep >1 cell clearance from a non-periodic right edge, got cx={cx}, radius={radius}"
+                )
+                raise ValueError(msg)
 
     def _validate_grid_shape(self) -> None:
         """Validate grid_shape dimensions."""

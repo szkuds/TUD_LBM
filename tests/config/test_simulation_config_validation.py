@@ -234,3 +234,70 @@ class TestValidateMultiphase:
         del params[missing_cs_param]
         with pytest.raises(ValueError, match=f"'{missing_cs_param}' is required"):
             SimulationConfig(**params)
+
+
+class TestValidateObstacle:
+    """Tests for _validate_obstacle: geometry sanity and BC-edge clearance."""
+
+    def test_none_config_is_valid(self):
+        cfg = SimulationConfig(grid_shape=(40, 20, 1), obstacle_config=None)
+        assert cfg.obstacle_config is None
+
+    def test_valid_obstacle_round_trips(self):
+        cfg = SimulationConfig(
+            grid_shape=(40, 20, 1),
+            obstacle_config={"center_x": 20, "center_y": 10, "radius": 5},
+        )
+        assert cfg.obstacle_config == {"center_x": 20, "center_y": 10, "radius": 5}
+
+    def test_nonpositive_radius_raises(self):
+        with pytest.raises(ValueError, match="radius must be positive"):
+            SimulationConfig(
+                grid_shape=(40, 20, 1),
+                obstacle_config={"center_x": 20, "center_y": 10, "radius": 0},
+            )
+
+    def test_obstacle_touching_top_bottom_wall_raises(self):
+        with pytest.raises(ValueError, match="clearance from top/bottom"):
+            SimulationConfig(
+                grid_shape=(40, 20, 1),
+                obstacle_config={"center_x": 20, "center_y": 5, "radius": 5},
+            )
+
+    def test_obstacle_outside_x_extent_raises(self):
+        with pytest.raises(ValueError, match="x-extent"):
+            SimulationConfig(
+                grid_shape=(40, 20, 1),
+                obstacle_config={"center_x": 2, "center_y": 10, "radius": 5},
+            )
+
+    def test_obstacle_3d_grid_raises(self):
+        with pytest.raises(ValueError, match="2D"):
+            SimulationConfig(
+                grid_shape=(40, 20, 4),
+                obstacle_config={"center_x": 20, "center_y": 10, "radius": 5},
+            )
+
+    def test_obstacle_overlapping_nonperiodic_left_edge_raises(self):
+        with pytest.raises(ValueError, match="left edge"):
+            SimulationConfig(
+                grid_shape=(40, 20, 1),
+                bc_config={"left": "bounce-back"},
+                obstacle_config={"center_x": 6, "center_y": 10, "radius": 5},
+            )
+
+    def test_obstacle_overlapping_nonperiodic_right_edge_raises(self):
+        with pytest.raises(ValueError, match="right edge"):
+            SimulationConfig(
+                grid_shape=(40, 20, 1),
+                bc_config={"right": "bounce-back"},
+                obstacle_config={"center_x": 34, "center_y": 10, "radius": 5},
+            )
+
+    def test_obstacle_far_from_nonperiodic_edges_is_valid(self):
+        cfg = SimulationConfig(
+            grid_shape=(40, 20, 1),
+            bc_config={"left": "bounce-back", "right": "bounce-back"},
+            obstacle_config={"center_x": 20, "center_y": 10, "radius": 5},
+        )
+        assert cfg.obstacle_config is not None

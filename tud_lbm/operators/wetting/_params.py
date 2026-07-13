@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 class WettingParams(NamedTuple):
-    """Optimisable wetting boundary parameters for hysteresis optimiser.
+    """Optimisation wetting boundary parameters for hysteresis optimiser.
 
     Four scalar fields representing wetting behaviour at left and right contact lines.
     Used only for non-chemical-step simulations. Chemical step cases are extended with per-region pre/post variants.

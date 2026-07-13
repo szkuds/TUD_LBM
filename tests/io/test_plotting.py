@@ -143,5 +143,5 @@ def test_build_all_accepts_run_directory(plotting_run_dir: Path):
     assert len(saved) == 1
     assert saved[0].exists()
 
-    plots = list((plotting_run_dir / "plots").glob("*.png"))
+    plots = list((plotting_run_dir / "plots" / "snapshots").glob("*.png"))
     assert len(plots) == 1

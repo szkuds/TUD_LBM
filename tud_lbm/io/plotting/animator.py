@@ -1,6 +1,7 @@
 """Animation builder for field and analysis plotting."""
 
 from __future__ import annotations
+import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
@@ -46,6 +47,11 @@ class Animator:
         files = [fp for _, fp in timed_files]
 
         self._frames_dir.mkdir(parents=True, exist_ok=True)
+
+        for op in self.builder.analysis_operators:
+            with contextlib.suppress(Exception):
+                op.prime(files)
+
         frame_paths: list[Path] = []
 
         for idx, (timestep, fp) in enumerate(timed_files):
