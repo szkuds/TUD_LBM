@@ -63,3 +63,14 @@ def mock_optax_present(monkeypatch):
         yield  # Run test
     except ImportError:
         pytest.skip("optax not installed - skipping test that requires it")
+
+
+@pytest.fixture(autouse=True)
+def _close_figures():
+    """Close all matplotlib figures after each test to avoid the
+    'More than 20 figures' RuntimeWarning from accumulating across the suite.
+    """
+    yield
+    import matplotlib.pyplot as plt
+
+    plt.close("all")

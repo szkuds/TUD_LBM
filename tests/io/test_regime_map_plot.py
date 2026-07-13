@@ -11,7 +11,7 @@ from tud_lbm.io.plotting.regime_map_plot import build_regime_map
 from tud_lbm.io.plotting.regime_map_plot import parse_run_dir_list
 from tud_lbm.io.plotting.regime_map_plot import plot_regime_map
 from tud_lbm.io.plotting.regime_map_plot import process_run_dir
-from tud_lbm.readers import TomlAdapter
+from tud_lbm.io.readers import TomlAdapter
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -128,7 +128,7 @@ def test_process_run_dir_classifies_pinned_run(tmp_path: Path):
     entry = process_run_dir(run_dir)
 
     assert entry is not None
-    assert entry.regime == "pinning"
+    assert entry.regime == "Pinning"
     assert (run_dir / "plots" / "analysis" / "acceleration_analysis.png").exists()
 
 
@@ -160,9 +160,9 @@ def test_process_run_dir_none_for_calibration_only_eos_without_surface_tension(t
 
 def test_plot_regime_map_writes_file_with_all_regime_markers(tmp_path: Path):
     entries = [
-        RunRegimeEntry(run_dir=tmp_path / "a", label="a", bo_parallel=1.0, oh=0.1, regime="pinning"),
-        RunRegimeEntry(run_dir=tmp_path / "b", label="b", bo_parallel=2.0, oh=0.2, regime="viscous"),
-        RunRegimeEntry(run_dir=tmp_path / "c", label="c", bo_parallel=3.0, oh=0.3, regime="inertial"),
+        RunRegimeEntry(run_dir=tmp_path / "a", label="a", bo_parallel=1.0, oh=0.1, regime="Pinning"),
+        RunRegimeEntry(run_dir=tmp_path / "b", label="b", bo_parallel=2.0, oh=0.2, regime="Dissipative"),
+        RunRegimeEntry(run_dir=tmp_path / "c", label="c", bo_parallel=3.0, oh=0.3, regime="Inertial"),
         RunRegimeEntry(run_dir=tmp_path / "d", label="d", bo_parallel=4.0, oh=0.4, regime="unknown"),
     ]
     assert set(_REGIME_MARKERS) == {e.regime for e in entries}
