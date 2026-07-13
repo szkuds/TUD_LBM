@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
 from tud_lbm.io.plotting.base import PlotOperator
+from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
 from tud_lbm.registry import plotting_operator
 
 if TYPE_CHECKING:
@@ -45,7 +46,7 @@ class VelocityPlotOperator(PlotOperator):
         uy = u[:, :, 0, 0, 1].T
         mag = np.sqrt(ux**2 + uy**2)
 
-        im = ax.imshow(mag, origin="lower", aspect="equal", cmap="plasma")
+        im = ax.imshow(mag, origin="lower", aspect="equal", cmap=DEFAULT_STYLE.colormap_velocity)
         ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="|u|")
 
         ny, nx = mag.shape
@@ -60,8 +61,8 @@ class VelocityPlotOperator(PlotOperator):
                 scale_units="xy",
                 scale=None,
                 angles="xy",
-                color="white",
-                alpha=0.7,
+                color=DEFAULT_STYLE.quiver_color,
+                alpha=DEFAULT_STYLE.quiver_alpha,
             )
         ax.set_title(f"Velocity magnitude  t={timestep}")
         ax.set_xlabel("x")

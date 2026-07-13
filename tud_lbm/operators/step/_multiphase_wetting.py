@@ -13,6 +13,7 @@ purely in how setup.gradient_density and setup.laplacian_density are constructed
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import cast
 import jax.numpy as jnp
 from tud_lbm.operators.force import compute_total_force_ext
 from tud_lbm.operators.step._common import _multiphase_pipeline
@@ -24,6 +25,7 @@ from tud_lbm.registry import update_timestep_operator
 if TYPE_CHECKING:
     from tud_lbm.pipeline.setup import SimulationSetup
     from tud_lbm.pipeline.state.state import State
+    from tud_lbm.pipeline.state.state import WettingState
 
 
 @update_timestep_operator(name="multiphase_wetting")
@@ -46,6 +48,13 @@ def step_multiphase_wetting(setup: SimulationSetup, state: State) -> State:
     Returns:
         Updated :class:`~tud_lbm.pipeline.state.state.State` after one time step.
     """
+    if setup.gradient_density is None:
+        msg = "gradient_density is required for multiphase wetting step"
+        raise TypeError(msg)
+    if setup.laplacian_density is None:
+        msg = "laplacian_density is required for multiphase wetting step"
+        raise TypeError(msg)
+
     # 1. Compute external forces
     force_ext, state = compute_total_force_ext(setup, state, setup.forces)
 
@@ -61,11 +70,15 @@ def step_multiphase_wetting(setup: SimulationSetup, state: State) -> State:
 
     updated_wetting = state.wetting
     if state.wetting is not None:
+        if setup.multiphase_params is None:
+            msg = "multiphase_params is required for contact angle computation"
+            raise TypeError(msg)
         mp = setup.multiphase_params
         rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
         ca_left, ca_right = compute_contact_angle(rho, jnp.array(rho_mean))
         cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, jnp.array(rho_mean))
-        updated_wetting = state.wetting._replace(
+        wetting = cast("WettingState", state.wetting)
+        updated_wetting = wetting._replace(
             ca_left=ca_left,
             ca_right=ca_right,
             cll_left=cll_left,
@@ -78,6 +91,7 @@ def step_multiphase_wetting(setup: SimulationSetup, state: State) -> State:
         rho=rho,
         u=u,
         force=force_tot,
+        force_ext=force_ext,
         t=state.t + 1,
         wetting=updated_wetting,
     )

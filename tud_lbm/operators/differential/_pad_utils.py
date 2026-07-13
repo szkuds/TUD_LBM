@@ -12,6 +12,7 @@ which matches the padding order in ``gradient.py`` / ``laplacian.py``.
 
 from __future__ import annotations
 from typing import Any
+from typing import cast
 import jax.numpy as jnp
 from tud_lbm.registry import get_operators
 
@@ -64,10 +65,13 @@ def determine_pad_modes(bc_config: dict[str, Any] | None) -> list[str]:
     """
     # Build lookup: bc_name -> pad_edge_mode from registry metadata
     bc_ops = get_operators("boundary_condition")
-    pad_for: dict[str, str] = {
-        name: entry.metadata.get("pad_edge_mode", "edge") if entry.metadata else "edge"
-        for name, entry in bc_ops.items()
-    }
+    pad_for: dict[str, str] = cast(
+        "dict[str, str]",
+        {
+            name: entry.metadata.get("pad_edge_mode", "edge") if entry.metadata else "edge"
+            for name, entry in bc_ops.items()
+        },
+    )
 
     if bc_config is None:
         return ["wrap", "wrap", "wrap", "wrap"]  # all-periodic default

@@ -43,17 +43,40 @@ Usage::
 """
 
 from __future__ import annotations
+from pathlib import Path
 from typing import TYPE_CHECKING
 import jax
 import jax.numpy as jnp
+import tud_lbm.config.config_overview as _flags
 from tud_lbm.pipeline.state.state import State
 
 if TYPE_CHECKING:
-    from setup import SimulationSetup
+    from tud_lbm.config import SimulationConfig
     from tud_lbm.io import SimulationIO
+    from tud_lbm.pipeline.setup import SimulationSetup
 
 
 # ── State initialisation ─────────────────────────────────────────────
+
+
+def _t_from_snapshot(config: SimulationConfig) -> jnp.ndarray:
+    """Infer the starting timestep from an ``init_from_file`` snapshot name.
+
+    Expected filename format is ``timestep_{N}.npz``. Any non-conforming
+    name, parse failure, or non-file-based init type falls back to ``0``.
+    """
+    if config.init_type != "init_from_file" or config.init_dir is None:
+        return jnp.array(0)
+
+    stem = Path(config.init_dir).stem
+    if not stem.startswith("timestep_"):
+        return jnp.array(0)
+
+    step_str = stem.removeprefix("timestep_")
+    if not step_str.isdigit():
+        return jnp.array(0)
+
+    return jnp.array(int(step_str))
 
 
 def init_state(
@@ -90,11 +113,14 @@ def init_state(
     nx, ny, nz = setup.grid_shape[0], setup.grid_shape[1], setup.grid_shape[2]
 
     if f is None:
+        if setup.initial_f_fn is None:
+            msg = "initial_f_fn is required in SimulationSetup to initialize state"
+            raise TypeError(msg)
         f = setup.initial_f_fn(init_kwargs)
 
     rho = jnp.sum(f, axis=-2, keepdims=True)
     u = jnp.zeros((nx, ny, nz, 1, lattice.d))
-    t = jnp.array(0)
+    t = _t_from_snapshot(setup.config)
 
     force, force_ext = build_optional_fields(setup, nx, ny, nz, lattice.d)
     extra_state = build_extra_state(setup)
@@ -132,7 +158,11 @@ def run(
         io_handler: Optional :class:`~util.io.SimulationIO`.  When
             supplied, snapshots are streamed to disk via host callbacks
             and the returned *trajectory* is ``None``.
-        skip_interval: Number of initial steps to skip before saving
+        skip_interval: Absolute simulation-time threshold; steps with
+            ``state.t <= skip_interval`` are not saved.  For a fresh
+            run this equals the number of initial steps to skip.  For
+            a resumed ``init_from_file`` run, compare against the
+            *absolute* timestep, not the number of new steps
             (only used with *io_handler*).
         save_fields: Subset of field names to write, e.g.
             ``("rho", "u")``.  ``None`` means all fields.
@@ -149,10 +179,36 @@ def run(
     if nt is None:
         nt = setup.config.nt
 
+    if setup.step_fn is None:
+        msg = "step_fn is required in SimulationSetup to run simulation"
+        raise TypeError(msg)
+    _step_fn = setup.step_fn  # capture narrowed value for closures
+
+    # ── Stability diagnostics (--debug-stability) ────────────────
+    # Flag read as a module attribute at call time; a from-import would
+    # freeze the value at import, before the CLI can set it.
+    do_stab = None
+    if _flags.DEBUG_FLAG_STABILITY:
+        from tud_lbm.io.analysis.stability import make_stability_callback
+
+        stab_dir = (
+            Path(io_handler.run_dir)
+            if io_handler is not None
+            else Path(setup.config.results_dir).expanduser() / "stability_debug"
+        )
+        do_stab = make_stability_callback(
+            stab_dir,
+            gradient_density=setup.gradient_density,
+            mp=setup.multiphase_params,
+            log_interval=save_interval if save_interval >= 1 else max(1, nt // 10),
+            vapor_frac=_flags.STABILITY_VAPOR_FRACTION,
+            grad_frac=_flags.STABILITY_GRAD_RHO_FRACTION,
+        )
+
     # ── Streaming I/O mode ───────────────────────────────────────
     if io_handler is not None:
-        from tud_lbm.pipeline.io_callbacks import _state_to_numpy
-        from tud_lbm.pipeline.io_callbacks import make_save_callback
+        from tud_lbm.io.callbacks import _state_to_numpy
+        from tud_lbm.io.callbacks import make_save_callback
 
         do_save = make_save_callback(
             io_handler,
@@ -162,9 +218,11 @@ def run(
         )
 
         @jax.jit
-        def scan_body_io(state: State, t: int) -> tuple[State, None]:
-            new_state = setup.step_fn(setup, state)
-            do_save(new_state, t)
+        def scan_body_io(state: State, _t: int) -> tuple[State, None]:
+            new_state = _step_fn(setup, state)
+            if do_stab is not None:
+                do_stab(new_state, new_state.t)
+            do_save(new_state, new_state.t)
             return new_state, None
 
         final_state, _ = jax.lax.scan(
@@ -183,7 +241,9 @@ def run(
     # ── In-memory trajectory mode ────────────────────────────────
     @jax.jit
     def scan_body(state: State, _t: int) -> tuple[State, State]:
-        new_state = setup.step_fn(setup, state)
+        new_state = _step_fn(setup, state)
+        if do_stab is not None:
+            do_stab(new_state, new_state.t)
         return new_state, new_state
 
     final_state, trajectory = jax.lax.scan(

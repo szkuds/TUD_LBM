@@ -49,6 +49,16 @@ def _multiphase_pipeline(
     """
     from tud_lbm.pipeline.state.state import State
 
+    if setup.macroscopic_fn is None:
+        msg = "macroscopic_fn is required for multiphase pipeline"
+        raise TypeError(msg)
+    if setup.multiphase_params is None:
+        msg = "multiphase_params is required for multiphase pipeline"
+        raise TypeError(msg)
+    if setup.gradient_standard is None:
+        msg = "gradient_standard is required for multiphase pipeline"
+        raise TypeError(msg)
+
     lattice = setup.lattice
 
     # 1. Compute macroscopic fields from current populations
@@ -91,8 +101,8 @@ def _apply_common_step(
     state: State,
     rho: jnp.ndarray,
     u: jnp.ndarray,
-    force_tot: jnp.ndarray,
-    gradient_density: DifferentialOperator = None,
+    force_tot: jnp.ndarray | None,
+    gradient_density: DifferentialOperator | None = None,
 ) -> State:
     """Apply equilibrium → collision (+source) → streaming → BCs.
 
@@ -111,6 +121,19 @@ def _apply_common_step(
     Returns:
         Updated :class:`~tud_lbm.pipeline.state.state.State` with f, rho, u, t updated.
     """
+    if setup.equilibrium_fn is None:
+        msg = "equilibrium_fn is required"
+        raise TypeError(msg)
+    if setup.collision_fn is None:
+        msg = "collision_fn is required"
+        raise TypeError(msg)
+    if setup.streaming_fn is None:
+        msg = "streaming_fn is required"
+        raise TypeError(msg)
+    if setup.bc_fn is None:
+        msg = "bc_fn is required"
+        raise TypeError(msg)
+
     lattice = setup.lattice
 
     # 3. Equilibrium
@@ -118,6 +141,9 @@ def _apply_common_step(
 
     # 4. Collision (with or without source term)
     if force_tot is not None:
+        if setup.forces is None:
+            msg = "forces is required when force_tot is active"
+            raise TypeError(msg)
         # Use provided gradient_density if available (for wetting), else use setup default
         grad = gradient_density if gradient_density is not None else setup.gradient_density
         src = setup.forces.source_term(rho, u, force_tot, lattice, gradient=grad)
@@ -127,6 +153,10 @@ def _apply_common_step(
 
     # 5. Streaming
     f_stream = setup.streaming_fn(f_col, lattice)
+
+    # 5b. Interior obstacle bounce-back (before edge BCs)
+    if setup.obstacle_fn is not None:
+        f_stream = setup.obstacle_fn(f_stream, f_col)
 
     # 6. Boundary conditions
     f_bc = setup.bc_fn(f_stream, f_col, setup.bc_masks)

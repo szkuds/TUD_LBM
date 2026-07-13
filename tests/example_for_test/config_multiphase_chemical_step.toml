@@ -58,7 +58,7 @@ rho_v = 0.001
 interface_width = 5
 
 [output]
-results_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_simulation"
+results_dir = "~/TUD_LBM_data/test_runs"
 save_fields = [
     "rho",
     "u",

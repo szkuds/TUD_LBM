@@ -20,10 +20,12 @@ Usage::
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import cast
 import jax.numpy as jnp
 from tud_lbm.registry import force_model
 
 if TYPE_CHECKING:
+    from tud_lbm.lattice.lattice import Lattice
     from tud_lbm.pipeline.state import State
 
 
@@ -33,7 +35,7 @@ def _build_gravity_template(
     **kwargs: object,
 ) -> jnp.ndarray:
     """Build a constant gravity template shared by gravity force variants."""
-    lattice = kwargs.get("lattice")
+    lattice = cast("Lattice | None", kwargs.get("lattice"))
     d = lattice.d if lattice is not None else min(len(grid_shape), 3)
 
     nx, ny, nz = grid_shape[0], grid_shape[1], grid_shape[2] if len(grid_shape) > 2 else 1  # noqa: PLR2004

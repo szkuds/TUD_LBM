@@ -26,8 +26,8 @@ if TYPE_CHECKING:
     import jax.numpy as jnp
     from tud_lbm.config import SimulationConfig
     from tud_lbm.operators.protocols import ForceOperator
+    from tud_lbm.pipeline.setup import SimulationSetup
     from tud_lbm.pipeline.state import State
-    from tud_lbm.setup import SimulationSetup
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("tud_lbm.operators.force")
@@ -62,7 +62,7 @@ class ForceSetup(NamedTuple):
     """
 
     specs: tuple[ForceParams, ...]
-    source_term: Callable[[Any, Any, Any, Any], Any]
+    source_term: Callable[..., Any]
 
 
 def _build_force_fn(scheme: str) -> Callable[..., object] | type:
@@ -118,7 +118,7 @@ def build_forces(
         build_fn = op.build
         compute_fn = op.compute
 
-        precomputed = build_fn(params, grid_shape, config=config, lattice=lattice)
+        precomputed = build_fn(params, grid_shape, config=config, lattice=lattice)  # type: ignore[call-arg]  # ty: ignore[unknown-argument]
 
         specs.append(
             ForceParams(
@@ -151,10 +151,12 @@ def compute_total_force_ext(
         - *total_force* is the summed force array, or None if no forces are active.
         - *updated_state* is the unchanged state (extra-state plugins handle updates).
     """
-    total_force = state.force_ext
-
     if force_setup is None or not force_setup.specs:
-        return total_force, state
+        return state.force_ext, state
+
+    # Recompute per-step external force from active contributions only.
+    # Do not seed from state.force_ext, otherwise values accumulate over time.
+    total_force: jnp.ndarray | None = None
 
     for spec in force_setup.specs:
         contribution = spec.compute_fn(

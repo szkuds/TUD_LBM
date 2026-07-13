@@ -1,9 +1,6 @@
 import builtins
 import sys
-from pathlib import Path
 import pytest
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -68,36 +65,12 @@ def mock_optax_present(monkeypatch):
         pytest.skip("optax not installed - skipping test that requires it")
 
 
-@pytest.fixture
-def cleanup_imports():
-    """Fixture: Clean module imports after each test.
-
-    This fixture removes affected modules from sys.modules after each test,
-    ensuring tests don't interfere with each other due to import caching.
-
-    Use when tests might cache module state.
-
-    Example:
-        def test_something(cleanup_imports):
-            # Import tud_lbm modules...
-            # After test, sys.modules is cleaned
+@pytest.fixture(autouse=True)
+def _close_figures():
+    """Close all matplotlib figures after each test to avoid the
+    'More than 20 figures' RuntimeWarning from accumulating across the suite.
     """
-    yield  # Run test first
+    yield
+    import matplotlib.pyplot as plt
 
-    # Cleanup: Remove affected modules from sys.modules cache
-    modules_to_clean = [
-        "config",
-        "config.simulation_config",
-        "setup",
-        "setup.simulation_setup",
-        "setup.lattice",
-        "state",
-        "state.state",
-        "runner",
-        "runner.run",
-        "operators",
-        "operators.step",
-    ]
-
-    for module_name in modules_to_clean:
-        sys.modules.pop(module_name, None)
+    plt.close("all")

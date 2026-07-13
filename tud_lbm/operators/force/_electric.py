@@ -30,9 +30,9 @@ import jax.numpy as jnp
 from tud_lbm.registry import force_model
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from tud_lbm import Lattice
     from tud_lbm.config import SimulationConfig
+    from tud_lbm.operators.protocols import DifferentialOperator
     from tud_lbm.pipeline.state import State
 
 # ══════════════════════════════════════════════════════════════════════
@@ -66,7 +66,6 @@ class ElectricParams(NamedTuple):
     applied_voltage: float = 0.0
     voltage_top: float = 0.0
     voltage_bottom: float = 0.0
-    gradient_standard: Callable | None = None
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -133,8 +132,8 @@ class ElectricForceModule:
     def build(
         params: dict,
         _grid_shape: tuple[int, ...],
-        config: SimulationConfig,
-        lattice: Lattice,
+        config: SimulationConfig,  # noqa: ARG004  # required by ForceOperator protocol
+        lattice: Lattice,  # noqa: ARG004  # required by ForceOperator protocol
     ) -> ElectricParams:
         """Build electric parameters (setup-time, non-jitted).
 
@@ -149,34 +148,40 @@ class ElectricForceModule:
             lattice: Simulation lattice (weights and velocities for diff ops).
 
         Returns:
-            :class:`ElectricParams` NamedTuple with a closed-over gradient callable.
+            :class:`ElectricParams` NamedTuple with the electric parameters.
         """
-        from tud_lbm.operators.differential import build_diff_ops
-
-        gradient_standard, _, _, _, _ = build_diff_ops(config, mp_params=None, lattice=lattice)
-        return ElectricParams(**params, gradient_standard=gradient_standard)
+        return ElectricParams(**params)
 
     @staticmethod
     def compute(
         state: State,
         precomputed: ElectricParams,
-        **_kwargs: dict,
+        *,
+        gradient_standard: DifferentialOperator | None = None,
+        **_kwargs: object,
     ) -> jnp.ndarray:
         """Compute electric force (step-time, jittable).
 
         Reads ``state.f`` for density and ``state.h`` for the current
-        electric potential distribution.  Uses the pre-built gradient
-        closure stored in ``precomputed.gradient_standard``.
+        electric potential distribution.  Uses the ``gradient_standard``
+        passed via keyword argument from :func:`compute_total_force_ext`.
 
         Args:
             state: Current simulation :class:`State`.
             precomputed: :class:`ElectricParams` from :meth:`build`.
+            gradient_standard: Standard gradient closure injected by the force pipeline.
             **kwargs: Additional arguments (ignored).
 
         Returns:
             Electric force field, shape ``(nx, ny, nz, 1, d)``.
         """
-        grad = precomputed.gradient_standard
+        if gradient_standard is None:
+            msg = "gradient_standard is required for electric force computation"
+            raise TypeError(msg)
+        if state.h is None:
+            msg = "state.h (electric potential distributions) is required for electric force"
+            raise TypeError(msg)
+        grad = gradient_standard
 
         # Sum over q-axis (axis 3) to get density; extract z-slice to 2D
         rho_3d = jnp.sum(state.f, axis=3, keepdims=True)  # (nx, ny, nz, 1, 1)

@@ -14,6 +14,7 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import cast
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 
@@ -53,7 +54,7 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
         **kwargs: object,
     ) -> jnp.ndarray:
         nx, ny, nz = map(int, grid_shape)
-        return op(nx, ny, nz, lattice, **kwargs)
+        return cast("jnp.ndarray", op(nx, ny, nz, lattice, **kwargs))
 
     return _initialise
 

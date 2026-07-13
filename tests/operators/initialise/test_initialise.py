@@ -68,7 +68,7 @@ class TestInitStandard:
 
     def test_legacy_signature_rejected(self, lattice):
         with pytest.raises(TypeError):
-            build_initialise_fn("standard")(NX, NY, NZ, lattice)
+            build_initialise_fn("standard")(NX, NY, NZ, lattice)  # ty: ignore[invalid-argument-type, too-many-positional-arguments]
 
     def test_jittable(self, lattice):
         from functools import partial

@@ -1,13 +1,19 @@
 """Input/Output handler for simulation management and logging."""
 
+from __future__ import annotations
 import logging
 import sys
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
-from tud_lbm.config.simulation_config import SimulationConfig
 from .output_data import output_writers
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    import numpy as np
+    from tud_lbm.config.simulation_config import SimulationConfig
 
 
 class SimulationIO:
@@ -18,7 +24,7 @@ class SimulationIO:
         base_dir: str = "results",
         config: SimulationConfig | None = None,
         simulation_name: str | None = None,
-        output_format: str = "numpy",
+        output_format: str | list[str] | None = "numpy",
         config_file_type: str = ".toml",
     ):
         """Initialises the IO handler.
@@ -43,11 +49,14 @@ class SimulationIO:
 
         if config:
             self.save_config(config)
-            from tud_lbm.io.physical_parameters import write_physical_parameters
+            from tud_lbm.io.analysis.physical_parameters import write_physical_parameters
 
             write_physical_parameters(config, Path(self.run_dir) / "physical_parameters.txt")
 
-        self.save_data_step = output_writers[output_format].save_data_step.__get__(self, type(self))
+        _fmt: str = (output_format[0] if isinstance(output_format, list) else output_format) or "numpy"
+        self.save_data_step: Callable[[int, dict[str, np.ndarray]], None] = output_writers[_fmt].save_data_step.__get__(
+            self, type(self)
+        )
 
     def _setup_logging(self) -> None:
         """Configure root logger so everything printed to the console is also written to <run_dir>/simulation.log.
@@ -95,7 +104,7 @@ class SimulationIO:
 
     def _create_timestamped_directory(self) -> str:
         """Creates a unique, timestamped directory for a single simulation run."""
-        timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d/%H-%M-%S")
+        timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%d/%H-%M-%S")
         base = Path(self.base_dir)
         suffix = f"{timestamp}_{self.simulation_name}" if self.simulation_name else timestamp
         run_dir = base / suffix

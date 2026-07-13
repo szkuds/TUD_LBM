@@ -35,6 +35,13 @@ def step_multiphase(setup: SimulationSetup, state: State) -> State:
     Returns:
         Updated :class:`~tud_lbm.pipeline.state.state.State` after one time step.
     """
+    if setup.gradient_density is None:
+        msg = "gradient_density is required for multiphase step"
+        raise TypeError(msg)
+    if setup.laplacian_density is None:
+        msg = "laplacian_density is required for multiphase step"
+        raise TypeError(msg)
+
     # 1. Compute external forces
     force_ext, state = compute_total_force_ext(setup, state, setup.forces)
 
@@ -53,6 +60,7 @@ def step_multiphase(setup: SimulationSetup, state: State) -> State:
         rho=rho,
         u=u,
         force=force_tot,
+        force_ext=force_ext,
         t=state.t + 1,
     )
 

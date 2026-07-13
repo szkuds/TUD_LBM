@@ -140,7 +140,7 @@ class TestMacroscopicProtocol:
 
         f, rho_expected, u_expected = test_state
 
-        rho, u = macroscopic(f, lattice_d2q9)
+        rho, u = macroscopic(f, lattice_d2q9)  # ty: ignore[invalid-assignment]
         assert rho.shape == rho_expected.shape
         assert u.shape == u_expected.shape
 
@@ -153,7 +153,7 @@ class TestMacroscopicProtocol:
         f, rho_expected, u_expected = test_state
         force = jnp.zeros((grid_shape[0], grid_shape[1], 1, 1, 2))
 
-        rho, u, force_out = macroscopic(f, lattice_d2q9, force=force)
+        rho, u, force_out = macroscopic(f, lattice_d2q9, force=force)  # ty: ignore[invalid-assignment]
         assert rho.shape == rho_expected.shape
         assert u.shape == u_expected.shape
         assert force_out.shape == force.shape

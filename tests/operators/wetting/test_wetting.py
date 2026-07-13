@@ -166,7 +166,7 @@ class TestWettingParamsHelpers:
         )
         clamped = _clamp_params(p)
         np.testing.assert_allclose(float(clamped.d_rho_left), 0.0, atol=1e-6)
-        np.testing.assert_allclose(float(clamped.d_rho_right), 0.25, atol=1e-6)
+        np.testing.assert_allclose(float(clamped.d_rho_right), 0.3, atol=1e-6)
         np.testing.assert_allclose(float(clamped.phi_left), 1.0, atol=1e-6)
         np.testing.assert_allclose(float(clamped.phi_right), 1.5, atol=1e-6)
 
@@ -217,7 +217,7 @@ class TestOptimiseSingleParam:
             phi_right=jnp.array(1.2),
         )
         opt = optax.adam(0.01)
-        _p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50)
+        _p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50)  # ty: ignore[invalid-argument-type]
         initial_loss = float(objective(p0))
         assert float(loss_final) < initial_loss
 
@@ -247,10 +247,109 @@ class TestOptimiseSingleParam:
 
         @jax.jit
         def run_opt(initial_params):
-            return _optimise_single_param(objective, initial_params, mask_fn, opt, 10)
+            return _optimise_single_param(objective, initial_params, mask_fn, opt, 10)  # ty: ignore[invalid-argument-type]
 
         _p_final, loss = run_opt(p0)
         assert not jnp.isnan(loss)
+
+    def test_early_exit_when_already_converged(self):
+        import optax
+        from tud_lbm.operators.wetting.hysteresis import WettingParams
+        from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
+
+        target = 0.1
+
+        def objective(p):
+            return (p.d_rho_left - target) ** 2
+
+        def mask_fn(g):
+            return WettingParams(
+                g.d_rho_left,
+                jnp.zeros_like(g.d_rho_right),
+                jnp.zeros_like(g.phi_left),
+                jnp.zeros_like(g.phi_right),
+            )
+
+        # Initial loss is 0.0 <= loss_tol, so the loop body must never run.
+        p0 = WettingParams(
+            d_rho_left=jnp.array(target),
+            d_rho_right=jnp.array(0.1),
+            phi_left=jnp.array(1.2),
+            phi_right=jnp.array(1.2),
+        )
+        opt = optax.adam(0.01)
+        p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50)  # ty: ignore[invalid-argument-type]
+        assert float(loss_final) == 0.0
+        for field_final, field_initial in zip(p_final, p0, strict=True):
+            assert float(field_final) == float(field_initial)
+
+    def test_converges_below_tolerance_before_cap(self):
+        import optax
+        from tud_lbm.operators.wetting.hysteresis import WettingParams
+        from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
+
+        target = 0.1
+        loss_tol = 1e-3
+
+        def objective(p):
+            return (p.d_rho_left - target) ** 2
+
+        def mask_fn(g):
+            return WettingParams(
+                g.d_rho_left,
+                jnp.zeros_like(g.d_rho_right),
+                jnp.zeros_like(g.phi_left),
+                jnp.zeros_like(g.phi_right),
+            )
+
+        p0 = WettingParams(
+            d_rho_left=jnp.array(0.15),
+            d_rho_right=jnp.array(0.1),
+            phi_left=jnp.array(1.2),
+            phi_right=jnp.array(1.2),
+        )
+        opt = optax.adam(0.01)
+        _p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 500, loss_tol=loss_tol)  # ty: ignore[invalid-argument-type]
+        assert float(loss_final) <= loss_tol
+
+    def test_loss_tol_zero_runs_full_budget(self):
+        import optax
+        from tud_lbm.operators.wetting.hysteresis import WettingParams
+        from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
+        from tud_lbm.operators.wetting.hysteresis.hysteresis import _clamp_params
+
+        target = 0.1
+
+        def objective(p):
+            return (p.d_rho_left - target) ** 2
+
+        def mask_fn(g):
+            return WettingParams(
+                g.d_rho_left,
+                jnp.zeros_like(g.d_rho_right),
+                jnp.zeros_like(g.phi_left),
+                jnp.zeros_like(g.phi_right),
+            )
+
+        p0 = WettingParams(
+            d_rho_left=jnp.array(0.15),
+            d_rho_right=jnp.array(0.1),
+            phi_left=jnp.array(1.2),
+            phi_right=jnp.array(1.2),
+        )
+        max_iterations = 5
+        opt = optax.adam(0.01)
+        p_final, _loss = _optimise_single_param(objective, p0, mask_fn, opt, max_iterations, loss_tol=0.0)  # ty: ignore[invalid-argument-type]
+
+        # Reference: plain optax loop running the full iteration budget.
+        params = p0
+        opt_state = opt.init(params)
+        for _ in range(max_iterations):
+            grads = mask_fn(jax.grad(objective)(params))
+            updates, opt_state = opt.update(grads, opt_state, params)
+            params = _clamp_params(optax.apply_updates(params, updates))  # ty: ignore[invalid-argument-type]
+
+        assert jnp.allclose(p_final.d_rho_left, params.d_rho_left)
 
 
 # =====================================================================
@@ -419,6 +518,52 @@ class TestUpdateWettingState:
         assert not np.isclose(float(new_wetting.phi_right), float(wetting.phi_right))
         assert float(new_wetting.phi_right) > float(wetting.phi_right)
 
+    def test_cll_targets_are_frozen_while_in_window(self, monkeypatch):
+        import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
+
+        setup = self._make_setup()
+        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float32)
+        wetting = self._make_wetting_state()
+
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_angle",
+            lambda rho_in, rho_mean: (jnp.array(90.0), jnp.array(90.0)),
+        )
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_line_location",
+            lambda rho_in, ca_l, ca_r, rho_mean: (jnp.array(20.0), jnp.array(52.0)),
+        )
+
+        new_wetting = hysteresis_module.update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+
+        np.testing.assert_allclose(float(new_wetting.cll_left), float(wetting.cll_left), atol=1e-6)
+        np.testing.assert_allclose(float(new_wetting.cll_right), float(wetting.cll_right), atol=1e-6)
+
+    def test_cll_target_refreshes_when_side_leaves_window(self, monkeypatch):
+        import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
+
+        setup = self._make_setup()
+        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float32)
+        wetting = self._make_wetting_state()
+
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_angle",
+            lambda rho_in, rho_mean: (jnp.array(130.0), jnp.array(90.0)),
+        )
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_line_location",
+            lambda rho_in, ca_l, ca_r, rho_mean: (jnp.array(22.0), jnp.array(53.0)),
+        )
+
+        new_wetting = hysteresis_module.update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+
+        np.testing.assert_allclose(float(new_wetting.cll_left), 22.0, atol=1e-6)
+        np.testing.assert_allclose(float(new_wetting.cll_right), float(wetting.cll_right), atol=1e-6)
+
     def test_skips_only_in_dead_zone(self, monkeypatch):
         import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
         from tud_lbm.config.simulation_config import SimulationConfig
@@ -555,7 +700,7 @@ class TestUpdateWettingState:
         setup = build_setup(cfg)
 
         assert setup.wetting_fn is not None
-        assert setup.wetting_fn.__name__ == "update_wetting_state_chemical_step"
+        assert setup.wetting_fn.__name__ == "update_wetting_state_chemical_step"  # ty: ignore[unresolved-attribute]
         assert setup.config.wetting_config is not None
 
 

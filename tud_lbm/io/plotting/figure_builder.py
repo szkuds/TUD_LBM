@@ -12,7 +12,13 @@ from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 import numpy as np
 from tud_lbm.registry import get_operators
-from . import analysis as _analysis_mod  # noqa: F401
+from . import ca_theta_plot as _ca_theta_plot_mod  # noqa: F401
+from . import contact_angle_plot as _contact_angle_plot_mod  # noqa: F401
+from . import contact_line_speed_plot as _contact_line_speed_plot_mod  # noqa: F401
+from . import overview_simulation_inc_snapshots as _overview_mod  # noqa: F401
+from . import scalar_history_plot as _scalar_history_plot_mod  # noqa: F401
+from . import simulation_csv as _simulation_csv_mod  # noqa: F401
+from .figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
     import os
@@ -25,6 +31,16 @@ _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
     4: (2, 2),
 }
 
+_WETTING_SIM_TYPES: frozenset[str] = frozenset(
+    {
+        "multiphase_wetting",
+        "multiphase_hysteresis",
+        "multiphase_hysteresis_chemical_step",
+    }
+)
+
+_ANALYSIS_PANEL_FACECOLOR = "#f5f5f5"
+
 
 class FigureBuilder:
     """Build and save composite figures for saved simulation snapshots."""
@@ -35,7 +51,7 @@ class FigureBuilder:
         self,
         config: SimulationConfig,
         run_dir: str | os.PathLike,
-        dpi: int = 150,
+        dpi: int = DEFAULT_STYLE.dpi,
         fields: list[str] | None = None,
     ) -> None:
         """Initialize figure builder with simulation config and output directory.
@@ -53,9 +69,11 @@ class FigureBuilder:
 
         self._data_dir = self.run_dir / "data"
         self._plot_dir = self.run_dir / "plots"
+        self._snapshots_dir = self._plot_dir / "snapshots"
         self._analysis_dir = self._plot_dir / "analysis"
         self._field_operators: list = []
         self._analysis_operators: list = []
+        self._analysis_export_operators: list = []
         # Backward-compatible alias used in existing tests.
         self._operators = self._field_operators
 
@@ -70,16 +88,19 @@ class FigureBuilder:
             return  # leave operator lists empty, all build() calls become no-ops
 
         self._plot_dir.mkdir(parents=True, exist_ok=True)
+        self._snapshots_dir.mkdir(parents=True, exist_ok=True)
 
         requested = fields or self.config.plot_fields
         if not requested:
-            # Default: only enable field plotting operators (density, velocity, force).
-            # Analysis operators (max_velocity, contact_angles, etc.) must be explicitly
-            # requested via plot_fields in the [output] section of the config.
-            requested = list(get_operators("plotting").keys())
+            if self.config.sim_type in _WETTING_SIM_TYPES:
+                # Wetting default: density field for droplet visibility + dual-axis Ca/θ vs position.
+                requested = ["density", "ca_theta_vs_x"]
+            else:
+                # Non-wetting default: all registered field plot operators.
+                requested = list(get_operators("plotting").keys())
 
         all_ops = get_operators("plotting")
-        all_analysis_ops = get_operators("analysis")
+        all_analysis_ops = get_operators("comparison")
         for name in requested:
             entry = all_ops.get(name)
             if entry is not None:
@@ -88,7 +109,11 @@ class FigureBuilder:
 
             analysis_entry = all_analysis_ops.get(name)
             if analysis_entry is not None:
-                self._analysis_operators.append(analysis_entry.target())
+                operator_instance = analysis_entry.target(config=self.config)
+                if getattr(operator_instance, "export_only", False):
+                    self._analysis_export_operators.append(operator_instance)
+                else:
+                    self._analysis_operators.append(operator_instance)
                 continue
 
             known = sorted(set(all_ops.keys()) | set(all_analysis_ops.keys()))
@@ -117,6 +142,11 @@ class FigureBuilder:
         return self._plot_dir
 
     @property
+    def snapshots_dir(self) -> Path:
+        """Directory where per-timestep snapshot figures are written."""
+        return self._snapshots_dir
+
+    @property
     def field_operators(self) -> list:
         """Configured field plot operators."""
         return self._field_operators
@@ -142,7 +172,29 @@ class FigureBuilder:
         self._analysis_dir.mkdir(parents=True, exist_ok=True)
         saved: list[Path] = []
         for op in self._analysis_operators:
-            fig, ax = plt.subplots(1, 1, figsize=(7, 4.5), squeeze=False)
+            if getattr(op, "is_multi_panel", False):
+                try:
+                    fig = op.render_figure(files)
+                except Exception as exc:  # noqa: BLE001
+                    fig, ax = plt.subplots(1, 1, figsize=DEFAULT_STYLE.analysis_figsize, squeeze=False)
+                    ax[0][0].set_title(f"{op.name} - ERROR")
+                    ax[0][0].text(
+                        0.5,
+                        0.5,
+                        str(exc),
+                        ha="center",
+                        va="center",
+                        transform=ax[0][0].transAxes,
+                        fontsize=DEFAULT_STYLE.error_text_fontsize,
+                        color="red",
+                    )
+                out_path = self._analysis_dir / f"{op.name}.png"
+                fig.savefig(out_path, dpi=self.dpi)
+                plt.close(fig)
+                saved.append(out_path)
+                continue
+
+            fig, ax = plt.subplots(1, 1, figsize=DEFAULT_STYLE.analysis_figsize, squeeze=False)
             try:
                 precomputed = op.compute(files)
                 op.render(ax[0][0], precomputed)
@@ -155,7 +207,7 @@ class FigureBuilder:
                     ha="center",
                     va="center",
                     transform=ax[0][0].transAxes,
-                    fontsize=8,
+                    fontsize=DEFAULT_STYLE.error_text_fontsize,
                     color="red",
                 )
             plt.tight_layout()
@@ -164,6 +216,20 @@ class FigureBuilder:
             plt.close(fig)
             saved.append(out_path)
         return saved
+
+    def build_csv(self) -> Path | None:
+        """Run registry-selected export analysis operators.
+
+        Returns the last non-``None`` output path (if any).
+        """
+        result: Path | None = None
+        for op in self._analysis_export_operators:
+            export_fn = getattr(op, "export", None)
+            if callable(export_fn):
+                out = export_fn(self.run_dir)
+                if out is not None:
+                    result = out
+        return result
 
     def render_figure(
         self,
@@ -180,10 +246,11 @@ class FigureBuilder:
             return None
 
         ncols, nrows = self._layout(len(panels))
+        panel_w, panel_h = DEFAULT_STYLE.panel_figsize
         fig, axes = plt.subplots(
             nrows,
             ncols,
-            figsize=(5 * ncols, 4 * nrows),
+            figsize=(panel_w * ncols, panel_h * nrows),
             squeeze=False,
         )
 
@@ -200,34 +267,37 @@ class FigureBuilder:
                     ha="center",
                     va="center",
                     transform=axes[row][col].transAxes,
-                    fontsize=7,
+                    fontsize=DEFAULT_STYLE.error_text_fontsize,
                     color="red",
                 )
 
         offset = len(field_ops)
         for idx, op in enumerate(analysis_ops):
             row, col = divmod(offset + idx, ncols)
+            ax = axes[row][col]
             try:
-                op.update(axes[row][col], history_files)
+                op.update(ax, history_files)
             except Exception as exc:  # noqa: BLE001
-                axes[row][col].set_title(f"{op.name} - ERROR")
-                axes[row][col].text(
+                ax.set_title(f"{op.name} - ERROR")
+                ax.text(
                     0.5,
                     0.5,
                     str(exc),
                     ha="center",
                     va="center",
-                    transform=axes[row][col].transAxes,
-                    fontsize=7,
+                    transform=ax.transAxes,
+                    fontsize=DEFAULT_STYLE.error_text_fontsize,
                     color="red",
                 )
+            # Apply after render so ax.clear() inside render() doesn't reset it
+            ax.set_facecolor(_ANALYSIS_PANEL_FACECOLOR)
 
         for idx in range(len(panels), nrows * ncols):
             row, col = divmod(idx, ncols)
             axes[row][col].set_visible(False)
 
         title = self.config.simulation_name or "simulation"
-        fig.suptitle(f"{title} - Timestep {timestep}", fontsize=12)
+        fig.suptitle(f"{title} - Timestep {timestep}", fontsize=DEFAULT_STYLE.suptitle_fontsize)
         plt.tight_layout(rect=(0, 0.03, 1, 0.95))
 
         return fig
@@ -248,7 +318,7 @@ class FigureBuilder:
             return None
 
         out_name = filename or f"timestep_{timestep}.png"
-        out_path = self._plot_dir / out_name
+        out_path = self._snapshots_dir / out_name
         fig.savefig(out_path, dpi=self.dpi)
         plt.close(fig)
         return out_path
@@ -260,17 +330,20 @@ class FigureBuilder:
 
         files = [fp for _, fp in self._sorted_timed_files()]
         saved: list[Path] = []
-        for fp in files[skip:]:
-            timestep = self._extract_timestep(fp.stem)
-            if timestep is None:
-                continue
-            with np.load(fp) as raw:
-                data = {key: raw[key] for key in raw.files}
-            path = self.build(data, timestep)
-            if path is not None:
-                saved.append(path)
 
-        self.build_analysis()
+        if self._field_operators:
+            for fp in files[skip:]:
+                timestep = self._extract_timestep(fp.stem)
+                if timestep is None:
+                    continue
+                with np.load(fp) as raw:
+                    data = {key: raw[key] for key in raw.files}
+                path = self.build(data, timestep)
+                if path is not None:
+                    saved.append(path)
+
+        saved.extend(self.build_analysis())
+        self.build_csv()
         return saved
 
     @staticmethod

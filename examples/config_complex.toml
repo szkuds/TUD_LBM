@@ -10,7 +10,6 @@ nt = 20000
 tau = 0.99
 collision_scheme = "bgk"
 init_type = "multiphase_bubbles"
-init_dir = "/Users/sbszkudlarek/TUD_LBM_data/chem_step_test/2026-05-04/13-30-21_Test chemical step simulation/data/timestep_12000.npz"
 skip_interval = 1
 type = "multiphase_hysteresis_chemical_step"
 
@@ -31,7 +30,7 @@ ca_advancing_post_step = 70.0
 ca_receding_post_step = 50.0
 
 [gravity_masked_force]
-force_g = 1e-06
+force_g = 5e-06
 inclination_angle_deg = 60
 
 [hysteresis]

@@ -27,7 +27,6 @@ from typing import NamedTuple
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
-    from tud_lbm.operators.protocols import ExtraState
 
 
 class WettingState(NamedTuple):
@@ -78,4 +77,4 @@ class State(NamedTuple):
     force: jnp.ndarray | None = None
     force_ext: jnp.ndarray | None = None
     h: jnp.ndarray | None = None
-    wetting: ExtraState | None = None
+    wetting: WettingState | None = None

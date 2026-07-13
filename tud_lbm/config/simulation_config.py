@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
 from typing import Literal
+from typing import cast
 from tud_lbm.config.config_overview import BASE_RESULTS_DIR
 
 CONFIG_SECTION: str = "config_section"
@@ -37,7 +38,7 @@ def array_field(
     section: str | None = None,
     nested_sweepable: bool = False,
     **kwargs: object,
-) -> field:
+) -> Any:  # noqa: ANN401
     """Field factory for array-eligible SimulationConfig fields.
 
     Args:
@@ -52,18 +53,22 @@ def array_field(
     Returns:
         A dataclass field with array-eligible metadata.
     """
-    metadata = dict(kwargs.pop("metadata", {}))
+    metadata: dict[str, Any] = cast("dict[str, Any]", kwargs.pop("metadata", {}))
     metadata[ARRAY_ELIGIBLE] = True
     if nested_sweepable:
         metadata[NESTED_SWEEPABLE] = True
     if section is not None:
         metadata[CONFIG_SECTION] = section
-    return field(default=default, default_factory=default_factory, metadata=metadata, **kwargs)
+    if default is not dataclasses.MISSING:
+        return field(default=default, metadata=metadata, **kwargs)  # ty: ignore[no-matching-overload]
+    if default_factory is not dataclasses.MISSING:
+        return field(default_factory=default_factory, metadata=metadata, **kwargs)  # ty: ignore[no-matching-overload]
+    return field(metadata=metadata, **kwargs)  # ty: ignore[no-matching-overload]
 
 
 def _normalize_sequence(value: object) -> tuple[Any, ...]:
     """Ensure value is a tuple."""
-    return tuple(value) if not isinstance(value, tuple) else value  # type: ignore[arg-type]
+    return tuple(value) if not isinstance(value, tuple) else value  # ty: ignore[invalid-argument-type]
 
 
 def _first_if_list(value: object) -> object:
@@ -75,14 +80,14 @@ def _first_if_list(value: object) -> object:
 
 def _validate_positive(value: object, name: str) -> None:
     """Validate that value is positive."""
-    if value is not None and value <= 0:  # type: ignore[operator]
+    if value is not None and value <= 0:  # ty: ignore[unsupported-operator]
         msg = f"{name} must be positive, got {value}"
         raise ValueError(msg)
 
 
 def _validate_nonnegative(value: object, name: str) -> None:
     """Validate that value is non-negative."""
-    if value is not None and value < 0:  # type: ignore[operator]
+    if value is not None and value < 0:  # ty: ignore[unsupported-operator]
         msg = f"{name} must be non-negative, got {value}"
         raise ValueError(msg)
 
@@ -101,10 +106,10 @@ def _valid_collision_schemes() -> set[str]:
 def _valid_eos() -> set[str]:
     """Get valid EOS names. Returns empty set if operators not loaded."""
     try:
-        import tud_lbm.operators.macroscopic  # noqa: F401
+        import tud_lbm.operators.macroscopic.eos  # noqa: F401
         from tud_lbm.registry import get_operator_names
 
-        return get_operator_names("macroscopic") - {"standard"}
+        return get_operator_names("eos")
     except (ImportError, KeyError):
         return set()  # Operators not yet loaded - skip validation
 
@@ -153,12 +158,18 @@ class SimulationConfig:
 
     # ── Collision ────────────────────────────────────────────────
     collision_scheme: str = array_field(default="bgk")
-    k_diag: tuple[float, ...] | None = array_field(default=None)
+    k_diag: tuple[float, ...] | None = field(default=None)
 
     # ── Boundary conditions (ONLY topology: which BC on which face) ──
     bc_config: dict[str, Any] | None = field(
         default=None,
         metadata={CONFIG_SECTION: "boundary_conditions"},
+    )
+
+    # ── Interior obstacle (geometry only — no sweep support) ──────
+    obstacle_config: dict[str, Any] | None = field(
+        default=None,
+        metadata={CONFIG_SECTION: "obstacle"},
     )
 
     # ── Wetting model ──────────
@@ -203,6 +214,10 @@ class SimulationConfig:
     rho_v: float | None = array_field(default=None, section="multiphase")
     interface_width: int | None = array_field(default=None, section="multiphase")
     g: float | None = array_field(default=None, section="multiphase")
+    a_eos: float | None = array_field(default=None, section="multiphase")
+    b_eos: float | None = array_field(default=None, section="multiphase")
+    r_eos: float | None = array_field(default=None, section="multiphase")
+    t_eos: float | None = array_field(default=None, section="multiphase")
 
     # ── Extra / extensible ───────────────────────────────────────
     extra: dict[str, Any] = field(default_factory=dict, metadata={CONFIG_SECTION: "extra"})
@@ -261,6 +276,8 @@ class SimulationConfig:
 
     def _set_all_bcs(self) -> None:
         """Set missing BCs in bc_config to 'periodic'."""
+        if self.bc_config is None:
+            return
         for edge in ("top", "bottom", "left", "right", "front", "back"):
             if edge not in self.bc_config:
                 self.bc_config[edge] = "periodic"
@@ -272,8 +289,56 @@ class SimulationConfig:
         self._validate_tau()
         self._validate_time_steps()
         self._validate_collision()
+        self._validate_forces()
         self._validate_init()
         self._validate_save_fields()
+        self._validate_obstacle()
+
+    def _validate_forces(self) -> None:
+        """Validate force configuration consistency."""
+        if self.gravity_force is not None and self.gravity_masked_force is not None:
+            msg = "Only one gravity force can be applied: set either gravity_force or gravity_masked_force, not both."
+            raise ValueError(msg)
+
+    def _validate_obstacle(self) -> None:
+        """Validate interior-obstacle geometry against the grid and BC topology."""
+        if self.obstacle_config is None:
+            return
+
+        nx, ny, nz = self.grid_shape[:3]
+        if nz > 1:
+            msg = "obstacle_config only supports 2D grids (nz=1)"
+            raise ValueError(msg)
+
+        cx = self.obstacle_config.get("center_x")
+        cy = self.obstacle_config.get("center_y")
+        radius = self.obstacle_config.get("radius")
+        if radius is None or radius <= 0:
+            msg = f"obstacle radius must be positive, got {radius}"
+            raise ValueError(msg)
+        if cx is None or not (radius <= cx <= nx - 1 - radius):
+            msg = f"obstacle x-extent [{cx - radius}, {cx + radius}] must fit within grid x in [0, {nx - 1}]"
+            raise ValueError(msg)
+        if cy is None or not (radius + 1 <= cy <= ny - 1 - radius - 1):
+            msg = (
+                f"obstacle must keep >=1 cell clearance from top/bottom walls, "
+                f"got center_y={cy}, radius={radius}, ny={ny}"
+            )
+            raise ValueError(msg)
+
+        if self.bc_config is not None:
+            left_bc = self.bc_config.get("left", "periodic")
+            right_bc = self.bc_config.get("right", "periodic")
+            if left_bc != "periodic" and cx - radius <= 1:
+                msg = (
+                    f"obstacle must keep >1 cell clearance from a non-periodic left edge, got cx={cx}, radius={radius}"
+                )
+                raise ValueError(msg)
+            if right_bc != "periodic" and cx + radius >= nx - 2:
+                msg = (
+                    f"obstacle must keep >1 cell clearance from a non-periodic right edge, got cx={cx}, radius={radius}"
+                )
+                raise ValueError(msg)
 
     def _validate_grid_shape(self) -> None:
         """Validate grid_shape dimensions."""
@@ -350,6 +415,12 @@ class SimulationConfig:
         if self.eos not in valid_eos:
             msg = f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'"
             raise ValueError(msg)
+
+        if self.eos == "carnahan-starling":
+            for name in ("a_eos", "b_eos", "r_eos", "t_eos"):
+                if getattr(self, name) is None:
+                    msg = f"'{name}' is required when eos = 'carnahan-starling'"
+                    raise ValueError(msg)
 
     @property
     def is_single_phase(self) -> bool:

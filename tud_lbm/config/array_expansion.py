@@ -22,6 +22,7 @@ Example usage::
 
 from __future__ import annotations
 from dataclasses import dataclass
+from dataclasses import field
 from itertools import product
 from typing import TYPE_CHECKING
 from typing import Any
@@ -30,6 +31,7 @@ from tud_lbm.config.simulation_config import get_array_eligible_fields
 from tud_lbm.config.simulation_config import get_nested_sweepable_fields
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from collections.abc import Iterator
 
 # Constants for grid_shape validation
@@ -46,9 +48,13 @@ class ArrayParameterSet:
         total_combinations: Total number of config combinations generated.
     """
 
-    field_names: frozenset[str]
-    array_values: dict[str, tuple[Any, ...]]
-    total_combinations: int
+    field_names: frozenset[str] | Iterable[str] = field(default_factory=frozenset)
+    array_values: dict[str, tuple[Any, ...]] = field(default_factory=dict)
+    total_combinations: int = 0
+
+    def __post_init__(self) -> None:  # noqa: D105
+        if not isinstance(self.field_names, frozenset):
+            object.__setattr__(self, "field_names", frozenset(self.field_names))
 
 
 def detect_array_fields(_config: SimulationConfig) -> ArrayParameterSet | None:
@@ -426,6 +432,24 @@ def expand_config(
     return result.configs, result.metadata
 
 
+def _iter_combinations(
+    result: _ExpandResult,
+) -> Iterator[tuple[int, dict[str, Any], SimulationConfig]]:
+    """Yield ``(index, parameters, config)`` for every axis combination in *result*.
+
+    Args:
+        result: Fully populated :class:`_ExpandResult` with at least one axis.
+
+    Yields:
+        ``(index, parameters, config)`` tuples.
+    """
+    axis_lists = [result.all_axes[k] for k in result.axis_keys]
+    for idx, combo in enumerate(product(*axis_lists)):
+        parameters = dict(zip(result.axis_keys, combo, strict=False))
+        combo_dict = _apply_combo_to_dict(result.scalar_dict, parameters)
+        yield idx, parameters, SimulationConfig(**combo_dict)
+
+
 def enumerate_configs(
     config_dict: dict[str, Any],
     *,
@@ -452,9 +476,4 @@ def enumerate_configs(
         yield 0, {}, result.configs[0]
         return
 
-    axis_lists = [result.all_axes[k] for k in result.axis_keys]
-    for idx, combo in enumerate(product(*axis_lists)):
-        parameters = dict(zip(result.axis_keys, combo, strict=False))
-        combo_dict = _apply_combo_to_dict(result.scalar_dict, parameters)
-        config = SimulationConfig(**combo_dict)
-        yield idx, parameters, config
+    yield from _iter_combinations(result)

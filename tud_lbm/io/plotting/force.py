@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
 from tud_lbm.io.plotting.base import PlotOperator
+from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
 from tud_lbm.registry import plotting_operator
 
 if TYPE_CHECKING:
@@ -25,9 +26,9 @@ class _BaseForceOperator(PlotOperator):
     ) -> None:
         force = np.asarray(data[self.field_name])
         fx = force[:, :, 0, 0, 0].T
-        fy = force[:, :, 0, 1, 0].T
+        fy = force[:, :, 0, 0, 1].T
         mag = np.sqrt(fx**2 + fy**2)
-        im = ax.imshow(mag, origin="lower", aspect="equal", cmap="cividis")
+        im = ax.imshow(mag, origin="lower", aspect="equal", cmap=DEFAULT_STYLE.colormap_force)
         ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="|F|")
 
         ny, nx = mag.shape
@@ -41,8 +42,8 @@ class _BaseForceOperator(PlotOperator):
             scale_units="xy",
             scale=None,
             angles="xy",
-            color="white",
-            alpha=0.7,
+            color=DEFAULT_STYLE.quiver_color,
+            alpha=DEFAULT_STYLE.quiver_alpha,
         )
         ax.set_title(f"{self.title}  t={timestep}")
         ax.set_xlabel("x")

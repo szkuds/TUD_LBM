@@ -35,7 +35,7 @@ readers
 
     Example::
 
-        from tud_lbm.readers import TomlAdapter
+        from tud_lbm.io.readers import TomlAdapter
         config = TomlAdapter().load("config.toml")
 
 plotting
@@ -47,9 +47,17 @@ plotting
 
     Example::
 
-        from tud_lbm.plotting import FigureBuilder
+        from tud_lbm.io.plotting import FigureBuilder
         builder = FigureBuilder(config, "results/run_001/")
         builder.build_all()
+
+callbacks
+    Host-callback-based streaming I/O for use inside a ``lax.scan`` body.
+
+    - make_save_callback : Build a ``do_save(state, t)`` callback that
+      writes snapshots to disk via ``jax.debug.callback`` without
+      breaking the JIT trace. Used internally by
+      :func:`~tud_lbm.pipeline.runner.run` when ``io_handler`` is given.
 """
 
 from .output_data import output_writers

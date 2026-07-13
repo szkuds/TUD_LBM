@@ -203,6 +203,24 @@ def macroscopic_operator(
     return register_operator("macroscopic", name=name, **meta)
 
 
+def obstacle_operator(
+    *,
+    name: str | None = None,
+    **meta: object,
+) -> Callable[[_OT], _OT]:
+    """Register an obstacle operator (kind ``"obstacle"``)."""
+    return register_operator("obstacle", name=name, **meta)
+
+
+def eos_operator(
+    *,
+    name: str | None = None,
+    **meta: object,
+) -> Callable[[_OT], _OT]:
+    """Register an equation-of-state operator (kind ``"eos"``)."""
+    return register_operator("eos", name=name, **meta)
+
+
 def initialise_operator(
     *,
     name: str | None = None,
@@ -275,13 +293,13 @@ def plotting_operator(
     return register_operator("plotting", name=name, **meta)
 
 
-def analysis_operator(
+def comparison_operator(
     *,
     name: str | None = None,
     **meta: object,
 ) -> Callable[[_OT], _OT]:
-    """Register an analysis plotting operator (kind ``"analysis"``)."""
-    return register_operator("analysis", name=name, **meta)
+    """Register a comparison plot operator (kind ``"comparison"``)."""
+    return register_operator("comparison", name=name, **meta)
 
 
 def extra_state_plugin(

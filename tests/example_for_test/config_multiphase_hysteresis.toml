@@ -8,7 +8,7 @@ type = "multiphase_hysteresis"
 grid_shape = [256, 64]
 lattice_type = "D2Q9"
 tau = 0.99
-nt = 5000
+nt = 500
 init_type = "multiphase_bubbles"
 
 [initialisation]

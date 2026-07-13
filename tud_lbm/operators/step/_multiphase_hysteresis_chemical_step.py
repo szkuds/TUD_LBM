@@ -10,6 +10,7 @@ per contact-line side based on position relative to the chemical step.
 from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
+import jax.numpy as jnp
 from tud_lbm.operators.force import compute_total_force_ext
 from tud_lbm.operators.step._common import _multiphase_pipeline
 from tud_lbm.operators.step._multiphase_hysteresis import _make_wetting_ops
@@ -42,6 +43,9 @@ def step_multiphase_hysteresis_chemical_step(setup: SimulationSetup, state: Stat
     force_ext, state = compute_total_force_ext(setup, state, setup.forces)
 
     # 2. Build operators from live wetting parameters
+    if state.wetting is None:
+        msg = "state.wetting is required for hysteresis step"
+        raise TypeError(msg)
     grad, lap = _make_wetting_ops(setup, state.wetting)
 
     # 3. Run multiphase physics kernel
@@ -53,6 +57,7 @@ def step_multiphase_hysteresis_chemical_step(setup: SimulationSetup, state: Stat
         rho=rho,
         u=u,
         force=force_tot,
+        force_ext=force_ext,
         t=state.t + 1,
     )
 
@@ -62,5 +67,5 @@ def step_multiphase_hysteresis_chemical_step(setup: SimulationSetup, state: Stat
         state,
         new_state,
         force_ext=force_ext,
-        trial_step_fn=partial(_trial_step, setup, f_out, force_ext),
+        trial_step_fn=partial(_trial_step, setup, f_out, force_ext if force_ext is not None else jnp.zeros(1)),
     )

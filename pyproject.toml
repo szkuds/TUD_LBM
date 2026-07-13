@@ -36,8 +36,8 @@ keywords = ["LBM", "TUD", "Delft University of Technology"]
 license = { file = "LICENSE" }
 name = "tud_lbm"
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.10"
-version = "2026.0.0a1"
+requires-python = ">=3.11"
+version = "2026.0.1"
 
 [project.optional-dependencies]
 dev = [
@@ -46,6 +46,7 @@ dev = [
   "coverage",
   "ruff",
   "python-dotenv",
+  "ty",
 ]
 docs = [
   "sphinx",
@@ -94,6 +95,7 @@ markers = [
   "integration: Integration tests that validate end-to-end physics pipelines",
   "unit: Unit tests for individual operators",
   "conformance: Tests that verify operators satisfy protocol contracts",
+  "slow: Full-pipeline smoke tests (run with -m slow or on schedule, not in fast CI)",
 ]
 
 # ---------------------------------------------------------------------------
@@ -110,7 +112,7 @@ command_line = "-m pytest"
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = py310,py311,py312,py313,py314
+envlist = py311,py312,py313,py314
 skip_missing_interpreters = true
 [testenv]
 commands = pytest
@@ -153,7 +155,7 @@ extend-immutable-calls = ["array_field"]
   "ANN002","ANN003","ARG005","ARG002","RUF002","RUF003","D100",
   "D104","D205","PLR0913","TRY300",
 ]
-"examples/**.py"                                  = ["INP001","ANN201","ERA001"]
+"examples/**.py"                                  = ["INP001","ANN201","ERA001","T201","D103"]
 "examples/minimal_example.py"                     = ["RUF002"]
 "tud_lbm/config/simulation_config.py"             = ["RUF009"]
 "tud_lbm/util/plotting/__init__.py"               = ["I001"]
@@ -167,6 +169,10 @@ extend-immutable-calls = ["array_field"]
 "tud_lbm/util/io.py"                              = ["ANN002"]
 "tud_lbm/pipeline/**"                             = ["T201"]
 "tud_lbm/operators/wetting/hysteresis/hysteresis.py" = ["C901", "PLR0915"]
+"tud_lbm/io/plotting/run_comparison.py"   = ["T201"]
+"tud_lbm/io/plotting/simulation_csv.py"   = ["T201"]
+"tud_lbm/io/plotting/regime_map_plot.py"  = ["T201"]
+"tud_lbm/io/plotting/ca_theta_plot.py"    = ["C901", "PLR0912", "PLR0915"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tud_lbm"]
@@ -177,7 +183,7 @@ no-lines-before = ["future","standard-library","third-party","first-party","loca
 # bumpversion
 # ---------------------------------------------------------------------------
 [tool.bumpversion]
-current_version = "2026.0.0a1"
+current_version = "2026.0.1"
 
 [[tool.bumpversion.files]]
 filename = "tud_lbm/__init__.py"
@@ -190,3 +196,23 @@ filename = "CITATION.cff"
 
 [[tool.bumpversion.files]]
 filename = "docs/conf.py"
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.14"
+
+[[tool.mypy.overrides]]
+module = ["pyevtk.*", "optax.*", "moviepy.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# ty
+# ---------------------------------------------------------------------------
+[tool.ty.environment]
+# This project is developed and tested on Linux, macOS, and Windows (see
+# docs/notes/README.dev.md); "all" avoids sys.platform-based reachability
+# analysis falsely marking platform-specific branches as unreachable dead
+# code depending on which OS `ty` happens to run on.
+python-platform = "all"

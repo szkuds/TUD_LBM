@@ -5,14 +5,20 @@ from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from tud_lbm.io.plotting.analysis import ContactAnglesPairPlot
-from tud_lbm.io.plotting.analysis import ContactLineSpeedLeftPlot
-from tud_lbm.io.plotting.analysis import ContactLineSpeedsPairPlot
-from tud_lbm.io.plotting.analysis import _extract_rho_2d
-from tud_lbm.io.plotting.analysis import _extract_u_mag_2d
-from tud_lbm.io.plotting.analysis import _load_timesteps
-from tud_lbm.io.plotting.analysis import _parse_timestep
-from tud_lbm.io.plotting.analysis import _render_scatter
+from tud_lbm.config import SimulationConfig
+from tud_lbm.io.plotting._analysis_common import _empty_data_message
+from tud_lbm.io.plotting._analysis_common import _extract_rho_2d
+from tud_lbm.io.plotting._analysis_common import _extract_u_mag_2d
+from tud_lbm.io.plotting._analysis_common import _load_timesteps
+from tud_lbm.io.plotting._analysis_common import _parse_timestep
+from tud_lbm.io.plotting._analysis_common import _render_scatter
+from tud_lbm.io.plotting.contact_angle_plot import ContactAnglesPairPlot
+from tud_lbm.io.plotting.contact_line_speed_plot import ContactLineSpeedLeftPlot
+from tud_lbm.io.plotting.contact_line_speed_plot import ContactLineSpeedsPairPlot
+from tud_lbm.io.plotting.scalar_history_plot import DensityRatioPlot
+from tud_lbm.io.plotting.simulation_csv import _derive_surface_tension
+from tud_lbm.io.plotting.simulation_csv import _resolve_initial_radius
+from tud_lbm.io.plotting.simulation_csv import _resolve_step_x
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -92,3 +98,83 @@ def test_pair_renderers_cover_empty_and_non_empty_states(tmp_path: Path):
         assert ax2.get_title() == "Contact-line speeds vs timestep"
     finally:
         plt.close(fig)
+
+
+def test_extract_rho_2d_covers_supported_shapes():
+    rho2 = np.ones((2, 3))
+    rho3 = np.ones((2, 3, 1))
+    rho4 = np.ones((2, 3, 1, 1))
+    rho5 = np.ones((2, 3, 1, 1, 1))
+
+    assert _extract_rho_2d(rho2).shape == (2, 3)
+    assert _extract_rho_2d(rho3).shape == (2, 3)
+    assert _extract_rho_2d(rho4).shape == (2, 3)
+    assert _extract_rho_2d(rho5).shape == (2, 3)
+
+
+def test_extract_u_mag_2d_covers_supported_shapes():
+    u5 = np.zeros((2, 3, 1, 1, 2))
+    u5[:, :, 0, 0, 0] = 3.0
+    u5[:, :, 0, 0, 1] = 4.0
+
+    u4 = np.zeros((2, 3, 1, 2))
+    u4[:, :, 0, 0] = 5.0
+    u4[:, :, 0, 1] = 12.0
+
+    u3 = np.zeros((2, 3, 2))
+    u3[:, :, 0] = 8.0
+    u3[:, :, 1] = 15.0
+
+    assert np.allclose(_extract_u_mag_2d(u5), 5.0)
+    assert np.allclose(_extract_u_mag_2d(u4), 13.0)
+    assert np.allclose(_extract_u_mag_2d(u3), 17.0)
+
+
+def test_empty_message_and_config_resolvers_cover_branches():
+    msg = _empty_data_message(("rho", "u"))
+    assert "No data" in msg
+    assert "Requires" in msg
+
+    cfg = SimulationConfig(
+        sim_type="multiphase",
+        grid_shape=(20, 10, 1),
+        tau=0.9,
+        nt=2,
+        eos="double-well",
+        kappa=0.12,
+        interface_width=4,
+        rho_l=1.0,
+        rho_v=0.2,
+        initialisation={"radii": [0.5]},
+        chemical_step_config={"chemical_step_location": 0.25},
+    )
+    assert _derive_surface_tension(cfg) is not None
+    assert _resolve_initial_radius(cfg) == 5.0
+    assert _resolve_step_x(cfg) == 5.0
+
+    cfg_no_step = SimulationConfig(grid_shape=(8, 8, 1), tau=0.8, nt=2, chemical_step_config={})
+    assert _resolve_step_x(cfg_no_step) is None
+
+    cfg_bad_radii = SimulationConfig(grid_shape=(8, 8, 1), tau=0.8, nt=2, initialisation={"radii": ["bad"]})
+    assert _resolve_initial_radius(cfg_bad_radii) is None
+
+
+def test_density_ratio_render_uses_log_scale():
+    fig, ax = plt.subplots()
+    try:
+        plot = DensityRatioPlot()
+        plot.render(ax, {"iters": np.array([1, 2]), "values": np.array([2.0, 4.0])})
+        assert ax.get_yscale() == "log"
+        assert ax.get_title() == "Density ratio vs timestep"
+    finally:
+        plt.close(fig)
+
+
+def test_contact_line_speed_left_duplicate_timestep_returns_zero_speed(tmp_path: Path):
+    np.savez(tmp_path / "a_1.npz", cll_left=np.array(1.0))
+    np.savez(tmp_path / "b_1.npz", cll_left=np.array(3.0))
+
+    result = ContactLineSpeedLeftPlot().compute(sorted(tmp_path.glob("*.npz")))
+
+    assert result["iters"].tolist() == [1, 1]
+    assert result["values"].tolist() == [0.0, 0.0]

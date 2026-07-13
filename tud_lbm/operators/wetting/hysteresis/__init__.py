@@ -17,6 +17,7 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import cast
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 from tud_lbm.operators.wetting._params import WettingParams
@@ -57,7 +58,7 @@ def build_wetting_fn(scheme: str = "contact_angle") -> HysteresisOperator:
         >>> ca_fn = build_wetting_fn("contact_angle")
         >>> ca_left, ca_right = ca_fn(rho, rho_mean)
     """
-    return build_operator("wetting", scheme)
+    return cast("HysteresisOperator", build_operator("wetting", scheme))
 
 
 __all__ = [

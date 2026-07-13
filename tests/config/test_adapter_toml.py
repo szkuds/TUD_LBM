@@ -17,6 +17,7 @@ from tud_lbm.config.simulation_config import SimulationConfig
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 
+
 SIMPLE_TOML = textwrap.dedent("""\
     [simulation_type]
     simulation_name = "Test simple simulation_type"
@@ -250,6 +251,7 @@ class TestTomlAdapterMultiphase:
     def test_wetting_params_nested(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
         bc = bundle.bc_config
+        assert bc is not None
         assert "wetting_params" in bc
         wp = bc["wetting_params"]
         assert wp["phi_left"] == 1.0
@@ -258,6 +260,7 @@ class TestTomlAdapterMultiphase:
     def test_hysteresis_params_nested(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
         bc = bundle.bc_config
+        assert bc is not None
         assert "hysteresis_params" in bc
         hp = bc["hysteresis_params"]
         assert hp["ca_advancing"] == 90.0
@@ -287,6 +290,7 @@ class TestTomlAdapterForces:
 
     def test_gravity_force_contains_correct_params(self, multiphase_force_toml_file):
         bundle = TomlAdapter().load(multiphase_force_toml_file)
+        assert bundle.gravity_force is not None
         assert bundle.gravity_force["force_g"] == 2e-6
         assert bundle.gravity_force["inclination_angle_deg"] == 60
 
@@ -340,7 +344,7 @@ class TestTomlAdapterErrors:
         p.write_text("[output]\nresults_dir = '/tmp'\n")
         with pytest.raises(
             ValueError,
-            match="missing the required \\[simulation_type\\] table",
+            match="missing the required 'simulation_type' section",
         ):
             TomlAdapter().load(str(p))
 
@@ -444,3 +448,46 @@ class TestExampleFiles:
             "force_g": 2e-6,
             "inclination_angle_deg": 0,
         }
+
+
+# ── TomlAdapter: save() ──────────────────────────────────────────────
+
+
+class TestTomlAdapterSave:
+    """Tests for TomlAdapter.save()."""
+
+    def test_save_round_trip(self, simple_toml_file, tmp_path):
+        pytest.importorskip("tomli_w")
+        original = TomlAdapter().load(simple_toml_file)
+        out = tmp_path / "saved.toml"
+        TomlAdapter().save(original, str(out))
+        reloaded = TomlAdapter().load(str(out))
+        assert reloaded.sim_type == original.sim_type
+        assert reloaded.tau == original.tau
+        assert reloaded.grid_shape == original.grid_shape
+
+    def test_save_creates_parent_dirs(self, simple_toml_file, tmp_path):
+        pytest.importorskip("tomli_w")
+        original = TomlAdapter().load(simple_toml_file)
+        nested = tmp_path / "a" / "b" / "out.toml"
+        TomlAdapter().save(original, str(nested))
+        assert nested.exists()
+
+    def test_save_raises_without_tomli_w(self, simple_toml_file, monkeypatch):
+        import tud_lbm.config.adapter_toml as mod
+
+        monkeypatch.setattr(mod, "tomli_w", None)
+        config = TomlAdapter().load(simple_toml_file)
+        with pytest.raises(ImportError, match="tomli_w is required"):
+            TomlAdapter().save(config, "/tmp/ignored.toml")
+
+
+# ── _validate_and_process_forces: TypeError branch ───────────────────
+
+
+class TestValidateAndProcessForces:
+    """Tests for _validate_and_process_forces static helper."""
+
+    def test_non_dict_force_value_raises_type_error(self):
+        with pytest.raises(TypeError, match="must be a table"):
+            TomlAdapter._process_forces({"gravity_force": "not_a_dict"}, {})

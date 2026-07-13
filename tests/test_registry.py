@@ -145,7 +145,11 @@ class TestRegistryPopulated:
 
     def test_macroscopic_registered(self):
         names = get_operator_names("macroscopic")
-        assert names >= {"standard", "double-well"}
+        assert names >= {"standard", "multiphase"}
+
+    def test_eos_registered(self):
+        names = get_operator_names("eos")
+        assert names >= {"double-well", "carnahan-starling"}
 
     def test_force_registered(self):
         names = get_operator_names("force")
@@ -294,6 +298,7 @@ class TestDummyOperatorAutoExposure:
             assert ops["_dummy_test_force"].target is _dummy_force_builder
 
             # Metadata carries result_field
+            assert ops["_dummy_test_force"].metadata is not None
             assert ops["_dummy_test_force"].metadata["result_field"] == "gravity_template"
         finally:
             unregister_operator("force", "_dummy_test_force")

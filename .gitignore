@@ -76,6 +76,10 @@ venv.bak/
 /dev_notes/
 /stash/
 /simulations/Drop_top/
+/sonar-scanner-cli-4.8.0.2856-linux.zip
+/.claude/
+/scripts/
+/.mcp.json
 
 # Trunk (CI tool — not used in this project)
 .trunk/

@@ -211,7 +211,7 @@ class TestSimulationConfigDefaults:
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         with pytest.raises(AttributeError):
-            cfg.tau = 0.9  # type: ignore[misc]
+            cfg.tau = 0.9  # ty: ignore[invalid-assignment]
 
     def test_default_bc_config_is_periodic(self):
         from tud_lbm.config.simulation_config import SimulationConfig
@@ -473,6 +473,7 @@ class TestBuildSetup:
         cfg = SimulationConfig(grid_shape=(8, 8), bc_config=bc)
         setup = build_setup(cfg)
 
+        assert setup.config.bc_config is not None
         assert setup.config.bc_config["top"] == "symmetry"
         assert setup.config.bc_config["bottom"] == "bounce-back"
 
@@ -498,6 +499,7 @@ class TestBuildSetup:
         cfg = SimulationConfig(grid_shape=(8, 8))
         setup = build_setup(cfg)
 
+        assert setup.bc_masks is not None
         # Top mask: y = ny-1 (index 7)
         assert bool(setup.bc_masks.top[0, 7, 0, 0]) is True
         assert bool(setup.bc_masks.top[0, 0, 0, 0]) is False
@@ -554,7 +556,7 @@ class TestBuildSetup:
 
         # BGK collision function should be present
         assert callable(setup.collision_fn)
-        assert "bgk" in setup.collision_fn.__name__.lower()
+        assert "bgk" in setup.collision_fn.__name__.lower()  # ty: ignore[unresolved-attribute]
 
     def test_operator_closures_pytree_round_trip(self):
         """Operator closures should pass through JAX pytree flatten/unflatten."""
@@ -653,11 +655,11 @@ class TestBuildMultiphaseParams:
             eos: str = "double-well"
             kappa: float = 0.1
             rho_l: float = 1.0
-            rho_v: float = None
+            rho_v: float = None  # ty: ignore[invalid-assignment]
             interface_width: int = 4
 
         with pytest.raises(ValueError, match="'rho_v' is required"):
-            build_multiphase_params(Incomplete())
+            build_multiphase_params(Incomplete())  # ty: ignore[invalid-argument-type]
 
     def test_multiphase_params_is_pytree(self):
         from tud_lbm.operators.macroscopic import MultiphaseParams

@@ -1,6 +1,7 @@
 """Animation builder for field and analysis plotting."""
 
 from __future__ import annotations
+import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
@@ -20,12 +21,22 @@ class Animator:
         run_dir: str | Path,
         fps: int = 10,
         dpi: int = 150,
+        fields: list[str] | None = None,
     ) -> None:
-        """Initialise animation settings for a simulation run directory."""
-        fields = config.animate_fields or config.plot_fields
+        """Initialise animation settings for a simulation run directory.
+
+        Args:
+            config: Simulation configuration object.
+            run_dir: Path to the simulation run directory containing snapshot files.
+            fps: Frames per second for the output animation.
+            dpi: Resolution in dots per inch for each frame.
+            fields: Explicit operator names to animate. When ``None``, falls back to
+                ``config.animate_fields``, then ``config.plot_fields``.
+        """
+        resolved_fields = fields if fields is not None else (config.animate_fields or config.plot_fields)
         self.fps = fps
         self.dpi = dpi
-        self.builder = FigureBuilder(config=config, run_dir=run_dir, dpi=dpi, fields=fields)
+        self.builder = FigureBuilder(config=config, run_dir=run_dir, dpi=dpi, fields=resolved_fields)
         self._frames_dir = self.builder.plot_dir / "frames"
 
     def build_frames(self) -> list[Path]:
@@ -36,6 +47,11 @@ class Animator:
         files = [fp for _, fp in timed_files]
 
         self._frames_dir.mkdir(parents=True, exist_ok=True)
+
+        for op in self.builder.analysis_operators:
+            with contextlib.suppress(Exception):
+                op.prime(files)
+
         frame_paths: list[Path] = []
 
         for idx, (timestep, fp) in enumerate(timed_files):

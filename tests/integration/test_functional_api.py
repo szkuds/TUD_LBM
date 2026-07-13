@@ -3,7 +3,7 @@
 - ``operators.step`` exports pure functions (no ``Operators`` bundle).
 - ``runner.run`` works without legacy classes.
 - ``config.from_dict`` and ``config.DictAdapter`` work end-to-end.
-- Top-level ``src/__init__`` re-exports the correct symbols.
+- Top-level ``tud_lbm/__init__`` re-exports the correct symbols.
 - No banned legacy patterns leak into the new modules.
 - End-to-end: config → build_setup → init_state → run.
 """
@@ -179,6 +179,7 @@ class TestEndToEnd:
 
         assert int(final_state.t) == 5
         assert final_state.f.shape[:2] == (8, 8)
+        assert trajectory is not None
         assert trajectory.f.shape[0] == 5
         assert not jnp.isnan(final_state.f).any()
 
@@ -231,6 +232,7 @@ class TestEndToEnd:
 
         assert int(final_state.t) == 10
         # 10 steps, save every 5 → indices [0, 5] → 2 snapshots
+        assert trajectory is not None
         assert trajectory.f.shape[0] == 2
 
     def test_step_single_phase_direct(self):
@@ -241,6 +243,7 @@ class TestEndToEnd:
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=5)
         setup = build_setup(cfg)
         state = init_state(setup)
+        assert setup.step_fn is not None
         new_state = setup.step_fn(setup, state)
 
         assert int(new_state.t) == 1

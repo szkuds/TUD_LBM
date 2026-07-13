@@ -1,0 +1,19 @@
+# TUD-LBM MRT Single-Phase Configuration
+
+[simulation_type]
+simulation_name = "mrt_test"
+type            = "single_phase"
+grid_shape      = [100, 100]
+lattice_type    = "D2Q9"
+tau             = 1.0
+nt              = 10000
+save_interval   = 1000
+init_type       = "standard"
+collision_scheme = "mrt"
+# k_diag: [k0, kb, k2, k0, k4, k0, k4, kv, kv]
+k_diag          = [0.0, 0.5, 0.6, 0.0, 1.2, 0.0, 1.2, 1.1, 1.1]
+
+[output]
+results_dir  = "~/TUD_LBM_data/results"
+save_fields  = ["rho", "u"]
+plot_fields = ["density", "velocity"]

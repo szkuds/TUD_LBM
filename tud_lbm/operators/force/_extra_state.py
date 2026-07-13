@@ -70,4 +70,7 @@ class ElectricExtraStatePlugin:
         bottom_potential = jnp.full((prev_state.h.shape[0], 1, prev_state.h.shape[2], 1, 1), params.voltage_bottom)
         h_col = h_col.at[:, :1, :, :, :].set(_equilibrium_h(bottom_potential, setup.lattice.w))
 
+        if setup.streaming_fn is None:
+            msg = "streaming_fn is required for electric extra state update"
+            raise TypeError(msg)
         return new_state._replace(h=setup.streaming_fn(h_col, setup.lattice))

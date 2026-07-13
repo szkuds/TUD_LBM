@@ -16,8 +16,8 @@ import pytest
 from tud_lbm import SimulationConfig
 from tud_lbm import build_setup
 from tud_lbm import run
+from tud_lbm.io.readers import DictAdapter
 from tud_lbm.pipeline.runner import init_state
-from tud_lbm.readers import DictAdapter
 
 
 class TestMinimalSimulation:
@@ -217,6 +217,20 @@ class TestForceConfiguration:
         final_state, _ = run(setup, state, nt=5)
 
         assert final_state.t == 5
+
+    def test_only_one_gravity_force_variant_allowed(self):
+        """Verify config rejects simultaneous gravity force variants."""
+        with pytest.raises(
+            ValueError,
+            match=r"Only one gravity force can be applied: set either gravity_force or gravity_masked_force, not both.",
+        ):
+            SimulationConfig(
+                grid_shape=(16, 16),
+                tau=0.8,
+                nt=5,
+                gravity_force={"force_g": 1e-6},
+                gravity_masked_force={"force_g": 1e-6},
+            )
 
 
 class TestOutputAdapters:
