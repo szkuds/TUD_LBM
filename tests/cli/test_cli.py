@@ -786,7 +786,7 @@ class TestClickCommandPaths:
         runner = CliRunner()
         out_path = tmp_path / "regime_map_analysis" / "regime_map.png"
         with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", return_value=out_path):
-            result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
+            result = runner.invoke(cli, ["regime-map", str(dirs_txt)], env={"COLUMNS": "200", "LINES": "50"})
         assert result.exit_code == 0
         assert "regime_map.png" in result.output
 
