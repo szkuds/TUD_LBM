@@ -487,17 +487,19 @@ class TestCheckSweepErrors:
         _check_sweep_errors([SimpleNamespace(status="success")])
 
     def test_one_failure_raises(self):
+        results = [
+            SimpleNamespace(status="success"),
+            SimpleNamespace(status="failed"),
+        ]
+
         with pytest.raises(RuntimeError, match="failed simulation"):
-            _check_sweep_errors(
-                [
-                    SimpleNamespace(status="success"),
-                    SimpleNamespace(status="failed"),
-                ]
-            )
+            _check_sweep_errors(results)
 
     def test_multiple_failures_mention_count(self):
+        results = [SimpleNamespace(status="failed")] * 3
+
         with pytest.raises(RuntimeError, match="3 failed"):
-            _check_sweep_errors([SimpleNamespace(status="failed")] * 3)
+            _check_sweep_errors(results)
 
 
 class TestRunImplFlags:

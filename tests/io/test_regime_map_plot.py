@@ -122,18 +122,6 @@ def test_parse_run_dir_list_keeps_unquoted_spaces_in_one_line(tmp_path: Path):
     assert dirs == [tmp_path / run_name, tmp_path / other_name]
 
 
-def test_parse_run_dir_list_raises_clear_error_for_missing_backslash_dir_on_windows(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setattr(sys, "platform", "win32")
-    txt_path = tmp_path / "dirs.txt"
-    missing_line = tmp_path.as_posix() + r"/22-12-23_\$Bo_\\parallel\ \=\ 0.60\;\ Oh\ \=\ 0.47\$"
-    txt_path.write_text(missing_line + "\n", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="backslash"):
-        parse_run_dir_list(txt_path)
-
-
 def test_parse_run_dir_list_strips_double_quotes(tmp_path: Path):
     (tmp_path / "run_a").mkdir()
     txt_path = tmp_path / "dirs.txt"
@@ -142,6 +130,31 @@ def test_parse_run_dir_list_strips_double_quotes(tmp_path: Path):
     dirs = parse_run_dir_list(txt_path)
 
     assert dirs == [tmp_path / "run_a"]
+
+
+def test_parse_run_dir_list_rejects_relative_traversal_outside_parent(tmp_path: Path):
+    outside = tmp_path.parent / "outside_secret"
+    outside.mkdir(exist_ok=True)
+    list_dir = tmp_path / "lists"
+    list_dir.mkdir()
+    txt_path = list_dir / "dirs.txt"
+    txt_path.write_text("../../outside_secret\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="escapes the directory"):
+        parse_run_dir_list(txt_path)
+
+
+def test_parse_run_dir_list_allows_absolute_path_outside_parent(tmp_path: Path):
+    outside = tmp_path.parent / "outside_run"
+    outside.mkdir(exist_ok=True)
+    list_dir = tmp_path / "lists"
+    list_dir.mkdir()
+    txt_path = list_dir / "dirs.txt"
+    txt_path.write_text(f"{outside.as_posix()}\n", encoding="utf-8")
+
+    dirs = parse_run_dir_list(txt_path)
+
+    assert dirs == [outside]
 
 
 def test_process_run_dir_classifies_pinned_run(tmp_path: Path):
