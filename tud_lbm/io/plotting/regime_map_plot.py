@@ -141,18 +141,29 @@ def _unquote_and_unescape(line: str) -> str:
 
 
 def _resolve_run_dir_entry(line: str, txt_path: Path, parent: Path, resolved_roots: list[Path]) -> Path:
-    """Resolve one parsed line to a run directory, rejecting entries outside every allowed root."""
+    """Resolve one parsed line to a run directory, rejecting entries outside every allowed root.
+
+    Validation follows the canonical-path pattern for SonarQube ``pythonsecurity:S6549``
+    (transform -> normalize/resolve -> sanitize -> use): the untrusted ``line`` is first
+    resolved to a canonical path, then checked with ``Path.relative_to`` against each
+    trusted root inside a ``try/except ValueError`` — the exact idiom the rule's own
+    compliant example uses — before the path is returned for any later filesystem use.
+    """
     path = Path(line)
     resolved = (path if path.is_absolute() else parent / path).resolve()
-    if not any(resolved.is_relative_to(root) for root in resolved_roots):
-        roots_desc = ", ".join(str(root) for root in resolved_roots)
-        msg = (
-            f"{txt_path}: run directory {line!r} resolves to {resolved}, which "
-            f"is outside every allowed root ({roots_desc}). Pass additional "
-            "trusted locations via --allowed-root."
-        )
-        raise ValueError(msg)
-    return resolved
+    for root in resolved_roots:
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            continue
+        return resolved
+    roots_desc = ", ".join(str(root) for root in resolved_roots)
+    msg = (
+        f"{txt_path}: run directory {line!r} resolves to {resolved}, which "
+        f"is outside every allowed root ({roots_desc}). Pass additional "
+        "trusted locations via --allowed-root."
+    )
+    raise ValueError(msg)
 
 
 def _load_or_build_csv(run_dir: Path, config: SimulationConfig) -> pd.DataFrame | None:

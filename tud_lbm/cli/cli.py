@@ -16,6 +16,7 @@ import os
 import sys
 import tomllib
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
@@ -1045,39 +1046,46 @@ def _enable_debug_flags(*, debug_wetting: bool, debug_stability: bool) -> None:
         console.print()
 
 
+@dataclass(frozen=True)
+class RunFlags:
+    """Boolean flags for `run`, bundled to keep `_run_impl`'s signature within S107's limit."""
+
+    no_prompt: bool = False
+    dry_run: bool = False
+    list_operators: bool = False
+    list_analysis: bool = False
+    fail_fast: bool = False
+    overview: bool = False
+    debug_wetting: bool = False
+    debug_stability: bool = False
+    init_wetting: bool = False
+    run_compare: bool = False
+
+
 def _run_impl(
     config_path: str | None,
-    no_prompt: bool,
-    dry_run: bool,
-    list_operators: bool,
-    list_analysis: bool,
-    max_workers: int | None,
-    fail_fast: bool,
     overrides: tuple[str, ...],
-    overview: bool,
-    debug_wetting: bool,
-    init_wetting: bool,
+    max_workers: int | None,
     init_dir: str | None,
-    run_compare: bool = False,
-    debug_stability: bool = False,
+    flags: RunFlags,
 ) -> bool:
-    if list_operators:
+    if flags.list_operators:
         _display_simulation_operators()
         return False
 
-    if list_analysis:
+    if flags.list_analysis:
         _display_analysis_operators()
         return False
 
-    _enable_debug_flags(debug_wetting=debug_wetting, debug_stability=debug_stability)
+    _enable_debug_flags(debug_wetting=flags.debug_wetting, debug_stability=flags.debug_stability)
 
-    _validate_cli_args(overrides, config_path, init_wetting=init_wetting, init_dir=init_dir)
+    _validate_cli_args(overrides, config_path, init_wetting=flags.init_wetting, init_dir=init_dir)
 
-    if init_wetting:
+    if flags.init_wetting:
         if config_path is None:
             msg = "config_path is required for wetting initialisation"
             raise ValueError(msg)
-        _run_two_phase_wetting_init(config_path, overrides, no_prompt=no_prompt, overview=overview)
+        _run_two_phase_wetting_init(config_path, overrides, no_prompt=flags.no_prompt, overview=flags.overview)
         console.print()
         console.print(
             Panel.fit(
@@ -1094,8 +1102,8 @@ def _run_impl(
         raw_config = None
         configs, config, sweep_metadata, parameters_list = _load_config_interactive()
 
-    _display_summary(config, sweep_metadata, configs, overview=overview)
-    if dry_run:
+    _display_summary(config, sweep_metadata, configs, overview=flags.overview)
+    if flags.dry_run:
         _print_dry_run_message(sweep_metadata)
         return False
 
@@ -1105,13 +1113,13 @@ def _run_impl(
         config=config,
         sweep_metadata=sweep_metadata,
         parameters_list=parameters_list,
-        no_prompt=no_prompt,
-        overview=overview,
+        no_prompt=flags.no_prompt,
+        overview=flags.overview,
     )
     if not configs:
         return False
 
-    _execute_run(configs, config, sweep_metadata, parameters_list, max_workers, fail_fast, run_compare)
+    _execute_run(configs, config, sweep_metadata, parameters_list, max_workers, flags.fail_fast, flags.run_compare)
     return True
 
 
@@ -1206,22 +1214,7 @@ def cli() -> None:
     is_flag=True,
     help="Generate comparison plots after a parameter sweep completes.",
 )
-def run(
-    config_path: str,
-    no_prompt: bool,
-    dry_run: bool,
-    list_operators: bool,
-    list_analysis: bool,
-    max_workers: int | None,
-    fail_fast: bool,
-    overrides: tuple[str, ...],
-    overview: bool,
-    debug_wetting: bool,
-    debug_stability: bool,
-    init_wetting: bool,
-    init_dir: str | None,
-    run_compare: bool,
-) -> None:
+def run(**cli_kwargs: object) -> None:
     """Run a TUD-LBM simulation from CONFIG_PATH.
 
     CONFIG_PATH is an optional path to a configuration file (.toml).
@@ -1283,23 +1276,25 @@ def run(
     """
     _print_run_banner()
 
+    config_path = cast("str | None", cli_kwargs["config_path"])
+    max_workers = cast("int | None", cli_kwargs["max_workers"])
+    overrides = cast("tuple[str, ...]", cli_kwargs["overrides"])
+    init_dir = cast("str | None", cli_kwargs["init_dir"])
+    flags = RunFlags(
+        no_prompt=cast("bool", cli_kwargs["no_prompt"]),
+        dry_run=cast("bool", cli_kwargs["dry_run"]),
+        list_operators=cast("bool", cli_kwargs["list_operators"]),
+        list_analysis=cast("bool", cli_kwargs["list_analysis"]),
+        fail_fast=cast("bool", cli_kwargs["fail_fast"]),
+        overview=cast("bool", cli_kwargs["overview"]),
+        debug_wetting=cast("bool", cli_kwargs["debug_wetting"]),
+        debug_stability=cast("bool", cli_kwargs["debug_stability"]),
+        init_wetting=cast("bool", cli_kwargs["init_wetting"]),
+        run_compare=cast("bool", cli_kwargs["run_compare"]),
+    )
+
     try:
-        completed = _run_impl(
-            config_path,
-            no_prompt,
-            dry_run,
-            list_operators,
-            list_analysis,
-            max_workers,
-            fail_fast,
-            overrides,
-            overview,
-            debug_wetting,
-            init_wetting,
-            init_dir,
-            run_compare,
-            debug_stability=debug_stability,
-        )
+        completed = _run_impl(config_path, overrides, max_workers, init_dir, flags)
         if completed:
             console.print()
             console.print(
