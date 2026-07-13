@@ -211,7 +211,7 @@ class TestIOCallbacks:
     """IO callback utilities."""
 
     def test_state_to_numpy(self):
-        from tud_lbm.pipeline.io_callbacks import _state_to_numpy
+        from tud_lbm.io.callbacks import _state_to_numpy
 
         setup = _single_phase_setup()
         state = init_state(setup)

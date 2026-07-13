@@ -203,3 +203,13 @@ python_version = "3.14"
 [[tool.mypy.overrides]]
 module = ["pyevtk.*", "optax.*", "moviepy.*"]
 ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# ty
+# ---------------------------------------------------------------------------
+[tool.ty.environment]
+# This project is developed and tested on Linux, macOS, and Windows (see
+# docs/notes/README.dev.md); "all" avoids sys.platform-based reachability
+# analysis falsely marking platform-specific branches as unreachable dead
+# code depending on which OS `ty` happens to run on.
+python-platform = "all"

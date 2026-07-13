@@ -16,7 +16,7 @@ Two strategies are supported:
 
 Usage (strategy 2)::
 
-    from runner.io_callbacks import make_save_callback
+    from tud_lbm.io.callbacks import make_save_callback
 
     # Outside jit:
     io_handler = SimulationIO(...)
@@ -38,7 +38,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from tud_lbm.io import SimulationIO
+    from tud_lbm.io.save import SimulationIO
     from tud_lbm.pipeline.state import State
 
 

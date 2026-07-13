@@ -81,6 +81,13 @@ def parse_run_dir_list(txt_path: str | Path) -> list[Path]:
     space.
 
     Relative paths are resolved against ``txt_path``'s parent directory.
+
+    A directory name containing a literal backslash (as in the ``\parallel``
+    example above) can only be created on a POSIX filesystem — Windows always
+    treats ``\`` as a path separator, so such a name can never exist as a
+    single path component there. If such a path can't be found on a Windows
+    host, this raises :class:`ValueError` with a clear explanation rather
+    than letting a confusing :class:`FileNotFoundError` surface later.
     """
     txt_path = Path(txt_path)
     parent = txt_path.parent
@@ -97,7 +104,18 @@ def parse_run_dir_list(txt_path: str | Path) -> list[Path]:
         if not line:
             continue
         path = Path(line)
-        dirs.append(path if path.is_absolute() else parent / path)
+        resolved = path if path.is_absolute() else parent / path
+        if sys.platform == "win32" and "\\" in line and not resolved.exists():
+            msg = (
+                f"{txt_path}: run directory {line!r} contains a literal backslash and "
+                "could not be found. Windows always treats '\\' as a path separator, "
+                "so directory names created on POSIX systems (e.g. a Linux/macOS HPC "
+                "cluster) with a backslash in the name cannot be represented as a "
+                "single path component here. Run this analysis from a POSIX "
+                "environment (Linux, macOS, or WSL) instead."
+            )
+            raise ValueError(msg)
+        dirs.append(resolved)
     return dirs
 
 

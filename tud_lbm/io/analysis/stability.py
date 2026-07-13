@@ -191,7 +191,7 @@ def make_stability_callback(
 ) -> Callable:
     """Build a stability-diagnostics callback for a ``lax.scan`` body.
 
-    Mirrors :func:`~tud_lbm.pipeline.io_callbacks.make_save_callback`:
+    Mirrors :func:`~tud_lbm.io.callbacks.make_save_callback`:
     interval checking runs on-device via ``jax.lax.cond`` and the
     metric reductions live inside the true branch, so off-interval
     steps cost one integer compare.

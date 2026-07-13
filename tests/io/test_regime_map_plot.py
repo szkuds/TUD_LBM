@@ -1,8 +1,10 @@
 """End-to-end tests for tud_lbm.io.plotting.regime_map_plot."""
 
 from __future__ import annotations
+import sys
 from typing import TYPE_CHECKING
 import numpy as np
+import pytest
 from tud_lbm.config import SimulationConfig
 from tud_lbm.io.plotting.regime_map_plot import _REGIME_COLORS
 from tud_lbm.io.plotting.regime_map_plot import _REGIME_MARKERS
@@ -17,6 +19,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _NX, _NY = 60, 12
+
+_no_literal_backslash_dirs = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="directory names containing a literal backslash are not representable "
+    "as a single path component on Windows (backslash is always the path separator there)",
+)
 
 
 def _run_config(**kwargs) -> SimulationConfig:
@@ -74,6 +82,7 @@ def test_parse_run_dir_list_skips_blank_and_comment_lines(tmp_path: Path):
     assert dirs == [tmp_path / "run_a", tmp_path / "run_b"]
 
 
+@_no_literal_backslash_dirs
 def test_parse_run_dir_list_unescapes_single_quoted_special_chars(tmp_path: Path):
     run_name = r"22-12-23_$Bo_\parallel = 0.60; Oh = 0.47$"
     (tmp_path / run_name).mkdir()
@@ -86,6 +95,7 @@ def test_parse_run_dir_list_unescapes_single_quoted_special_chars(tmp_path: Path
     assert dirs == [tmp_path / run_name]
 
 
+@_no_literal_backslash_dirs
 def test_parse_run_dir_list_unescapes_unquoted_special_chars(tmp_path: Path):
     run_name = r"08-13-44_$Bo_\parallel = 0.80; Oh = 0.45$"
     (tmp_path / run_name).mkdir()
@@ -98,6 +108,7 @@ def test_parse_run_dir_list_unescapes_unquoted_special_chars(tmp_path: Path):
     assert dirs == [tmp_path / run_name]
 
 
+@_no_literal_backslash_dirs
 def test_parse_run_dir_list_keeps_unquoted_spaces_in_one_line(tmp_path: Path):
     run_name = r"08-13-44_$Bo_\parallel = 0.60; Oh = 0.30$"
     (tmp_path / run_name).mkdir()
@@ -109,6 +120,18 @@ def test_parse_run_dir_list_keeps_unquoted_spaces_in_one_line(tmp_path: Path):
     dirs = parse_run_dir_list(txt_path)
 
     assert dirs == [tmp_path / run_name, tmp_path / other_name]
+
+
+def test_parse_run_dir_list_raises_clear_error_for_missing_backslash_dir_on_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(sys, "platform", "win32")
+    txt_path = tmp_path / "dirs.txt"
+    missing_line = tmp_path.as_posix() + r"/22-12-23_\$Bo_\\parallel\ \=\ 0.60\;\ Oh\ \=\ 0.47\$"
+    txt_path.write_text(missing_line + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="backslash"):
+        parse_run_dir_list(txt_path)
 
 
 def test_parse_run_dir_list_strips_double_quotes(tmp_path: Path):
