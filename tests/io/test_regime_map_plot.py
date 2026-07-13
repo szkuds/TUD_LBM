@@ -77,7 +77,7 @@ def test_parse_run_dir_list_skips_blank_and_comment_lines(tmp_path: Path):
     txt_path = tmp_path / "dirs.txt"
     txt_path.write_text("# header comment\n\nrun_a\nrun_b\n", encoding="utf-8")
 
-    dirs = parse_run_dir_list(txt_path)
+    dirs = parse_run_dir_list(txt_path, allowed_roots=[tmp_path])
 
     assert dirs == [tmp_path / "run_a", tmp_path / "run_b"]
 
@@ -90,7 +90,7 @@ def test_parse_run_dir_list_unescapes_single_quoted_special_chars(tmp_path: Path
     quoted_line = r"'" + tmp_path.as_posix() + r"/22-12-23_\$Bo_\\parallel\ \=\ 0.60\;\ Oh\ \=\ 0.47\$'"
     txt_path.write_text(quoted_line + "\n", encoding="utf-8")
 
-    dirs = parse_run_dir_list(txt_path)
+    dirs = parse_run_dir_list(txt_path, allowed_roots=[tmp_path])
 
     assert dirs == [tmp_path / run_name]
 
@@ -103,7 +103,7 @@ def test_parse_run_dir_list_unescapes_unquoted_special_chars(tmp_path: Path):
     escaped_line = tmp_path.as_posix() + r"/08-13-44_\$Bo_\\parallel\ \=\ 0.80\;\ Oh\ \=\ 0.45\$"
     txt_path.write_text(escaped_line + "\n", encoding="utf-8")
 
-    dirs = parse_run_dir_list(txt_path)
+    dirs = parse_run_dir_list(txt_path, allowed_roots=[tmp_path])
 
     assert dirs == [tmp_path / run_name]
 
@@ -117,7 +117,7 @@ def test_parse_run_dir_list_keeps_unquoted_spaces_in_one_line(tmp_path: Path):
     txt_path = tmp_path / "dirs.txt"
     txt_path.write_text(f"{tmp_path.as_posix()}/{run_name}\n{tmp_path.as_posix()}/{other_name}\n", encoding="utf-8")
 
-    dirs = parse_run_dir_list(txt_path)
+    dirs = parse_run_dir_list(txt_path, allowed_roots=[tmp_path])
 
     assert dirs == [tmp_path / run_name, tmp_path / other_name]
 
@@ -127,7 +127,7 @@ def test_parse_run_dir_list_strips_double_quotes(tmp_path: Path):
     txt_path = tmp_path / "dirs.txt"
     txt_path.write_text(f'"{tmp_path.as_posix()}/run_a"\n', encoding="utf-8")
 
-    dirs = parse_run_dir_list(txt_path)
+    dirs = parse_run_dir_list(txt_path, allowed_roots=[tmp_path])
 
     assert dirs == [tmp_path / "run_a"]
 
@@ -140,11 +140,11 @@ def test_parse_run_dir_list_rejects_relative_traversal_outside_parent(tmp_path: 
     txt_path = list_dir / "dirs.txt"
     txt_path.write_text("../../outside_secret\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="escapes the directory"):
-        parse_run_dir_list(txt_path)
+    with pytest.raises(ValueError, match="outside every allowed root"):
+        parse_run_dir_list(txt_path, allowed_roots=[list_dir])
 
 
-def test_parse_run_dir_list_allows_absolute_path_outside_parent(tmp_path: Path):
+def test_parse_run_dir_list_allows_absolute_path_within_allowed_root(tmp_path: Path):
     outside = tmp_path.parent / "outside_run"
     outside.mkdir(exist_ok=True)
     list_dir = tmp_path / "lists"
@@ -152,9 +152,32 @@ def test_parse_run_dir_list_allows_absolute_path_outside_parent(tmp_path: Path):
     txt_path = list_dir / "dirs.txt"
     txt_path.write_text(f"{outside.as_posix()}\n", encoding="utf-8")
 
-    dirs = parse_run_dir_list(txt_path)
+    dirs = parse_run_dir_list(txt_path, allowed_roots=[outside.parent])
 
     assert dirs == [outside]
+
+
+def test_parse_run_dir_list_rejects_absolute_path_outside_allowed_roots(tmp_path: Path):
+    outside = tmp_path.parent / "outside_run"
+    outside.mkdir(exist_ok=True)
+    list_dir = tmp_path / "lists"
+    list_dir.mkdir()
+    txt_path = list_dir / "dirs.txt"
+    txt_path.write_text(f"{outside.as_posix()}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="outside every allowed root"):
+        parse_run_dir_list(txt_path, allowed_roots=[list_dir])
+
+
+def test_parse_run_dir_list_accepts_default_results_root_with_no_allowed_roots(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("tud_lbm.io.plotting.regime_map_plot.BASE_RESULTS_DIR", str(tmp_path))
+    (tmp_path / "run_a").mkdir()
+    txt_path = tmp_path / "dirs.txt"
+    txt_path.write_text("run_a\n", encoding="utf-8")
+
+    dirs = parse_run_dir_list(txt_path)
+
+    assert dirs == [tmp_path / "run_a"]
 
 
 def test_process_run_dir_classifies_pinned_run(tmp_path: Path):
@@ -218,7 +241,7 @@ def test_build_regime_map_end_to_end(tmp_path: Path):
         encoding="utf-8",
     )
 
-    out_path = build_regime_map(txt_path)
+    out_path = build_regime_map(txt_path, allowed_roots=[tmp_path])
 
     assert out_path is not None
     assert out_path.exists()
@@ -229,4 +252,4 @@ def test_build_regime_map_none_when_no_runs_usable(tmp_path: Path):
     txt_path = tmp_path / "dirs.txt"
     txt_path.write_text("missing_run\n", encoding="utf-8")
 
-    assert build_regime_map(txt_path) is None
+    assert build_regime_map(txt_path, allowed_roots=[tmp_path]) is None

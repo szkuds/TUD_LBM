@@ -1218,7 +1218,7 @@ def test_validate_run_dir_has_config_missing_file_raises(tmp_path):
     run_dir.mkdir()
 
     with pytest.raises(FileNotFoundError, match=r"No config\.toml found"):
-        _validate_run_dir_has_config(str(run_dir))
+        _ = _validate_run_dir_has_config(str(run_dir))
 
 
 def _make_config(results_dir: str, tau: float = 0.8) -> SimulationConfig:

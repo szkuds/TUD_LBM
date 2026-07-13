@@ -1535,6 +1535,14 @@ def compare(parent_dir: str, no_prompt: bool) -> None:
 @cli.command(name="regime-map")
 @click.argument("dirs_txt", type=click.Path(exists=True, dir_okay=False))
 @click.option(
+    "--allowed-root",
+    "allowed_roots",
+    multiple=True,
+    type=click.Path(exists=True, file_okay=False),
+    help="Additional directory that a referenced run directory may resolve within, beyond the "
+    "default results root (repeatable — e.g. one per HPC mount).",
+)
+@click.option(
     "--out-dir",
     "out_dir",
     type=click.Path(file_okay=False),
@@ -1549,7 +1557,7 @@ def compare(parent_dir: str, no_prompt: bool) -> None:
     help="Acceleration-curve smoothing for peak detection: 'raw' (default, unsmoothed) or "
     "'savgol' (Savitzky-Golay filtered, reduces spikiness).",
 )
-def regime_map(dirs_txt: str, out_dir: str | None, smoothing: str) -> None:
+def regime_map(dirs_txt: str, allowed_roots: tuple[str, ...], out_dir: str | None, smoothing: str) -> None:
     """Classify runs listed in DIRS_TXT into pinning/viscous/inertial/unknown and plot Bo_parallel vs Oh."""
     from tud_lbm.io.plotting.regime_map_plot import build_regime_map
 
@@ -1566,7 +1574,7 @@ def regime_map(dirs_txt: str, out_dir: str | None, smoothing: str) -> None:
         console.print(f"[dim]Run-dir list : {dirs_txt}[/dim]")
         console.print()
 
-        out_path = build_regime_map(dirs_txt, out_dir=out_dir, smoothing=cast("Smoothing", smoothing))
+        out_path = build_regime_map(dirs_txt, allowed_roots, out_dir=out_dir, smoothing=cast("Smoothing", smoothing))
         if out_path is None:
             console.print("[yellow]No runs produced a usable classification.[/yellow]")
             sys.exit(1)
