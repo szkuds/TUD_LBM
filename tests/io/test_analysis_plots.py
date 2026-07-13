@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 import numpy as np
+from tud_lbm.config import SimulationConfig
 from tud_lbm.io.plotting.contact_angle_plot import ContactAngleLeftPlot
 from tud_lbm.io.plotting.contact_line_speed_plot import ContactLineSpeedLeftPlot
+from tud_lbm.io.plotting.reynolds_number_plot import ReynoldsNumberPlot
 from tud_lbm.io.plotting.scalar_history_plot import AvgDensityPlot
 from tud_lbm.io.plotting.scalar_history_plot import DensityRatioPlot
 from tud_lbm.io.plotting.scalar_history_plot import MaxVelocityPlot
@@ -67,6 +69,41 @@ def test_contact_angle_left_plot(tmp_path):
 
     assert result["iters"].tolist() == [7]
     assert np.allclose(result["values"], [77.5])
+
+
+def test_reynolds_number_plot(tmp_path):
+    _make_snapshot(tmp_path, step=10, rho_val=2.0, ux=0.2, ca_left=80.0, cll_left=1.0)
+    _make_snapshot(tmp_path, step=20, rho_val=3.0, ux=0.4, ca_left=81.0, cll_left=2.0)
+
+    cfg = SimulationConfig(
+        sim_type="multiphase_wetting",
+        grid_shape=(30, 10),
+        tau=0.8,
+        nt=100,
+        eos="double-well",
+        kappa=0.02,
+        rho_l=1.0,
+        rho_v=0.5,
+        interface_width=2,
+        initialisation={"radii": [0.3]},
+    )
+    plot = ReynoldsNumberPlot(config=cfg)
+    result = plot.compute(sorted(tmp_path.glob("*.npz")))
+
+    nu = (0.8 - 0.5) / 3.0
+    length = 2.0 * (0.3 * min(30, 10))  # RZero fallback from init radii
+    assert result["iters"].tolist() == [10, 20]
+    np.testing.assert_allclose(result["values"], [0.2 * length / nu, 0.4 * length / nu])
+
+
+def test_reynolds_number_plot_without_config_returns_empty(tmp_path):
+    _make_snapshot(tmp_path, step=10, rho_val=2.0, ux=0.2, ca_left=80.0, cll_left=1.0)
+
+    plot = ReynoldsNumberPlot()
+    result = plot.compute(sorted(tmp_path.glob("*.npz")))
+
+    assert result["iters"].size == 0
+    assert result["values"].size == 0
 
 
 def test_contact_line_speed_left_plot(tmp_path):

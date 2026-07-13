@@ -421,12 +421,35 @@ def _format_bond_number_row(
     ]
 
 
+def compute_archimedes_number(drho: float, g_val: float, length: float, nu: float, rho_l: float) -> float:
+    """Ar = gL³Δρ / (ν²ρ_l)."""
+    return (g_val * (length**3) * drho) / ((nu**2) * rho_l)
+
+
+def compute_reynolds_number(drho: float, g_val: float, length: float, nu: float, rho_l: float) -> float:
+    """Re = sqrt(Ar): characteristic buoyancy-driven Reynolds number.
+
+    Balancing inertial drag (~ρ_l·U²·L²) against buoyancy (~Δρ·g·L³) gives the
+    characteristic velocity U ~ sqrt(gLΔρ/ρ_l), so Re = UL/ν = sqrt(Ar).
+    """
+    ar = compute_archimedes_number(drho, g_val, length, nu, rho_l)
+    return math.sqrt(ar) if ar >= 0 else math.nan
+
+
 def _format_archimedes_number_row(
     drho: float, g_val: float, length: float, length_label: str, nu: float, rho_l: float
 ) -> str:
     """Build Archimedes-number row: Ar = gL^3Δρ / (ν^2ρ_l)."""
-    ar = (g_val * (length**3) * drho) / ((nu**2) * rho_l)
+    ar = compute_archimedes_number(drho, g_val, length, nu, rho_l)
     return _row("Ar (Archimedes number):", f"{ar:.6g}  [gL³Δρ/(ν²ρ_l), {length_label}]")
+
+
+def _format_reynolds_number_row(
+    drho: float, g_val: float, length: float, length_label: str, nu: float, rho_l: float
+) -> str:
+    """Build Reynolds-number row: Re = sqrt(Ar)."""
+    re = compute_reynolds_number(drho, g_val, length, nu, rho_l)
+    return _row("Re (Reynolds number):", f"{re:.6g}  [sqrt(Ar) = UL/ν, U=sqrt(gLΔρ/ρ_l), {length_label}]")
 
 
 def _format_critical_inclination_angle_row(config: SimulationConfig, gamma: float) -> str:
@@ -487,6 +510,7 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
         msg = "rho_l is required for Archimedes number"
         raise ValueError(msg)
     lines.append(_format_archimedes_number_row(drho, g_val, length, length_label, nu, float(config.rho_l)))
+    lines.append(_format_reynolds_number_row(drho, g_val, length, length_label, nu, float(config.rho_l)))
     if config.chemical_step_config is not None and config.gravity_masked_force is not None:
         lines.append(_format_critical_inclination_angle_row(config, gamma))
 

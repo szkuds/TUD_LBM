@@ -50,6 +50,7 @@ class FigureStyle:
             "contact_angle_right": "tab:red",
             "contact_line_speed_left": "tab:brown",
             "contact_line_speed_right": "tab:pink",
+            "reynolds_number": "tab:cyan",
         }
     )
 
