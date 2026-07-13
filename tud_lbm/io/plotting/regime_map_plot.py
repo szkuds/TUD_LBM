@@ -99,10 +99,20 @@ def parse_run_dir_list(txt_path: str | Path) -> list[Path]:
     existence itself an oracle. Callers that hit an unexpectedly missing run
     directory on Windows should check the list file for a backslash that was
     meant as a literal character rather than a path separator.
+
+    ``txt_path`` itself (which may originate from an untrusted CLI argument,
+    e.g. when this tool is driven by an external or automated caller) is
+    resolved to a canonical, absolute path and confirmed to be an existing
+    regular file *before* anything is read from it, so a directory, device
+    file, or nonexistent path is rejected with :class:`ValueError` up front
+    rather than reaching the filesystem read in an unvalidated state.
     """
-    txt_path = Path(txt_path)
+    txt_path = Path(txt_path).resolve()
+    if not txt_path.is_file():
+        msg = f"{txt_path}: run-dir list must be an existing regular file"
+        raise ValueError(msg)
     parent = txt_path.parent
-    parent_resolved = parent.resolve()
+    parent_resolved = parent
     dirs: list[Path] = []
     for raw_line in txt_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
