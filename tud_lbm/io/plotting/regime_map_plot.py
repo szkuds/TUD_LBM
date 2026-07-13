@@ -138,8 +138,8 @@ def _unquote_and_unescape(line: str) -> str:
 def _resolve_run_dir_entry(line: str, txt_path: Path, parent: Path, parent_resolved: Path) -> Path:
     """Resolve one parsed line to a run directory, rejecting `..` escapes."""
     path = Path(line)
-    resolved = path if path.is_absolute() else parent / path
-    if not path.is_absolute() and not resolved.resolve().is_relative_to(parent_resolved):
+    resolved = (path if path.is_absolute() else parent / path).resolve()
+    if not path.is_absolute() and not resolved.is_relative_to(parent_resolved):
         msg = (
             f"{txt_path}: run directory {line!r} escapes the directory "
             f"containing the run-dir list ({parent}) via a relative "

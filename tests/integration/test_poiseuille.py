@@ -29,8 +29,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-# Ensure src/ is importable
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+# Ensure tud_lbm/ is importable
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "tud_lbm"))
 
 from tud_lbm.config.simulation_config import SimulationConfig
 from tud_lbm.pipeline.runner import init_state
