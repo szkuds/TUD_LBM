@@ -61,7 +61,6 @@ callbacks
 """
 
 from .output_data import output_writers
-from .report import HtmlReport
 from .save import SimulationIO
 
-__all__ = ["HtmlReport", "SimulationIO", "output_writers"]
+__all__ = ["SimulationIO", "output_writers"]

@@ -83,9 +83,6 @@ package = true
 [tool.setuptools.packages.find]
 where = ["."]
 
-[tool.setuptools.package-data]
-"tud_lbm.io.report.assets" = ["*.html"]
-
 # ---------------------------------------------------------------------------
 # pytest
 # ---------------------------------------------------------------------------
