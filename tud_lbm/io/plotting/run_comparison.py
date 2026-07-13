@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 _DIR_SPLIT_PARTS = 2
 _LABEL_CA = r"$\mathrm{Ca}$"
+_LABEL_RE = r"$\mathrm{Re}$"
 _LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
 _LABEL_X_AVG_NORM = r"$X_{\mathrm{avg}}/R_0$"
 _CONFIG_TOML = "config.toml"
@@ -101,6 +102,20 @@ _COMPARISON_PLOT_CONFIGS: list[_PlotConfig] = [
         "pair_labels": ("Trailing", "Leading"),
         "xlabel": r"$\mathrm{Ca}_{\mathrm{CL}}$ [−]",
         "ylabel": r"$\theta$ (degrees)",
+    },
+    {
+        "filename": "10_Re_vs_iteration.png",
+        "x": "normalised_iteration",
+        "y": "Re",
+        "xlabel": _LABEL_IT_NORM,
+        "ylabel": _LABEL_RE,
+    },
+    {
+        "filename": "11_Re_vs_x_avg.png",
+        "x": "avg_x_location_norm",
+        "y": "Re",
+        "xlabel": _LABEL_X_AVG_NORM,
+        "ylabel": _LABEL_RE,
     },
 ]
 
