@@ -47,30 +47,30 @@ def test_classify_regime_pinning_takes_priority_over_acceleration_data():
 
 def test_classify_regime_viscous_when_slope_negative_in_window():
     cm_x = np.array([0.0, 5.0, 30.0])
-    iteration = np.arange(20, dtype=float)
+    iteration = np.arange(30, dtype=float)
     ca = 10.0 - iteration  # strictly decreasing everywhere, including the window
-    accel_result = _accel_result(iteration, ca, peak_accel_idx=4, peak_decel_idx=14)
+    accel_result = _accel_result(iteration, ca, peak_accel_idx=4, peak_decel_idx=24)
 
     result = classify_regime(cm_x, r_zero=10.0, accel_result=accel_result)
 
     assert result.regime == "Dissipative"
     assert result.slope is not None
     assert result.slope < 0
-    assert result.window == (7, 11)
+    assert result.window == (16, 20)
 
 
 def test_classify_regime_inertial_when_slope_nonnegative_in_window():
     cm_x = np.array([0.0, 5.0, 30.0])
-    iteration = np.arange(20, dtype=float)
+    iteration = np.arange(30, dtype=float)
     ca = iteration.copy()  # strictly increasing everywhere, including the window
-    accel_result = _accel_result(iteration, ca, peak_accel_idx=4, peak_decel_idx=14)
+    accel_result = _accel_result(iteration, ca, peak_accel_idx=4, peak_decel_idx=24)
 
     result = classify_regime(cm_x, r_zero=10.0, accel_result=accel_result)
 
-    assert result.regime == "Intertial"
+    assert result.regime == "Inertial"
     assert result.slope is not None
     assert result.slope >= 0
-    assert result.window == (7, 11)
+    assert result.window == (16, 20)
 
 
 def test_classify_regime_unknown_when_no_usable_window():

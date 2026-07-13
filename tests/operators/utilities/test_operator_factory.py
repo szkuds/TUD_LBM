@@ -10,8 +10,8 @@ PROBLEM: Current implementation has 6-8 separate factory.py files with
 nearly identical code (~40 lines each). This is boilerplate duplication.
 
 SOLUTION: Move to unified factory with type-safe wrappers in __init__.py:
-  - src/operators/factory.py: Single generic build_operator(kind, scheme)
-  - src/operators/{kind}/__init__.py: Thin wrappers for type safety
+  - tud_lbm/operators/factory.py: Single generic build_operator(kind, scheme)
+  - tud_lbm/operators/{kind}/__init__.py: Thin wrappers for type safety
 
 BENEFITS:
   ✓ DRY: Single factory implementation
@@ -331,7 +331,7 @@ class TestFactoryPattern:
            @register_operator("stress_tensor", name="simple")
            def compute_stress(...): ...
 
-        2. Create a thin wrapper in src/operators/stress/__init__.py:
+        2. Create a thin wrapper in tud_lbm/operators/stress/__init__.py:
            def build_stress_fn(scheme: str) -> StressOperator:
                return build_operator("stress_tensor", scheme)
 

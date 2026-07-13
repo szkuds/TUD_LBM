@@ -8,7 +8,7 @@ from tud_lbm.io.analysis.accelerations import find_slope_window
 from tud_lbm.io.analysis.accelerations import save_diagnostic_plot
 
 
-def _ramp_up_then_down_df(n: int = 20) -> pd.DataFrame:
+def _ramp_up_then_down_df(n: int = 100) -> pd.DataFrame:
     """Build a Ca(t) curve via double-integration of a known accel impulse pair.
 
     accel_true has a single positive impulse at index 2 (peak acceleration)
@@ -18,7 +18,7 @@ def _ramp_up_then_down_df(n: int = 20) -> pd.DataFrame:
     """
     accel_true = np.zeros(n)
     accel_true[2] = 3.0
-    accel_true[12] = -4.0
+    accel_true[82] = -4.0
     vel = np.concatenate([[0.0], np.cumsum(accel_true)])
     ca = np.concatenate([[0.0], np.cumsum(vel)])
     return pd.DataFrame({"normalised_iteration": np.arange(ca.size), "Ca": ca})
@@ -31,7 +31,7 @@ def test_compute_acceleration_recovers_known_peak_indices():
 
     assert result.has_peak_pair
     assert result.peak_accel_idx == 4
-    assert result.peak_decel_idx == 14
+    assert result.peak_decel_idx == 84
     assert np.isnan(result.accel[0])
     assert np.isnan(result.accel[1])
 
@@ -52,14 +52,14 @@ def test_find_slope_window_returns_window_with_default_margin():
 
     window = find_slope_window(result)
 
-    assert window == (7, 11)
+    assert window == (16, 80)
 
 
 def test_find_slope_window_none_when_window_too_narrow():
     df = _ramp_up_then_down_df()
     result = compute_acceleration(df)
 
-    window = find_slope_window(result, margin=8)
+    window = find_slope_window(result, margin=80)
 
     assert window is None
 

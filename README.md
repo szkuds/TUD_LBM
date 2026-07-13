@@ -61,7 +61,7 @@ uv pip install -e .[dev]
 
 ### Optional: conda
 
-If you prefer conda for scientific Python environments, you can still use the conda-based workflow documented in [developer documentation](README.dev.md#package-reference).
+If you prefer conda for scientific Python environments, you can still use the conda-based workflow documented in [developer documentation](docs/notes/README.dev.md#package-reference).
 
 ## Documentation
 
@@ -99,7 +99,7 @@ tud_lbm  # launches interactive parameter prompts
 
 ---
 
-For the full package reference (module-by-module API, operator tables, and architecture details), see the [developer documentation](README.dev.md#package-reference).
+For the full package reference (module-by-module API, operator tables, and architecture details), see the [developer documentation](docs/notes/README.dev.md#package-reference).
 
 ## Contributing
 
