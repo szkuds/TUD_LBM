@@ -10,6 +10,7 @@ import click
 import pytest
 from click.testing import CliRunner
 from tud_lbm.cli.cli import _WETTING_PARAM_DEFAULTS
+from tud_lbm.cli.cli import RunFlags
 from tud_lbm.cli.cli import _build_wetting_gravity_raw
 from tud_lbm.cli.cli import _build_wetting_init_raw
 from tud_lbm.cli.cli import _check_sweep_errors
@@ -487,17 +488,19 @@ class TestCheckSweepErrors:
         _check_sweep_errors([SimpleNamespace(status="success")])
 
     def test_one_failure_raises(self):
+        results = [
+            SimpleNamespace(status="success"),
+            SimpleNamespace(status="failed"),
+        ]
+
         with pytest.raises(RuntimeError, match="failed simulation"):
-            _check_sweep_errors(
-                [
-                    SimpleNamespace(status="success"),
-                    SimpleNamespace(status="failed"),
-                ]
-            )
+            _check_sweep_errors(results)
 
     def test_multiple_failures_mention_count(self):
+        results = [SimpleNamespace(status="failed")] * 3
+
         with pytest.raises(RuntimeError, match="3 failed"):
-            _check_sweep_errors([SimpleNamespace(status="failed")] * 3)
+            _check_sweep_errors(results)
 
 
 class TestRunImplFlags:
@@ -506,17 +509,10 @@ class TestRunImplFlags:
     def test_list_operators_returns_false(self):
         result = _run_impl(
             config_path=None,
-            no_prompt=True,
-            dry_run=False,
-            list_operators=True,
-            list_analysis=False,
-            max_workers=None,
-            fail_fast=False,
             overrides=(),
-            overview=False,
-            debug_wetting=False,
-            init_wetting=False,
+            max_workers=None,
             init_dir=None,
+            flags=RunFlags(no_prompt=True, list_operators=True),
         )
         assert result is False
 
@@ -533,17 +529,10 @@ class TestRunImplFlags:
         ):
             result = _run_impl(
                 config_path=str(cfg_toml),
-                no_prompt=True,
-                dry_run=True,
-                list_operators=False,
-                list_analysis=False,
-                max_workers=None,
-                fail_fast=False,
                 overrides=(),
-                overview=False,
-                debug_wetting=False,
-                init_wetting=False,
+                max_workers=None,
                 init_dir=None,
+                flags=RunFlags(no_prompt=True, dry_run=True),
             )
         assert result is False
 
@@ -556,17 +545,10 @@ class TestRunImplFlags:
         ):
             _run_impl(
                 config_path=str(cfg_toml),
-                no_prompt=True,
-                dry_run=True,
-                list_operators=False,
-                list_analysis=False,
-                max_workers=None,
-                fail_fast=False,
                 overrides=(),
-                overview=True,
-                debug_wetting=False,
-                init_wetting=False,
+                max_workers=None,
                 init_dir=None,
+                flags=RunFlags(no_prompt=True, dry_run=True, overview=True),
             )
         assert "PHYSICAL PARAMETER OVERVIEW" in capsys.readouterr().out
 
@@ -588,17 +570,10 @@ class TestRunImplFlags:
         ):
             result = _run_impl(
                 config_path=str(cfg_toml),
-                no_prompt=True,
-                dry_run=True,
-                list_operators=False,
-                list_analysis=False,
-                max_workers=None,
-                fail_fast=False,
                 overrides=(),
-                overview=True,
-                debug_wetting=False,
-                init_wetting=False,
+                max_workers=None,
                 init_dir=None,
+                flags=RunFlags(no_prompt=True, dry_run=True, overview=True),
             )
         assert result is False
 
@@ -613,17 +588,10 @@ class TestRunImplFlags:
         monkeypatch.setattr("tud_lbm.cli.cli._load_config_interactive", _fake)
         result = _run_impl(
             config_path=None,
-            no_prompt=True,
-            dry_run=True,
-            list_operators=False,
-            list_analysis=False,
-            max_workers=None,
-            fail_fast=False,
             overrides=(),
-            overview=False,
-            debug_wetting=False,
-            init_wetting=False,
+            max_workers=None,
             init_dir=None,
+            flags=RunFlags(no_prompt=True, dry_run=True),
         )
         assert called["n"] == 1
         assert result is False
@@ -641,17 +609,10 @@ class TestRunImplFlags:
             ):
                 _run_impl(
                     config_path=str(cfg_toml),
-                    no_prompt=True,
-                    dry_run=True,
-                    list_operators=False,
-                    list_analysis=False,
-                    max_workers=None,
-                    fail_fast=False,
                     overrides=(),
-                    overview=False,
-                    debug_wetting=True,
-                    init_wetting=False,
+                    max_workers=None,
                     init_dir=None,
+                    flags=RunFlags(no_prompt=True, dry_run=True, debug_wetting=True),
                 )
             assert _flags.DEBUG_FLAG_WETTING is True
         finally:
@@ -670,18 +631,10 @@ class TestRunImplFlags:
             ):
                 _run_impl(
                     config_path=str(cfg_toml),
-                    no_prompt=True,
-                    dry_run=True,
-                    list_operators=False,
-                    list_analysis=False,
-                    max_workers=None,
-                    fail_fast=False,
                     overrides=(),
-                    overview=False,
-                    debug_wetting=False,
-                    init_wetting=False,
+                    max_workers=None,
                     init_dir=None,
-                    debug_stability=True,
+                    flags=RunFlags(no_prompt=True, dry_run=True, debug_stability=True),
                 )
             assert _flags.DEBUG_FLAG_STABILITY is True
         finally:
@@ -704,7 +657,7 @@ class TestClickCommandPaths:
         with patch("tud_lbm.cli.cli._run_impl", return_value=False) as mock_impl:
             result = runner.invoke(cli, ["run", str(cfg_toml), "--debug-stability", "--dry-run"])
         assert result.exit_code == 0
-        assert mock_impl.call_args.kwargs["debug_stability"] is True
+        assert mock_impl.call_args.args[-1].debug_stability is True
 
     def test_run_general_exception_exits_1(self):
         runner = CliRunner()
@@ -786,7 +739,7 @@ class TestClickCommandPaths:
         runner = CliRunner()
         out_path = tmp_path / "regime_map_analysis" / "regime_map.png"
         with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", return_value=out_path):
-            result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
+            result = runner.invoke(cli, ["regime-map", str(dirs_txt)], env={"COLUMNS": "200", "LINES": "50"})
         assert result.exit_code == 0
         assert "regime_map.png" in result.output
 
@@ -1214,9 +1167,10 @@ def test_validate_run_dir_has_config_missing_file_raises(tmp_path):
 
     run_dir = tmp_path / "run"
     run_dir.mkdir()
+    run_dir_str = str(run_dir)
 
     with pytest.raises(FileNotFoundError, match=r"No config\.toml found"):
-        _validate_run_dir_has_config(str(run_dir))
+        _ = _validate_run_dir_has_config(run_dir_str)
 
 
 def _make_config(results_dir: str, tau: float = 0.8) -> SimulationConfig:
@@ -2047,17 +2001,10 @@ class TestRunImplAdditional:
     def test_list_analysis_returns_false(self):
         result = _run_impl(
             config_path=None,
-            no_prompt=True,
-            dry_run=False,
-            list_operators=False,
-            list_analysis=True,
-            max_workers=None,
-            fail_fast=False,
             overrides=(),
-            overview=False,
-            debug_wetting=False,
-            init_wetting=False,
+            max_workers=None,
             init_dir=None,
+            flags=RunFlags(no_prompt=True, list_analysis=True),
         )
         assert result is False
 
@@ -2082,18 +2029,10 @@ class TestRunImplAdditional:
         ):
             result = _run_impl(
                 config_path=str(cfg_toml),
-                no_prompt=True,
-                dry_run=False,
-                list_operators=False,
-                list_analysis=False,
-                max_workers=None,
-                fail_fast=False,
                 overrides=(),
-                overview=False,
-                debug_wetting=False,
-                init_wetting=False,
+                max_workers=None,
                 init_dir=None,
-                run_compare=True,
+                flags=RunFlags(no_prompt=True, run_compare=True),
             )
         assert result is True
         assert compare_called["n"] == 1
@@ -2109,17 +2048,10 @@ class TestRunImplAdditional:
         with _patch("tud_lbm.cli.cli._run_two_phase_wetting_init", _fake_wetting):
             result = _run_impl(
                 config_path=str(cfg_toml),
-                no_prompt=True,
-                dry_run=False,
-                list_operators=False,
-                list_analysis=False,
-                max_workers=None,
-                fail_fast=False,
                 overrides=(),
-                overview=False,
-                debug_wetting=False,
-                init_wetting=True,
+                max_workers=None,
                 init_dir=None,
+                flags=RunFlags(no_prompt=True, init_wetting=True),
             )
         assert called["n"] == 1
         assert result is False

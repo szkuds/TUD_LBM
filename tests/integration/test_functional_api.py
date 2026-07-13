@@ -3,7 +3,7 @@
 - ``operators.step`` exports pure functions (no ``Operators`` bundle).
 - ``runner.run`` works without legacy classes.
 - ``config.from_dict`` and ``config.DictAdapter`` work end-to-end.
-- Top-level ``src/__init__`` re-exports the correct symbols.
+- Top-level ``tud_lbm/__init__`` re-exports the correct symbols.
 - No banned legacy patterns leak into the new modules.
 - End-to-end: config → build_setup → init_state → run.
 """

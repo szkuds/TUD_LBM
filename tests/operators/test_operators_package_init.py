@@ -20,12 +20,12 @@ def test_load_all_imports_only_subpackages(monkeypatch):
 
 
 def test_plotting_public_exports_alias_io_plotting_symbols():
+    from tud_lbm.io.plotting import Animator
     from tud_lbm.io.plotting import Animator as IOAnimator
+    from tud_lbm.io.plotting import FigureBuilder
     from tud_lbm.io.plotting import FigureBuilder as IOFigureBuilder
+    from tud_lbm.io.plotting import PlotOperator
     from tud_lbm.io.plotting import PlotOperator as IOPlotOperator
-    from tud_lbm.plotting import Animator
-    from tud_lbm.plotting import FigureBuilder
-    from tud_lbm.plotting import PlotOperator
 
     assert Animator is IOAnimator
     assert FigureBuilder is IOFigureBuilder

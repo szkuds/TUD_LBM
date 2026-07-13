@@ -1,7 +1,7 @@
 """Configuration file readers.
 
 Internal module for loading simulation configurations.
-Use tud_lbm.readers for the public API.
+Use tud_lbm.io.readers for the public API.
 
 Modules:
     - DictAdapter       : Load from Python dictionaries

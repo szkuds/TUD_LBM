@@ -207,8 +207,8 @@ def run(
 
     # ── Streaming I/O mode ───────────────────────────────────────
     if io_handler is not None:
-        from tud_lbm.pipeline.io_callbacks import _state_to_numpy
-        from tud_lbm.pipeline.io_callbacks import make_save_callback
+        from tud_lbm.io.callbacks import _state_to_numpy
+        from tud_lbm.io.callbacks import make_save_callback
 
         do_save = make_save_callback(
             io_handler,

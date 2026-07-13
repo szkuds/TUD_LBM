@@ -79,3 +79,4 @@ venv.bak/
 /sonar-scanner-cli-4.8.0.2856-linux.zip
 /.claude/
 /scripts/
+/.mcp.json
