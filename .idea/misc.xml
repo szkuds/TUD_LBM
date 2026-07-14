@@ -4,10 +4,4 @@
     <option name="sdkName" value="Python 3.14 (TUD_LBM)" />
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.14 (TUD_LBM)" project-jdk-type="Python SDK" />
-  <component name="RuffConfiguration">
-    <option name="enabled" value="true" />
-  </component>
-  <component name="TyConfiguration">
-    <option name="enabled" value="true" />
-  </component>
 </project>
