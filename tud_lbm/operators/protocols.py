@@ -150,7 +150,7 @@ class MacroscopicOperator(Protocol):
 
     Signature::
 
-        def compute_macroscopic(f, lattice, force=None) -> (rho, u) or (rho, u, force)
+        def compute_macroscopic(f, lattice, force=None) -> (rho, u, force)
     """
 
     def __call__(

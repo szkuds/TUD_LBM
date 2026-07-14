@@ -105,8 +105,9 @@ def test_chemical_step_hysteresis_operator_is_registered():
 
 def test_get_hysteresis_window_raises_when_chemical_step_config_none():
     setup = SimpleNamespace(config=SimpleNamespace(chemical_step_config=None))
+    cll = jnp.array(20.0)
     with pytest.raises(TypeError, match="chemical_step_config is required"):
-        _get_hysteresis_window_chemical_step(setup, jnp.array(20.0))  # ty: ignore[invalid-argument-type]
+        _get_hysteresis_window_chemical_step(setup, cll)  # ty: ignore[invalid-argument-type]
 
 
 def test_update_wetting_state_chemical_step_raises_when_multiphase_params_none():
@@ -126,10 +127,11 @@ def test_update_wetting_state_chemical_step_raises_when_multiphase_params_none()
         cll_left=jnp.array(0.0),
         cll_right=jnp.array(0.0),
     )
+    rho = jnp.ones((4, 4, 1, 1, 1))
     with pytest.raises(TypeError, match="multiphase_params is required"):
         update_wetting_state_chemical_step(
             dummy_wetting,
-            jnp.ones((4, 4, 1, 1, 1)),
+            rho,
             setup,  # ty: ignore[invalid-argument-type]
             trial_step_fn=lambda _p: (jnp.array(0.0), jnp.array(0.0)),
         )

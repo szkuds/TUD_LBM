@@ -170,6 +170,22 @@ def _clean_dir_label(dir_name: str) -> str:
     return name.replace("_", " ").capitalize()
 
 
+def _scatter_series(
+    ax: matplotlib.axes.Axes,
+    df: pd.DataFrame,
+    x_col: str,
+    y_col: str,
+    *,
+    color: str,
+    marker: str,
+    alpha: float,
+    label: str,
+) -> None:
+    """Scatter one x/y series when both columns exist in *df*."""
+    if x_col in df.columns and y_col in df.columns:
+        ax.scatter(df[x_col], df[y_col], marker=marker, s=15, color=color, alpha=alpha, label=label)
+
+
 def _plot_comparison_entry(
     ax: matplotlib.axes.Axes,
     df: pd.DataFrame,
@@ -180,24 +196,15 @@ def _plot_comparison_entry(
     label: str,
 ) -> None:
     """Plot one entry from _COMPARISON_PLOT_CONFIGS for a single run."""
-    if "y_pair" in pc:
-        y1, y2 = pc["y_pair"]
-        l1, l2 = pc["pair_labels"]
-        if "x_pair" in pc:
-            x1_col, x2_col = pc["x_pair"]
-            if x1_col in df.columns and y1 in df.columns:
-                ax.scatter(df[x1_col], df[y1], marker=marker, s=15, color=color, alpha=1.0, label=f"{label} ({l1})")
-            if x2_col in df.columns and y2 in df.columns:
-                ax.scatter(df[x2_col], df[y2], marker=marker, s=15, color=color, alpha=0.5, label=f"{label} ({l2})")
-        else:
-            if y1 in df.columns:
-                ax.scatter(df[x_col], df[y1], marker=marker, s=15, color=color, alpha=1.0, label=f"{label} ({l1})")
-            if y2 in df.columns:
-                ax.scatter(df[x_col], df[y2], marker=marker, s=15, color=color, alpha=0.5, label=f"{label} ({l2})")
-    else:
-        y_col = pc["y"]
-        if y_col in df.columns:
-            ax.scatter(df[x_col], df[y_col], marker=marker, s=15, color=color, label=label)
+    if "y_pair" not in pc:
+        _scatter_series(ax, df, x_col, pc["y"], color=color, marker=marker, alpha=1.0, label=label)
+        return
+
+    y1, y2 = pc["y_pair"]
+    l1, l2 = pc["pair_labels"]
+    x1_col, x2_col = pc.get("x_pair", (x_col, x_col))
+    _scatter_series(ax, df, x1_col, y1, color=color, marker=marker, alpha=1.0, label=f"{label} ({l1})")
+    _scatter_series(ax, df, x2_col, y2, color=color, marker=marker, alpha=0.5, label=f"{label} ({l2})")
 
 
 def compare_runs(parent_dir: str | Path) -> None:
@@ -213,13 +220,16 @@ def compare_runs(parent_dir: str | Path) -> None:
     import matplotlib.pyplot as plt
     from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
 
-    parent_dir = Path(parent_dir)
+    parent_dir = Path(parent_dir).resolve()
     entries = _load_comparison_entries(parent_dir)
     if not entries:
         print("No processed simulation data found for comparison.")
         return
 
-    out_dir = parent_dir / _COMPARISON_DIR
+    out_dir = (parent_dir / _COMPARISON_DIR).resolve()
+    if out_dir.parent != parent_dir:
+        msg = f"Comparison output directory escapes {parent_dir}: {out_dir}"
+        raise ValueError(msg)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     colors = list(TABLEAU_COLORS.values())

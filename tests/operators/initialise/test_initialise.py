@@ -67,8 +67,9 @@ class TestInitStandard:
         np.testing.assert_allclose(np.array(rho), 2.5, atol=1e-12)
 
     def test_legacy_signature_rejected(self, lattice):
+        init_fn = build_initialise_fn("standard")
         with pytest.raises(TypeError):
-            build_initialise_fn("standard")(NX, NY, NZ, lattice)  # ty: ignore[invalid-argument-type, too-many-positional-arguments]
+            init_fn(NX, NY, NZ, lattice)  # ty: ignore[invalid-argument-type, too-many-positional-arguments]
 
     def test_jittable(self, lattice):
         from functools import partial

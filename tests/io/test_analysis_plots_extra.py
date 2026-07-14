@@ -29,10 +29,12 @@ def test_parse_timestep_invalid_returns_none():
 
 
 def test_extract_rho_and_u_raise_on_unsupported_ndim():
+    bad_rho = np.ones((2,))
+    bad_u = np.ones((2, 2))
     with pytest.raises(ValueError, match="Unsupported rho shape"):
-        _extract_rho_2d(np.ones((2,)))
+        _extract_rho_2d(bad_rho)
     with pytest.raises(ValueError, match="Unsupported u shape"):
-        _extract_u_mag_2d(np.ones((2, 2)))
+        _extract_u_mag_2d(bad_u)
 
 
 def test_load_timesteps_skips_invalid_names_and_missing_keys(tmp_path: Path):

@@ -420,9 +420,9 @@ class TestBuildMultiphaseParams:
 
         base = {"eos": "double-well", "kappa": 0.01, "rho_l": 1.0, "rho_v": 0.1, "interface_width": 4}
         for field in ("kappa", "rho_l", "rho_v", "interface_width"):
-            kwargs = {**base, field: None}
+            cfg = SimpleNamespace(**{**base, field: None})
             with pytest.raises(ValueError, match=f"'{field}' is required"):
-                build_multiphase_params(SimpleNamespace(**kwargs))  # ty: ignore[invalid-argument-type]
+                build_multiphase_params(cfg)  # ty: ignore[invalid-argument-type]
 
     def test_builds_correctly_with_valid_config(self):
         from types import SimpleNamespace

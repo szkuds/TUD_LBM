@@ -11,6 +11,7 @@ from tud_lbm.io.plotting._analysis_common import _set_empty_state
 from tud_lbm.io.plotting.base import AnalysisPlot
 from tud_lbm.io.plotting.ca_theta_plot import _CA_THETA_TITLE
 from tud_lbm.io.plotting.ca_theta_plot import _LABEL_X_AVG_NORM
+from tud_lbm.io.plotting.ca_theta_plot import DualAxisStyle
 from tud_lbm.io.plotting.ca_theta_plot import _compute_ca_theta_arrays
 from tud_lbm.io.plotting.ca_theta_plot import _draw_dual_axis_on_ax
 from tud_lbm.io.plotting.density import DensityPlotOperator
@@ -42,7 +43,7 @@ _ROW_GAP_IN = 0.3
 
 def _strip_panel_chrome(ax: matplotlib.axes.Axes) -> None:
     """Remove a snapshot panel's colorbar, axis labels, ticks, and title."""
-    for im in list(ax.images):
+    for im in ax.images:
         if im.colorbar is not None:
             im.colorbar.remove()
     ax.set_xlabel("")
@@ -198,10 +199,12 @@ class SnapshotOverviewPlot(AnalysisPlot):
             data["theta_trailing"],
             data["theta_leading"],
             x_label=_LABEL_X_AVG_NORM,
-            legend_fontsize=DEFAULT_STYLE.panel_legend_fontsize * 2,
-            legend_outside=True,
-            axis_label_fontsize=2 * DEFAULT_STYLE.axis_label_fontsize,
-            tick_label_fontsize=2 * DEFAULT_STYLE.tick_label_fontsize,
+            style=DualAxisStyle(
+                legend_fontsize=DEFAULT_STYLE.panel_legend_fontsize * 2,
+                legend_outside=True,
+                axis_label_fontsize=2 * DEFAULT_STYLE.axis_label_fontsize,
+                tick_label_fontsize=2 * DEFAULT_STYLE.tick_label_fontsize,
+            ),
         )
         _move_legend_left_center(ax_main)
         snapshot_gs = outer_gs[2].subgridspec(nrows, ncols, hspace=0.15, wspace=0.15)

@@ -18,7 +18,7 @@ def compute_macroscopic(
     f: jnp.ndarray,
     lattice: Lattice,
     force: jnp.ndarray | None = None,
-) -> tuple[jnp.ndarray, jnp.ndarray] | tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None]:
     """Compute density and velocity from population distributions.
 
     Args:
@@ -29,20 +29,19 @@ def compute_macroscopic(
             ``u_eq = u + force / (2 rho)``.
 
     Returns:
-        ``(rho, u)`` when *force* is ``None``, or
-        ``(rho, u_eq, force)`` when *force* is given.
+        ``(rho, u, force)``; *force* is echoed back (``None`` when not given)
+        so the return shape matches the multiphase operator.
 
         * ``rho``: shape ``(nx, ny, nz, 1, 1)``
-        * ``u`` / ``u_eq``: shape ``(nx, ny, nz, 1, 2)``
+        * ``u``: shape ``(nx, ny, nz, 1, 2)``; force-corrected when *force* is given
     """
     # Density — zeroth moment. Sum over q
-    rho = jnp.sum(f, axis=-2, keepdims=True)  # (nx, ny, nz, 1, 1)
+    rho: jnp.ndarray = jnp.sum(f, axis=-2, keepdims=True)  # (nx, ny, nz, 1, 1)
 
     # Momentum — first moment
-    u = jnp.sum(f * lattice.c, axis=-2, keepdims=True) / rho  # (nx, ny, nz, 1, d)
+    u: jnp.ndarray = jnp.sum(f * lattice.c, axis=-2, keepdims=True) / rho  # (nx, ny, nz, 1, d)
 
     if force is not None:
-        u_eq = u + force / (2.0 * rho)
-        return rho, u_eq, force
+        u: jnp.ndarray = u + force / (2.0 * rho)
 
-    return rho, u
+    return rho, u, force

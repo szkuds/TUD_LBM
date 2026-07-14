@@ -228,7 +228,7 @@ def test_ca_theta_vs_time_operator_compute(tmp_path: Path):
     op = CaThetaVsTimePlot(config=_wetting_config())
     result = op.compute(sorted(tmp_path.glob("timestep_*.npz")))
 
-    assert {
+    assert set(result.keys()) == {
         "theta_trailing",
         "theta_leading",
         "ca_trailing",
@@ -236,7 +236,7 @@ def test_ca_theta_vs_time_operator_compute(tmp_path: Path):
         "x_time",
         "x_pos",
         "timesteps",
-    } == set(result.keys())
+    }
     assert len(result["theta_trailing"]) == 2
     assert len(result["x_time"]) == 2
     assert len(result["x_pos"]) == 0

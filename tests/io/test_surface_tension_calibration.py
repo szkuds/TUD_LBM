@@ -43,14 +43,15 @@ def test_pressure_jump_centre_minus_corners():
     assert st._pressure_jump(pressure, width=4) == pytest.approx(0.0)
 
 
-def test_cache_round_trip(tmp_path):
+def test_cache_round_trip(tmp_path, monkeypatch):
     config = _stub_config()
     path = tmp_path / st._CACHE_FILENAME
+    monkeypatch.setattr(st, "_SHARED_CACHE_PATH", path)
     key = st._cache_key(config)
     radii = np.array([1.0, 2.0])
     delta_p = np.array([0.5, 0.25])
 
-    st._store_cache(path, key, radii, delta_p, sigma=0.5)
+    st._store_cache(key, radii, delta_p, sigma=0.5)
 
     stored = st._load_cache(path)
     assert key in stored

@@ -336,17 +336,19 @@ class TestTomlAdapterErrors:
     """Tests for error handling in the adapter."""
 
     def test_file_not_found(self):
+        adapter = TomlAdapter()
         with pytest.raises(FileNotFoundError, match="Config file not found"):
-            TomlAdapter().load("/nonexistent/path/app_setup.toml")
+            adapter.load("/nonexistent/path/app_setup.toml")
 
     def test_missing_simulation_table(self, tmp_path):
         p = tmp_path / "empty.toml"
         p.write_text("[output]\nresults_dir = '/tmp'\n")
+        adapter = TomlAdapter()
         with pytest.raises(
             ValueError,
             match="missing the required 'simulation_type' section",
         ):
-            TomlAdapter().load(str(p))
+            adapter.load(str(p))
 
     def test_unknown_simulation_type(self, tmp_path):
         content = textwrap.dedent("""\
@@ -357,8 +359,9 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_type.toml"
         p.write_text(content)
+        adapter = TomlAdapter()
         with pytest.raises(ValueError, match="Unknown simulation type"):
-            TomlAdapter().load(str(p))
+            adapter.load(str(p))
 
     def test_unknown_force_type_raises_key_error(self, tmp_path):
         content = textwrap.dedent("""\
@@ -379,8 +382,9 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_force.toml"
         p.write_text(content)
+        adapter = TomlAdapter()
         with pytest.raises(KeyError, match="Unknown force type"):
-            TomlAdapter().load(str(p))
+            adapter.load(str(p))
 
     def test_invalid_tau_raises_validation_error(self, tmp_path):
         content = textwrap.dedent("""\
@@ -391,8 +395,9 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_tau.toml"
         p.write_text(content)
+        adapter = TomlAdapter()
         with pytest.raises(ValueError, match=r"tau must be > 0\.5"):
-            TomlAdapter().load(str(p))
+            adapter.load(str(p))
 
 
 # ── ConfigAdapter ABC ────────────────────────────────────────────────
@@ -478,8 +483,9 @@ class TestTomlAdapterSave:
 
         monkeypatch.setattr(mod, "tomli_w", None)
         config = TomlAdapter().load(simple_toml_file)
+        adapter = TomlAdapter()
         with pytest.raises(ImportError, match="tomli_w is required"):
-            TomlAdapter().save(config, "/tmp/ignored.toml")
+            adapter.save(config, "/tmp/ignored.toml")
 
 
 # ── _validate_and_process_forces: TypeError branch ───────────────────
