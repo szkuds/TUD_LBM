@@ -94,7 +94,7 @@ def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> 
         )
         radii, delta_p = _measure_pressure_jumps(config)
         sigma = _fit_sigma(radii, delta_p)
-        _store_cache(cache_path, key, radii, delta_p, sigma)
+        _store_cache(key, radii, delta_p, sigma)
         console.print(f"[bold green]Surface tension calibrated: σ = {sigma:.6g}[/bold green]")
 
     _save_plot(run_dir / _PLOT_FILENAME, radii, delta_p, sigma)
@@ -252,7 +252,11 @@ def _load_cache(path: Path) -> dict:
         return {}
 
 
-def _store_cache(path: Path, key: str, radii: np.ndarray, delta_p: np.ndarray, sigma: float) -> None:
+def _store_cache(key: str, radii: np.ndarray, delta_p: np.ndarray, sigma: float) -> None:
+    # The cache is only ever written at the module-constant location (derived
+    # from __file__, never from config or CLI input), so no user-controlled
+    # data can reach this filesystem write.
+    path = _cache_path().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     cache = _load_cache(path)
     cache[key] = {
@@ -261,6 +265,9 @@ def _store_cache(path: Path, key: str, radii: np.ndarray, delta_p: np.ndarray, s
         "delta_p": [float(x) for x in delta_p],
     }
     tmp = path.with_name(path.name + ".tmp")
+    if tmp.resolve().parent != path.parent:
+        msg = f"Cache temp file escapes the cache directory: {tmp}"
+        raise ValueError(msg)
     tmp.write_text(json.dumps(cache, indent=2), encoding="utf-8")
     tmp.replace(path)  # atomic; concurrent sweep workers never see a partial file
 

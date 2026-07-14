@@ -35,11 +35,7 @@ def step_single_phase(setup: SimulationSetup, state: State) -> State:
     force_ext, state = compute_total_force_ext(setup, state, setup.forces)
 
     # 2. Macroscopic fields
-    if force_ext is not None:
-        rho, u, force_tot = setup.macroscopic_fn(state.f, setup.lattice, force=force_ext)
-    else:
-        rho, u = setup.macroscopic_fn(state.f, setup.lattice)
-        force_tot = None
+    rho, u, force_tot = setup.macroscopic_fn(state.f, setup.lattice, force=force_ext)
 
     # 3-6. Equilibrium → collision → streaming → BCs (shared)
     new_state = _apply_common_step(setup, state, rho, u, force_tot)

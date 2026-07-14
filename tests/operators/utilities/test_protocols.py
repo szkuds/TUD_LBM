@@ -140,7 +140,7 @@ class TestMacroscopicProtocol:
 
         f, rho_expected, u_expected = test_state
 
-        rho, u = macroscopic(f, lattice_d2q9)  # ty: ignore[invalid-assignment]
+        rho, u, _ = macroscopic(f, lattice_d2q9)  # ty: ignore[invalid-assignment]
         assert rho.shape == rho_expected.shape
         assert u.shape == u_expected.shape
 

@@ -1,6 +1,7 @@
 """Ca–θ plotting utilities for leading and trailing contact lines."""
 
 from __future__ import annotations
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
@@ -22,6 +23,7 @@ from tud_lbm.io.plotting.simulation_csv import _sigma_lg
 from tud_lbm.registry import comparison_operator
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     import matplotlib.axes
     import matplotlib.figure
     from tud_lbm.config import SimulationConfig
@@ -41,6 +43,19 @@ _COLOR_LEADING_THETA = "coral"
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class DualAxisStyle:
+    """Legend placement and font sizes for the dual-axis Ca/θ plot."""
+
+    legend_fontsize: int = DEFAULT_STYLE.legend_fontsize
+    legend_outside: bool = False
+    axis_label_fontsize: int = DEFAULT_STYLE.axis_label_fontsize
+    tick_label_fontsize: int = DEFAULT_STYLE.tick_label_fontsize
+
+
+_DEFAULT_DUAL_AXIS_STYLE = DualAxisStyle()
+
+
 def _draw_dual_axis_on_ax(
     ax1: matplotlib.axes.Axes,
     x_data: np.ndarray,
@@ -53,10 +68,7 @@ def _draw_dual_axis_on_ax(
     ca_limits: tuple[float, float] | None = None,
     angle_limits: tuple[float, float] | None = None,
     x_limits: tuple[float, float] | None = None,
-    legend_fontsize: int = DEFAULT_STYLE.legend_fontsize,
-    legend_outside: bool = False,
-    axis_label_fontsize: int = DEFAULT_STYLE.axis_label_fontsize,
-    tick_label_fontsize: int = DEFAULT_STYLE.tick_label_fontsize,
+    style: DualAxisStyle = _DEFAULT_DUAL_AXIS_STYLE,
 ) -> matplotlib.axes.Axes:
     """Draw dual-axis Ca/θ scatter onto an existing primary axis.
 
@@ -73,10 +85,7 @@ def _draw_dual_axis_on_ax(
         ca_limits:       ``(y_min, y_max)`` for the Ca axis.
         angle_limits:    ``(y_min, y_max)`` for the θ axis.
         x_limits:        ``(x_min, x_max)`` for the shared x-axis.
-        legend_fontsize: Font size for legend entries.
-        legend_outside:  Place legend below axes when ``True``; inside when ``False``.
-        axis_label_fontsize: Font size for the x/y axis labels.
-        tick_label_fontsize: Font size for the tick labels.
+        style:           Legend placement and font sizes (:class:`DualAxisStyle`).
 
     Returns:
         The twin axes object (right y = θ).
@@ -100,10 +109,10 @@ def _draw_dual_axis_on_ax(
         edgecolors=_COLOR_LEADING_CA,
         linewidths=1.5,
     )
-    ax1.set_xlabel(x_label, fontsize=axis_label_fontsize)
-    ax1.set_ylabel("Ca", color="black", fontsize=axis_label_fontsize)
+    ax1.set_xlabel(x_label, fontsize=style.axis_label_fontsize)
+    ax1.set_ylabel("Ca", color="black", fontsize=style.axis_label_fontsize)
     ax1.tick_params(axis="y", labelcolor="black")
-    ax1.tick_params(axis="both", labelsize=tick_label_fontsize)
+    ax1.tick_params(axis="both", labelsize=style.tick_label_fontsize)
     ax1.grid(False)
     if ca_limits is not None:
         ax1.set_ylim(ca_limits)
@@ -128,26 +137,26 @@ def _draw_dual_axis_on_ax(
         color=_COLOR_LEADING_THETA,
         label="Leading edge (θ)",
     )
-    ax2.set_ylabel(_LABEL_THETA, color="black", fontsize=axis_label_fontsize)
+    ax2.set_ylabel(_LABEL_THETA, color="black", fontsize=style.axis_label_fontsize)
     ax2.tick_params(axis="y", labelcolor="black")
-    ax2.tick_params(axis="both", labelsize=tick_label_fontsize)
+    ax2.tick_params(axis="both", labelsize=style.tick_label_fontsize)
     if angle_limits is not None:
         ax2.set_ylim(angle_limits)
 
     # Combine legends from both axes onto ax1
     h1, l1 = ax1.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
-    if legend_outside:
+    if style.legend_outside:
         ax1.legend(
             h1 + h2,
             l1 + l2,
             loc="upper center",
             bbox_to_anchor=(0.5, -0.02),
             ncols=2,
-            fontsize=legend_fontsize,
+            fontsize=style.legend_fontsize,
         )
     else:
-        ax1.legend(h1 + h2, l1 + l2, loc="best", fontsize=legend_fontsize)
+        ax1.legend(h1 + h2, l1 + l2, loc="best", fontsize=style.legend_fontsize)
 
     return ax2
 
@@ -368,6 +377,46 @@ _LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
 _LABEL_X_AVG_NORM = r"$X_{\mathrm{avg}}/R_0$"
 
 
+def _resolve_pair(
+    left: float | None,
+    right: float | None,
+    rho_2d: np.ndarray | None,
+    rho_mean: float,
+    from_rho: Callable[[np.ndarray, float], tuple[float, float]],
+) -> tuple[float, float]:
+    """Return ``(left, right)``, deriving missing values from ``rho_2d`` via *from_rho*."""
+    if left is not None and right is not None:
+        return left, right
+    if rho_2d is not None:
+        return from_rho(rho_2d, rho_mean)
+    return 0.0, 0.0
+
+
+def _read_snapshot_metrics(
+    fp: Path,
+    rho_mean: float,
+    offset_x: float,
+    *,
+    compute_x_pos: bool,
+) -> tuple[int, float, float, float, float, float] | None:
+    """Read ``(timestep, ca_l, ca_r, cll_l, cll_r, x_pos)`` from one snapshot file.
+
+    Metrics missing from the file are derived from the density field when
+    present, else 0.0. Returns ``None`` when the filename has no timestep.
+    """
+    it = _parse_timestep(fp.stem)
+    if it is None:
+        return None
+    with np.load(fp) as raw:
+        ca_l, ca_r, cll_l, cll_r = _extract_optional_contact_metrics(raw)
+        needs_rho = ca_l is None or ca_r is None or cll_l is None or cll_r is None or compute_x_pos
+        rho_2d = _extract_rho_2d(np.asarray(raw["rho"])) if needs_rho and "rho" in raw else None
+        ca_l, ca_r = _resolve_pair(ca_l, ca_r, rho_2d, rho_mean, _ca_from_rho)
+        cll_l, cll_r = _resolve_pair(cll_l, cll_r, rho_2d, rho_mean, _cll_from_rho)
+        x_pos_val = _avg_x_location(rho_2d, rho_mean, offset_x) if rho_2d is not None else 0.0
+    return it, float(ca_l), float(ca_r), float(cll_l), float(cll_r), x_pos_val
+
+
 def _compute_ca_theta_arrays(
     files: list[Path],
     config: SimulationConfig,
@@ -409,36 +458,17 @@ def _compute_ca_theta_arrays(
     offset_x = step_x if step_x is not None else float(config.grid_shape[0] // 2)
 
     for fp in sorted_files:
-        it = _parse_timestep(fp.stem)
-        if it is None:
+        metrics = _read_snapshot_metrics(fp, rho_mean, offset_x, compute_x_pos=compute_x_pos)
+        if metrics is None:
             continue
-        with np.load(fp) as raw:
-            ca_l, ca_r, cll_l, cll_r = _extract_optional_contact_metrics(raw)
-            rho_2d: np.ndarray | None = None
-            if ca_l is None or ca_r is None or (compute_x_pos and "rho" in raw):
-                rho_2d = _extract_rho_2d(np.asarray(raw["rho"]))
-            if (ca_l is None or ca_r is None) and rho_2d is not None:
-                ca_l, ca_r = _ca_from_rho(rho_2d, rho_mean)
-            elif ca_l is None or ca_r is None:
-                ca_l, ca_r = 0.0, 0.0
-            if cll_l is None or cll_r is None:
-                if rho_2d is None and "rho" in raw:
-                    rho_2d = _extract_rho_2d(np.asarray(raw["rho"]))
-                if rho_2d is not None:
-                    cll_l, cll_r = _cll_from_rho(rho_2d, rho_mean)
-                else:
-                    cll_l, cll_r = 0.0, 0.0
-            if compute_x_pos:
-                if rho_2d is None and "rho" in raw:
-                    rho_2d = _extract_rho_2d(np.asarray(raw["rho"]))
-                x_pos_val = _avg_x_location(rho_2d, rho_mean, offset_x) if rho_2d is not None else 0.0
-                x_pos_list.append(x_pos_val)
-
+        it, ca_l, ca_r, cll_l, cll_r, x_pos_val = metrics
         timesteps.append(it)
         ca_left_list.append(ca_l)
         ca_right_list.append(ca_r)
-        cll_left_list.append(float(cll_l))
-        cll_right_list.append(float(cll_r))
+        cll_left_list.append(cll_l)
+        cll_right_list.append(cll_r)
+        if compute_x_pos:
+            x_pos_list.append(x_pos_val)
 
     if not ca_left_list:
         return _empty
@@ -506,8 +536,7 @@ class CaThetaVsTimePlot(AnalysisPlot):
             precomputed["theta_trailing"],
             precomputed["theta_leading"],
             x_label=_LABEL_IT_NORM,
-            legend_fontsize=DEFAULT_STYLE.panel_legend_fontsize,
-            legend_outside=True,
+            style=DualAxisStyle(legend_fontsize=DEFAULT_STYLE.panel_legend_fontsize, legend_outside=True),
         )
 
 
@@ -542,6 +571,5 @@ class CaThetaVsXPlot(AnalysisPlot):
             precomputed["theta_trailing"],
             precomputed["theta_leading"],
             x_label=_LABEL_X_AVG_NORM,
-            legend_fontsize=DEFAULT_STYLE.panel_legend_fontsize,
-            legend_outside=True,
+            style=DualAxisStyle(legend_fontsize=DEFAULT_STYLE.panel_legend_fontsize, legend_outside=True),
         )

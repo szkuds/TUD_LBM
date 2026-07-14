@@ -99,6 +99,10 @@ class FigureBuilder:
                 # Non-wetting default: all registered field plot operators.
                 requested = list(get_operators("plotting").keys())
 
+        self._resolve_operators(requested)
+
+    def _resolve_operators(self, requested: list[str]) -> None:
+        """Instantiate the requested field/analysis operators into their lists."""
         all_ops = get_operators("plotting")
         all_analysis_ops = get_operators("comparison")
         for name in requested:

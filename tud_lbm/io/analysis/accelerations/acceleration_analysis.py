@@ -24,6 +24,9 @@ _MIN_POINTS_FOR_SECOND_DIFFERENCE = 3
 _DEFAULT_SAVGOL_WINDOW = 5
 _DEFAULT_SAVGOL_POLYORDER = 2
 
+_CA_COLOR = "tab:blue"
+_ACCEL_COLOR = "tab:orange"
+
 Smoothing = Literal["raw", "savgol"]
 
 
@@ -102,15 +105,15 @@ def save_diagnostic_plot(result: AccelerationResult, window: tuple[int, int] | N
     import matplotlib.pyplot as plt
 
     fig, ax_ca = plt.subplots(figsize=DEFAULT_STYLE.analysis_figsize)
-    ax_ca.plot(result.iteration, result.ca, color="tab:blue", label="Ca")
+    ax_ca.plot(result.iteration, result.ca, color=_CA_COLOR, label="Ca")
     ax_ca.set_xlabel("Normalised iteration", fontsize=DEFAULT_STYLE.axis_label_fontsize)
-    ax_ca.set_ylabel("Ca", color="tab:blue", fontsize=DEFAULT_STYLE.axis_label_fontsize)
-    ax_ca.tick_params(axis="y", labelcolor="tab:blue")
+    ax_ca.set_ylabel("Ca", color=_CA_COLOR, fontsize=DEFAULT_STYLE.axis_label_fontsize)
+    ax_ca.tick_params(axis="y", labelcolor=_CA_COLOR)
 
     ax_accel = ax_ca.twinx()
-    ax_accel.plot(result.iteration, result.accel, color="tab:orange", alpha=0.6, label="accel")
-    ax_accel.set_ylabel("Acceleration", color="tab:orange", fontsize=DEFAULT_STYLE.axis_label_fontsize)
-    ax_accel.tick_params(axis="y", labelcolor="tab:orange")
+    ax_accel.plot(result.iteration, result.accel, color=_ACCEL_COLOR, alpha=0.6, label="accel")
+    ax_accel.set_ylabel("Acceleration", color=_ACCEL_COLOR, fontsize=DEFAULT_STYLE.axis_label_fontsize)
+    ax_accel.tick_params(axis="y", labelcolor=_ACCEL_COLOR)
 
     if result.peak_accel_idx is not None:
         ax_accel.scatter(

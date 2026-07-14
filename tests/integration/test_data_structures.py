@@ -658,8 +658,9 @@ class TestBuildMultiphaseParams:
             rho_v: float = None  # ty: ignore[invalid-assignment]
             interface_width: int = 4
 
+        incomplete = Incomplete()
         with pytest.raises(ValueError, match="'rho_v' is required"):
-            build_multiphase_params(Incomplete())  # ty: ignore[invalid-argument-type]
+            build_multiphase_params(incomplete)  # ty: ignore[invalid-argument-type]
 
     def test_multiphase_params_is_pytree(self):
         from tud_lbm.operators.macroscopic import MultiphaseParams

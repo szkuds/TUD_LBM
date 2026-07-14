@@ -248,8 +248,9 @@ class TestAnalysisMain:
         assert exc.value.code == 1
 
     def test_main_exits_1_for_empty_directory(self, tmp_path):
+        path = str(tmp_path)
         with pytest.raises(SystemExit) as exc:
-            main(str(tmp_path))
+            main(path)
         assert exc.value.code == 1
 
     def test_main_exits_1_when_no_runs_produce_csv(self, tmp_path):
@@ -258,11 +259,12 @@ class TestAnalysisMain:
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
 
         cfg = _wetting_cfg(sim_type="single_phase")  # unsupported type → no CSV
+        path = str(tmp_path)
         with (
             patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg),
             pytest.raises(SystemExit) as exc,
         ):
-            main(str(tmp_path))
+            main(path)
 
         assert exc.value.code == 1
 
