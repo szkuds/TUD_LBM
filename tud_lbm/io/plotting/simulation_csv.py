@@ -253,6 +253,8 @@ def _finalize_csv_dataframe(
     df["Ca_cll_right"] = (df["v_right"] * nu) / sigma_lg
     df["Ca_cm"] = (df["v_cm"] * nu) / sigma_lg
     df["Ca_norm"] = df["Ca"] / math.sin(math.radians(incl_deg)) if incl_deg > 0 else df["Ca"]
+    length = 2.0 * r_zero
+    df["Re"] = (df["avg_u_x"] * length) / nu
     return df[
         [
             "iteration",
@@ -275,6 +277,7 @@ def _finalize_csv_dataframe(
             "Ca_cll_right",
             "Ca_cm",
             "Ca_norm",
+            "Re",
         ]
     ]
 

@@ -9,6 +9,8 @@ from tud_lbm.io.analysis.physical_parameters import compute_bond_numbers
 from tud_lbm.io.analysis.physical_parameters import compute_dimensionless_numbers
 from tud_lbm.io.analysis.physical_parameters import compute_ohnesorge_number
 from tud_lbm.io.analysis.physical_parameters.physical_parameters import _nu
+from tud_lbm.io.analysis.physical_parameters.physical_parameters import compute_archimedes_number
+from tud_lbm.io.analysis.physical_parameters.physical_parameters import compute_reynolds_number
 
 
 def _mp_config(**kwargs) -> SimulationConfig:
@@ -112,3 +114,14 @@ def test_format_rows_unchanged_after_refactor():
     assert "Bo (Bond number):" in text
     assert "Bo_perp (Bond normal):" in text
     assert "Bo_parallel (Bond tangential):" in text
+    assert "Ar (Archimedes number):" in text
+    assert "Re (Reynolds number):" in text
+
+
+def test_compute_reynolds_number_is_sqrt_of_archimedes():
+    drho, g_val, length, nu, rho_l = 0.5, 1e-6, 10.0, 0.1, 1.0
+
+    ar = compute_archimedes_number(drho, g_val, length, nu, rho_l)
+    re = compute_reynolds_number(drho, g_val, length, nu, rho_l)
+
+    assert math.isclose(re, math.sqrt(ar), rel_tol=1e-12)

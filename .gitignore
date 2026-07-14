@@ -80,3 +80,6 @@ venv.bak/
 /.claude/
 /scripts/
 /.mcp.json
+
+# Trunk (CI tool — not used in this project)
+.trunk/

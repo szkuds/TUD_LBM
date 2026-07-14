@@ -360,7 +360,7 @@ def test_build_simulation_csv_skips_empty_data_dir(tmp_path):
 
 
 def test_build_simulation_csv_writes_file(tmp_path):
-    pytest.importorskip("pandas")
+    pd = pytest.importorskip("pandas")
 
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -390,6 +390,13 @@ def test_build_simulation_csv_writes_file(tmp_path):
     assert result is not None
     assert result.exists()
     assert result.suffix == ".csv"
+
+    df = pd.read_csv(result)
+    assert "Re" in df.columns
+    nu = (0.8 - 0.5) / 3.0
+    r_zero = _resolve_r_zero(cfg).value
+    expected_re = df["avg_u_x"] * (2.0 * r_zero) / nu
+    np.testing.assert_allclose(df["Re"].to_numpy(), expected_re.to_numpy())
 
 
 # ---------------------------------------------------------------------------

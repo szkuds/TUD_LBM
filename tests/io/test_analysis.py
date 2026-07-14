@@ -93,6 +93,7 @@ def _minimal_csv_df() -> pd.DataFrame:
             "Ca_cll_right": [0.001, 0.002, 0.003],
             "Ca_cm": [0.001, 0.001, 0.001],
             "Ca_norm": [0.003, 0.006, 0.009],
+            "Re": [1.0, 1.2, 1.4],
         }
     )
 
@@ -112,7 +113,7 @@ class TestCompareRunsActual:
         assert "No processed simulation data found" in captured.out
 
     def test_compare_runs_creates_output_plots(self, tmp_path):
-        """compare_runs with one synthetic entry should produce 8 PNG files."""
+        """compare_runs with one synthetic entry should produce 11 PNG files."""
         pytest.importorskip("pandas")
 
         entries = [{"label": "test_run", "sort_key": 100, "data": _minimal_csv_df()}]
@@ -122,7 +123,7 @@ class TestCompareRunsActual:
         out_dir = tmp_path / "comparison_analysis"
         assert out_dir.exists()
         pngs = list(out_dir.glob("*.png"))
-        assert len(pngs) == 9
+        assert len(pngs) == 11
 
     def test_compare_runs_with_multiple_entries(self, tmp_path):
         """compare_runs should handle multiple runs without errors."""
@@ -136,7 +137,7 @@ class TestCompareRunsActual:
             compare_runs(tmp_path)
 
         pngs = list((tmp_path / "comparison_analysis").glob("*.png"))
-        assert len(pngs) == 9
+        assert len(pngs) == 11
 
     def test_compare_runs_skips_missing_x_column(self, tmp_path):
         """If x column is missing in a run's data, that run is skipped gracefully."""
