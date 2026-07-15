@@ -360,9 +360,10 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_type.toml"
         p.write_text(content)
+        p_str = str(p)
         adapter = TomlAdapter()
         with pytest.raises(ValueError, match="Unknown simulation type"):
-            adapter.load(str(p))
+            adapter.load(p_str)
 
     def test_unknown_force_type_raises_key_error(self, tmp_path):
         content = textwrap.dedent("""\
@@ -383,9 +384,10 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_force.toml"
         p.write_text(content)
+        p_str = str(p)
         adapter = TomlAdapter()
         with pytest.raises(KeyError, match="Unknown force type"):
-            adapter.load(str(p))
+            adapter.load(p_str)
 
     def test_invalid_tau_raises_validation_error(self, tmp_path):
         content = textwrap.dedent("""\
@@ -396,9 +398,10 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_tau.toml"
         p.write_text(content)
+        p_str = str(p)
         adapter = TomlAdapter()
         with pytest.raises(ValueError, match=r"tau must be > 0\.5"):
-            adapter.load(str(p))
+            adapter.load(p_str)
 
 
 # ── ConfigAdapter ABC ────────────────────────────────────────────────
