@@ -27,10 +27,9 @@ if TYPE_CHECKING:
 _CS2 = 1.0 / 3.0  # Speed of sound squared for D2Q9/D3Q19
 
 # Prefix remaps for analysing runs downloaded off DelftBlue: data stored under
-# /scratch/user_cluster/LBM/ on the cluster lives under /Users/local_user/ locally.
-_INIT_PATH_REMAPS: tuple[tuple[str, str], ...] = (
-    ("/scratch/sbszkudlarek/LBM/26_TUD_LBM/TUD_LBM_data/", "/Users/sbszkudlarek/TUD_LBM_data/DB/"),
-)
+# /scratch/<user>/LBM/26_TUD_LBM/ on the cluster lives under ~/ locally, so
+# .../TUD_LBM_data/<run>/ resolves to ~/TUD_LBM_data/<run>/.
+_INIT_PATH_REMAPS: tuple[tuple[str, str], ...] = (("/scratch/sbszkudlarek/LBM/26_TUD_LBM/", f"{Path.home()}/"),)
 
 
 def _resolve_npz_path(path: str | None) -> str | None:
