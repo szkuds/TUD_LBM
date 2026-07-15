@@ -65,6 +65,52 @@ def test_cache_key_changes_with_eos_params(tmp_path):
     assert st._cache_key(base) != st._cache_key(changed)
 
 
+def test_load_cache_drops_malformed_entries(tmp_path):
+    path = tmp_path / st._CACHE_FILENAME
+    good_entry = {"sigma": 0.5, "radii": [1.0], "delta_p": [0.5]}
+    good_key = st._cache_key(_stub_config())
+    none_field_key = st._cache_key(_stub_config(a_eos=None))
+    bad_entry_key = st._cache_key(_stub_config(kappa=0.02))
+    missing_field_key = st._cache_key(_stub_config(kappa=0.03))
+    raw = {
+        good_key: good_entry,
+        none_field_key: good_entry,
+        "not-json{": good_entry,
+        json.dumps({"unexpected": 1}): good_entry,
+        json.dumps(dict(json.loads(good_key), eos="unknown-eos")): good_entry,
+        json.dumps(dict(json.loads(good_key), kappa="0.1")): good_entry,
+        json.dumps(dict(json.loads(good_key), kappa=True)): good_entry,
+        bad_entry_key: "not a dict",
+        missing_field_key: {"radii": [1.0], "delta_p": [0.5]},
+    }
+    path.write_text(json.dumps(raw))
+
+    cache = st._load_cache(path)
+
+    assert set(cache) == {good_key, none_field_key}
+    assert cache[good_key] == good_entry
+
+
+def test_load_cache_rejects_non_dict_file(tmp_path):
+    path = tmp_path / st._CACHE_FILENAME
+    path.write_text(json.dumps([1, 2, 3]))
+    assert st._load_cache(path) == {}
+
+
+def test_store_cache_preserves_existing_valid_entries(tmp_path, monkeypatch):
+    path = tmp_path / st._CACHE_FILENAME
+    monkeypatch.setattr(st, "_SHARED_CACHE_PATH", path)
+    old_key = st._cache_key(_stub_config(kappa=0.5))
+    new_key = st._cache_key(_stub_config())
+
+    st._store_cache(old_key, np.array([1.0]), np.array([0.1]), sigma=0.7)
+    st._store_cache(new_key, np.array([2.0]), np.array([0.2]), sigma=0.9)
+
+    stored = st._load_cache(path)
+    assert stored[old_key]["sigma"] == 0.7
+    assert stored[new_key]["sigma"] == 0.9
+
+
 def test_calibrate_uses_cache_and_writes_plot(tmp_path, monkeypatch):
     config = _stub_config()
 

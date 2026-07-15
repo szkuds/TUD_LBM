@@ -32,6 +32,8 @@ if TYPE_CHECKING:
 # EOS whose surface tension must be measured rather than derived analytically.
 _EOS_REQUIRING_CALIBRATION = frozenset({"carnahan-starling"})
 
+_KNOWN_EOS = frozenset({"double-well", "carnahan-starling"})
+
 _N_RADII = 5
 _N_ITERATIONS = 200_000
 _PERIODIC_BC = {"top": "periodic", "bottom": "periodic", "left": "periodic", "right": "periodic"}
@@ -245,29 +247,79 @@ def _cache_key(config: SimulationConfig) -> str:
     return json.dumps(values, sort_keys=True)
 
 
+def _sanitize_key(raw_key: str) -> str | None:
+    """Rebuild a cache key from validated primitives, or reject it.
+
+    Valid keys are the canonical JSON produced by :func:`_cache_key`: exactly
+    the ``_CACHE_KEYS`` fields, with numeric or ``None`` values and an EOS
+    name from ``_KNOWN_EOS``. The returned key is re-serialized from coerced
+    primitives so nothing read from the cache file is echoed back verbatim.
+    """
+    try:
+        values = json.loads(raw_key)
+    except ValueError:
+        return None
+    if not isinstance(values, dict) or set(values) != set(_CACHE_KEYS):
+        return None
+    clean: dict[str, str | int | float | None] = {}
+    for field in _CACHE_KEYS:
+        value = values[field]
+        if field == "eos":
+            known = next((eos for eos in _KNOWN_EOS if eos == value), None)
+            if value is not None and known is None:
+                return None
+            clean[field] = known
+        elif value is None:
+            clean[field] = None
+        elif isinstance(value, int) and not isinstance(value, bool):
+            clean[field] = int(value)
+        elif isinstance(value, float):
+            clean[field] = float(value)
+        else:
+            return None
+    return json.dumps(clean, sort_keys=True)
+
+
+def _sanitize_entry(raw_entry: dict) -> dict | None:
+    """Coerce a stored measurement to floats, or reject it."""
+    try:
+        return {
+            "sigma": float(raw_entry["sigma"]),
+            "radii": [float(x) for x in raw_entry["radii"]],
+            "delta_p": [float(x) for x in raw_entry["delta_p"]],
+        }
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def _load_cache(path: Path) -> dict:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+    if not isinstance(raw, dict):
+        return {}
+    cache: dict[str, dict] = {}
+    for raw_key, raw_entry in raw.items():
+        if not isinstance(raw_entry, dict):
+            continue
+        key = _sanitize_key(raw_key)
+        entry = _sanitize_entry(raw_entry)
+        if key is not None and entry is not None:
+            cache[key] = entry
+    return cache
 
 
 def _store_cache(key: str, radii: np.ndarray, delta_p: np.ndarray, sigma: float) -> None:
-    # The cache is only ever written at the module-constant location (derived
-    # from __file__, never from config or CLI input), so no user-controlled
-    # data can reach this filesystem write.
     path = _cache_path().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     cache = _load_cache(path)
     cache[key] = {
-        "sigma": sigma,
+        "sigma": float(sigma),
         "radii": [float(x) for x in radii],
         "delta_p": [float(x) for x in delta_p],
     }
     tmp = path.with_name(path.name + ".tmp")
-    if tmp.resolve().parent != path.parent:
-        msg = f"Cache temp file escapes the cache directory: {tmp}"
-        raise ValueError(msg)
     tmp.write_text(json.dumps(cache, indent=2), encoding="utf-8")
     tmp.replace(path)  # atomic; concurrent sweep workers never see a partial file
 
