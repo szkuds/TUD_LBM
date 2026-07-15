@@ -341,14 +341,15 @@ class TestTomlAdapterErrors:
             adapter.load("/nonexistent/path/app_setup.toml")
 
     def test_missing_simulation_table(self, tmp_path):
-        p = tmp_path / "empty.toml"
+        p: Path = tmp_path / "empty.toml"
         p.write_text("[output]\nresults_dir = '/tmp'\n")
+        p_str: str = str(p)
         adapter = TomlAdapter()
         with pytest.raises(
             ValueError,
             match="missing the required 'simulation_type' section",
         ):
-            adapter.load(str(p))
+            adapter.load(p_str)
 
     def test_unknown_simulation_type(self, tmp_path):
         content = textwrap.dedent("""\
