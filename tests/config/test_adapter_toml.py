@@ -341,14 +341,15 @@ class TestTomlAdapterErrors:
             adapter.load("/nonexistent/path/app_setup.toml")
 
     def test_missing_simulation_table(self, tmp_path):
-        p = tmp_path / "empty.toml"
+        p: Path = tmp_path / "empty.toml"
         p.write_text("[output]\nresults_dir = '/tmp'\n")
+        p_str: str = str(p)
         adapter = TomlAdapter()
         with pytest.raises(
             ValueError,
             match="missing the required 'simulation_type' section",
         ):
-            adapter.load(str(p))
+            adapter.load(p_str)
 
     def test_unknown_simulation_type(self, tmp_path):
         content = textwrap.dedent("""\
@@ -359,9 +360,10 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_type.toml"
         p.write_text(content)
+        p_str: str = str(p)
         adapter = TomlAdapter()
         with pytest.raises(ValueError, match="Unknown simulation type"):
-            adapter.load(str(p))
+            adapter.load(p_str)
 
     def test_unknown_force_type_raises_key_error(self, tmp_path):
         content = textwrap.dedent("""\
@@ -382,9 +384,10 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_force.toml"
         p.write_text(content)
+        p_str: str = str(p)
         adapter = TomlAdapter()
         with pytest.raises(KeyError, match="Unknown force type"):
-            adapter.load(str(p))
+            adapter.load(p_str)
 
     def test_invalid_tau_raises_validation_error(self, tmp_path):
         content = textwrap.dedent("""\
@@ -395,9 +398,10 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_tau.toml"
         p.write_text(content)
+        p_str: str = str(p)
         adapter = TomlAdapter()
         with pytest.raises(ValueError, match=r"tau must be > 0\.5"):
-            adapter.load(str(p))
+            adapter.load(p_str)
 
 
 # ── ConfigAdapter ABC ────────────────────────────────────────────────
