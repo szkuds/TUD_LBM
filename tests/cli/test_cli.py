@@ -2290,7 +2290,7 @@ class TestAnalyseCommand:
     @staticmethod
     def _write_multiphase_toml(tmp_path, extra: str = "") -> str:
         cfg_toml = tmp_path / "config.toml"
-        content = _MULTIPHASE_TOML.format(results_dir=tmp_path) + extra
+        content = _MULTIPHASE_TOML.format(results_dir=tmp_path.as_posix()) + extra
         cfg_toml.write_text(content, encoding="utf-8")
         return str(cfg_toml)
 
