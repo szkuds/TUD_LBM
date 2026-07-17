@@ -82,7 +82,7 @@ def test_clamp_params_clips_phi_below_minimum():
         d_rho_left=jnp.array(-0.1),
         d_rho_right=jnp.array(0.3),
     )
-    clamped = _clamp_params(p)
+    clamped = _clamp_params(p, jnp.array(5.0))
     assert float(clamped.phi_left) == pytest.approx(1.0)
     assert float(clamped.phi_right) == pytest.approx(1.5)
     assert float(clamped.d_rho_left) == pytest.approx(0.0)
@@ -96,11 +96,25 @@ def test_clamp_params_leaves_valid_values_unchanged():
         d_rho_left=jnp.array(0.1),
         d_rho_right=jnp.array(0.2),
     )
-    clamped = _clamp_params(p)
+    clamped = _clamp_params(p, jnp.array(5.0))
     assert float(clamped.phi_left) == pytest.approx(1.2)
     assert float(clamped.phi_right) == pytest.approx(1.3)
     assert float(clamped.d_rho_left) == pytest.approx(0.1)
     assert float(clamped.d_rho_right) == pytest.approx(0.2)
+
+
+def test_clamp_params_bounds_scale_with_interface_width():
+    p = WettingParams(
+        phi_left=jnp.array(2.0),
+        phi_right=jnp.array(2.0),
+        d_rho_left=jnp.array(1.0),
+        d_rho_right=jnp.array(1.0),
+    )
+    clamped = _clamp_params(p, jnp.array(10.0))
+    assert float(clamped.phi_left) == pytest.approx(1.25)
+    assert float(clamped.phi_right) == pytest.approx(1.25)
+    assert float(clamped.d_rho_left) == pytest.approx(0.15)
+    assert float(clamped.d_rho_right) == pytest.approx(0.15)
 
 
 # ---------------------------------------------------------------------------

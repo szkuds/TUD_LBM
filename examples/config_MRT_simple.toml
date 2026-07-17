@@ -14,6 +14,6 @@ collision_scheme = "mrt"
 k_diag          = [0.0, 0.5, 0.6, 0.0, 1.2, 0.0, 1.2, 1.1, 1.1]
 
 [output]
-results_dir  = "~/TUD_LBM_data/results"
+results_dir  = "~/TUD_LBM_data/example_results"
 save_fields  = ["rho", "u"]
 plot_fields = ["density", "velocity"]

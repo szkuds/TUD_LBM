@@ -135,3 +135,57 @@ def test_calibrate_uses_cache_and_writes_plot(tmp_path, monkeypatch):
     assert calls["n"] == 1  # second call served from cache
     assert (run_dir_a / st._PLOT_FILENAME).exists()
     assert (run_dir_b / st._PLOT_FILENAME).exists()  # plot written on cache hit too
+
+
+def _multiphase_params(**overrides):
+    from typing import Any
+    from tud_lbm.operators.macroscopic import MultiphaseParams
+
+    base: dict[str, Any] = {
+        "eos": "carnahan-starling",
+        "kappa": 0.01,
+        "rho_l": 0.4,
+        "rho_v": 0.02,
+        "interface_width": 4,
+        "a_eos": 0.5,
+        "b_eos": 4.0,
+        "r_eos": 1.0,
+        "t_eos": 0.05,
+    }
+    base.update(overrides)
+    return MultiphaseParams(**base)
+
+
+def test_bulk_pressure_fn_carnahan_starling_matches_reference():
+    from tud_lbm.operators.macroscopic.eos import carnahan_starling_pressure
+
+    mp = _multiphase_params()
+    pressure_fn = st._bulk_pressure_fn(mp)
+    rho = np.linspace(mp.rho_v, mp.rho_l, 20)
+
+    expected = carnahan_starling_pressure(rho, mp.a_eos, mp.b_eos, mp.r_eos, mp.t_eos)
+    np.testing.assert_allclose(pressure_fn(rho), np.asarray(expected))
+
+
+def test_bulk_pressure_fn_double_well_matches_reference():
+    from tud_lbm.operators.macroscopic.eos import double_well_pressure
+
+    mp = _multiphase_params(eos="double-well", a_eos=None, b_eos=None, r_eos=None, t_eos=None)
+    pressure_fn = st._bulk_pressure_fn(mp)
+    rho = np.linspace(mp.rho_v, mp.rho_l, 20)
+
+    beta = 8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
+    expected = double_well_pressure(rho, beta, mp.rho_l, mp.rho_v)
+    np.testing.assert_allclose(pressure_fn(rho), np.asarray(expected))
+
+
+def test_bulk_pressure_fn_cs_missing_params_raises():
+    mp = _multiphase_params(a_eos=None)
+    with pytest.raises(ValueError, match="required for Carnahan-Starling"):
+        st._bulk_pressure_fn(mp)
+
+
+def test_bulk_pressure_fn_unknown_eos_raises():
+    mp = _multiphase_params(eos="not-an-eos")
+    with pytest.raises(ValueError, match="supports EOS"):
+        st._bulk_pressure_fn(mp)

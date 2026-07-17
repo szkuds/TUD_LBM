@@ -22,7 +22,7 @@ save_interval = 100
 init_type = "standard"
 
 [output]
-results_dir = "~/TUD_LBM_data/results"
+results_dir = "~/TUD_LBM_data/example_results"
 save_fields = ["rho", "u"]
 plot_fields = ["density"]
 

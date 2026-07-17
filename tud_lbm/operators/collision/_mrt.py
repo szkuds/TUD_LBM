@@ -32,6 +32,7 @@ M = jnp.array(
         [0, 1, -1, 1, -1, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 1, -1, 1, -1],
     ],
+    dtype=jnp.float64,
 )
 
 M_INV = jnp.linalg.inv(M)

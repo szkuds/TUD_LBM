@@ -9,7 +9,7 @@ from tud_lbm.pipeline.state.state import WettingState
 
 
 def _state_with_wetting() -> State:
-    wet = WettingState(*(jnp.array(v, dtype=jnp.float32) for v in (1, 1, 0, 0, 90, 90, 3, 9)))
+    wet = WettingState(*(jnp.array(v, dtype=jnp.float64) for v in (1, 1, 0, 0, 90, 90, 3, 9)))
     return State(
         f=jnp.ones((2, 2, 1, 9, 1)),
         rho=jnp.ones((2, 2, 1, 1, 1)),
