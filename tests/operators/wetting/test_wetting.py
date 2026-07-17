@@ -35,8 +35,8 @@ def _droplet_rho(
     if radius is None:
         radius = nx / 4.0
 
-    _x = jnp.arange(nx, dtype=jnp.float32)
-    _y = jnp.arange(ny, dtype=jnp.float32)
+    _x = jnp.arange(nx, dtype=jnp.float64)
+    _y = jnp.arange(ny, dtype=jnp.float64)
     x, y = jnp.meshgrid(_x, _y, indexing="ij")  # (nx, ny)
 
     dist = jnp.sqrt((x - centre_x) ** 2 + y**2)
@@ -511,7 +511,7 @@ class TestUpdateWettingState:
             },
         )
         setup = build_setup(cfg)
-        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float32)
+        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float64)
         wetting = self._make_wetting_state()._replace(cll_right=jnp.array(60.0))
 
         monkeypatch.setattr(
@@ -538,7 +538,7 @@ class TestUpdateWettingState:
         import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
 
         setup = self._make_setup()
-        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float32)
+        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float64)
         wetting = self._make_wetting_state()
 
         monkeypatch.setattr(
@@ -561,7 +561,7 @@ class TestUpdateWettingState:
         import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
 
         setup = self._make_setup()
-        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float32)
+        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float64)
         wetting = self._make_wetting_state()
 
         monkeypatch.setattr(
@@ -604,7 +604,7 @@ class TestUpdateWettingState:
             },
         )
         setup = build_setup(cfg)
-        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float32)
+        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float64)
         wetting = self._make_wetting_state()._replace(cll_right=jnp.array(60.0))
 
         monkeypatch.setattr(
@@ -657,7 +657,7 @@ class TestUpdateWettingState:
             },
         )
         setup = build_setup(cfg)
-        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float32)
+        rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float64)
         wetting = self._make_wetting_state()._replace(cll_right=jnp.array(60.0))
 
         monkeypatch.setattr(
