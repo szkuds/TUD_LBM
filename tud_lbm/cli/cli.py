@@ -1518,7 +1518,7 @@ def compare(parent_dir: str, no_prompt: bool) -> None:
         )
         console.print(f"[bold green]Plots saved to:[/bold green] {out_dir}")
     except KeyboardInterrupt:
-        console.print("\n[yellow]Analysis interrupted by user.[/yellow]")
+        console.print("\n[yellow]Comparison interrupted by user.[/yellow]")
         sys.exit(130)
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
@@ -1583,7 +1583,7 @@ def regime_map(dirs_txt: str, allowed_roots: tuple[str, ...], out_dir: str | Non
         )
         console.print(f"[bold green]Plot saved to:[/bold green] {out_path}")
     except KeyboardInterrupt:
-        console.print("\n[yellow]Analysis interrupted by user.[/yellow]")
+        console.print("\n[yellow]Regime map analysis interrupted by user.[/yellow]")
         sys.exit(130)
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
@@ -1677,7 +1677,7 @@ def analyse(config_toml: str, surface_tension: bool, out_dir: str | None) -> Non
         console.print()
         _analyse_surface_tension(config, target_dir)
     except KeyboardInterrupt:
-        console.print("\n[yellow]Analysis interrupted by user.[/yellow]")
+        console.print("\n[yellow]Surface tension analysis interrupted by user.[/yellow]")
         sys.exit(130)
     except click.UsageError:
         raise
