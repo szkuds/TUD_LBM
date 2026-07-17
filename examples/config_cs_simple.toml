@@ -41,6 +41,7 @@ centres = [[0.5, 0.5]]
 radii   = [0.3]
 
 [output]
+results_dir = "~/TUD_LBM_data/example_results"
 save_interval = 500
 save_fields   = ["rho", "u"]
 plot_fields = ["density", "velocity"]

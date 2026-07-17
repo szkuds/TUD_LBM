@@ -57,7 +57,7 @@ rho_v = 0.001
 interface_width = 5
 
 [output]
-results_dir = "~/TUD_LBM_data/chem_step_test"
+results_dir = "~/TUD_LBM_data/example_results"
 save_fields = [
     "rho",
     "u",
