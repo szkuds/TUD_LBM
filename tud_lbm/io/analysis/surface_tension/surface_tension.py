@@ -16,8 +16,11 @@ thermodynamic parameters that determine sigma. The cache file lives at
 ``tud_lbm/io/analysis/surface_tension/data/surface_tension_cache.json`` — inside the repo, so
 it's shared with the team via the normal git workflow rather than re-measured
 by everyone individually (commit it after adding a new entry). The
-calibration figure is written into the active run directory on every run,
-whether measured or served from cache, so each run keeps its own copy.
+calibration figure and the fitted ``(radii, delta_p, sigma)`` data file are
+written into the active run directory on every run, whether measured or
+served from cache, so each run keeps its own copy. When the sweep actually
+runs, the initial and equilibrated droplet state for every radius is also
+saved under ``<run_dir>/surface_tension_states/`` for inspection.
 """
 
 from __future__ import annotations
@@ -47,6 +50,8 @@ _PERIODIC_BC = {"top": "periodic", "bottom": "periodic", "left": "periodic", "ri
 
 _CACHE_FILENAME = "surface_tension_cache.json"
 _PLOT_FILENAME = "surface_tension_calibration.png"
+_DATA_FILENAME = "surface_tension_data.json"
+_STATES_DIRNAME = "surface_tension_states"
 
 # Git-tracked, shared across the team: a measured sigma committed here is
 # picked up by everyone on the next `git pull`, instead of each person
@@ -84,8 +89,12 @@ def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> 
     """Return the measured lattice surface tension and write the calibration figure.
 
     Looks up a cached value keyed by the EOS thermodynamic parameters; on a
-    miss, runs the droplet sweep and caches the result. The figure is always
-    written into *run_dir*.
+    miss, runs the droplet sweep and caches the result. The figure and the
+    fitted ``(radii, delta_p, sigma)`` data file are always written into
+    *run_dir*. On a fresh measurement the initial and equilibrated state of
+    every droplet is additionally saved under
+    ``run_dir/surface_tension_states/`` (a cache hit runs no droplets, so no
+    states are written).
     """
     run_dir = Path(run_dir)
     cache_path = _cache_path()
@@ -96,17 +105,22 @@ def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> 
         radii = np.asarray(cached["radii"], dtype=float)
         delta_p = np.asarray(cached["delta_p"], dtype=float)
         sigma = float(cached["sigma"])
+        console.print(
+            f"[dim]Using cached σ = {sigma:.6g} — droplet states are only "
+            f"saved when the calibration sweep actually runs.[/dim]"
+        )
     else:
         console.print(
             f"[dim]No cached σ for these EOS parameters — running "
             f"Young–Laplace calibration ({_N_RADII} droplets)...[/dim]"
         )
-        radii, delta_p = _measure_pressure_jumps(config)
+        radii, delta_p = _measure_pressure_jumps(config, states_dir=run_dir / _STATES_DIRNAME)
         sigma = _fit_sigma(radii, delta_p)
         _store_cache(key, radii, delta_p, sigma)
         console.print(f"[bold green]Surface tension calibrated: σ = {sigma:.6g}[/bold green]")
 
     _save_plot(run_dir / _PLOT_FILENAME, radii, delta_p, sigma)
+    _save_data(run_dir / _DATA_FILENAME, radii, delta_p, sigma)
     return sigma
 
 
@@ -139,8 +153,13 @@ def _bulk_pressure_fn(mp: MultiphaseParams) -> Callable[[np.ndarray], np.ndarray
     raise ValueError(msg)
 
 
-def _measure_pressure_jumps(config: SimulationConfig) -> tuple[np.ndarray, np.ndarray]:
-    """Equilibrate one droplet per radius and return ``(radii, delta_p)``."""
+def _measure_pressure_jumps(config: SimulationConfig, states_dir: Path | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """Equilibrate one droplet per radius and return ``(radii, delta_p)``.
+
+    When *states_dir* is given, the initial and final :class:`State` of each
+    droplet is saved there as ``radius_<R>_init.npz`` / ``radius_<R>_final.npz``
+    so the fields entering the Young-Laplace fit can be inspected afterwards.
+    """
     from tud_lbm.operators.initialise import build_initialise_fn
     from tud_lbm.operators.macroscopic import build_multiphase_params
     from tud_lbm.pipeline.runner import init_state
@@ -164,6 +183,9 @@ def _measure_pressure_jumps(config: SimulationConfig) -> tuple[np.ndarray, np.nd
     grid_shape = cast("tuple[int, int, int]", setup.grid_shape)
     init_fn = build_initialise_fn("multiphase_bubbles")
 
+    if states_dir is not None:
+        states_dir.mkdir(parents=True, exist_ok=True)
+
     delta_p = np.empty(_N_RADII)
     for i, radius in enumerate(radii):
         console.print(f"[dim]Calibration running ({i + 1}/{_N_RADII})...[/dim]")
@@ -177,11 +199,22 @@ def _measure_pressure_jumps(config: SimulationConfig) -> tuple[np.ndarray, np.nd
             radii=[float(radius) / min_dim],
             dispersed="liquid",
         )
-        final_state = _run_to_final_state(setup, init_state(setup, f=f0), _N_ITERATIONS)
+        initial_state = init_state(setup, f=f0)
+        if states_dir is not None:
+            _save_state(states_dir / f"radius_{radius:.2f}_init.npz", initial_state)
+        final_state = _run_to_final_state(setup, initial_state, _N_ITERATIONS)
+        if states_dir is not None:
+            _save_state(states_dir / f"radius_{radius:.2f}_final.npz", final_state)
         rho_2d = _density_2d(final_state)
         delta_p[i] = _pressure_jump(pressure_fn(rho_2d), width)
 
     return radii, delta_p
+
+
+def _save_state(path: Path, state: State) -> None:
+    """Save every array field of *state* to an ``.npz`` snapshot."""
+    arrays = {name: np.asarray(value) for name, value in state._asdict().items() if hasattr(value, "shape")}
+    np.savez(path, **arrays)  # ty: ignore[invalid-argument-type]
 
 
 def _run_to_final_state(setup: SimulationSetup, state: State, nt: int) -> State:
@@ -352,7 +385,18 @@ def _store_cache(key: str, radii: np.ndarray, delta_p: np.ndarray, sigma: float)
     tmp.replace(path)  # atomic; concurrent sweep workers never see a partial file
 
 
-# ── Plot ──────────────────────────────────────────────────────────────
+# ── Per-run output ────────────────────────────────────────────────────
+
+
+def _save_data(path: Path, radii: np.ndarray, delta_p: np.ndarray, sigma: float) -> None:
+    """Write the fitted measurement data into the run directory."""
+    payload = {
+        "sigma": float(sigma),
+        "radii": [float(x) for x in radii],
+        "delta_p": [float(x) for x in delta_p],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _save_plot(path: Path, radii: np.ndarray, delta_p: np.ndarray, sigma: float) -> None:
