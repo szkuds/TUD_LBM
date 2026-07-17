@@ -8,9 +8,13 @@ physics integration tests, not here).
 from __future__ import annotations
 import json
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 from tud_lbm.io.analysis.surface_tension import surface_tension as st
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _stub_config(**overrides):
@@ -115,9 +119,11 @@ def test_calibrate_uses_cache_and_writes_plot(tmp_path, monkeypatch):
     config = _stub_config()
 
     calls = {"n": 0}
+    seen_states_dirs: list[Path | None] = []
 
-    def fake_measure(_config):
+    def fake_measure(_config, states_dir=None):
         calls["n"] += 1
+        seen_states_dirs.append(states_dir)
         radii = np.array([10.0, 20.0, 30.0])
         return radii, 0.02 / radii
 
@@ -133,8 +139,41 @@ def test_calibrate_uses_cache_and_writes_plot(tmp_path, monkeypatch):
     assert sigma_a == pytest.approx(0.02, rel=1e-9)
     assert sigma_b == pytest.approx(sigma_a)
     assert calls["n"] == 1  # second call served from cache
+    assert seen_states_dirs == [run_dir_a / st._STATES_DIRNAME]
     assert (run_dir_a / st._PLOT_FILENAME).exists()
     assert (run_dir_b / st._PLOT_FILENAME).exists()  # plot written on cache hit too
+    data_a = json.loads((run_dir_a / st._DATA_FILENAME).read_text())
+    data_b = json.loads((run_dir_b / st._DATA_FILENAME).read_text())  # data written on cache hit too
+    assert data_a["sigma"] == pytest.approx(0.02, rel=1e-9)
+    assert data_a["radii"] == [10.0, 20.0, 30.0]
+    assert data_b == data_a
+
+
+def test_save_state_writes_array_fields_and_skips_none(tmp_path):
+    from typing import NamedTuple
+
+    class FakeState(NamedTuple):
+        f: np.ndarray
+        rho: np.ndarray
+        t: np.ndarray
+        force: np.ndarray | None
+        wetting: object | None
+
+    state = FakeState(
+        f=np.ones((4, 4, 1, 9, 1)),
+        rho=np.full((4, 4, 1, 1, 1), 0.4),
+        t=np.asarray(7),
+        force=None,
+        wetting=None,
+    )
+    path = tmp_path / "radius_10.00_final.npz"
+
+    st._save_state(path, state)  # ty: ignore[invalid-argument-type]
+
+    saved = np.load(path)
+    assert set(saved.files) == {"f", "rho", "t"}
+    np.testing.assert_array_equal(saved["rho"], state.rho)
+    assert int(saved["t"]) == 7
 
 
 def _multiphase_params(**overrides):
