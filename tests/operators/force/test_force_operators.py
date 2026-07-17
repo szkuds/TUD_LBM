@@ -422,6 +422,55 @@ class TestElectricIsActive:
         assert ElectricExtraStatePlugin.is_active(SimpleNamespace()) is False  # ty: ignore[invalid-argument-type]
 
 
+class TestElectricForceSetupWiring:
+    """build_setup wires gradient_standard for electric-force runs.
+
+    Regression guard: the electric force needs the standard gradient closure
+    from build_diff_ops, which requires the differential operator subpackage
+    to have been auto-loaded before setup completes.  If import order ever
+    regresses, gradient_standard would be missing and every electric compute
+    would raise at step time.
+    """
+
+    @pytest.fixture(scope="class")
+    def electric_setup(self):
+        from tud_lbm.config.adapter_dict import DictAdapter
+        from tud_lbm.pipeline.setup import build_setup
+
+        config = DictAdapter().load(
+            {
+                "grid_shape": (NX, NY),
+                "nt": 10,
+                "electric_force": {
+                    "permittivity_liquid": 80.0,
+                    "permittivity_vapour": 1.0,
+                    "conductivity_liquid": 0.01,
+                    "conductivity_vapour": 0.001,
+                    "voltage_top": 1.0,
+                    "voltage_bottom": 0.0,
+                },
+            }
+        )
+        return build_setup(config)
+
+    def test_gradient_standard_is_built(self, electric_setup):
+        assert electric_setup.gradient_standard is not None
+        assert callable(electric_setup.gradient_standard)
+
+    def test_electric_force_spec_registered(self, electric_setup):
+        assert [spec.name for spec in electric_setup.forces.specs] == ["electric_force"]
+
+    def test_total_force_computes_from_setup(self, electric_setup):
+        from tud_lbm.operators.force import compute_total_force_ext
+        from tud_lbm.pipeline.runner import init_state
+
+        state = init_state(electric_setup)
+        total_force, _ = compute_total_force_ext(electric_setup, state, electric_setup.forces)
+        assert total_force is not None
+        assert total_force.shape == (NX, NY, NZ, 1, 2)
+        assert bool(jnp.all(jnp.isfinite(total_force)))
+
+
 class TestElectricForceComputeErrors:
     """ElectricForceModule.compute raises TypeError on missing prerequisites."""
 
