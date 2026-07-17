@@ -29,15 +29,13 @@ def double_well_pressure(
 ) -> jnp.ndarray | np.ndarray:
     """Double-well bulk thermodynamic pressure ``p_0(rho)``.
 
-    Gibbs-Duhem: ``p_0 = rho * mu_0(rho) - psi(rho)`` with the bulk free-energy
-    density ``psi(rho) = beta * (rho - rho_l)^2 * (rho - rho_v)^2``, so it is
-    exactly consistent with ``_eos_double_well`` (``mu_0 = psi'``). Used by the
+    ``p_0 = beta * (rho - rho_l) * (rho - rho_v) * (3.0 * rho ** 2 - rho_l*rho_v - rho * (rho_l+rho_v))``
+    with the bulk free-energy density ``psi(rho) = beta * (rho - rho_l)^2 * (rho - rho_v)^2``, so it is
+    exactly consistent with ``_eos_double_well`` (``mu_0 = d(psi)/d(rho)``). Used by the
     surface-tension calibration; not part of the force pipeline. Accepts NumPy
     or JAX arrays.
     """
-    mu_0 = 2.0 * beta * (rho - rho_l) * (rho - rho_v) * (2.0 * rho - rho_l - rho_v)
-    psi = beta * (rho - rho_l) ** 2 * (rho - rho_v) ** 2
-    return rho * mu_0 - psi
+    return beta * (rho - rho_l) * (rho - rho_v) * (3.0 * rho**2 - rho_l * rho_v - rho * (rho_l + rho_v))
 
 
 @eos_operator(name="double-well")
