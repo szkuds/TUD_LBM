@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
+from typing import NamedTuple
 import numpy as np
 import pytest
 from tud_lbm.io.analysis.surface_tension import surface_tension as st
@@ -228,3 +229,141 @@ def test_bulk_pressure_fn_unknown_eos_raises():
     mp = _multiphase_params(eos="not-an-eos")
     with pytest.raises(ValueError, match="supports EOS"):
         st._bulk_pressure_fn(mp)
+
+
+def _cs_config(**overrides):
+    """A real, valid Carnahan-Starling multiphase SimulationConfig."""
+    from typing import Any
+    from tud_lbm.config.simulation_config import SimulationConfig
+
+    base: dict[str, Any] = {
+        "sim_type": "multiphase",
+        "grid_shape": (32, 32),
+        "tau": 0.99,
+        "nt": 3,
+        "eos": "carnahan-starling",
+        "kappa": 0.01,
+        "rho_l": 0.4,
+        "rho_v": 0.02,
+        "interface_width": 4,
+        "a_eos": 0.5,
+        "b_eos": 4.0,
+        "r_eos": 1.0,
+        "t_eos": 0.05,
+    }
+    base.update(overrides)
+    return SimulationConfig(**base)
+
+
+def test_calibration_config_isolates_single_droplet():
+    cfg = _cs_config(
+        simulation_name="drop",
+        gravity_force={"g": 1e-6},
+        save_fields=["rho"],
+        save_interval=10,
+    )
+
+    calib = st._calibration_config(cfg)
+
+    assert calib.sim_type == "multiphase"
+    assert calib.nt == st._N_ITERATIONS
+    # save_interval=0 is falsy, so validation re-applies the nt // 10 default.
+    assert calib.save_interval == calib.nt // 10
+    assert calib.skip_interval == 0
+    assert calib.bc_config is not None
+    for face in ("top", "bottom", "left", "right"):
+        assert calib.bc_config[face] == "periodic"
+    for name in (
+        "save_fields",
+        "plot_fields",
+        "animate_fields",
+        "g",
+        "gravity_force",
+        "gravity_masked_force",
+        "electric_force",
+        "wetting_config",
+        "hysteresis_config",
+        "chemical_step_config",
+    ):
+        assert getattr(calib, name) is None, name
+    assert calib.init_type == "multiphase_bubbles"
+    assert calib.initialisation == {"centres": [[0.5, 0.5]], "radii": [0.2], "dispersed": "liquid"}
+    assert calib.simulation_name == "drop_surface_tension"
+    # Thermodynamic parameters that determine sigma are preserved.
+    for name in ("eos", "kappa", "rho_l", "rho_v", "interface_width", "a_eos", "b_eos", "r_eos", "t_eos"):
+        assert getattr(calib, name) == getattr(cfg, name), name
+
+
+class _DensityState(NamedTuple):
+    f: np.ndarray
+    rho: np.ndarray | None
+
+
+def test_density_2d_uses_rho_field():
+    rho = np.arange(20.0).reshape(4, 5, 1, 1, 1)
+    state = _DensityState(f=np.ones((4, 5, 1, 9, 1)), rho=rho)
+
+    result = st._density_2d(state)  # ty: ignore[invalid-argument-type]
+
+    assert result.shape == (4, 5)
+    np.testing.assert_array_equal(result, rho[:, :, 0, 0, 0])
+
+
+def test_density_2d_falls_back_to_population_sum():
+    state = _DensityState(f=np.full((4, 5, 1, 9, 1), 0.5), rho=None)
+
+    result = st._density_2d(state)  # ty: ignore[invalid-argument-type]
+
+    assert result.shape == (4, 5)
+    np.testing.assert_allclose(result, 4.5)  # 9 populations of 0.5
+
+
+class _MiniState(NamedTuple):
+    t: object
+
+
+def test_run_to_final_state_advances_nt_steps():
+    import jax.numpy as jnp
+
+    def step_fn(_setup, state):
+        return _MiniState(t=state.t + 1)
+
+    setup = SimpleNamespace(step_fn=step_fn)
+    final = st._run_to_final_state(setup, _MiniState(t=jnp.asarray(0)), nt=7)  # ty: ignore[invalid-argument-type]
+
+    assert int(final.t) == 7
+
+
+def test_run_to_final_state_requires_step_fn():
+    setup = SimpleNamespace(step_fn=None)
+    with pytest.raises(TypeError, match="step_fn is required"):
+        st._run_to_final_state(setup, _MiniState(t=0), nt=1)  # ty: ignore[invalid-argument-type]
+
+
+def test_measure_pressure_jumps_missing_params_raises():
+    config = _stub_config(interface_width=None)
+    with pytest.raises(ValueError, match="required for surface-tension calibration"):
+        st._measure_pressure_jumps(config)
+
+
+def test_measure_pressure_jumps_small_sweep(tmp_path, monkeypatch):
+    monkeypatch.setattr(st, "_N_RADII", 2)
+    monkeypatch.setattr(st, "_N_ITERATIONS", 2)
+    config = _cs_config()
+    states_dir = tmp_path / "states"
+
+    radii, delta_p = st._measure_pressure_jumps(config, states_dir=states_dir)
+
+    # min(nx, ny) = 32 → radii span [8, 16].
+    np.testing.assert_allclose(radii, [8.0, 16.0])
+    assert delta_p.shape == (2,)
+    assert np.all(np.isfinite(delta_p))
+    saved = sorted(p.name for p in states_dir.glob("*.npz"))
+    assert saved == [
+        "radius_16.00_final.npz",
+        "radius_16.00_init.npz",
+        "radius_8.00_final.npz",
+        "radius_8.00_init.npz",
+    ]
+    snapshot = np.load(states_dir / "radius_8.00_final.npz")
+    assert snapshot["f"].shape == (32, 32, 1, 9, 1)
