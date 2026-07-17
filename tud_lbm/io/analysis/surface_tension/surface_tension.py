@@ -6,6 +6,11 @@ tension is measured directly: periodic droplets of several radii are
 equilibrated, the Laplace pressure jump is read from each, and a line is
 fitted to ``dP = sigma / R`` (2-D Young-Laplace).
 
+During ``tud-lbm run`` the measurement is triggered automatically only for
+EOS without a closed form (Carnahan-Starling); ``tud-lbm analyse
+CONFIG.toml --surface-tension`` forces it for any supported multiphase EOS,
+e.g. to verify the closed-form double-well sigma numerically.
+
 The measurement is expensive, so results are cached on disk keyed by the
 thermodynamic parameters that determine sigma. The cache file lives at
 ``tud_lbm/io/analysis/surface_tension/data/surface_tension_cache.json`` — inside the repo, so
@@ -25,7 +30,9 @@ import numpy as np
 from rich.console import Console
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from tud_lbm.config import SimulationConfig
+    from tud_lbm.operators.macroscopic import MultiphaseParams
     from tud_lbm.pipeline.setup import SimulationSetup
     from tud_lbm.pipeline.state.state import State
 
@@ -106,11 +113,36 @@ def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> 
 # ── Measurement ───────────────────────────────────────────────────────
 
 
+def _bulk_pressure_fn(mp: MultiphaseParams) -> Callable[[np.ndarray], np.ndarray]:
+    """Return ``pressure(rho) -> p_0`` for the EOS bound in *mp*.
+
+    Only the bulk pressure differs between EOS in the Young-Laplace
+    measurement; everything else in the droplet sweep is EOS-agnostic.
+    """
+    if mp.eos == "carnahan-starling":
+        from tud_lbm.operators.macroscopic.eos import carnahan_starling_pressure
+
+        if mp.a_eos is None or mp.b_eos is None or mp.r_eos is None or mp.t_eos is None:
+            msg = "a_eos, b_eos, r_eos, t_eos are required for Carnahan-Starling calibration"
+            raise ValueError(msg)
+        a_eos, b_eos, r_eos, t_eos = mp.a_eos, mp.b_eos, mp.r_eos, mp.t_eos
+        return lambda rho: np.asarray(carnahan_starling_pressure(rho, a_eos, b_eos, r_eos, t_eos))
+
+    if mp.eos == "double-well":
+        from tud_lbm.operators.macroscopic.eos import double_well_pressure
+
+        beta = 8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
+        return lambda rho: np.asarray(double_well_pressure(rho, beta, mp.rho_l, mp.rho_v))
+
+    supported = ", ".join(sorted(_KNOWN_EOS))
+    msg = f"surface-tension calibration supports EOS {supported}; got '{mp.eos}'"
+    raise ValueError(msg)
+
+
 def _measure_pressure_jumps(config: SimulationConfig) -> tuple[np.ndarray, np.ndarray]:
     """Equilibrate one droplet per radius and return ``(radii, delta_p)``."""
     from tud_lbm.operators.initialise import build_initialise_fn
     from tud_lbm.operators.macroscopic import build_multiphase_params
-    from tud_lbm.operators.macroscopic.eos import carnahan_starling_pressure
     from tud_lbm.pipeline.runner import init_state
     from tud_lbm.pipeline.setup import build_setup
 
@@ -126,10 +158,7 @@ def _measure_pressure_jumps(config: SimulationConfig) -> tuple[np.ndarray, np.nd
 
     calib_config = _calibration_config(config)
     mp = build_multiphase_params(calib_config)
-    if mp.a_eos is None or mp.b_eos is None or mp.r_eos is None or mp.t_eos is None:
-        msg = "a_eos, b_eos, r_eos, t_eos are required for Carnahan-Starling calibration"
-        raise ValueError(msg)
-    a_eos, b_eos, r_eos, t_eos = mp.a_eos, mp.b_eos, mp.r_eos, mp.t_eos
+    pressure_fn = _bulk_pressure_fn(mp)
 
     setup = build_setup(calib_config)
     grid_shape = cast("tuple[int, int, int]", setup.grid_shape)
@@ -150,8 +179,7 @@ def _measure_pressure_jumps(config: SimulationConfig) -> tuple[np.ndarray, np.nd
         )
         final_state = _run_to_final_state(setup, init_state(setup, f=f0), _N_ITERATIONS)
         rho_2d = _density_2d(final_state)
-        pressure = carnahan_starling_pressure(rho_2d, a_eos, b_eos, r_eos, t_eos)
-        delta_p[i] = _pressure_jump(np.asarray(pressure), width)
+        delta_p[i] = _pressure_jump(pressure_fn(rho_2d), width)
 
     return radii, delta_p
 

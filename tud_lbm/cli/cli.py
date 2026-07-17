@@ -1592,6 +1592,102 @@ def regime_map(dirs_txt: str, allowed_roots: tuple[str, ...], out_dir: str | Non
         sys.exit(1)
 
 
+def _load_single_config(config_toml: str) -> SimulationConfig:
+    """Load CONFIG_TOML and expand it to exactly one config; sweeps are rejected."""
+    raw_config = _load_raw_config(config_toml, ())
+    _configs, config, sweep_metadata, _params = _expand_raw_config(raw_config)
+    if sweep_metadata is not None or config is None:
+        msg = "analyse does not support parameter sweeps; remove list-valued fields from the config"
+        raise click.UsageError(msg)
+    return config
+
+
+def _analyse_surface_tension(config: SimulationConfig, out_dir: Path) -> None:
+    """Run the Young-Laplace calibration for *config* and report sigma."""
+    if not config.is_multiphase:
+        msg = f"surface tension requires a multiphase configuration; got sim_type='{config.sim_type}'"
+        raise ValueError(msg)
+
+    from tud_lbm.config.jax_config import configure_jax
+
+    configure_jax()
+
+    from tud_lbm.io.analysis.surface_tension import calibrate_surface_tension
+    from tud_lbm.io.analysis.surface_tension.surface_tension import _PLOT_FILENAME
+
+    sigma = calibrate_surface_tension(config, out_dir)
+
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold green]Surface tension: σ = {sigma:.6g}[/bold green]",
+            title="Success",
+        ),
+    )
+    console.print(f"[bold green]Calibration figure saved to:[/bold green] {out_dir / _PLOT_FILENAME}")
+
+
+@cli.command()
+@click.argument("config_toml", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--surface-tension",
+    "surface_tension",
+    is_flag=True,
+    help="Measure the lattice surface tension via the Young-Laplace droplet sweep for the configured "
+    "EOS (cached results are reused; a cache miss runs the full droplet sweep).",
+)
+@click.option(
+    "--out-dir",
+    "out_dir",
+    type=click.Path(file_okay=False),
+    default=None,
+    help="Directory for analysis outputs (default: the config file's directory).",
+)
+def analyse(config_toml: str, surface_tension: bool, out_dir: str | None) -> None:
+    """Run standalone analyses for the configuration in CONFIG_TOML.
+
+    Unlike the automatic calibration during `tud-lbm run` (which only
+    triggers for EOS without a closed-form sigma), --surface-tension forces
+    the Young-Laplace measurement for any supported multiphase EOS.
+
+    Examples:
+        # Measure surface tension for the configured EOS
+        tud-lbm analyse config.toml --surface-tension
+
+        # Write outputs somewhere other than the config's directory
+        tud-lbm analyse config.toml --surface-tension --out-dir results/
+    """
+    if not surface_tension:
+        msg = "select at least one analysis, e.g. --surface-tension"
+        raise click.UsageError(msg)
+
+    console.print()
+    console.print(
+        Panel.fit(
+            "[bold blue]TUD-LBM[/bold blue] - Analysis",
+            subtitle=_CLI_SUBTITLE,
+        ),
+    )
+    console.print()
+
+    try:
+        target_dir = Path(out_dir) if out_dir is not None else Path(config_toml).resolve().parent
+        config = _load_single_config(config_toml)
+        console.print(f"[dim]Output directory : {target_dir}[/dim]")
+        console.print()
+        _analyse_surface_tension(config, target_dir)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Analysis interrupted by user.[/yellow]")
+        sys.exit(130)
+    except click.UsageError:
+        raise
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        if os.environ.get("TUD_LBM_DEBUG"):
+            raise
+        sys.exit(1)
+
+
 @click.command(
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
     add_help_option=False,
@@ -1606,7 +1702,7 @@ def main(args: tuple[str, ...]) -> None:
     forwarded = list(args)
 
     # New-style help/version and subcommands should use the command group.
-    if forwarded and forwarded[0] in {"--help", "-h", "--version", "animate", "visualise", "compare"}:
+    if forwarded and forwarded[0] in {"--help", "-h", "--version", "animate", "visualise", "compare", "analyse"}:
         cli.main(args=forwarded, standalone_mode=False)
         return
 

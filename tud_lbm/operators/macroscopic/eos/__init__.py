@@ -9,6 +9,7 @@ from typing import cast
 from tud_lbm.operators._loader import auto_load_operators
 from tud_lbm.operators.factory import build_operator
 from tud_lbm.operators.macroscopic.eos._carnahan_starling import carnahan_starling_pressure
+from tud_lbm.operators.macroscopic.eos._double_well import double_well_pressure
 
 if TYPE_CHECKING:
     from tud_lbm.operators.macroscopic import MultiphaseParams
@@ -37,4 +38,4 @@ def build_eos_fn(eos: str, mp: MultiphaseParams) -> EOSFunction:
     return cast("EOSFunction", eos_builder(mp))
 
 
-__all__ = ["build_eos_fn", "carnahan_starling_pressure"]
+__all__ = ["build_eos_fn", "carnahan_starling_pressure", "double_well_pressure"]

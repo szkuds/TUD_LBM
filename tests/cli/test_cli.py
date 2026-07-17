@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import importlib
+from pathlib import Path
 from types import ModuleType
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -2244,3 +2245,122 @@ class TestRunCommandListFlags:
                 ["run", "--list-simulation-operators", "--list-simulation-analysis"],
             )
         assert result.exit_code == 0
+
+
+# =========================================================================
+# analyse command Tests
+# =========================================================================
+
+_MULTIPHASE_TOML = """
+[simulation_type]
+simulation_name = "test_analyse"
+type = "multiphase"
+grid_shape = [16, 16]
+lattice_type = "D2Q9"
+tau = 0.99
+nt = 10
+init_type = "multiphase_bubbles"
+
+[initialisation]
+centres = [[0.5, 0.5]]
+radii = [0.2]
+dispersed = "liquid"
+
+[multiphase]
+kappa = 0.04
+rho_l = 1.0
+rho_v = 0.001
+interface_width = 5
+eos = "double-well"
+
+[boundary_conditions]
+left = "periodic"
+right = "periodic"
+top = "periodic"
+bottom = "periodic"
+
+[output]
+results_dir = "{results_dir}"
+"""
+
+
+class TestAnalyseCommand:
+    """`tud-lbm analyse CONFIG_TOML --surface-tension` paths via CliRunner."""
+
+    @staticmethod
+    def _write_multiphase_toml(tmp_path, extra: str = "") -> str:
+        cfg_toml = tmp_path / "config.toml"
+        content = _MULTIPHASE_TOML.format(results_dir=tmp_path) + extra
+        cfg_toml.write_text(content, encoding="utf-8")
+        return str(cfg_toml)
+
+    def test_no_analysis_flag_is_usage_error(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        result = CliRunner().invoke(cli, ["analyse", cfg_toml])
+        assert result.exit_code == 2
+        assert "select at least one analysis" in result.output
+
+    def test_missing_config_is_usage_error(self):
+        result = CliRunner().invoke(cli, ["analyse", "/nonexistent/config.toml", "--surface-tension"])
+        assert result.exit_code == 2
+
+    def test_sweep_config_rejected(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        content = (tmp_path / "config.toml").read_text(encoding="utf-8")
+        (tmp_path / "config.toml").write_text(content.replace("tau = 0.99", "tau = [0.6, 0.99]"), encoding="utf-8")
+        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+        assert result.exit_code == 2
+        assert "parameter sweeps" in result.output
+
+    def test_single_phase_config_errors(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\ngrid_shape=[8, 8]\n", encoding="utf-8")
+        result = CliRunner().invoke(cli, ["analyse", str(cfg_toml), "--surface-tension"])
+        assert result.exit_code == 1
+        assert "multiphase" in result.output
+
+    def test_surface_tension_success(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        with patch(
+            "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
+            return_value=0.0123,
+        ) as mock_calibrate:
+            result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+        assert result.exit_code == 0
+        assert "0.0123" in result.output
+        config_arg, out_dir_arg = mock_calibrate.call_args.args
+        assert config_arg.sim_type == "multiphase"
+        assert out_dir_arg == Path(cfg_toml).resolve().parent
+
+    def test_out_dir_option_overrides_default(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        out_dir = tmp_path / "analysis_out"
+        with patch(
+            "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
+            return_value=0.0123,
+        ) as mock_calibrate:
+            result = CliRunner().invoke(
+                cli,
+                ["analyse", cfg_toml, "--surface-tension", "--out-dir", str(out_dir)],
+            )
+        assert result.exit_code == 0
+        assert mock_calibrate.call_args.args[1] == out_dir
+
+    def test_keyboard_interrupt_exits_130(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        with patch(
+            "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
+            side_effect=KeyboardInterrupt,
+        ):
+            result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+        assert result.exit_code == 130
+
+    def test_main_shim_forwards_analyse(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        with patch(
+            "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
+            return_value=0.0123,
+        ):
+            result = CliRunner().invoke(main, ["analyse", cfg_toml, "--surface-tension"])
+        assert result.exit_code == 0
+        assert "0.0123" in result.output
