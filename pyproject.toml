@@ -30,6 +30,8 @@ dependencies = [
   # CLI
   "click",
   "rich",
+  "pytest>=9.0.3",
+  "moviepy>=2.2.1",
 ]
 description = "This is a lattice Boltzmann method package developed at Delft University of Technology."
 keywords = ["LBM", "TUD", "Delft University of Technology"]
