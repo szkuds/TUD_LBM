@@ -1,4 +1,4 @@
-"""Additional branch coverage for tud_lbm/io/plotting/figure_builder.py.
+"""Additional branch coverage for src/simulation_io/plotting/figure_builder.py.
 
 Targets the 2 uncovered conditions (91.3 → ~100%):
 - _layout for n=2 and n=3 (hits `_SMALL_LAYOUTS.get(n)` for values not
@@ -12,8 +12,8 @@ import matplotlib as mpl
 mpl.use("Agg")
 
 import numpy as np
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.figure_builder import FigureBuilder
+from src.config import SimulationConfig
+from src.simulation_io.plotting.figure_builder import FigureBuilder
 
 # ---------------------------------------------------------------------------
 # _layout — missing small-layout entries

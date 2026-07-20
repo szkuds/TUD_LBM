@@ -1,10 +1,10 @@
 from __future__ import annotations
 import jax.numpy as jnp
 import pytest
-from tud_lbm.operators.wetting._params import WettingParams
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _clamp_params
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _import_optax
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _phi_is_active
+from src.operators.wetting._params import WettingParams
+from src.operators.wetting.hysteresis.hysteresis import _clamp_params
+from src.operators.wetting.hysteresis.hysteresis import _import_optax
+from src.operators.wetting.hysteresis.hysteresis import _phi_is_active
 
 
 def test_phi_is_active_truth_table():

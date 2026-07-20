@@ -4,8 +4,8 @@ from __future__ import annotations
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from tud_lbm.pipeline.state.state import State
-from tud_lbm.pipeline.state.state import WettingState
+from src.pipeline.state.state import State
+from src.pipeline.state.state import WettingState
 
 
 def _state_with_wetting() -> State:
@@ -20,7 +20,7 @@ def _state_with_wetting() -> State:
 
 
 def test_state_to_numpy_persists_wetting_even_with_field_filter():
-    from tud_lbm.io import callbacks
+    from src.simulation_io import callbacks
 
     data = callbacks._state_to_numpy(_state_with_wetting(), fields=("rho",), t=7)
 
@@ -30,7 +30,7 @@ def test_state_to_numpy_persists_wetting_even_with_field_filter():
 
 
 def test_state_to_numpy_raises_on_nan():
-    from tud_lbm.io import callbacks
+    from src.simulation_io import callbacks
 
     state = _state_with_wetting()._replace(rho=jnp.array([[[[[np.nan]]]]]))
 
@@ -39,7 +39,7 @@ def test_state_to_numpy_raises_on_nan():
 
 
 def test_make_save_callback_runs_only_on_matching_interval(monkeypatch):
-    from tud_lbm.io import callbacks
+    from src.simulation_io import callbacks
 
     saved: list[tuple[int, dict]] = []
 

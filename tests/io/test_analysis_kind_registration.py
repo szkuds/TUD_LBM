@@ -2,16 +2,16 @@
 
 The kind was renamed from ``comparison``: every registered operator is a
 per-run snapshot-history plot, whereas true cross-run comparison lives in
-:mod:`tud_lbm.io.plotting.run_comparison` and is not an operator at all.
+:mod:`src.simulation_io.plotting.run_comparison` and is not an operator at all.
 
 A missed string literal during that rename would silently drop an operator
 from the registry rather than raising, so these tests pin the full set.
 """
 
 from __future__ import annotations
-import tud_lbm.io.plotting  # noqa: F401  (import registers the operators)
-from tud_lbm.registry import get_operator_category
-from tud_lbm.registry import get_operator_names
+import src.simulation_io.plotting  # noqa: F401  (import registers the operators)
+from src.registry import get_operator_category
+from src.registry import get_operator_names
 
 _EXPECTED_ANALYSIS_OPERATORS = frozenset(
     {

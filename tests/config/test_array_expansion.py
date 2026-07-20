@@ -1,8 +1,8 @@
 """Unit tests for array expansion module."""
 
 import pytest
-from tud_lbm.config.array_expansion import enumerate_configs
-from tud_lbm.config.array_expansion import expand_config
+from src.config.array_expansion import enumerate_configs
+from src.config.array_expansion import expand_config
 
 
 class TestExpandConfig:
@@ -243,13 +243,13 @@ class TestGetNestedSweepableFields:
     """Tests for the get_nested_sweepable_fields() introspection helper."""
 
     def test_returns_frozenset(self):
-        from tud_lbm.config.simulation_config import get_nested_sweepable_fields
+        from src.config.simulation_config import get_nested_sweepable_fields
 
         result = get_nested_sweepable_fields()
         assert isinstance(result, frozenset)
 
     def test_contains_expected_fields(self):
-        from tud_lbm.config.simulation_config import get_nested_sweepable_fields
+        from src.config.simulation_config import get_nested_sweepable_fields
 
         result = get_nested_sweepable_fields()
         assert "gravity_force" in result
@@ -258,7 +258,7 @@ class TestGetNestedSweepableFields:
         assert "hysteresis_config" in result
 
     def test_does_not_contain_scalar_fields(self):
-        from tud_lbm.config.simulation_config import get_nested_sweepable_fields
+        from src.config.simulation_config import get_nested_sweepable_fields
 
         result = get_nested_sweepable_fields()
         # Top-level scalar fields must not be included
@@ -268,8 +268,8 @@ class TestGetNestedSweepableFields:
 
     def test_nested_sweepable_is_subset_of_array_eligible(self):
         """Every nested-sweepable field must also be array-eligible."""
-        from tud_lbm.config.simulation_config import get_array_eligible_fields
-        from tud_lbm.config.simulation_config import get_nested_sweepable_fields
+        from src.config.simulation_config import get_array_eligible_fields
+        from src.config.simulation_config import get_nested_sweepable_fields
 
         assert get_nested_sweepable_fields().issubset(get_array_eligible_fields())
 

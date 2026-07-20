@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 import numpy as np
+from src.simulation_io.analysis.droplet_metrics import droplet_series_for_run
+from src.simulation_io.plotting.contact_angle_plot import ContactAngleLeftPlot
+from src.simulation_io.plotting.contact_line_speed_plot import ContactLineSpeedLeftPlot
+from src.simulation_io.plotting.scalar_history_plot import AvgDensityPlot
+from src.simulation_io.plotting.scalar_history_plot import DensityRatioPlot
+from src.simulation_io.plotting.scalar_history_plot import MaxVelocityPlot
 from tests.support.run_dirs import UNIFORM_ITERATIONS
 from tests.support.run_dirs import build_run_dir
 from tests.support.run_dirs import wetting_config
-from tud_lbm.io.analysis.droplet_metrics import droplet_series_for_run
-from tud_lbm.io.plotting.contact_angle_plot import ContactAngleLeftPlot
-from tud_lbm.io.plotting.contact_line_speed_plot import ContactLineSpeedLeftPlot
-from tud_lbm.io.plotting.scalar_history_plot import AvgDensityPlot
-from tud_lbm.io.plotting.scalar_history_plot import DensityRatioPlot
-from tud_lbm.io.plotting.scalar_history_plot import MaxVelocityPlot
 
 
 def _snapshots(run_dir):

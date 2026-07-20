@@ -9,11 +9,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
 import pytest
+from src.simulation_io.analysis.droplet_metrics import clear_series_cache
+from src.simulation_io.analysis.droplet_metrics import droplet_series_for_run
+from src.simulation_io.analysis.droplet_metrics import series_for_files
 from tests.support.run_dirs import build_run_dir
 from tests.support.run_dirs import wetting_config
-from tud_lbm.io.analysis.droplet_metrics import clear_series_cache
-from tud_lbm.io.analysis.droplet_metrics import droplet_series_for_run
-from tud_lbm.io.analysis.droplet_metrics import series_for_files
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -37,7 +37,7 @@ def count_loads(monkeypatch) -> dict[str, int]:
         calls["n"] += 1
         return real_load(*args, **kwargs)
 
-    monkeypatch.setattr("tud_lbm.io.analysis.droplet_metrics.series.np.load", counting_load)
+    monkeypatch.setattr("src.simulation_io.analysis.droplet_metrics.series.np.load", counting_load)
     return calls
 
 
@@ -72,8 +72,8 @@ def test_two_analysis_operators_share_one_read(tmp_path: Path, count_loads) -> N
     This is the duplication the shared layer exists to remove: previously each
     operator ran its own loop over every ``.npz``.
     """
-    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsTimePlot
-    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsXPlot
+    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsTimePlot
+    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsXPlot
 
     iterations = (5, 10, 15, 20)
     run_dir = build_run_dir(tmp_path, iterations=iterations)
@@ -88,8 +88,8 @@ def test_two_analysis_operators_share_one_read(tmp_path: Path, count_loads) -> N
 
 def test_ca_theta_operators_agree_on_shared_columns(tmp_path: Path) -> None:
     """The two operators differ only in which x-axis they render."""
-    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsTimePlot
-    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsXPlot
+    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsTimePlot
+    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsXPlot
 
     run_dir = build_run_dir(tmp_path)
     files = sorted((run_dir / "data").glob("timestep_*.npz"))
@@ -105,8 +105,8 @@ def test_ca_theta_operators_agree_on_shared_columns(tmp_path: Path) -> None:
 def test_ca_theta_arrays_match_the_csv_columns(tmp_path: Path) -> None:
     """The plot adapter and the CSV serialiser cannot drift apart."""
     import pandas as pd
-    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsXPlot
-    from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
+    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsXPlot
+    from src.simulation_io.plotting.simulation_csv import build_simulation_csv
 
     config = wetting_config()
     run_dir = build_run_dir(tmp_path, config=config)
@@ -140,7 +140,7 @@ def test_changed_config_is_not_served_from_cache(tmp_path: Path) -> None:
 
 def test_cache_is_bounded(tmp_path: Path) -> None:
     """The cache evicts rather than growing without limit."""
-    from tud_lbm.io.analysis.droplet_metrics import series as series_mod
+    from src.simulation_io.analysis.droplet_metrics import series as series_mod
 
     config = wetting_config()
     for i in range(series_mod._MAX_CACHED_RUNS + 4):
@@ -157,7 +157,7 @@ def test_series_for_files_returns_none_without_usable_snapshots(tmp_path: Path) 
 
 def test_series_is_none_when_config_lacks_interface(tmp_path: Path) -> None:
     """A config without rho_l/rho_v cannot define droplet metrics."""
-    from tud_lbm.config import SimulationConfig
+    from src.config import SimulationConfig
 
     run_dir = build_run_dir(tmp_path)
     bare = SimulationConfig(grid_shape=(16, 12), tau=0.9, nt=20)

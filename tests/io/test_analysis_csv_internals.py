@@ -24,22 +24,22 @@ mpl.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from tud_lbm.cli.analysis_routing import analyse_tree
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.analysis.droplet_metrics import RZero
-from tud_lbm.io.analysis.droplet_metrics import analytical_sigma_lg
-from tud_lbm.io.analysis.droplet_metrics import backward_diff
-from tud_lbm.io.analysis.droplet_metrics import inclination_angle_deg
-from tud_lbm.io.analysis.droplet_metrics import resolve_r_zero
-from tud_lbm.io.analysis.droplet_metrics._snapshot import avg_x_location
-from tud_lbm.io.analysis.droplet_metrics._snapshot import center_of_mass
-from tud_lbm.io.analysis.droplet_metrics._snapshot import contact_angles_from_rho
-from tud_lbm.io.analysis.droplet_metrics._snapshot import contact_lines_from_rho
-from tud_lbm.io.analysis.droplet_metrics._snapshot import interpolate_interface
-from tud_lbm.io.analysis.droplet_metrics._snapshot import parse_timestep_from_path
-from tud_lbm.io.plotting.run_comparison import _clean_dir_label
-from tud_lbm.io.plotting.simulation_csv import SimulationCsvExport
-from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
+from src.cli.analysis_routing import analyse_tree
+from src.config import SimulationConfig
+from src.simulation_io.analysis.droplet_metrics import RZero
+from src.simulation_io.analysis.droplet_metrics import analytical_sigma_lg
+from src.simulation_io.analysis.droplet_metrics import backward_diff
+from src.simulation_io.analysis.droplet_metrics import inclination_angle_deg
+from src.simulation_io.analysis.droplet_metrics import resolve_r_zero
+from src.simulation_io.analysis.droplet_metrics._snapshot import avg_x_location
+from src.simulation_io.analysis.droplet_metrics._snapshot import center_of_mass
+from src.simulation_io.analysis.droplet_metrics._snapshot import contact_angles_from_rho
+from src.simulation_io.analysis.droplet_metrics._snapshot import contact_lines_from_rho
+from src.simulation_io.analysis.droplet_metrics._snapshot import interpolate_interface
+from src.simulation_io.analysis.droplet_metrics._snapshot import parse_timestep_from_path
+from src.simulation_io.plotting.run_comparison import _clean_dir_label
+from src.simulation_io.plotting.simulation_csv import SimulationCsvExport
+from src.simulation_io.plotting.simulation_csv import build_simulation_csv
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -464,8 +464,8 @@ def test_analyse_tree_counts_valid_run(tmp_path):
     # Write a config.toml so the discovery loop finds the run
     (run_dir / "config.toml").write_text("", encoding="utf-8")
     with (
-        patch("tud_lbm.cli.analysis_routing._safe_load_config", return_value=cfg),
-        patch("tud_lbm.cli.analysis_routing.compare_runs"),
+        patch("src.cli.analysis_routing._safe_load_config", return_value=cfg),
+        patch("src.cli.analysis_routing.compare_runs"),
     ):
         n_runs, _ = analyse_tree(tmp_path)
 

@@ -15,7 +15,7 @@ Covers every raise statement in _validate_common and _validate_multiphase:
 from __future__ import annotations
 from typing import Any
 import pytest
-from tud_lbm.config.simulation_config import SimulationConfig
+from src.config.simulation_config import SimulationConfig
 
 # ---------------------------------------------------------------------------
 # Base configs shared across parametrized tests

@@ -11,8 +11,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 import jax.numpy as jnp
 import pytest
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _get_hysteresis_window_chemical_step
-from tud_lbm.operators.wetting.hysteresis.hysteresis import update_wetting_state_chemical_step
+from src.operators.wetting.hysteresis.hysteresis import _get_hysteresis_window_chemical_step
+from src.operators.wetting.hysteresis.hysteresis import update_wetting_state_chemical_step
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -90,7 +90,7 @@ class TestGetHysteresisWindowChemicalStep:
 
 def test_chemical_step_hysteresis_operator_is_registered():
     """update_wetting_state_chemical_step must be registered as 'chemical_step_hysteresis'."""
-    from tud_lbm.registry import get_operators
+    from src.registry import get_operators
 
     ops = get_operators("wetting")
     assert "chemical_step_hysteresis" in ops, (
@@ -111,7 +111,7 @@ def test_get_hysteresis_window_raises_when_chemical_step_config_none():
 
 
 def test_update_wetting_state_chemical_step_raises_when_multiphase_params_none():
-    from tud_lbm.pipeline.state import WettingState
+    from src.pipeline.state import WettingState
 
     setup = SimpleNamespace(
         multiphase_params=None,

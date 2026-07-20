@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from typing import NamedTuple
 import numpy as np
 import pytest
-from tud_lbm.io.analysis.surface_tension import surface_tension as st
+from src.simulation_io.analysis.surface_tension import surface_tension as st
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -220,7 +220,7 @@ def test_save_state_writes_array_fields_and_skips_none(tmp_path):
 
 def _multiphase_params(**overrides):
     from typing import Any
-    from tud_lbm.operators.macroscopic import MultiphaseParams
+    from src.operators.macroscopic import MultiphaseParams
 
     base: dict[str, Any] = {
         "eos": "carnahan-starling",
@@ -238,7 +238,7 @@ def _multiphase_params(**overrides):
 
 
 def test_bulk_pressure_fn_carnahan_starling_matches_reference():
-    from tud_lbm.operators.macroscopic.eos import carnahan_starling_pressure
+    from src.operators.macroscopic.eos import carnahan_starling_pressure
 
     mp = _multiphase_params()
     pressure_fn = st._bulk_pressure_fn(mp)
@@ -249,7 +249,7 @@ def test_bulk_pressure_fn_carnahan_starling_matches_reference():
 
 
 def test_bulk_pressure_fn_double_well_matches_reference():
-    from tud_lbm.operators.macroscopic.eos import double_well_pressure
+    from src.operators.macroscopic.eos import double_well_pressure
 
     mp = _multiphase_params(eos="double-well", a_eos=None, b_eos=None, r_eos=None, t_eos=None)
     pressure_fn = st._bulk_pressure_fn(mp)
@@ -275,7 +275,7 @@ def test_bulk_pressure_fn_unknown_eos_raises():
 def _cs_config(**overrides):
     """A real, valid Carnahan-Starling multiphase SimulationConfig."""
     from typing import Any
-    from tud_lbm.config.simulation_config import SimulationConfig
+    from src.config.simulation_config import SimulationConfig
 
     base: dict[str, Any] = {
         "sim_type": "multiphase",

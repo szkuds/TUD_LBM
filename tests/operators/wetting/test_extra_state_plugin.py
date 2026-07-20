@@ -3,8 +3,8 @@
 from __future__ import annotations
 from types import SimpleNamespace
 import jax.numpy as jnp
-from tud_lbm.pipeline.state.state import State
-from tud_lbm.pipeline.state.state import WettingState
+from src.pipeline.state.state import State
+from src.pipeline.state.state import WettingState
 
 
 def _state_template(*, wetting: WettingState | None) -> State:
@@ -18,14 +18,14 @@ def _state_template(*, wetting: WettingState | None) -> State:
 
 
 def test_cfg_value_reads_alias_and_default():
-    from tud_lbm.operators.wetting._extra_state import _cfg_value
+    from src.operators.wetting._extra_state import _cfg_value
 
     assert _cfg_value({"phi_l": 1.2}, "phi_left", "phi_l", default=1.0) == 1.2
     assert _cfg_value({}, "phi_left", "phi_l", default=1.0) == 1.0
 
 
 def test_is_active_detects_wetting_or_hysteresis():
-    from tud_lbm.operators.wetting._extra_state import WettingExtraStatePlugin
+    from src.operators.wetting._extra_state import WettingExtraStatePlugin
 
     assert WettingExtraStatePlugin.is_active(SimpleNamespace(wetting_config={}))  # ty: ignore[invalid-argument-type]
     assert WettingExtraStatePlugin.is_active(SimpleNamespace(wetting_config=None, hysteresis_config={}))  # ty: ignore[invalid-argument-type]
@@ -33,7 +33,7 @@ def test_is_active_detects_wetting_or_hysteresis():
 
 
 def test_init_state_uses_defaults_when_wetting_cfg_missing(monkeypatch):
-    from tud_lbm.operators.wetting import _extra_state as mod
+    from src.operators.wetting import _extra_state as mod
 
     monkeypatch.setattr(mod, "compute_contact_angle", lambda rho, rho_mean: (jnp.array(75.0), jnp.array(85.0)))
     monkeypatch.setattr(
@@ -57,7 +57,7 @@ def test_init_state_uses_defaults_when_wetting_cfg_missing(monkeypatch):
 
 
 def test_update_state_early_return_and_update_path():
-    from tud_lbm.operators.wetting._extra_state import WettingExtraStatePlugin
+    from src.operators.wetting._extra_state import WettingExtraStatePlugin
 
     new_state = _state_template(wetting=None)
     prev_state = _state_template(wetting=None)
@@ -86,7 +86,7 @@ def test_update_state_early_return_and_update_path():
 
 def test_init_state_raises_when_initial_f_fn_none():
     import pytest
-    from tud_lbm.operators.wetting._extra_state import WettingExtraStatePlugin
+    from src.operators.wetting._extra_state import WettingExtraStatePlugin
 
     setup = SimpleNamespace(
         config=SimpleNamespace(wetting_config=None),

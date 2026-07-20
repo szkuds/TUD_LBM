@@ -1,4 +1,4 @@
-"""Branch coverage for tud_lbm/operators/wetting/hysteresis/hysteresis.py.
+"""Branch coverage for src/operators/wetting/hysteresis/hysteresis.py.
 
 Targets the 6 uncovered lines (76.9 → ~100%):
 - _import_optax: ImportError path when optax is absent
@@ -13,20 +13,20 @@ from __future__ import annotations
 from types import SimpleNamespace
 import jax.numpy as jnp
 import pytest
-from tud_lbm.operators.wetting._params import WettingParams
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _clamp_params
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _cost_above
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _cost_below
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _cost_ca
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _cost_cll
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _import_optax
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _mask_left_d_rho
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _mask_left_phi
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _mask_right_d_rho
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _mask_right_phi
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _phi_is_active
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _update_wetting_state_impl
-from tud_lbm.operators.wetting.hysteresis.hysteresis import update_wetting_state
+from src.operators.wetting._params import WettingParams
+from src.operators.wetting.hysteresis.hysteresis import _clamp_params
+from src.operators.wetting.hysteresis.hysteresis import _cost_above
+from src.operators.wetting.hysteresis.hysteresis import _cost_below
+from src.operators.wetting.hysteresis.hysteresis import _cost_ca
+from src.operators.wetting.hysteresis.hysteresis import _cost_cll
+from src.operators.wetting.hysteresis.hysteresis import _import_optax
+from src.operators.wetting.hysteresis.hysteresis import _mask_left_d_rho
+from src.operators.wetting.hysteresis.hysteresis import _mask_left_phi
+from src.operators.wetting.hysteresis.hysteresis import _mask_right_d_rho
+from src.operators.wetting.hysteresis.hysteresis import _mask_right_phi
+from src.operators.wetting.hysteresis.hysteresis import _phi_is_active
+from src.operators.wetting.hysteresis.hysteresis import _update_wetting_state_impl
+from src.operators.wetting.hysteresis.hysteresis import update_wetting_state
 
 
 def test_import_optax_succeeds_when_available():
@@ -235,7 +235,7 @@ def test_mask_right_phi():
 
 
 def _dummy_wetting():
-    from tud_lbm.pipeline.state import WettingState
+    from src.pipeline.state import WettingState
 
     return WettingState(
         phi_left=jnp.array(0.0),

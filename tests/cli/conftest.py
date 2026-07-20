@@ -9,7 +9,7 @@ from tests.support.run_dirs import wetting_config
 
 if TYPE_CHECKING:
     from pathlib import Path
-    from tud_lbm.config import SimulationConfig
+    from src.config import SimulationConfig
 
 
 @pytest.fixture

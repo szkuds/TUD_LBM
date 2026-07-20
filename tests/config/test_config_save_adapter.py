@@ -10,10 +10,10 @@ Covers:
 
 from pathlib import Path
 import pytest
-from tud_lbm.config.adapter_base import ConfigAdapter
-from tud_lbm.config.adapter_base import get_adapter
-from tud_lbm.config.adapter_toml import TomlAdapter
-from tud_lbm.config.simulation_config import SimulationConfig
+from src.config.adapter_base import ConfigAdapter
+from src.config.adapter_base import get_adapter
+from src.config.adapter_toml import TomlAdapter
+from src.config.simulation_config import SimulationConfig
 
 
 class TestTomlAdapterSave:
@@ -164,7 +164,7 @@ class TestSimulationIOConfigFileType:
     """SimulationIO should write the config file in the requested format."""
 
     def test_default_filetype_saves_toml(self, tmp_path):
-        from tud_lbm.io import SimulationIO
+        from src.simulation_io import SimulationIO
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         io = SimulationIO(
@@ -179,7 +179,7 @@ class TestSimulationIOConfigFileType:
 
     def test_toml_config_is_loadable(self, tmp_path):
         """The config.toml saved by SimulationIO should be loadable."""
-        from tud_lbm.io import SimulationIO
+        from src.simulation_io import SimulationIO
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.7, nt=200)
         io = SimulationIO(
@@ -196,7 +196,7 @@ class TestSimulationIOConfigFileType:
 
     def test_multiphase_variant_saves_multiphase_params(self, tmp_path):
         """SimulationIO should persist [multiphase] parameters for multiphase variants."""
-        from tud_lbm.io import SimulationIO
+        from src.simulation_io import SimulationIO
 
         cfg = SimulationConfig(
             grid_shape=(16, 16),

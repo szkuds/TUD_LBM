@@ -7,7 +7,7 @@ deterministic so that CSV output can be pinned against a golden fixture.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
-from tud_lbm.config import SimulationConfig
+from src.config import SimulationConfig
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -124,7 +124,7 @@ def build_run_dir(
         write_snapshot(data_dir, step, index, with_contact_metrics=with_contact_metrics)
 
     if write_config_toml:
-        from tud_lbm.config.adapter_toml import TomlAdapter
+        from src.config.adapter_toml import TomlAdapter
 
         TomlAdapter().save(config, str(run_dir / "config.toml"))
 

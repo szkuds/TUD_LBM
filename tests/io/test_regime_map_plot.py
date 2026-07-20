@@ -1,19 +1,19 @@
-"""End-to-end tests for tud_lbm.io.plotting.regime_map_plot."""
+"""End-to-end tests for src.simulation_io.plotting.regime_map_plot."""
 
 from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 import numpy as np
 import pytest
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.regime_map_plot import _REGIME_COLORS
-from tud_lbm.io.plotting.regime_map_plot import _REGIME_MARKERS
-from tud_lbm.io.plotting.regime_map_plot import RunRegimeEntry
-from tud_lbm.io.plotting.regime_map_plot import build_regime_map
-from tud_lbm.io.plotting.regime_map_plot import parse_run_dir_list
-from tud_lbm.io.plotting.regime_map_plot import plot_regime_map
-from tud_lbm.io.plotting.regime_map_plot import process_run_dir
-from tud_lbm.io.readers import TomlAdapter
+from src.config import SimulationConfig
+from src.simulation_io.plotting.regime_map_plot import _REGIME_COLORS
+from src.simulation_io.plotting.regime_map_plot import _REGIME_MARKERS
+from src.simulation_io.plotting.regime_map_plot import RunRegimeEntry
+from src.simulation_io.plotting.regime_map_plot import build_regime_map
+from src.simulation_io.plotting.regime_map_plot import parse_run_dir_list
+from src.simulation_io.plotting.regime_map_plot import plot_regime_map
+from src.simulation_io.plotting.regime_map_plot import process_run_dir
+from src.simulation_io.readers import TomlAdapter
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -170,7 +170,7 @@ def test_parse_run_dir_list_rejects_absolute_path_outside_allowed_roots(tmp_path
 
 
 def test_parse_run_dir_list_accepts_default_results_root_with_no_allowed_roots(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("tud_lbm.io.plotting.regime_map_plot.BASE_RESULTS_DIR", str(tmp_path))
+    monkeypatch.setattr("src.simulation_io.plotting.regime_map_plot.BASE_RESULTS_DIR", str(tmp_path))
     (tmp_path / "run_a").mkdir()
     txt_path = tmp_path / "dirs.txt"
     txt_path.write_text("run_a\n", encoding="utf-8")

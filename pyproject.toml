@@ -68,7 +68,7 @@ Issues     = "https://github.com/szkuds/tud_lbm/issues"
 ReadTheDocs = "https://tud_lbm.readthedocs.io"
 
 [project.scripts]
-tud-lbm = "tud_lbm.cli.commands:cli"
+tud-lbm = "src.cli.commands:cli"
 
 # ---------------------------------------------------------------------------
 # uv
@@ -102,7 +102,7 @@ markers = [
 # ---------------------------------------------------------------------------
 [tool.coverage.run]
 branch = true
-source = ["tud_lbm"]
+source = ["src"]
 command_line = "-m pytest"
 
 # ---------------------------------------------------------------------------
@@ -156,25 +156,28 @@ extend-immutable-calls = ["array_field"]
 ]
 "examples/**.py"                                  = ["INP001","ANN201","ERA001","T201","D103"]
 "examples/minimal_example.py"                     = ["RUF002"]
-"tud_lbm/config/simulation_config.py"             = ["RUF009"]
-"tud_lbm/util/plotting/__init__.py"               = ["I001"]
-"tud_lbm/util/plotting/base.py"                   = ["ARG002"]
-"tud_lbm/pipeline/setup.py"                       = ["PLC0415","RUF002"]
-"tud_lbm/pipeline/__init__.py"                    = ["PLC0415"]
-"tud_lbm/runner/parallel_runner.py"               = ["PLC0415","ARG001","LOG015","G004"]
-"tud_lbm/operators/protocols.py"                  = ["ANN401","RUF002"]
-"tud_lbm/operators/macroscopic/_multiphase.py"    = ["RUF002","RUF003"]
-"tud_lbm/operators/collision/_bgk.py"             = ["RUF002"]
-"tud_lbm/util/io.py"                              = ["ANN002"]
-"tud_lbm/pipeline/**"                             = ["T201"]
-"tud_lbm/operators/wetting/hysteresis/hysteresis.py" = ["C901", "PLR0915"]
-"tud_lbm/io/plotting/run_comparison.py"   = ["T201"]
-"tud_lbm/cli/analysis_routing.py"          = ["T201"]
-"tud_lbm/io/plotting/simulation_csv.py"   = ["T201"]
-"tud_lbm/io/plotting/regime_map_plot.py"  = ["T201"]
+"src/config/simulation_config.py"             = ["RUF009"]
+"src/util/plotting/__init__.py"               = ["I001"]
+"src/util/plotting/base.py"                   = ["ARG002"]
+"src/pipeline/setup.py"                       = ["PLC0415","RUF002"]
+"src/pipeline/__init__.py"                    = ["PLC0415"]
+"src/runner/parallel_runner.py"               = ["PLC0415","ARG001","LOG015","G004"]
+"src/operators/protocols.py"                  = ["ANN401","RUF002"]
+"src/operators/macroscopic/_multiphase.py"    = ["RUF002","RUF003"]
+"src/operators/collision/_bgk.py"             = ["RUF002"]
+"src/pipeline/**"                             = ["T201"]
+"src/operators/wetting/hysteresis/hysteresis.py" = ["C901", "PLR0915"]
+# `src.io` is only ever imported fully qualified, so it never shadows the
+# stdlib `io` at runtime (absolute imports are the default). Surfaced by the
+# tud_lbm -> src package rename, not by anything in the module itself.
+"src/simulation_io/__init__.py"                      = ["A005"]
+"src/simulation_io/plotting/run_comparison.py"   = ["T201"]
+"src/cli/analysis_routing.py"          = ["T201"]
+"src/simulation_io/plotting/simulation_csv.py"   = ["T201"]
+"src/simulation_io/plotting/regime_map_plot.py"  = ["T201"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["tud_lbm"]
+known-first-party = ["src"]
 force-single-line = true
 no-lines-before = ["future","standard-library","third-party","first-party","local-folder"]
 
@@ -185,7 +188,7 @@ no-lines-before = ["future","standard-library","third-party","first-party","loca
 current_version = "2026.0.1"
 
 [[tool.bumpversion.files]]
-filename = "tud_lbm/__init__.py"
+filename = "src/__init__.py"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"

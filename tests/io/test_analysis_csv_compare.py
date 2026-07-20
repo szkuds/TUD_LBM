@@ -4,13 +4,13 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from tud_lbm.cli.analysis_routing import analyse_tree
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.analysis.droplet_metrics import DropletSeries
-from tud_lbm.io.analysis.droplet_metrics import MetricScales
-from tud_lbm.io.plotting.run_comparison import _clean_dir_label
-from tud_lbm.io.plotting.run_comparison import _safe_load_config
-from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
+from src.cli.analysis_routing import analyse_tree
+from src.config import SimulationConfig
+from src.simulation_io.analysis.droplet_metrics import DropletSeries
+from src.simulation_io.analysis.droplet_metrics import MetricScales
+from src.simulation_io.plotting.run_comparison import _clean_dir_label
+from src.simulation_io.plotting.run_comparison import _safe_load_config
+from src.simulation_io.plotting.simulation_csv import build_simulation_csv
 
 
 def _wetting_config() -> SimulationConfig:
@@ -125,7 +125,7 @@ def test_safe_load_config_returns_none_on_parse_error(monkeypatch, tmp_path: Pat
         msg = "broken config"
         raise ValueError(msg)
 
-    monkeypatch.setattr("tud_lbm.io.readers.TomlAdapter.load", _raise_load)
+    monkeypatch.setattr("src.simulation_io.readers.TomlAdapter.load", _raise_load)
 
     assert _safe_load_config(bad) is None
 
@@ -149,9 +149,9 @@ def test_analyse_tree_skips_special_folders(monkeypatch, tmp_path: Path):
         (rd / "config.toml").write_text("[simulation_type]\ntype='single_phase'\n", encoding="utf-8")
 
     cfg = _wetting_config()
-    monkeypatch.setattr("tud_lbm.cli.analysis_routing._safe_load_config", lambda _p: cfg)
+    monkeypatch.setattr("src.cli.analysis_routing._safe_load_config", lambda _p: cfg)
     monkeypatch.setattr(
-        "tud_lbm.cli.analysis_routing.build_simulation_csv", lambda rd, _cfg: Path(rd) / "simulation_data.csv"
+        "src.cli.analysis_routing.build_simulation_csv", lambda rd, _cfg: Path(rd) / "simulation_data.csv"
     )
 
     called = {"n": 0}
@@ -159,7 +159,7 @@ def test_analyse_tree_skips_special_folders(monkeypatch, tmp_path: Path):
     def _fake_compare(_parent):
         called["n"] += 1
 
-    monkeypatch.setattr("tud_lbm.cli.analysis_routing.compare_runs", _fake_compare)
+    monkeypatch.setattr("src.cli.analysis_routing.compare_runs", _fake_compare)
 
     n_runs, n_ok = analyse_tree(parent)
 

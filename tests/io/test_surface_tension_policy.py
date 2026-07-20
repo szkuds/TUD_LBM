@@ -8,13 +8,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import pandas as pd
 import pytest
+from src.simulation_io.analysis.droplet_metrics import analytical_sigma_lg
+from src.simulation_io.analysis.droplet_metrics import droplet_series_for_run
+from src.simulation_io.analysis.droplet_metrics import measured_sigma_lg
+from src.simulation_io.analysis.droplet_metrics import resolve_scales
+from src.simulation_io.plotting.simulation_csv import build_simulation_csv
 from tests.support.run_dirs import build_run_dir
 from tests.support.run_dirs import wetting_config
-from tud_lbm.io.analysis.droplet_metrics import analytical_sigma_lg
-from tud_lbm.io.analysis.droplet_metrics import droplet_series_for_run
-from tud_lbm.io.analysis.droplet_metrics import measured_sigma_lg
-from tud_lbm.io.analysis.droplet_metrics import resolve_scales
-from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
 if TYPE_CHECKING:
     from pathlib import Path

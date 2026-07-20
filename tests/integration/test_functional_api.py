@@ -3,7 +3,7 @@
 - ``operators.step`` exports pure functions (no ``Operators`` bundle).
 - ``runner.run`` works without legacy classes.
 - ``config.from_dict`` and ``config.DictAdapter`` work end-to-end.
-- Top-level ``tud_lbm/__init__`` re-exports the correct symbols.
+- Top-level ``src/__init__`` re-exports the correct symbols.
 - No banned legacy patterns leak into the new modules.
 - End-to-end: config → build_setup → init_state → run.
 """
@@ -24,18 +24,18 @@ class TestTopLevelExports:
     """The top-level package re-exports only the new functional API."""
 
     def test_exports_simulation_config(self):
-        from tud_lbm import config
+        from src import config
 
         assert hasattr(config, "SimulationConfig")
 
     def test_exports_from_dict(self):
-        from tud_lbm import config
+        from src import config
 
         assert hasattr(config, "from_dict")
         assert callable(config.from_dict)
 
     def test_exports_dict_adapter(self):
-        from tud_lbm import config
+        from src import config
 
         assert hasattr(config, "DictAdapter")
 
@@ -44,18 +44,18 @@ class TestRunnerExports:
     """``runner`` exports only the functional API."""
 
     def test_exports_run(self):
-        from tud_lbm.pipeline import runner
+        from src.pipeline import runner
 
         assert hasattr(runner, "run")
         assert callable(runner.run)
 
     def test_exports_init_state(self):
-        from tud_lbm.pipeline import runner
+        from src.pipeline import runner
 
         assert hasattr(runner, "init_state")
 
     def test_no_legacy_exports(self):
-        from tud_lbm.pipeline import runner
+        from src.pipeline import runner
 
         for name in (
             "Run",
@@ -82,7 +82,7 @@ class TestStepSignatures:
     """Step functions accept (setup, state), not (setup, ops, state)."""
 
     def test_step_single_phase_params(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         sig = inspect.signature(step_single_phase)
@@ -93,7 +93,7 @@ class TestStepSignatures:
         ], f"Expected ['setup', 'state'], got {params}"
 
     def test_step_multiphase_params(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         sig = inspect.signature(step_multiphase)
@@ -113,8 +113,8 @@ class TestDictAdapter:
     """``DictAdapter`` builds a ``SimulationConfig`` from a dict."""
 
     def test_basic(self):
-        from tud_lbm.config.adapter_dict import DictAdapter
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.adapter_dict import DictAdapter
+        from src.config.simulation_config import SimulationConfig
 
         d = {"grid_shape": [8, 8], "tau": 0.8, "nt": 5}
         adapter = DictAdapter()
@@ -124,13 +124,13 @@ class TestDictAdapter:
         assert cfg.tau == 0.8
 
     def test_from_dict_convenience(self):
-        from tud_lbm.config import from_dict
+        from src.config import from_dict
 
         cfg = from_dict({"grid_shape": [16, 16], "tau": 0.7, "nt": 10})
         assert cfg.grid_shape == (16, 16, 1)
 
     def test_validation_error(self):
-        from tud_lbm.config import from_dict
+        from src.config import from_dict
 
         with pytest.raises(ValueError, match="tau"):
             from_dict({"tau": 0.3})  # tau <= 0.5 is invalid
@@ -145,7 +145,7 @@ class TestRunSignature:
     """``run`` accepts (setup, initial_state, nt, save_interval)."""
 
     def test_run_params(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         sig = inspect.signature(run)
         params = list(sig.parameters.keys())
@@ -168,10 +168,10 @@ class TestEndToEnd:
     """Full pipeline using only the new functional API."""
 
     def test_single_phase_e2e(self):
-        from tud_lbm.config import SimulationConfig
-        from tud_lbm.pipeline.runner import init_state
-        from tud_lbm.pipeline.runner import run
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config import SimulationConfig
+        from src.pipeline.runner import init_state
+        from src.pipeline.runner import run
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=5)
         setup = build_setup(cfg)
@@ -185,10 +185,10 @@ class TestEndToEnd:
         assert not jnp.isnan(final_state.f).any()
 
     def test_multiphase_e2e(self):
-        from tud_lbm.config import SimulationConfig
-        from tud_lbm.pipeline.runner import init_state
-        from tud_lbm.pipeline.runner import run
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config import SimulationConfig
+        from src.pipeline.runner import init_state
+        from src.pipeline.runner import run
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -209,10 +209,10 @@ class TestEndToEnd:
         assert not jnp.isnan(final_state.f).any()
 
     def test_run_uses_setup_nt_default(self):
-        from tud_lbm.config import SimulationConfig
-        from tud_lbm.pipeline.runner import init_state
-        from tud_lbm.pipeline.runner import run
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config import SimulationConfig
+        from src.pipeline.runner import init_state
+        from src.pipeline.runner import run
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=4)
         setup = build_setup(cfg)
@@ -221,10 +221,10 @@ class TestEndToEnd:
         assert int(final_state.t) == 4
 
     def test_save_interval(self):
-        from tud_lbm.config import SimulationConfig
-        from tud_lbm.pipeline.runner import init_state
-        from tud_lbm.pipeline.runner import run
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config import SimulationConfig
+        from src.pipeline.runner import init_state
+        from src.pipeline.runner import run
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
         setup = build_setup(cfg)
@@ -237,9 +237,9 @@ class TestEndToEnd:
         assert trajectory.f.shape[0] == 2
 
     def test_step_single_phase_direct(self):
-        from tud_lbm.config import SimulationConfig
-        from tud_lbm.pipeline.runner import init_state
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config import SimulationConfig
+        from src.pipeline.runner import init_state
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=5)
         setup = build_setup(cfg)
@@ -251,10 +251,10 @@ class TestEndToEnd:
         assert not jnp.isnan(new_state.f).any()
 
     def test_mass_conservation(self):
-        from tud_lbm.config import SimulationConfig
-        from tud_lbm.pipeline.runner import init_state
-        from tud_lbm.pipeline.runner import run
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config import SimulationConfig
+        from src.pipeline.runner import init_state
+        from src.pipeline.runner import run
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
         setup = build_setup(cfg)
@@ -275,7 +275,7 @@ class TestNoBannedPatterns:
     """New code does not import legacy modules."""
 
     def test_step_operators_no_app_setup(self):
-        from tud_lbm.operators import step
+        from src.operators import step
 
         source = inspect.getsource(step)
         assert "app_setup" not in source
@@ -284,7 +284,7 @@ class TestNoBannedPatterns:
         assert "static_argnums=(0," not in source
 
     def test_runner_run_no_app_setup(self):
-        from tud_lbm.pipeline import runner
+        from src.pipeline import runner
 
         source = inspect.getsource(runner)
         assert "app_setup" not in source
@@ -294,16 +294,16 @@ class TestNoBannedPatterns:
     def test_cli_no_app_setup(self):
         """No module in the CLI package may reach for the legacy API."""
         try:
-            import tud_lbm.cli.commands  # imports every CLI module
+            import src.cli.commands  # imports every CLI module
         except ImportError as e:
             if "click" in str(e) or "rich" in str(e):
                 pytest.skip("click or rich dependency not installed")
             raise
 
-        cli_root = Path(inspect.getfile(tud_lbm.cli)).parent
+        cli_root = Path(inspect.getfile(src.cli)).parent
         sources = list(cli_root.rglob("*.py"))
         assert sources, "expected to find CLI modules to scan"
         for path in sources:
             source = path.read_text(encoding="utf-8")
             assert "from app_setup" not in source, path
-            assert "from tud_lbm.pipeline.runner import Run" not in source, path
+            assert "from src.pipeline.runner import Run" not in source, path

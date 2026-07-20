@@ -1,4 +1,4 @@
-"""Tests for tud_lbm.io.plotting.overview_simulation_inc_snapshots."""
+"""Tests for src.simulation_io.plotting.overview_simulation_inc_snapshots."""
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
@@ -11,9 +11,9 @@ if TYPE_CHECKING:
 
 mpl.use("Agg")
 
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.overview_simulation_inc_snapshots import SnapshotOverviewPlot
-from tud_lbm.registry import get_operators
+from src.config import SimulationConfig
+from src.registry import get_operators
+from src.simulation_io.plotting.overview_simulation_inc_snapshots import SnapshotOverviewPlot
 
 
 def _wetting_config() -> SimulationConfig:

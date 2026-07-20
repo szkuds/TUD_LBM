@@ -62,7 +62,7 @@ For projects that automatically publish to PyPI using a release or publish workf
 For projects that also build conda packages, e.g. on conda-forge or Bioconda, something like the following could be useful to add (example_for_test taken from matchms, make sure to replace the names and links):
 
 1. Wait until new release is also on Bioconda (https://anaconda.org/bioconda/tud_lbm) via a automaticly created PR on [bioconda recipes repo](https://github.com/bioconda/bioconda-recipes/pulls?q=is%3Apr+is%3Aopen+tud_lbm)
-1. Test tud_lbm from bioconda by manually running [Conda verify](https://github.com/szkuds/tud_lbm/actions/workflows/conda_verify.yml) workflow
+1. Test src from bioconda by manually running [Conda verify](https://github.com/szkuds/tud_lbm/actions/workflows/conda_verify.yml) workflow
 -->
 
 Also a Zenodo entry will be made for the release with its own DOI.

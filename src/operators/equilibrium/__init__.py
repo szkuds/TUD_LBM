@@ -1,0 +1,56 @@
+"""Equilibrium operators — implementations of EquilibriumOperator protocol.
+
+Public API: build_equilibrium_fn()
+
+Implementation modules (_equilibrium.py) are internal; use the factory to access.
+
+Example:
+    from operators.equilibrium import build_equilibrium_fn
+
+    eq = build_equilibrium_fn("wb")
+    feq = eq(rho, u, lattice)
+"""
+
+from __future__ import annotations
+from typing import TYPE_CHECKING
+from typing import cast
+from src.operators._loader import auto_load_operators
+from src.operators.factory import build_operator
+
+if TYPE_CHECKING:
+    from src.operators.protocols import EquilibriumOperator
+
+# Auto-discover and import private operator modules for registry registration
+auto_load_operators("src.operators.equilibrium")
+
+
+def build_equilibrium_fn(scheme: str = "wb") -> EquilibriumOperator:
+    """Return an equilibrium operator satisfying EquilibriumOperator protocol.
+
+    Args:
+        scheme: Equilibrium model name ("wb" or others).
+                Defaults to "wb" (Chai et al. D2Q9 model).
+
+    Returns:
+        A callable satisfying the EquilibriumOperator protocol.
+        Can be called as: operator(rho, u, lattice) → feq
+
+        Type-checkers see this as an EquilibriumOperator, so:
+            op: EquilibriumOperator = build_equilibrium_fn("wb")
+
+        Type-checkers will verify any use of op matches the protocol.
+
+    Raises:
+        ValueError: If scheme is not registered.
+
+    Examples:
+        >>> from operators.equilibrium import build_equilibrium_fn
+        >>> equilibrium = build_equilibrium_fn("wb")
+        >>> feq = equilibrium(rho, u, lattice)
+    """
+    return cast("EquilibriumOperator", build_operator("equilibrium", scheme))
+
+
+__all__ = [
+    "build_equilibrium_fn",  # ← Primary API (use this!)
+]

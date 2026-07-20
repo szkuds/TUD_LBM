@@ -6,17 +6,17 @@ covered without editing this file.
 
 from __future__ import annotations
 import pytest
-from tud_lbm.cli.app import cli
-from tud_lbm.cli.commands import cli as loaded_cli
+from src.cli.app import cli
+from src.cli.commands import cli as loaded_cli
 
 #: Where each command's work happens — the seam an injected failure must cross.
 _SEAM = {
-    "run": "tud_lbm.cli.commands.run._run_impl",
-    "animate": "tud_lbm.cli.commands.visualise._validate_run_dir_has_config",
-    "visualise": "tud_lbm.cli.commands.visualise._validate_run_dir_has_config",
-    "compare": "tud_lbm.cli.analysis_routing.analyse_tree",
-    "regime-map": "tud_lbm.io.plotting.regime_map_plot.build_regime_map",
-    "analyse": "tud_lbm.cli.commands.analysis._load_single_config",
+    "run": "src.cli.commands.run._run_impl",
+    "animate": "src.cli.commands.visualise._validate_run_dir_has_config",
+    "visualise": "src.cli.commands.visualise._validate_run_dir_has_config",
+    "compare": "src.cli.analysis_routing.analyse_tree",
+    "regime-map": "src.simulation_io.plotting.regime_map_plot.build_regime_map",
+    "analyse": "src.cli.commands.analysis._load_single_config",
 }
 
 _EXIT_INTERRUPTED = 130

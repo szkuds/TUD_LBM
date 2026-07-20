@@ -7,17 +7,18 @@ Two click behaviours are load-bearing here and pinned first:
    means ``RUN_DIR=./out`` plus subcommand ``fields``.
 2. ``cli_command`` cannot wrap the group callback, because click invokes
    subcommands only after that callback returns. The work functions carry it.
+
+Import ``src.cli.commands`` rather than ``src.cli.app``: importing the commands
+package is what registers the commands onto the group.
 """
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
 import pytest
+from src.cli.commands import cli
 from tests.support.run_dirs import build_run_dir
 from tests.support.run_dirs import wetting_config
-
-# Importing the commands package is what registers commands on the group.
-from tud_lbm.cli.commands import cli
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -87,7 +88,7 @@ def test_subcommand_errors_still_map_to_exit_codes(runner, monkeypatch, run_dir,
     def _interrupt(*_args: object, **_kwargs: object):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("tud_lbm.cli.commands.visualise._load_run_config", _interrupt)
+    monkeypatch.setattr("src.cli.commands.visualise._load_run_config", _interrupt)
 
     result = runner.invoke(cli, ["visualise", str(run_dir), "--no-prompt", *argv_tail])
 

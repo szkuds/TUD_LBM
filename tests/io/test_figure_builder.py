@@ -6,8 +6,8 @@ import warnings
 from pathlib import Path
 from unittest.mock import MagicMock
 import numpy as np
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting import FigureBuilder
+from src.config import SimulationConfig
+from src.simulation_io.plotting import FigureBuilder
 
 
 class TestFigureBuilderGuardFor3D:
@@ -182,7 +182,7 @@ def test_build_csv_runs_when_simulation_csv_selected(monkeypatch, tmp_path):
         assert config_arg == config
         return run_dir / "simulation_data.csv"
 
-    monkeypatch.setattr("tud_lbm.io.plotting.simulation_csv.build_simulation_csv", _fake_export)
+    monkeypatch.setattr("src.simulation_io.plotting.simulation_csv.build_simulation_csv", _fake_export)
 
     out = builder.build_csv()
     assert called["n"] == 1
@@ -200,7 +200,7 @@ def test_build_csv_skips_when_simulation_csv_not_selected(monkeypatch, tmp_path)
         msg = "build_simulation_csv should not be called"
         raise AssertionError(msg)
 
-    monkeypatch.setattr("tud_lbm.io.plotting.simulation_csv.build_simulation_csv", _fail_if_called)
+    monkeypatch.setattr("src.simulation_io.plotting.simulation_csv.build_simulation_csv", _fail_if_called)
 
     out = builder.build_csv()
     assert out is None

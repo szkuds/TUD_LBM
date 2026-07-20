@@ -11,7 +11,7 @@ def _register_step_operators() -> None:
     early, so their @update_timestep_operator decorators fire and
     register the step operators.
     """
-    from tud_lbm.operators import step as _  # noqa: F401
+    from src.operators import step as _  # noqa: F401
 
 
 @pytest.fixture
@@ -72,7 +72,7 @@ def _clear_droplet_series_cache():
     The cache is keyed on resolved file paths, and pytest reuses tmp_path names
     across tests, so a stale entry could otherwise be served to a later test.
     """
-    from tud_lbm.io.analysis.droplet_metrics import clear_series_cache
+    from src.simulation_io.analysis.droplet_metrics import clear_series_cache
 
     clear_series_cache()
     yield

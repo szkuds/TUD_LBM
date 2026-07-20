@@ -17,8 +17,8 @@ Install `uv` by following the official instructions for your platform:
 ### Linux and macOS
 
 ```shell
-git clone git@github.com:szkuds/tud_lbm.git
-cd tud_lbm
+git clone git@github.com:szkuds/src.git
+cd src
 uv venv --python 3.14
 source .venv/bin/activate
 uv pip install -e .[dev]
@@ -27,8 +27,8 @@ uv pip install -e .[dev]
 ### Windows
 
 ```shell
-git clone git@github.com:szkuds/tud_lbm.git
-cd tud_lbm
+git clone git@github.com:szkuds/src.git
+cd src
 uv venv --python 3.14
 .venv\Scripts\activate
 uv pip install -e .[dev]
@@ -117,7 +117,7 @@ Ensure the following files are committed in your local repo before archiving:
 From your repo root:
 
 ```bash
-git archive --format=tar.gz --output=tud_lbm.tar.gz HEAD
+git archive --format=tar.gz --output=src.tar.gz HEAD
 ```
 
 `git archive HEAD` produces a clean snapshot of committed files only — no `.venv`, no `__pycache__`, no `.git` bloat.
@@ -125,7 +125,7 @@ git archive --format=tar.gz --output=tud_lbm.tar.gz HEAD
 ### 2. Transfer to DelftBlue
 
 ```bash
-scp tud_lbm.tar.gz <netid>@login.delftblue.tudelft.nl:/scratch/<netid>/
+scp src.tar.gz <netid>@login.delftblue.tudelft.nl:/scratch/<netid>/
 ```
 
 > **Use `/scratch`, not `/home`.** Package installs generate many small files and `/home` quota is limited.
@@ -143,7 +143,7 @@ Add these to your `~/.bashrc` to avoid filling `/home`:
 
 ```bash
 export UV_CACHE_DIR=/scratch/<netid>/.uv_cache
-export UV_PROJECT_ENVIRONMENT=/scratch/<netid>/tud_lbm/.venv
+export UV_PROJECT_ENVIRONMENT=/scratch/<netid>/src/.venv
 ```
 
 Then reload:
@@ -156,8 +156,8 @@ source ~/.bashrc
 
 ```bash
 cd /scratch/<netid>
-mkdir tud_lbm && tar -xzf tud_lbm.tar.gz -C tud_lbm
-cd tud_lbm
+mkdir src && tar -xzf src.tar.gz -C src
+cd src
 
 uv sync
 ```
@@ -170,12 +170,12 @@ After making changes locally:
 
 ```bash
 # Local
-git archive --format=tar.gz --output=tud_lbm.tar.gz HEAD
-scp tud_lbm.tar.gz <netid>@login.delftblue.tudelft.nl:/scratch/<netid>/
+git archive --format=tar.gz --output=src.tar.gz HEAD
+scp src.tar.gz <netid>@login.delftblue.tudelft.nl:/scratch/<netid>/
 
 # On DelftBlue
-cd /scratch/<netid>/tud_lbm
-tar -xzf ../tud_lbm.tar.gz   # overwrites changed files in place
+cd /scratch/<netid>/src
+tar -xzf ../src.tar.gz   # overwrites changed files in place
 uv sync                        # no-op if uv.lock hasn't changed
 ```
 
@@ -194,7 +194,7 @@ All operators (collision schemes, macroscopic solvers, forces, boundary conditio
 **Pure function example (preferred):**
 
 ```python
-from tud_lbm.registry import register_operator
+from src.registry import register_operator
 
 @register_operator("collision_models")
 def collide_bgk(f, feq, tau, source=None):
@@ -205,7 +205,7 @@ collide_bgk.name = "bgk"
 **Class example:**
 
 ```python
-from tud_lbm.registry import register_operator
+from src.registry import register_operator
 
 @register_operator("collision_models")
 class MyCollision:
@@ -231,7 +231,7 @@ tud-lbm run --list-operators
 The main simulation workflow is **Config → Setup → State → Run**:
 
 ```python
-from tud_lbm import SimulationConfig, build_setup, init_state, run
+from src import SimulationConfig, build_setup, init_state, run
 
 # 1. Create configuration
 config = SimulationConfig(grid_shape=(64, 64), tau=0.8, nt=5000)
@@ -249,7 +249,7 @@ final_state, trajectory = run(setup, state, nt=config.nt)
 For long production runs, use **streaming I/O** to avoid accumulating the full trajectory in device memory:
 
 ```python
-from tud_lbm.io import SimulationIO
+from src.simulation_io import SimulationIO
 
 io = SimulationIO(base_dir=config.results_dir,
                   config=config.to_dict(),
@@ -262,9 +262,9 @@ final_state, _ = run(setup, state, nt=config.nt,
 For **parameter sweeps**, use the parallel runner:
 
 ```python
-from tud_lbm.config.adapter_toml import TomlAdapter
-from tud_lbm.config.array_expansion import expand_config
-from tud_lbm.pipeline.parallel_runner import run_parallel_simulations
+from src.config.adapter_toml import TomlAdapter
+from src.config.array_expansion import expand_config
+from src.pipeline.parallel_runner import run_parallel_simulations
 
 adapter = TomlAdapter()
 config_dict = adapter.load_raw("config_parallel.toml")
@@ -473,8 +473,8 @@ In a new terminal:
 
 ```shell
 # OPTIONAL: prepare a new directory with fresh git clone
-cd $(mktemp -d tud_lbm.XXXXXX)
-git clone git@github.com:szkuds/tud_lbm .
+cd $(mktemp -d src.XXXXXX)
+git clone git@github.com:szkuds/src .
 
 python -m pip install --upgrade pip
 python -m pip install .[publishing]

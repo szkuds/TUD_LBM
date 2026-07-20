@@ -4,9 +4,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
 import pytest
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.figure_builder import FigureBuilder
-from tud_lbm.registry import get_operator_names
+from src.config import SimulationConfig
+from src.registry import get_operator_names
+from src.simulation_io.plotting.figure_builder import FigureBuilder
 
 if TYPE_CHECKING:
     from pathlib import Path

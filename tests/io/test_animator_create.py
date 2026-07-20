@@ -5,8 +5,8 @@ import builtins
 import sys
 import types
 import pytest
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.animator import Animator
+from src.config import SimulationConfig
+from src.simulation_io.plotting.animator import Animator
 
 
 def _animator(tmp_path):
@@ -67,12 +67,12 @@ def test_create_writes_gif_with_fake_moviepy(tmp_path, monkeypatch):
         def close(self):
             calls["close"] += 1
 
-    module = types.ModuleType("moviepy.video.io.ImageSequenceClip")
+    module = types.ModuleType("moviepy.video.simulation_io.ImageSequenceClip")
     module.ImageSequenceClip = _FakeClip  # ty: ignore[unresolved-attribute]
     monkeypatch.setitem(sys.modules, "moviepy", types.ModuleType("moviepy"))
     monkeypatch.setitem(sys.modules, "moviepy.video", types.ModuleType("moviepy.video"))
-    monkeypatch.setitem(sys.modules, "moviepy.video.io", types.ModuleType("moviepy.video.io"))
-    monkeypatch.setitem(sys.modules, "moviepy.video.io.ImageSequenceClip", module)
+    monkeypatch.setitem(sys.modules, "moviepy.video.simulation_io", types.ModuleType("moviepy.video.simulation_io"))
+    monkeypatch.setitem(sys.modules, "moviepy.video.simulation_io.ImageSequenceClip", module)
 
     out = animator.create(tmp_path / "anim.gif")
 

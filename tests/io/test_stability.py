@@ -1,21 +1,21 @@
-"""Tests for tud_lbm/io/analysis/stability.py (--debug-stability diagnostics)."""
+"""Tests for src/simulation_io/analysis/stability.py (--debug-stability diagnostics)."""
 
 from __future__ import annotations
 from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
-import tud_lbm.config.config_overview as _flags
-from tud_lbm.config.simulation_config import SimulationConfig
-from tud_lbm.io.analysis.stability import StabilityAbortError
-from tud_lbm.io.analysis.stability import _host_check
-from tud_lbm.io.analysis.stability import checkerboard_amplitude
-from tud_lbm.io.analysis.stability import compute_stability_metrics
-from tud_lbm.io.analysis.stability import wake_mask
-from tud_lbm.pipeline.runner import init_state
-from tud_lbm.pipeline.runner import run
-from tud_lbm.pipeline.setup import build_setup
-from tud_lbm.pipeline.state.state import State
+import src.config.config_overview as _flags
+from src.config.simulation_config import SimulationConfig
+from src.pipeline.runner import init_state
+from src.pipeline.runner import run
+from src.pipeline.setup import build_setup
+from src.pipeline.state.state import State
+from src.simulation_io.analysis.stability import StabilityAbortError
+from src.simulation_io.analysis.stability import _host_check
+from src.simulation_io.analysis.stability import checkerboard_amplitude
+from src.simulation_io.analysis.stability import compute_stability_metrics
+from src.simulation_io.analysis.stability import wake_mask
 
 # =====================================================================
 # checkerboard_amplitude
@@ -184,7 +184,7 @@ class TestRunIntegration:
             assert all(np.isfinite(values))
 
     def test_streaming_mode_writes_csv_to_run_dir(self, tmp_path, monkeypatch):
-        from tud_lbm.io import SimulationIO
+        from src.simulation_io import SimulationIO
 
         monkeypatch.setattr(_flags, "DEBUG_FLAG_STABILITY", True)
         setup = self._setup(tmp_path)

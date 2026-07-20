@@ -9,60 +9,60 @@ from unittest.mock import patch
 import click
 import pytest
 from click.testing import CliRunner
-from tud_lbm.cli.app import cli
-from tud_lbm.cli.commands.analysis import compare
-from tud_lbm.cli.commands.run import run
-from tud_lbm.cli.commands.visualise import animate
-from tud_lbm.cli.commands.visualise import visualise
-from tud_lbm.cli.config_loading import _find_latest_snapshot
-from tud_lbm.cli.config_loading import _validate_cli_args
-from tud_lbm.cli.display import _display_config_summary
-from tud_lbm.cli.display import _display_full_overview
-from tud_lbm.cli.display import _display_sweep_summary
-from tud_lbm.cli.display import _print_dry_run_message
-from tud_lbm.cli.execution import RunFlags
-from tud_lbm.cli.execution import _check_sweep_errors
-from tud_lbm.cli.execution import _run_impl
-from tud_lbm.cli.wetting_init import _WETTING_PARAM_DEFAULTS
-from tud_lbm.cli.wetting_init import _build_wetting_gravity_raw
-from tud_lbm.cli.wetting_init import _build_wetting_init_raw
-from tud_lbm.cli.wetting_init import _prompt_wetting_params
-from tud_lbm.config import SimulationConfig
-from tud_lbm.config.array_expansion import ArrayParameterSet
-from tud_lbm.pipeline.parallel_runner import SimulationResult
+from src.cli.app import cli
+from src.cli.commands.analysis import compare
+from src.cli.commands.run import run
+from src.cli.commands.visualise import animate
+from src.cli.commands.visualise import visualise
+from src.cli.config_loading import _find_latest_snapshot
+from src.cli.config_loading import _validate_cli_args
+from src.cli.display import _display_config_summary
+from src.cli.display import _display_full_overview
+from src.cli.display import _display_sweep_summary
+from src.cli.display import _print_dry_run_message
+from src.cli.execution import RunFlags
+from src.cli.execution import _check_sweep_errors
+from src.cli.execution import _run_impl
+from src.cli.wetting_init import _WETTING_PARAM_DEFAULTS
+from src.cli.wetting_init import _build_wetting_gravity_raw
+from src.cli.wetting_init import _build_wetting_init_raw
+from src.cli.wetting_init import _prompt_wetting_params
+from src.config import SimulationConfig
+from src.config.array_expansion import ArrayParameterSet
+from src.pipeline.parallel_runner import SimulationResult
 
 try:
-    from tud_lbm.cli.overrides import _apply_overrides
-    from tud_lbm.cli.overrides import _normalise_override_path
-    from tud_lbm.cli.overrides import _parse_override_argument
-    from tud_lbm.cli.overrides import _set_nested_override
+    from src.cli.overrides import _apply_overrides
+    from src.cli.overrides import _normalise_override_path
+    from src.cli.overrides import _parse_override_argument
+    from src.cli.overrides import _set_nested_override
 except ImportError:
     pytest.skip("click or rich dependency not installed", allow_module_level=True)
 
 from unittest.mock import patch as _patch
-from tud_lbm.cli._console import banner
-from tud_lbm.cli.config_loading import _expand_raw_config
-from tud_lbm.cli.config_loading import _expand_single_phase
-from tud_lbm.cli.config_loading import _load_config_interactive
-from tud_lbm.cli.config_loading import _load_raw_config
-from tud_lbm.cli.display import _build_fields_table
-from tud_lbm.cli.display import _build_standard_table
-from tud_lbm.cli.display import _build_visual_table
-from tud_lbm.cli.display import _display_summary
-from tud_lbm.cli.display import _operator_description
-from tud_lbm.cli.execution import _confirm_run
-from tud_lbm.cli.execution import _execute_run
-from tud_lbm.cli.execution import _run_compare_single
-from tud_lbm.cli.execution import _run_compare_sweep
-from tud_lbm.cli.execution import _run_with_optional_overrides
-from tud_lbm.cli.field_select import _parse_field_tokens
-from tud_lbm.cli.field_select import _prompt_fields
-from tud_lbm.cli.field_select import _resolve_token
-from tud_lbm.cli.wetting_init import _run_two_phase_wetting_init
+from src.cli._console import banner
+from src.cli.config_loading import _expand_raw_config
+from src.cli.config_loading import _expand_single_phase
+from src.cli.config_loading import _load_config_interactive
+from src.cli.config_loading import _load_raw_config
+from src.cli.display import _build_fields_table
+from src.cli.display import _build_standard_table
+from src.cli.display import _build_visual_table
+from src.cli.display import _display_summary
+from src.cli.display import _operator_description
+from src.cli.execution import _confirm_run
+from src.cli.execution import _execute_run
+from src.cli.execution import _run_compare_single
+from src.cli.execution import _run_compare_sweep
+from src.cli.execution import _run_with_optional_overrides
+from src.cli.field_select import _parse_field_tokens
+from src.cli.field_select import _prompt_fields
+from src.cli.field_select import _resolve_token
+from src.cli.wetting_init import _run_two_phase_wetting_init
 
 
 def test_package_cli_import_is_callable():
-    from tud_lbm.cli.app import cli
+    from src.cli.app import cli
 
     assert callable(cli)
     assert not isinstance(cli, ModuleType)
@@ -525,8 +525,8 @@ class TestRunImplFlags:
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         with (
-            patch("tud_lbm.cli.execution._load_raw_config", return_value={}),
-            patch("tud_lbm.cli.execution._expand_raw_config", return_value=self._single_config()),
+            patch("src.cli.execution._load_raw_config", return_value={}),
+            patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
         ):
             result = _run_impl(
                 config_path=str(cfg_toml),
@@ -541,8 +541,8 @@ class TestRunImplFlags:
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         with (
-            patch("tud_lbm.cli.execution._load_raw_config", return_value={}),
-            patch("tud_lbm.cli.execution._expand_raw_config", return_value=self._single_config()),
+            patch("src.cli.execution._load_raw_config", return_value={}),
+            patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
         ):
             _run_impl(
                 config_path=str(cfg_toml),
@@ -563,9 +563,9 @@ class TestRunImplFlags:
             total_combinations=2,
         )
         with (
-            patch("tud_lbm.cli.execution._load_raw_config", return_value={}),
+            patch("src.cli.execution._load_raw_config", return_value={}),
             patch(
-                "tud_lbm.cli.execution._expand_raw_config",
+                "src.cli.execution._expand_raw_config",
                 return_value=([cfg, cfg], None, sweep, [{"tau": 0.6}, {"tau": 0.7}]),
             ),
         ):
@@ -586,7 +586,7 @@ class TestRunImplFlags:
             called["n"] += 1
             return [cfg], cfg, None, None
 
-        monkeypatch.setattr("tud_lbm.cli.execution._load_config_interactive", _fake)
+        monkeypatch.setattr("src.cli.execution._load_config_interactive", _fake)
         result = _run_impl(
             config_path=None,
             overrides=(),
@@ -598,15 +598,15 @@ class TestRunImplFlags:
         assert result is False
 
     def test_debug_wetting_sets_flag(self, tmp_path):
-        import tud_lbm.config.config_overview as _flags
+        import src.config.config_overview as _flags
 
         original = _flags.DEBUG_FLAG_WETTING
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         try:
             with (
-                patch("tud_lbm.cli.execution._load_raw_config", return_value={}),
-                patch("tud_lbm.cli.execution._expand_raw_config", return_value=self._single_config()),
+                patch("src.cli.execution._load_raw_config", return_value={}),
+                patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
             ):
                 _run_impl(
                     config_path=str(cfg_toml),
@@ -620,15 +620,15 @@ class TestRunImplFlags:
             _flags.DEBUG_FLAG_WETTING = original
 
     def test_debug_stability_sets_flag(self, tmp_path):
-        import tud_lbm.config.config_overview as _flags
+        import src.config.config_overview as _flags
 
         original = _flags.DEBUG_FLAG_STABILITY
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         try:
             with (
-                patch("tud_lbm.cli.execution._load_raw_config", return_value={}),
-                patch("tud_lbm.cli.execution._expand_raw_config", return_value=self._single_config()),
+                patch("src.cli.execution._load_raw_config", return_value={}),
+                patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
             ):
                 _run_impl(
                     config_path=str(cfg_toml),
@@ -647,7 +647,7 @@ class TestClickCommandPaths:
 
     def test_run_keyboard_interrupt_exits_130(self):
         runner = CliRunner()
-        with patch("tud_lbm.cli.commands.run._run_impl", side_effect=KeyboardInterrupt):
+        with patch("src.cli.commands.run._run_impl", side_effect=KeyboardInterrupt):
             result = runner.invoke(cli, ["run"])
         assert result.exit_code == 130
 
@@ -655,7 +655,7 @@ class TestClickCommandPaths:
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         runner = CliRunner()
-        with patch("tud_lbm.cli.commands.run._run_impl", return_value=False) as mock_impl:
+        with patch("src.cli.commands.run._run_impl", return_value=False) as mock_impl:
             result = runner.invoke(cli, ["run", str(cfg_toml), "--debug-stability", "--dry-run"])
         assert result.exit_code == 0
         assert mock_impl.call_args.args[-1].debug_stability is True
@@ -664,14 +664,14 @@ class TestClickCommandPaths:
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("", encoding="utf-8")
         runner = CliRunner()
-        with patch("tud_lbm.cli.commands.run._run_impl", return_value=False) as mock_impl:
+        with patch("src.cli.commands.run._run_impl", return_value=False) as mock_impl:
             result = runner.invoke(cli, ["run", str(cfg_toml), "--continue"])
         assert result.exit_code == 0
         assert mock_impl.call_args.args[-1].continue_run is True
 
     def test_run_general_exception_exits_1(self):
         runner = CliRunner()
-        with patch("tud_lbm.cli.commands.run._run_impl", side_effect=RuntimeError("boom")):
+        with patch("src.cli.commands.run._run_impl", side_effect=RuntimeError("boom")):
             result = runner.invoke(cli, ["run"])
         assert result.exit_code == 1
 
@@ -680,7 +680,7 @@ class TestClickCommandPaths:
         run_dir.mkdir()
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
         runner = CliRunner()
-        with patch("tud_lbm.cli.commands.visualise._validate_run_dir_has_config", side_effect=KeyboardInterrupt):
+        with patch("src.cli.commands.visualise._validate_run_dir_has_config", side_effect=KeyboardInterrupt):
             result = runner.invoke(cli, ["animate", str(run_dir)])
         assert result.exit_code == 130
 
@@ -689,7 +689,7 @@ class TestClickCommandPaths:
         run_dir.mkdir()
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
         runner = CliRunner()
-        with patch("tud_lbm.cli.commands.visualise._validate_run_dir_has_config", side_effect=RuntimeError("x")):
+        with patch("src.cli.commands.visualise._validate_run_dir_has_config", side_effect=RuntimeError("x")):
             result = runner.invoke(cli, ["animate", str(run_dir)])
         assert result.exit_code == 1
 
@@ -698,7 +698,7 @@ class TestClickCommandPaths:
         run_dir.mkdir()
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
         runner = CliRunner()
-        with patch("tud_lbm.cli.commands.visualise._validate_run_dir_has_config", side_effect=KeyboardInterrupt):
+        with patch("src.cli.commands.visualise._validate_run_dir_has_config", side_effect=KeyboardInterrupt):
             result = runner.invoke(cli, ["visualise", str(run_dir)])
         assert result.exit_code == 130
 
@@ -707,39 +707,39 @@ class TestClickCommandPaths:
         run_dir.mkdir()
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
         runner = CliRunner()
-        with patch("tud_lbm.cli.commands.visualise._validate_run_dir_has_config", side_effect=RuntimeError("x")):
+        with patch("src.cli.commands.visualise._validate_run_dir_has_config", side_effect=RuntimeError("x")):
             result = runner.invoke(cli, ["visualise", str(run_dir)])
         assert result.exit_code == 1
 
     def test_compare_no_runs_prints_message(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.cli.analysis_routing.analyse_tree", return_value=(0, 0)):
+        with patch("src.cli.analysis_routing.analyse_tree", return_value=(0, 0)):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 0
         assert "No simulation" in result.output
 
     def test_compare_runs_with_zero_ok(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.cli.analysis_routing.analyse_tree", return_value=(1, 0)):
+        with patch("src.cli.analysis_routing.analyse_tree", return_value=(1, 0)):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 0
         assert "no runs produced" in result.output.lower()
 
     def test_compare_runs_with_success(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.cli.analysis_routing.analyse_tree", return_value=(2, 2)):
+        with patch("src.cli.analysis_routing.analyse_tree", return_value=(2, 2)):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 0
 
     def test_compare_keyboard_interrupt_exits_130(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.cli.analysis_routing.analyse_tree", side_effect=KeyboardInterrupt):
+        with patch("src.cli.analysis_routing.analyse_tree", side_effect=KeyboardInterrupt):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 130
 
     def test_compare_general_exception_exits_1(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.cli.analysis_routing.analyse_tree", side_effect=RuntimeError("fail")):
+        with patch("src.cli.analysis_routing.analyse_tree", side_effect=RuntimeError("fail")):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 1
 
@@ -748,7 +748,7 @@ class TestClickCommandPaths:
         dirs_txt.write_text("run_a\n", encoding="utf-8")
         runner = CliRunner()
         out_path = tmp_path / "regime_map_analysis" / "regime_map.png"
-        with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", return_value=out_path):
+        with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", return_value=out_path):
             result = runner.invoke(cli, ["regime-map", str(dirs_txt)], env={"COLUMNS": "200", "LINES": "50"})
         assert result.exit_code == 0
         assert "regime_map.png" in result.output
@@ -757,7 +757,7 @@ class TestClickCommandPaths:
         dirs_txt = tmp_path / "dirs.txt"
         dirs_txt.write_text("run_a\n", encoding="utf-8")
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", return_value=None):
+        with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", return_value=None):
             result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
         assert result.exit_code == 1
 
@@ -765,7 +765,7 @@ class TestClickCommandPaths:
         dirs_txt = tmp_path / "dirs.txt"
         dirs_txt.write_text("run_a\n", encoding="utf-8")
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", side_effect=KeyboardInterrupt):
+        with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", side_effect=KeyboardInterrupt):
             result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
         assert result.exit_code == 130
 
@@ -773,7 +773,7 @@ class TestClickCommandPaths:
         dirs_txt = tmp_path / "dirs.txt"
         dirs_txt.write_text("run_a\n", encoding="utf-8")
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", side_effect=RuntimeError("fail")):
+        with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", side_effect=RuntimeError("fail")):
             result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
         assert result.exit_code == 1
 
@@ -783,8 +783,8 @@ class TestClickCommandPaths:
         (run_dir / "config.toml").write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         runner = CliRunner()
         with (
-            patch("tud_lbm.config.from_toml", return_value=SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)),
-            patch("tud_lbm.io.plotting.Animator") as mock_anim,
+            patch("src.config.from_toml", return_value=SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)),
+            patch("src.simulation_io.plotting.Animator") as mock_anim,
         ):
             mock_anim.return_value.create.return_value = run_dir / "plots" / "animation.mp4"
             result = runner.invoke(cli, ["animate", str(run_dir)])
@@ -796,8 +796,8 @@ class TestClickCommandPaths:
         (run_dir / "config.toml").write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         runner = CliRunner()
         with (
-            patch("tud_lbm.config.from_toml", return_value=SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)),
-            patch("tud_lbm.io.plotting.FigureBuilder") as mock_fb,
+            patch("src.config.from_toml", return_value=SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)),
+            patch("src.simulation_io.plotting.FigureBuilder") as mock_fb,
         ):
             mock_fb.return_value.build_all.return_value = [run_dir / "plots" / "t1.png"]
             mock_fb.return_value.plot_dir = run_dir / "plots"
@@ -810,8 +810,8 @@ class TestClickCommandPaths:
         (run_dir / "config.toml").write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         runner = CliRunner()
         with (
-            patch("tud_lbm.config.from_toml", return_value=SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)),
-            patch("tud_lbm.io.plotting.FigureBuilder") as mock_fb,
+            patch("src.config.from_toml", return_value=SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)),
+            patch("src.simulation_io.plotting.FigureBuilder") as mock_fb,
         ):
             mock_fb.return_value.build_all.return_value = []
             mock_fb.return_value.plot_dir = run_dir / "plots"
@@ -907,7 +907,7 @@ class TestBuildWettingInitRaw:
         assert "gravity_force" not in result
 
     def test_nt_set_to_wetting_init_constant(self):
-        from tud_lbm.cli.wetting_init import _WETTING_INIT_NT
+        from src.cli.wetting_init import _WETTING_INIT_NT
 
         result = _build_wetting_init_raw(self._base_raw(), {})
         assert result["nt"] == _WETTING_INIT_NT
@@ -1039,15 +1039,15 @@ class TestErrorHandling:
             encoding="utf-8",
         )
         runner = CliRunner()
-        with patch("tud_lbm.cli.commands.run._run_impl", side_effect=KeyboardInterrupt):
+        with patch("src.cli.commands.run._run_impl", side_effect=KeyboardInterrupt):
             result = runner.invoke(cli, ["run", str(cfg_toml)])
         assert result.exit_code == 130
 
 
 @pytest.fixture
 def cli_pkg():
-    """Import tud_lbm.cli package for lazy-loader tests."""
-    import tud_lbm.cli as module
+    """Import src.cli package for lazy-loader tests."""
+    import src.cli as module
 
     return module
 
@@ -1079,7 +1079,7 @@ def test_load_cli_wraps_missing_optional_dependencies(cli_pkg, monkeypatch):
     original_import = __import__
 
     def _raising_import(name, *args, **kwargs):
-        if name == "tud_lbm.cli.commands":
+        if name == "src.cli.commands":
             err = ImportError("no click")
             err.name = "click"
             raise err
@@ -1133,7 +1133,7 @@ def test_load_raw_config_continue_injects_latest_snapshot(tmp_path, monkeypatch)
     data_dir.mkdir()
     latest = data_dir / "timestep_42.npz"
     latest.write_bytes(b"")
-    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda _self, _path: {})
+    monkeypatch.setattr("src.config.adapter_toml.TomlAdapter.load_raw", lambda _self, _path: {})
 
     raw = _load_raw_config(str(config_path), (), continue_run=True)
 
@@ -1150,7 +1150,7 @@ def test_check_sweep_errors_raises_on_failed_results():
 
 
 def test_validate_run_dir_has_config_success(tmp_path):
-    from tud_lbm.cli.config_loading import _validate_run_dir_has_config
+    from src.cli.config_loading import _validate_run_dir_has_config
 
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -1161,7 +1161,7 @@ def test_validate_run_dir_has_config_success(tmp_path):
 
 
 def test_validate_run_dir_has_config_missing_file_raises(tmp_path):
-    from tud_lbm.cli.config_loading import _validate_run_dir_has_config
+    from src.cli.config_loading import _validate_run_dir_has_config
 
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -1187,8 +1187,8 @@ def test_cli_single_config_uses_single_run(monkeypatch, tmp_path):
 
     config = _make_config(str(tmp_path))
 
-    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
-    monkeypatch.setattr("tud_lbm.config.array_expansion.expand_config", lambda raw: ([config], None))
+    monkeypatch.setattr("src.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
+    monkeypatch.setattr("src.config.array_expansion.expand_config", lambda raw: ([config], None))
 
     called = {"single": False}
 
@@ -1197,7 +1197,7 @@ def test_cli_single_config_uses_single_run(monkeypatch, tmp_path):
         assert cfg == config
         return str(tmp_path / "single")
 
-    monkeypatch.setattr("tud_lbm.cli.execution._run_simulation", _fake_single_run)
+    monkeypatch.setattr("src.cli.execution._run_simulation", _fake_single_run)
 
     result = CliRunner().invoke(run, [str(cfg_path), "--no-prompt"])
 
@@ -1229,13 +1229,13 @@ def test_cli_array_config_uses_parallel_sweep(monkeypatch, tmp_path):
         total_combinations=2,
     )
 
-    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
+    monkeypatch.setattr("src.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
     monkeypatch.setattr(
-        "tud_lbm.config.array_expansion.expand_config",
+        "src.config.array_expansion.expand_config",
         lambda raw: ([config_a, config_b], metadata),
     )
     monkeypatch.setattr(
-        "tud_lbm.config.array_expansion.enumerate_configs",
+        "src.config.array_expansion.enumerate_configs",
         lambda raw: iter(
             [
                 (0, {"tau": 0.6}, config_a),
@@ -1255,7 +1255,7 @@ def test_cli_array_config_uses_parallel_sweep(monkeypatch, tmp_path):
             SimulationResult(index=1, config=config_b, status="success"),
         ]
 
-    monkeypatch.setattr("tud_lbm.cli.execution._run_parallel_sweep", _fake_parallel_sweep)
+    monkeypatch.setattr("src.cli.execution._run_parallel_sweep", _fake_parallel_sweep)
 
     result = CliRunner().invoke(run, [str(cfg_path), "--no-prompt"])
 
@@ -1277,13 +1277,13 @@ def test_cli_array_config_dry_run_skips_parallel_execution(monkeypatch, tmp_path
         total_combinations=2,
     )
 
-    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
+    monkeypatch.setattr("src.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
     monkeypatch.setattr(
-        "tud_lbm.config.array_expansion.expand_config",
+        "src.config.array_expansion.expand_config",
         lambda raw: ([config_a, config_b], metadata),
     )
     monkeypatch.setattr(
-        "tud_lbm.config.array_expansion.enumerate_configs",
+        "src.config.array_expansion.enumerate_configs",
         lambda raw: iter(
             [
                 (0, {"tau": 0.6}, config_a),
@@ -1298,7 +1298,7 @@ def test_cli_array_config_dry_run_skips_parallel_execution(monkeypatch, tmp_path
         called["parallel"] = True
         return []
 
-    monkeypatch.setattr("tud_lbm.cli.execution._run_parallel_sweep", _fake_parallel_sweep)
+    monkeypatch.setattr("src.cli.execution._run_parallel_sweep", _fake_parallel_sweep)
 
     result = CliRunner().invoke(run, [str(cfg_path), "--no-prompt", "--dry-run"])
 
@@ -1545,7 +1545,7 @@ class TestLoadRawConfig:
     def test_loads_and_applies_overrides(self, tmp_path):
         cfg = tmp_path / "config.toml"
         cfg.write_text("[simulation_type]\ntau=0.8\n", encoding="utf-8")
-        with _patch("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", return_value={"tau": 0.8}):
+        with _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value={"tau": 0.8}):
             raw = _load_raw_config(str(cfg), ("tau=0.9",))
         assert raw["tau"] == 0.9
 
@@ -1554,7 +1554,7 @@ class TestLoadRawConfig:
         cfg.write_text("[simulation_type]\ntau=0.8\n", encoding="utf-8")
         snapshot = tmp_path / "snap.npz"
         snapshot.touch()
-        with _patch("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", return_value={}):
+        with _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value={}):
             raw = _load_raw_config(str(cfg), (), init_dir=str(snapshot))
         assert raw["init_dir"] == str(snapshot)
         assert raw["init_type"] == "init_from_file"
@@ -1562,7 +1562,7 @@ class TestLoadRawConfig:
     def test_no_overrides_returns_raw(self, tmp_path):
         cfg = tmp_path / "config.toml"
         cfg.write_text("[simulation_type]\ntau=0.8\n", encoding="utf-8")
-        with _patch("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", return_value={"tau": 0.8}):
+        with _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value={"tau": 0.8}):
             raw = _load_raw_config(str(cfg), ())
         assert raw == {"tau": 0.8}
 
@@ -1580,7 +1580,7 @@ class TestExpandRawConfig:
 
     def test_single_config_returns_config_not_none(self):
         cfg = self._cfg()
-        with _patch("tud_lbm.config.array_expansion.expand_config", return_value=([cfg], None)):
+        with _patch("src.config.array_expansion.expand_config", return_value=([cfg], None)):
             _configs, config, sweep, params = _expand_raw_config({})
         assert config == cfg
         assert sweep is None
@@ -1590,9 +1590,9 @@ class TestExpandRawConfig:
         cfg = self._cfg()
         metadata = ArrayParameterSet(field_names=["tau"], array_values={"tau": (0.6, 0.8)}, total_combinations=2)
         with (
-            _patch("tud_lbm.config.array_expansion.expand_config", return_value=([cfg, cfg], metadata)),
+            _patch("src.config.array_expansion.expand_config", return_value=([cfg, cfg], metadata)),
             _patch(
-                "tud_lbm.config.array_expansion.enumerate_configs",
+                "src.config.array_expansion.enumerate_configs",
                 return_value=iter([(0, {"tau": 0.6}, cfg), (1, {"tau": 0.8}, cfg)]),
             ),
         ):
@@ -1767,7 +1767,7 @@ class TestRunWithOptionalOverrides:
         answers = iter(["o", "tau=0.9", "y"])
         with (
             _patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(answers)),
-            _patch("tud_lbm.cli.execution._expand_raw_config", return_value=([cfg], cfg, None, None)),
+            _patch("src.cli.execution._expand_raw_config", return_value=([cfg], cfg, None, None)),
         ):
             configs, _config, _sweep, _params = _run_with_optional_overrides(
                 raw_config=raw,
@@ -1817,7 +1817,7 @@ class TestExecuteRun:
             called["n"] += 1
             return str(tmp_path / "run" / "data")
 
-        with _patch("tud_lbm.cli.execution._run_simulation", _fake_run):
+        with _patch("src.cli.execution._run_simulation", _fake_run):
             _execute_run([cfg], cfg, None, None, None, False)
         assert called["n"] == 1
 
@@ -1830,7 +1830,7 @@ class TestExecuteRun:
             called["n"] += 1
             return [SimpleNamespace(status="success"), SimpleNamespace(status="success")]
 
-        with _patch("tud_lbm.cli.execution._run_parallel_sweep", _fake_parallel):
+        with _patch("src.cli.execution._run_parallel_sweep", _fake_parallel):
             _execute_run([cfg, cfg], None, meta, [{"tau": 0.6}, {"tau": 0.8}], None, False)
         assert called["n"] == 1
 
@@ -1847,8 +1847,8 @@ class TestExecuteRun:
             compare_called["n"] += 1
 
         with (
-            _patch("tud_lbm.cli.execution._run_simulation", _fake_run),
-            _patch("tud_lbm.cli.execution._run_compare_single", _fake_compare),
+            _patch("src.cli.execution._run_simulation", _fake_run),
+            _patch("src.cli.execution._run_compare_single", _fake_compare),
         ):
             _execute_run([cfg], cfg, None, None, None, False, run_compare=True)
         assert compare_called["n"] == 1
@@ -1865,7 +1865,7 @@ class TestRunCompareSingle:
     def test_csv_path_none_prints_warning(self, tmp_path, capsys):
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
         with (
-            _patch("tud_lbm.cli.analysis_routing.build_simulation_csv", return_value=None),
+            _patch("src.cli.analysis_routing.build_simulation_csv", return_value=None),
         ):
             _run_compare_single(tmp_path, cfg)
         assert "skipped" in capsys.readouterr().out.lower()
@@ -1875,8 +1875,8 @@ class TestRunCompareSingle:
         csv_file = tmp_path / "results.csv"
         csv_file.touch()
         with (
-            _patch("tud_lbm.cli.analysis_routing.build_simulation_csv", return_value=csv_file),
-            _patch("tud_lbm.io.plotting.run_comparison.compare_runs") as mock_cmp,
+            _patch("src.cli.analysis_routing.build_simulation_csv", return_value=csv_file),
+            _patch("src.simulation_io.plotting.run_comparison.compare_runs") as mock_cmp,
         ):
             _run_compare_single(tmp_path, cfg)
         mock_cmp.assert_called_once_with(tmp_path)
@@ -1886,12 +1886,12 @@ class TestRunCompareSweep:
     """Tests for _run_compare_sweep sweep-level comparison."""
 
     def test_no_ok_runs_prints_warning(self, tmp_path, capsys):
-        with _patch("tud_lbm.cli.analysis_routing.analyse_tree", return_value=(2, 0)):
+        with _patch("src.cli.analysis_routing.analyse_tree", return_value=(2, 0)):
             _run_compare_sweep(tmp_path)
         assert "no runs" in capsys.readouterr().out.lower()
 
     def test_ok_runs_prints_success(self, tmp_path, capsys):
-        with _patch("tud_lbm.cli.analysis_routing.analyse_tree", return_value=(2, 2)):
+        with _patch("src.cli.analysis_routing.analyse_tree", return_value=(2, 2)):
             _run_compare_sweep(tmp_path)
         assert "Comparison plots" in capsys.readouterr().out
 
@@ -1906,14 +1906,14 @@ class TestExpandSinglePhase:
 
     def test_single_config_returned(self):
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        with _patch("tud_lbm.config.array_expansion.expand_config", return_value=([cfg], None)):
+        with _patch("src.config.array_expansion.expand_config", return_value=([cfg], None)):
             result = _expand_single_phase({}, "Phase 1")
         assert result == cfg
 
     def test_sweep_raises_usage_error(self):
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
         with (
-            _patch("tud_lbm.config.array_expansion.expand_config", return_value=([cfg, cfg], object())),
+            _patch("src.config.array_expansion.expand_config", return_value=([cfg, cfg], object())),
             pytest.raises(click.UsageError, match="does not support parameter sweeps"),
         ):
             _expand_single_phase({}, "Phase 1")
@@ -1941,9 +1941,9 @@ class TestRunTwoPhaseWettingInit:
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
         wetting_params = dict(_WETTING_PARAM_DEFAULTS)
         with (
-            _patch("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("tud_lbm.cli.wetting_init._expand_single_phase", return_value=cfg),
-            _patch("tud_lbm.cli.wetting_init._prompt_wetting_params", return_value=wetting_params),
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.wetting_init._prompt_wetting_params", return_value=wetting_params),
             _patch("rich.prompt.Confirm.ask", return_value=False),
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=False, overview=False)
@@ -1962,9 +1962,9 @@ class TestRunTwoPhaseWettingInit:
             return str(data_dir)
 
         with (
-            _patch("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("tud_lbm.cli.wetting_init._expand_single_phase", return_value=cfg),
-            _patch("tud_lbm.cli.execution._run_simulation", _fake_run),
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.execution._run_simulation", _fake_run),
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False)
         assert len(run_calls) == 2
@@ -1976,9 +1976,9 @@ class TestRunTwoPhaseWettingInit:
         data_dir = tmp_path / "data"
         data_dir.mkdir()
         with (
-            _patch("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("tud_lbm.cli.wetting_init._expand_single_phase", return_value=cfg),
-            _patch("tud_lbm.cli.execution._run_simulation", return_value=str(data_dir)),
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=True)
         assert "PHYSICAL PARAMETER OVERVIEW" in capsys.readouterr().out
@@ -2020,10 +2020,10 @@ class TestRunImplAdditional:
             compare_called["n"] += 1
 
         with (
-            _patch("tud_lbm.cli.execution._load_raw_config", return_value={}),
-            _patch("tud_lbm.cli.execution._expand_raw_config", return_value=self._single_config()),
-            _patch("tud_lbm.cli.execution._run_simulation", _fake_run),
-            _patch("tud_lbm.cli.execution._run_compare_single", _fake_compare),
+            _patch("src.cli.execution._load_raw_config", return_value={}),
+            _patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
+            _patch("src.cli.execution._run_simulation", _fake_run),
+            _patch("src.cli.execution._run_compare_single", _fake_compare),
         ):
             result = _run_impl(
                 config_path=str(cfg_toml),
@@ -2043,7 +2043,7 @@ class TestRunImplAdditional:
         def _fake_wetting(path, overrides, *, no_prompt, overview):
             called["n"] += 1
 
-        with _patch("tud_lbm.cli.execution._run_two_phase_wetting_init", _fake_wetting):
+        with _patch("src.cli.execution._run_two_phase_wetting_init", _fake_wetting):
             result = _run_impl(
                 config_path=str(cfg_toml),
                 overrides=(),
@@ -2070,8 +2070,8 @@ class TestAnimateCommandPaths:
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10, animate_fields=["density"])
         runner = CliRunner()
         with (
-            _patch("tud_lbm.config.from_toml", return_value=cfg),
-            _patch("tud_lbm.io.plotting.Animator") as mock_anim,
+            _patch("src.config.from_toml", return_value=cfg),
+            _patch("src.simulation_io.plotting.Animator") as mock_anim,
         ):
             mock_anim.return_value.create.return_value = run_dir / "animation.mp4"
             result = runner.invoke(cli, ["animate", str(run_dir), "--no-prompt"])
@@ -2083,7 +2083,7 @@ class TestAnimateCommandPaths:
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
         monkeypatch.setenv("TUD_LBM_DEBUG", "1")
         runner = CliRunner()
-        with patch("tud_lbm.cli.commands.visualise._validate_run_dir_has_config", side_effect=RuntimeError("boom")):
+        with patch("src.cli.commands.visualise._validate_run_dir_has_config", side_effect=RuntimeError("boom")):
             result = runner.invoke(cli, ["animate", str(run_dir)])
         assert result.exit_code == 1
 
@@ -2098,8 +2098,8 @@ class TestVisualiseCommandPaths:
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
         runner = CliRunner()
         with (
-            _patch("tud_lbm.config.from_toml", return_value=cfg),
-            _patch("tud_lbm.io.plotting.FigureBuilder") as mock_fb,
+            _patch("src.config.from_toml", return_value=cfg),
+            _patch("src.simulation_io.plotting.FigureBuilder") as mock_fb,
         ):
             mock_fb.return_value.build_all.return_value = [tmp_path / "fig.png"]
             mock_fb.return_value.plot_dir = tmp_path
@@ -2113,8 +2113,8 @@ class TestVisualiseCommandPaths:
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10, plot_fields=["density"])
         runner = CliRunner()
         with (
-            _patch("tud_lbm.config.from_toml", return_value=cfg),
-            _patch("tud_lbm.io.plotting.FigureBuilder") as mock_fb,
+            _patch("src.config.from_toml", return_value=cfg),
+            _patch("src.simulation_io.plotting.FigureBuilder") as mock_fb,
         ):
             mock_fb.return_value.build_all.return_value = []
             mock_fb.return_value.plot_dir = tmp_path
@@ -2128,7 +2128,7 @@ class TestVisualiseCommandPaths:
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
         monkeypatch.setenv("TUD_LBM_DEBUG", "1")
         runner = CliRunner()
-        with patch("tud_lbm.cli.commands.visualise._validate_run_dir_has_config", side_effect=RuntimeError("dbg")):
+        with patch("src.cli.commands.visualise._validate_run_dir_has_config", side_effect=RuntimeError("dbg")):
             result = runner.invoke(cli, ["visualise", str(run_dir)])
         assert result.exit_code == 1
 
@@ -2143,8 +2143,8 @@ class TestVisualiseCommandPaths:
         fake_op.name = "snapshot_fig"
 
         with (
-            _patch("tud_lbm.config.from_toml", return_value=cfg),
-            _patch("tud_lbm.io.plotting.FigureBuilder") as mock_fb,
+            _patch("src.config.from_toml", return_value=cfg),
+            _patch("src.simulation_io.plotting.FigureBuilder") as mock_fb,
             _patch("rich.prompt.Prompt.ask", return_value="5,10"),
         ):
             mock_fb.return_value.sorted_timed_files.return_value = [(0, tmp_path), (5, tmp_path), (10, tmp_path)]
@@ -2162,14 +2162,14 @@ class TestCompareCommandPaths:
 
     def test_compare_no_prompt_skips_fields(self, tmp_path):
         runner = CliRunner()
-        with _patch("tud_lbm.cli.analysis_routing.analyse_tree", return_value=(3, 3)):
+        with _patch("src.cli.analysis_routing.analyse_tree", return_value=(3, 3)):
             result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt"])
         assert result.exit_code == 0
 
     def test_compare_debug_env_reraises(self, tmp_path, monkeypatch):
         monkeypatch.setenv("TUD_LBM_DEBUG", "1")
         runner = CliRunner()
-        with _patch("tud_lbm.cli.analysis_routing.analyse_tree", side_effect=RuntimeError("err")):
+        with _patch("src.cli.analysis_routing.analyse_tree", side_effect=RuntimeError("err")):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 1
 
@@ -2180,7 +2180,7 @@ class TestRunCommandDebugEnv:
     def test_run_debug_env_reraises(self, monkeypatch):
         monkeypatch.setenv("TUD_LBM_DEBUG", "1")
         runner = CliRunner()
-        with _patch("tud_lbm.cli.commands.run._run_impl", side_effect=RuntimeError("debug error")):
+        with _patch("src.cli.commands.run._run_impl", side_effect=RuntimeError("debug error")):
             result = runner.invoke(cli, ["run"])
         assert result.exit_code == 1
 
@@ -2204,21 +2204,21 @@ class TestDisplayOperatorsEmptyRegistry:
     """Tests for empty-registry warnings in operator display helpers."""
 
     def test_simulation_operators_empty_prints_warning(self, capsys):
-        from tud_lbm.cli.display import _display_simulation_operators
+        from src.cli.display import _display_simulation_operators
 
         with (
-            _patch("tud_lbm.operators.load_all"),
-            _patch("tud_lbm.registry.get_operator_category", return_value=set()),
+            _patch("src.operators.load_all"),
+            _patch("src.registry.get_operator_category", return_value=set()),
         ):
             _display_simulation_operators()
         assert "No simulation operators" in capsys.readouterr().out
 
     def test_analysis_operators_empty_prints_warning(self, capsys):
-        from tud_lbm.cli.display import _display_analysis_operators
+        from src.cli.display import _display_analysis_operators
 
         with (
-            _patch("tud_lbm.operators.load_all"),
-            _patch("tud_lbm.registry.get_operator_category", return_value=set()),
+            _patch("src.operators.load_all"),
+            _patch("src.registry.get_operator_category", return_value=set()),
         ):
             _display_analysis_operators()
         assert "No analysis operators" in capsys.readouterr().out
@@ -2229,14 +2229,14 @@ class TestRunCommandListFlags:
 
     def test_list_simulation_analysis_via_runner(self):
         runner = CliRunner()
-        with _patch("tud_lbm.cli.execution._display_analysis_operators"):
+        with _patch("src.cli.execution._display_analysis_operators"):
             result = runner.invoke(cli, ["run", "--list-simulation-analysis"])
         assert result.exit_code == 0
 
     def test_list_simulation_operators_and_analysis_operators_precedence(self):
         """list_operators check fires first; list_analysis check is skipped."""
         runner = CliRunner()
-        with _patch("tud_lbm.cli.execution._display_simulation_operators"):
+        with _patch("src.cli.execution._display_simulation_operators"):
             result = runner.invoke(
                 cli,
                 ["run", "--list-simulation-operators", "--list-simulation-analysis"],
@@ -2319,7 +2319,7 @@ class TestAnalyseCommand:
     def test_surface_tension_success(self, tmp_path):
         cfg_toml = self._write_multiphase_toml(tmp_path)
         with patch(
-            "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
+            "src.simulation_io.analysis.surface_tension.calibrate_surface_tension",
             return_value=0.0123,
         ) as mock_calibrate:
             result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
@@ -2333,7 +2333,7 @@ class TestAnalyseCommand:
         cfg_toml = self._write_multiphase_toml(tmp_path)
         out_dir = tmp_path / "analysis_out"
         with patch(
-            "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
+            "src.simulation_io.analysis.surface_tension.calibrate_surface_tension",
             return_value=0.0123,
         ) as mock_calibrate:
             result = CliRunner().invoke(
@@ -2346,7 +2346,7 @@ class TestAnalyseCommand:
     def test_keyboard_interrupt_exits_130(self, tmp_path):
         cfg_toml = self._write_multiphase_toml(tmp_path)
         with patch(
-            "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
+            "src.simulation_io.analysis.surface_tension.calibrate_surface_tension",
             side_effect=KeyboardInterrupt,
         ):
             result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
@@ -2355,7 +2355,7 @@ class TestAnalyseCommand:
     def test_analyse_reports_calibrated_surface_tension(self, tmp_path):
         cfg_toml = self._write_multiphase_toml(tmp_path)
         with patch(
-            "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
+            "src.simulation_io.analysis.surface_tension.calibrate_surface_tension",
             return_value=0.0123,
         ):
             result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])

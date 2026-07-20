@@ -7,10 +7,10 @@ asserts the full pipeline completes without NaN/Inf and stays bounded.
 
 import jax.numpy as jnp
 import pytest
-from tud_lbm.config.simulation_config import SimulationConfig
-from tud_lbm.pipeline.runner import init_state
-from tud_lbm.pipeline.runner import run
-from tud_lbm.pipeline.setup import build_setup
+from src.config.simulation_config import SimulationConfig
+from src.pipeline.runner import init_state
+from src.pipeline.runner import run
+from src.pipeline.setup import build_setup
 
 
 @pytest.mark.slow

@@ -16,10 +16,10 @@ Usage:
     python examples/minimal_example.py
 """
 
-from tud_lbm import SimulationConfig
-from tud_lbm import build_setup
-from tud_lbm import run
-from tud_lbm.pipeline.runner import init_state
+from src import SimulationConfig
+from src import build_setup
+from src import run
+from src.pipeline.runner import init_state
 
 
 def main():

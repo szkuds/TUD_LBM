@@ -10,10 +10,10 @@ Tests validate that:
 import textwrap
 from pathlib import Path
 import pytest
-from tud_lbm.config.adapter_base import ConfigAdapter
-from tud_lbm.config.adapter_base import get_adapter
-from tud_lbm.config.adapter_toml import TomlAdapter
-from tud_lbm.config.simulation_config import SimulationConfig
+from src.config.adapter_base import ConfigAdapter
+from src.config.adapter_base import get_adapter
+from src.config.adapter_toml import TomlAdapter
+from src.config.simulation_config import SimulationConfig
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -483,7 +483,7 @@ class TestTomlAdapterSave:
         assert nested.exists()
 
     def test_save_raises_without_tomli_w(self, simple_toml_file, monkeypatch):
-        import tud_lbm.config.adapter_toml as mod
+        import src.config.adapter_toml as mod
 
         monkeypatch.setattr(mod, "tomli_w", None)
         config = TomlAdapter().load(simple_toml_file)

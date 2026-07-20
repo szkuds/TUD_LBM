@@ -1,10 +1,10 @@
-"""Tests for tud_lbm.io.analysis.accelerations.regime_classification."""
+"""Tests for src.simulation_io.analysis.accelerations.regime_classification."""
 
 from __future__ import annotations
 import numpy as np
-from tud_lbm.io.analysis.accelerations import AccelerationResult
-from tud_lbm.io.analysis.accelerations import classify_regime
-from tud_lbm.io.analysis.accelerations import is_pinned
+from src.simulation_io.analysis.accelerations import AccelerationResult
+from src.simulation_io.analysis.accelerations import classify_regime
+from src.simulation_io.analysis.accelerations import is_pinned
 
 
 def _accel_result(

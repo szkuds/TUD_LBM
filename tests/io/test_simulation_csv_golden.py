@@ -9,12 +9,12 @@ from itertools import pairwise
 from pathlib import Path
 import pandas as pd
 import pytest
+from src.simulation_io.plotting.simulation_csv import build_simulation_csv
 from tests.support.run_dirs import NONUNIFORM_ITERATIONS
 from tests.support.run_dirs import SAVE_INTERVAL
 from tests.support.run_dirs import UNIFORM_ITERATIONS
 from tests.support.run_dirs import build_run_dir
 from tests.support.run_dirs import wetting_config
-from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
