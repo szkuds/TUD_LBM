@@ -27,6 +27,7 @@ _RUN_CONFIG_LABEL = "this run's config.toml"
 _MIN_GRID_DIMENSIONS = 2
 _SINGLE_SNAPSHOT_USAGE = "--single requires PATH to point to an existing .npz snapshot file."
 _SINGLE_SNAPSHOT_FIELD_USAGE = "--single requires a snapshot containing a two-dimensional 'rho' or 'u' field."
+_RUN_DIRECTORY_USAGE = "PATH must point to an existing run directory unless --single is provided."
 
 
 def _load_run_config(run_dir: str | Path) -> SimulationConfig:
@@ -184,7 +185,7 @@ def _figure_output_dir(builder: FigureBuilder, ctx: VisualiseContext, saved: lis
 
 
 @cli.command()
-@click.argument("run_dir", type=click.Path(exists=True))
+@click.argument("run_dir", type=click.Path(exists=True, file_okay=False, dir_okay=True))
 @click.option(
     "--output",
     default=None,
@@ -318,8 +319,11 @@ def _visualise_context(
 ) -> VisualiseContext:
     """Build the shared context for the ``visualise`` group and subcommands."""
     if not single:
+        run_dir = Path(path_arg)
+        if not run_dir.is_dir():
+            raise click.UsageError(_RUN_DIRECTORY_USAGE)
         return VisualiseContext(
-            run_dir=Path(path_arg),
+            run_dir=run_dir,
             snapshot_path=None,
             config=None,
             skip=skip,

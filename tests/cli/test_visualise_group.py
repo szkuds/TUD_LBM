@@ -122,3 +122,23 @@ def test_single_snapshot_rejects_non_npz_path(runner, run_dir):
 
     assert result.exit_code == 2
     assert "existing .npz snapshot file" in result.output
+
+
+def test_visualise_rejects_file_without_single(runner, tmp_path):
+    snapshot = tmp_path / "snapshot.npz"
+    np.savez(snapshot, rho=np.ones((8, 8)))
+
+    result = runner.invoke(cli, ["visualise", str(snapshot), "--no-prompt"])
+
+    assert result.exit_code == 2
+    assert "PATH must point to an existing run directory unless --single is provided." in result.output
+
+
+def test_animate_rejects_file_run_dir(runner, tmp_path):
+    path_arg = tmp_path / "not-a-run-directory"
+    path_arg.touch()
+
+    result = runner.invoke(cli, ["animate", str(path_arg), "--no-prompt"])
+
+    assert result.exit_code == 2
+    assert "Directory" in result.output
