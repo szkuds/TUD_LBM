@@ -10,25 +10,25 @@ Tests for:
 
 from __future__ import annotations
 import pytest
-import tud_lbm.lattice.lattice
-import tud_lbm.operators.boundary
+import src.lattice.lattice
+import src.operators.boundary
 
 # Import all operator packages to trigger registration decorators.
 # In production code, these are imported by the factories/setup modules.
-import tud_lbm.operators.collision
-import tud_lbm.operators.differential
-import tud_lbm.operators.equilibrium
-import tud_lbm.operators.force
-import tud_lbm.operators.initialise
-import tud_lbm.operators.macroscopic
-import tud_lbm.operators.streaming
-import tud_lbm.operators.wetting  # noqa: F401
-from tud_lbm.registry import OPERATOR_REGISTRY
-from tud_lbm.registry import get_operator_category
-from tud_lbm.registry import get_operator_names
-from tud_lbm.registry import get_operators
-from tud_lbm.registry import register_operator
-from tud_lbm.registry import unregister_operator
+import src.operators.collision
+import src.operators.differential
+import src.operators.equilibrium
+import src.operators.force
+import src.operators.initialise
+import src.operators.macroscopic
+import src.operators.streaming
+import src.operators.wetting  # noqa: F401
+from src.registry import OPERATOR_REGISTRY
+from src.registry import get_operator_category
+from src.registry import get_operator_names
+from src.registry import get_operators
+from src.registry import register_operator
+from src.registry import unregister_operator
 
 # =====================================================================
 # Registration mechanics
@@ -192,20 +192,20 @@ class TestLatticeViaRegistry:
     """build_lattice uses the registry correctly."""
 
     def test_build_lattice_d2q9(self):
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
         assert lat.d == 2
         assert lat.q == 9
 
     def test_build_lattice_case_insensitive(self):
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("d2q9")
         assert lat.d == 2
 
     def test_build_lattice_unsupported_raises(self):
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         with pytest.raises(ValueError, match="Unsupported lattice type"):
             build_lattice("D1Q3")
@@ -225,19 +225,19 @@ class TestCollisionFactoryViaRegistry:
     """build_collision_fn uses the registry correctly."""
 
     def test_get_bgk(self):
-        from tud_lbm.operators.collision import build_collision_fn
+        from src.operators.collision import build_collision_fn
 
         fn = build_collision_fn("bgk")
         assert callable(fn)
 
     def test_get_mrt(self):
-        from tud_lbm.operators.collision import build_collision_fn
+        from src.operators.collision import build_collision_fn
 
         fn = build_collision_fn("mrt")
         assert callable(fn)
 
     def test_unknown_raises(self):
-        from tud_lbm.operators.collision import build_collision_fn
+        from src.operators.collision import build_collision_fn
 
         with pytest.raises(ValueError, match="Unknown collision"):
             build_collision_fn("nonexistent")
@@ -257,7 +257,7 @@ class TestDummyOperatorAutoExposure:
 
     def test_new_dummy_collision_appears_without_list_edit(self):
         """Register a dummy collision model and verify it's discoverable."""
-        from tud_lbm.registry import collision_model
+        from src.registry import collision_model
 
         try:
 
@@ -274,7 +274,7 @@ class TestDummyOperatorAutoExposure:
             assert "_dummy_test_col" in names
 
             # The factory can resolve it
-            from tud_lbm.operators.collision import build_collision_fn
+            from src.operators.collision import build_collision_fn
 
             fn = build_collision_fn("_dummy_test_col")
             assert fn is _dummy_collide
@@ -283,7 +283,7 @@ class TestDummyOperatorAutoExposure:
 
     def test_new_dummy_force_appears_without_list_edit(self):
         """Register a dummy force builder and verify it's discoverable."""
-        from tud_lbm.registry import force_model
+        from src.registry import force_model
 
         try:
 
@@ -305,7 +305,7 @@ class TestDummyOperatorAutoExposure:
 
     def test_new_dummy_boundary_appears_without_list_edit(self):
         """Register a dummy boundary condition and verify it's discoverable."""
-        from tud_lbm.registry import boundary_condition
+        from src.registry import boundary_condition
 
         try:
 
@@ -321,7 +321,7 @@ class TestDummyOperatorAutoExposure:
 
     def test_unregister_removes_from_all_indices(self):
         """unregister_operator cleans both OPERATOR_REGISTRY and _KIND_INDEX."""
-        from tud_lbm.registry import _KIND_INDEX
+        from src.registry import _KIND_INDEX
 
         @register_operator("_test_cleanup", name="_cleanup_target")
         def _fn() -> None:

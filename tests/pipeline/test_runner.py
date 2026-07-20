@@ -1,4 +1,4 @@
-"""Tests for tud_lbm/pipeline/runner.py.
+"""Tests for src/pipeline/runner.py.
 
 Merged from:
   - tests/runner/test_step_and_run.py   : init_state, IO callbacks, streaming IO
@@ -13,11 +13,11 @@ from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 import numpy as np
-from tud_lbm.config.simulation_config import SimulationConfig
-from tud_lbm.lattice.lattice import build_lattice
-from tud_lbm.pipeline.runner import _t_from_snapshot
-from tud_lbm.pipeline.runner import init_state
-from tud_lbm.pipeline.setup import build_setup
+from src.config.simulation_config import SimulationConfig
+from src.lattice.lattice import build_lattice
+from src.pipeline.runner import _t_from_snapshot
+from src.pipeline.runner import init_state
+from src.pipeline.setup import build_setup
 
 # =====================================================================
 # Helpers
@@ -135,7 +135,7 @@ class TestInitState:
         assert int(state.t) == 0
 
     def test_run_advances_from_resumed_timestep(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         cfg = SimulationConfig(
             grid_shape=(8, 8),
@@ -211,7 +211,7 @@ class TestIOCallbacks:
     """IO callback utilities."""
 
     def test_state_to_numpy(self):
-        from tud_lbm.io.callbacks import _state_to_numpy
+        from src.simulation_io.callbacks import _state_to_numpy
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -231,7 +231,7 @@ class TestStreamingIO:
 
     def _make_io(self, tmp_path):
         """Build a SimulationIO that writes numpy files to *tmp_path*."""
-        from tud_lbm.io import SimulationIO
+        from src.simulation_io import SimulationIO
 
         return SimulationIO(
             base_dir=str(tmp_path),
@@ -239,7 +239,7 @@ class TestStreamingIO:
         )
 
     def test_trajectory_is_none_with_io_handler(self, tmp_path):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -250,7 +250,7 @@ class TestStreamingIO:
         assert trajectory is None
 
     def test_files_written_at_correct_steps(self, tmp_path):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -263,7 +263,7 @@ class TestStreamingIO:
         assert all(f.endswith(".npz") for f in files)
 
     def test_save_fields_filters_keys(self, tmp_path):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -280,7 +280,7 @@ class TestStreamingIO:
         assert "u" not in data.files
 
     def test_skip_interval_suppresses_early_saves(self, tmp_path):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -293,7 +293,7 @@ class TestStreamingIO:
         assert files[0] == "timestep_4.npz"
 
     def test_backward_compat_no_io_handler(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -314,7 +314,7 @@ class TestSource:
 
     @staticmethod
     def _build_gradient_closure(lattice):
-        from tud_lbm.operators.differential import build_differential_fn
+        from src.operators.differential import build_differential_fn
 
         _gradient = build_differential_fn("gradient")
         pad_modes = ("wrap", "wrap", "wrap", "wrap")
@@ -325,7 +325,7 @@ class TestSource:
         return gradient
 
     def test_shape(self):
-        from tud_lbm.operators.force._source_term import source
+        from src.operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
@@ -337,7 +337,7 @@ class TestSource:
         assert src.shape == (NX, NY, NZ, 9, 1)
 
     def test_zero_force_zero_source(self):
-        from tud_lbm.operators.force._source_term import source
+        from src.operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
@@ -349,7 +349,7 @@ class TestSource:
         np.testing.assert_allclose(np.array(src), 0.0, atol=1e-10)
 
     def test_jittable(self):
-        from tud_lbm.operators.force._source_term import source
+        from src.operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
@@ -362,7 +362,7 @@ class TestSource:
         assert src.shape == (NX, NY, NZ, 9, 1)
 
     def test_source_sums_to_zero(self):
-        from tud_lbm.operators.force._source_term import source
+        from src.operators.force._source_term import source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
@@ -384,7 +384,7 @@ class TestStepSinglePhasePure:
     """``step_single_phase`` advances the state using pure functions."""
 
     def test_increments_t(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -393,7 +393,7 @@ class TestStepSinglePhasePure:
         assert int(new_state.t) == 1
 
     def test_preserves_shape(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -405,7 +405,7 @@ class TestStepSinglePhasePure:
         assert new_state.u.shape == state.u.shape
 
     def test_no_nan(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -416,8 +416,8 @@ class TestStepSinglePhasePure:
         assert not jnp.isnan(new_state.rho).any()
 
     def test_output_is_state(self):
-        from tud_lbm.operators.step import build_step_fn
-        from tud_lbm.pipeline.state import State
+        from src.operators.step import build_step_fn
+        from src.pipeline.state import State
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -426,7 +426,7 @@ class TestStepSinglePhasePure:
         assert isinstance(new_state, State)
 
     def test_rest_equilibrium_unchanged(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -436,7 +436,7 @@ class TestStepSinglePhasePure:
         np.testing.assert_allclose(np.array(new_state.rho), 1.0, atol=1e-5)
 
     def test_mass_conservation(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -448,7 +448,7 @@ class TestStepSinglePhasePure:
         np.testing.assert_allclose(mass_before, mass_after, rtol=1e-6)
 
     def test_multiple_steps_stable(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
@@ -461,7 +461,7 @@ class TestStepSinglePhasePure:
         assert int(state.t) == 5
 
     def test_persists_force_ext_when_forces_active(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup_with_gravity()
@@ -473,7 +473,7 @@ class TestStepSinglePhasePure:
         assert not np.allclose(np.array(new_state.force_ext), 0.0)
 
     def test_force_ext_does_not_accumulate_between_steps(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup_with_gravity()
@@ -494,7 +494,7 @@ class TestStepMultiphasePure:
     """``step_multiphase`` advances multiphase state using pure functions."""
 
     def test_increments_t(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
@@ -503,7 +503,7 @@ class TestStepMultiphasePure:
         assert int(new_state.t) == 1
 
     def test_preserves_shape(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
@@ -514,7 +514,7 @@ class TestStepMultiphasePure:
         assert new_state.rho.shape == state.rho.shape
 
     def test_no_nan(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
@@ -524,7 +524,7 @@ class TestStepMultiphasePure:
         assert not jnp.isnan(new_state.f).any()
 
     def test_produces_force(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
@@ -535,7 +535,7 @@ class TestStepMultiphasePure:
         assert new_state.force.shape == (16, 16, 1, 1, 2)
 
     def test_persists_force_ext_when_forces_active(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup_with_gravity()
@@ -547,7 +547,7 @@ class TestStepMultiphasePure:
         assert not np.allclose(np.array(new_state.force_ext), 0.0)
 
     def test_force_ext_does_not_accumulate_between_steps(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup_with_gravity()
@@ -584,7 +584,7 @@ class TestRunPure:
     """``run_pure`` executes multiple steps via lax.scan."""
 
     def test_trajectory_mode(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -596,7 +596,7 @@ class TestRunPure:
         assert trajectory.f.shape[0] == 5
 
     def test_final_state_no_nan(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -607,7 +607,7 @@ class TestRunPure:
         assert not jnp.isnan(final_state.rho).any()
 
     def test_multiphase_trajectory(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _mp_setup()
         state = init_state(setup)
@@ -619,7 +619,7 @@ class TestRunPure:
         assert trajectory.f.shape[0] == 3
 
     def test_save_interval(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -631,7 +631,7 @@ class TestRunPure:
         assert trajectory.f.shape[0] == 2
 
     def test_mass_conservation_over_trajectory(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -643,7 +643,7 @@ class TestRunPure:
         np.testing.assert_allclose(initial_mass, final_mass, rtol=1e-5)
 
     def test_trajectory_t_increases(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -655,7 +655,7 @@ class TestRunPure:
         np.testing.assert_array_equal(ts, np.arange(1, 6))
 
     def test_rest_equilibrium_stable(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _sp_setup()
         state = init_state(setup)
@@ -674,7 +674,7 @@ class TestStepWithBounceBack:
     """Pure-function step works with non-trivial BCs."""
 
     def test_bounce_back_step(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         cfg = SimulationConfig(
@@ -697,7 +697,7 @@ class TestStepWithBounceBack:
         assert not jnp.isnan(new_state.f).any()
 
     def test_bounce_back_run(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         cfg = SimulationConfig(
             grid_shape=(NX, NY, NZ),
@@ -728,7 +728,7 @@ class TestLegacyAPIUnchanged:
     """The ``step_single_phase(setup, state)`` functional API works."""
 
     def test_legacy_step_still_works(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_single_phase = build_step_fn("single_phase")
         cfg = SimulationConfig(grid_shape=(NX, NY), tau=0.8, nt=10)
@@ -772,7 +772,7 @@ class TestRunGuards:
     """TypeError and nt-default guards in run()."""
 
     def test_raises_when_step_fn_none(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         setup = _single_phase_setup()
         state = init_state(setup)
@@ -781,7 +781,7 @@ class TestRunGuards:
             run(setup_no_step, state)
 
     def test_nt_defaults_to_config_nt(self):
-        from tud_lbm.pipeline.runner import run
+        from src.pipeline.runner import run
 
         cfg = SimulationConfig(grid_shape=(NX, NY), tau=0.8, nt=4)
         setup = build_setup(cfg)

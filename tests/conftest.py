@@ -11,7 +11,7 @@ def _register_step_operators() -> None:
     early, so their @update_timestep_operator decorators fire and
     register the step operators.
     """
-    from tud_lbm.operators import step as _  # noqa: F401
+    from src.operators import step as _  # noqa: F401
 
 
 @pytest.fixture
@@ -63,6 +63,20 @@ def mock_optax_present(monkeypatch):
         yield  # Run test
     except ImportError:
         pytest.skip("optax not installed - skipping test that requires it")
+
+
+@pytest.fixture(autouse=True)
+def _clear_droplet_series_cache():
+    """Drop the shared droplet-metric cache between tests.
+
+    The cache is keyed on resolved file paths, and pytest reuses tmp_path names
+    across tests, so a stale entry could otherwise be served to a later test.
+    """
+    from src.simulation_io.analysis.droplet_metrics import clear_series_cache
+
+    clear_series_cache()
+    yield
+    clear_series_cache()
 
 
 @pytest.fixture(autouse=True)

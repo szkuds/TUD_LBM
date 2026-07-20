@@ -1,11 +1,11 @@
-"""Tests for tud_lbm.io.analysis.accelerations.acceleration_analysis."""
+"""Tests for src.simulation_io.analysis.accelerations.acceleration_analysis."""
 
 from __future__ import annotations
 import numpy as np
 import pandas as pd
-from tud_lbm.io.analysis.accelerations import compute_acceleration
-from tud_lbm.io.analysis.accelerations import find_slope_window
-from tud_lbm.io.analysis.accelerations import save_diagnostic_plot
+from src.simulation_io.analysis.accelerations import compute_acceleration
+from src.simulation_io.analysis.accelerations import find_slope_window
+from src.simulation_io.analysis.accelerations import save_diagnostic_plot
 
 
 def _ramp_up_then_down_df(n: int = 100) -> pd.DataFrame:

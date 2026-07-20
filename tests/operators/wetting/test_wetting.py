@@ -58,7 +58,7 @@ class TestComputeContactAngle:
     """Pure-function contact angle computation."""
 
     def test_returns_two_scalars(self):
-        from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
+        from src.operators.wetting._contact_angle import compute_contact_angle
 
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -66,7 +66,7 @@ class TestComputeContactAngle:
         assert ca_r.shape == ()
 
     def test_angles_in_reasonable_range(self):
-        from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
+        from src.operators.wetting._contact_angle import compute_contact_angle
 
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -76,14 +76,14 @@ class TestComputeContactAngle:
 
     def test_symmetric_droplet_symmetric_angles(self):
         """A droplet centred on the grid should give equal left/right angles."""
-        from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
+        from src.operators.wetting._contact_angle import compute_contact_angle
 
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V, centre_x=NX / 2.0)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
         np.testing.assert_allclose(float(ca_l), float(ca_r), atol=2.0)
 
     def test_jittable(self):
-        from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
+        from src.operators.wetting._contact_angle import compute_contact_angle
 
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         jitted = jax.jit(partial(compute_contact_angle, rho_mean=RHO_MEAN))
@@ -101,8 +101,8 @@ class TestComputeContactLineLocation:
     """Pure-function contact-line-location computation."""
 
     def test_returns_two_scalars(self):
-        from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
-        from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
+        from src.operators.wetting._contact_angle import compute_contact_angle
+        from src.operators.wetting._contact_line import compute_contact_line_location
 
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -111,8 +111,8 @@ class TestComputeContactLineLocation:
         assert cll_r.shape == ()
 
     def test_left_less_than_right(self):
-        from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
-        from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
+        from src.operators.wetting._contact_angle import compute_contact_angle
+        from src.operators.wetting._contact_line import compute_contact_line_location
 
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -120,8 +120,8 @@ class TestComputeContactLineLocation:
         assert float(cll_l) < float(cll_r)
 
     def test_jittable(self):
-        from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
-        from tud_lbm.operators.wetting._contact_line import compute_contact_line_location
+        from src.operators.wetting._contact_angle import compute_contact_angle
+        from src.operators.wetting._contact_line import compute_contact_line_location
 
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         ca_l, ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -141,7 +141,7 @@ class TestWettingParamsHelpers:
     """WettingParams, clamp, cost functions."""
 
     def test_wetting_params_is_pytree(self):
-        from tud_lbm.operators.wetting.hysteresis import WettingParams
+        from src.operators.wetting.hysteresis import WettingParams
 
         p = WettingParams(
             d_rho_left=jnp.array(0.1),
@@ -155,8 +155,8 @@ class TestWettingParamsHelpers:
         np.testing.assert_allclose(float(p2.d_rho_left), 0.1)
 
     def test_clamp_params(self):
-        from tud_lbm.operators.wetting.hysteresis import WettingParams
-        from tud_lbm.operators.wetting.hysteresis import _clamp_params
+        from src.operators.wetting.hysteresis import WettingParams
+        from src.operators.wetting.hysteresis import _clamp_params
 
         p = WettingParams(
             d_rho_left=jnp.array(-0.5),
@@ -171,13 +171,13 @@ class TestWettingParamsHelpers:
         np.testing.assert_allclose(float(clamped.phi_right), 1.5, atol=1e-6)
 
     def test_cost_cll(self):
-        from tud_lbm.operators.wetting.hysteresis import _cost_cll
+        from src.operators.wetting.hysteresis import _cost_cll
 
         # Expected Huber loss for err=2.0, delta=0.5 -> 0.875
         assert float(_cost_cll(jnp.array(5.0), jnp.array(3.0))) == 0.875
 
     def test_cost_ca(self):
-        from tud_lbm.operators.wetting.hysteresis import _cost_ca
+        from src.operators.wetting.hysteresis import _cost_ca
 
         # Expected Huber loss for err=5.0, delta=5.0 -> 12.5
         assert float(_cost_ca(jnp.array(90.0), jnp.array(85.0))) == 12.5
@@ -193,8 +193,8 @@ class TestOptimiseSingleParam:
 
     def test_reduces_loss(self):
         import optax
-        from tud_lbm.operators.wetting.hysteresis import WettingParams
-        from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
+        from src.operators.wetting.hysteresis import WettingParams
+        from src.operators.wetting.hysteresis import _optimise_single_param
 
         # Simple quadratic objective: minimise (d_rho_left - 0.1)
         target = 0.1
@@ -223,8 +223,8 @@ class TestOptimiseSingleParam:
 
     def test_jittable(self):
         import optax
-        from tud_lbm.operators.wetting.hysteresis import WettingParams
-        from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
+        from src.operators.wetting.hysteresis import WettingParams
+        from src.operators.wetting.hysteresis import _optimise_single_param
 
         def objective(p):
             return jnp.abs(p.d_rho_left - 0.1)
@@ -254,8 +254,8 @@ class TestOptimiseSingleParam:
 
     def test_early_exit_when_already_converged(self):
         import optax
-        from tud_lbm.operators.wetting.hysteresis import WettingParams
-        from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
+        from src.operators.wetting.hysteresis import WettingParams
+        from src.operators.wetting.hysteresis import _optimise_single_param
 
         target = 0.1
 
@@ -285,8 +285,8 @@ class TestOptimiseSingleParam:
 
     def test_converges_below_tolerance_before_cap(self):
         import optax
-        from tud_lbm.operators.wetting.hysteresis import WettingParams
-        from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
+        from src.operators.wetting.hysteresis import WettingParams
+        from src.operators.wetting.hysteresis import _optimise_single_param
 
         target = 0.1
         loss_tol = 1e-3
@@ -322,9 +322,9 @@ class TestOptimiseSingleParam:
 
     def test_loss_tol_zero_runs_full_budget(self):
         import optax
-        from tud_lbm.operators.wetting.hysteresis import WettingParams
-        from tud_lbm.operators.wetting.hysteresis import _optimise_single_param
-        from tud_lbm.operators.wetting.hysteresis.hysteresis import _clamp_params
+        from src.operators.wetting.hysteresis import WettingParams
+        from src.operators.wetting.hysteresis import _optimise_single_param
+        from src.operators.wetting.hysteresis.hysteresis import _clamp_params
 
         target = 0.1
 
@@ -378,8 +378,8 @@ class TestUpdateWettingState:
 
     @staticmethod
     def _make_setup():
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -402,7 +402,7 @@ class TestUpdateWettingState:
 
     @staticmethod
     def _make_wetting_state():
-        from tud_lbm.pipeline.state import WettingState
+        from src.pipeline.state import WettingState
 
         return WettingState(
             phi_left=jnp.array(1.2),
@@ -416,8 +416,8 @@ class TestUpdateWettingState:
         )
 
     def test_returns_wetting_state(self):
-        from tud_lbm.operators.wetting.hysteresis import update_wetting_state
-        from tud_lbm.pipeline.state import WettingState
+        from src.operators.wetting.hysteresis import update_wetting_state
+        from src.pipeline.state import WettingState
 
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
@@ -427,8 +427,8 @@ class TestUpdateWettingState:
         assert isinstance(new_wetting, WettingState)
 
     def test_ca_fields_updated(self):
-        from tud_lbm.operators.wetting._contact_angle import compute_contact_angle
-        from tud_lbm.operators.wetting.hysteresis import update_wetting_state
+        from src.operators.wetting._contact_angle import compute_contact_angle
+        from src.operators.wetting.hysteresis import update_wetting_state
 
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
@@ -450,7 +450,7 @@ class TestUpdateWettingState:
         )
 
     def test_cll_fields_updated(self):
-        from tud_lbm.operators.wetting.hysteresis import update_wetting_state
+        from src.operators.wetting.hysteresis import update_wetting_state
 
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
@@ -461,7 +461,7 @@ class TestUpdateWettingState:
         assert float(new_wetting.cll_left) < float(new_wetting.cll_right)
 
     def test_params_stay_clamped(self):
-        from tud_lbm.operators.wetting.hysteresis import update_wetting_state
+        from src.operators.wetting.hysteresis import update_wetting_state
 
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
@@ -474,8 +474,8 @@ class TestUpdateWettingState:
         assert 1.0 <= float(new_wetting.phi_right) <= 1.5
 
     def test_no_nan(self):
-        from tud_lbm.operators.wetting.hysteresis import update_wetting_state
-        from tud_lbm.pipeline.state import WettingState
+        from src.operators.wetting.hysteresis import update_wetting_state
+        from src.pipeline.state import WettingState
 
         setup = self._make_setup()
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
@@ -488,9 +488,9 @@ class TestUpdateWettingState:
                 assert not jnp.isnan(val).any(), f"NaN in {field_name}"
 
     def test_optimises_inside_window_outside_dead_zone(self, monkeypatch):
-        import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        import src.operators.wetting.hysteresis.hysteresis as hysteresis_module
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -535,7 +535,7 @@ class TestUpdateWettingState:
         assert float(new_wetting.phi_right) > float(wetting.phi_right)
 
     def test_cll_targets_are_frozen_while_in_window(self, monkeypatch):
-        import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
+        import src.operators.wetting.hysteresis.hysteresis as hysteresis_module
 
         setup = self._make_setup()
         rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float64)
@@ -558,7 +558,7 @@ class TestUpdateWettingState:
         np.testing.assert_allclose(float(new_wetting.cll_right), float(wetting.cll_right), atol=1e-6)
 
     def test_cll_target_refreshes_when_side_leaves_window(self, monkeypatch):
-        import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
+        import src.operators.wetting.hysteresis.hysteresis as hysteresis_module
 
         setup = self._make_setup()
         rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float64)
@@ -581,9 +581,9 @@ class TestUpdateWettingState:
         np.testing.assert_allclose(float(new_wetting.cll_right), float(wetting.cll_right), atol=1e-6)
 
     def test_skips_only_in_dead_zone(self, monkeypatch):
-        import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        import src.operators.wetting.hysteresis.hysteresis as hysteresis_module
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -627,9 +627,9 @@ class TestUpdateWettingState:
         np.testing.assert_allclose(float(new_wetting.phi_right), float(wetting.phi_right), atol=1e-6)
 
     def test_chemical_step_optimises_inside_window_outside_dead_zone(self, monkeypatch):
-        import tud_lbm.operators.wetting.hysteresis.hysteresis as hysteresis_module
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        import src.operators.wetting.hysteresis.hysteresis as hysteresis_module
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -685,8 +685,8 @@ class TestUpdateWettingState:
         assert not np.isclose(float(new_wetting.phi_right), float(wetting.phi_right))
 
     def test_setup_selects_chemical_step_wetting_operator(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
             sim_type="multiphase_hysteresis_chemical_step",
@@ -730,11 +730,11 @@ class TestStepMultiphaseWithWetting:
 
     @staticmethod
     def _setup_and_state():
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.operators.equilibrium._equilibrium import compute_equilibrium
-        from tud_lbm.pipeline.runner import init_state
-        from tud_lbm.pipeline.setup import build_setup
-        from tud_lbm.pipeline.state import WettingState
+        from src.config.simulation_config import SimulationConfig
+        from src.operators.equilibrium._equilibrium import compute_equilibrium
+        from src.pipeline.runner import init_state
+        from src.pipeline.setup import build_setup
+        from src.pipeline.state import WettingState
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -777,8 +777,8 @@ class TestStepMultiphaseWithWetting:
         return setup, state
 
     def test_wetting_state_propagated(self):
-        from tud_lbm.operators.step import build_step_fn
-        from tud_lbm.pipeline.state import WettingState
+        from src.operators.step import build_step_fn
+        from src.pipeline.state import WettingState
 
         step_multiphase = build_step_fn("multiphase")
         setup, state = self._setup_and_state()
@@ -788,7 +788,7 @@ class TestStepMultiphaseWithWetting:
         assert isinstance(new_state.wetting, WettingState)
 
     def test_step_increments_t(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         setup, state = self._setup_and_state()
@@ -796,7 +796,7 @@ class TestStepMultiphaseWithWetting:
         assert int(new_state.t) == 1
 
     def test_wetting_fields_no_nan(self):
-        from tud_lbm.operators.step import build_step_fn
+        from src.operators.step import build_step_fn
 
         step_multiphase = build_step_fn("multiphase")
         setup, state = self._setup_and_state()
@@ -817,10 +817,10 @@ class TestStepMultiphaseWithWetting:
 
     def test_without_wetting_state_unchanged(self):
         """When wetting is None, step should not fail."""
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.operators.step import build_step_fn
-        from tud_lbm.pipeline.runner import init_state
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.operators.step import build_step_fn
+        from src.pipeline.runner import init_state
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -852,10 +852,10 @@ class TestFunctionalStep:
     """Phase 3 functional API should still pass."""
 
     def test_functional_step(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.operators.step import build_step_fn
-        from tud_lbm.pipeline.runner import init_state
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.operators.step import build_step_fn
+        from src.pipeline.runner import init_state
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
         setup = build_setup(cfg)

@@ -194,7 +194,7 @@ All operators (collision schemes, macroscopic solvers, forces, boundary conditio
 **Pure function example (preferred):**
 
 ```python
-from tud_lbm.registry import register_operator
+from src.registry import register_operator
 
 @register_operator("collision_models")
 def collide_bgk(f, feq, tau, source=None):
@@ -205,7 +205,7 @@ collide_bgk.name = "bgk"
 **Class example:**
 
 ```python
-from tud_lbm.registry import register_operator
+from src.registry import register_operator
 
 @register_operator("collision_models")
 class MyCollision:
@@ -231,7 +231,7 @@ tud-lbm run --list-operators
 The main simulation workflow is **Config → Setup → State → Run**:
 
 ```python
-from tud_lbm import SimulationConfig, build_setup, init_state, run
+from src import SimulationConfig, build_setup, init_state, run
 
 # 1. Create configuration
 config = SimulationConfig(grid_shape=(64, 64), tau=0.8, nt=5000)
@@ -249,7 +249,7 @@ final_state, trajectory = run(setup, state, nt=config.nt)
 For long production runs, use **streaming I/O** to avoid accumulating the full trajectory in device memory:
 
 ```python
-from tud_lbm.io import SimulationIO
+from src.simulation_io import SimulationIO
 
 io = SimulationIO(base_dir=config.results_dir,
                   config=config.to_dict(),
@@ -262,9 +262,9 @@ final_state, _ = run(setup, state, nt=config.nt,
 For **parameter sweeps**, use the parallel runner:
 
 ```python
-from tud_lbm.config.adapter_toml import TomlAdapter
-from tud_lbm.config.array_expansion import expand_config
-from tud_lbm.pipeline.parallel_runner import run_parallel_simulations
+from src.config.adapter_toml import TomlAdapter
+from src.config.array_expansion import expand_config
+from src.pipeline.parallel_runner import run_parallel_simulations
 
 adapter = TomlAdapter()
 config_dict = adapter.load_raw("config_parallel.toml")

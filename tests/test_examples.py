@@ -12,10 +12,10 @@ import dataclasses
 from pathlib import Path
 import jax.numpy as jnp
 import pytest
-from tud_lbm.config.adapter_toml import TomlAdapter
-from tud_lbm.pipeline.runner import init_state
-from tud_lbm.pipeline.runner import run
-from tud_lbm.pipeline.setup import build_setup
+from src.config.adapter_toml import TomlAdapter
+from src.pipeline.runner import init_state
+from src.pipeline.runner import run
+from src.pipeline.setup import build_setup
 
 EXAMPLES_DIR = Path(__file__).resolve().parent / "example_for_test"
 _ADAPTER = TomlAdapter()

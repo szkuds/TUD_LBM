@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 import math
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.analysis.physical_parameters import BondNumbers
-from tud_lbm.io.analysis.physical_parameters import build_overview
-from tud_lbm.io.analysis.physical_parameters import compute_bond_numbers
-from tud_lbm.io.analysis.physical_parameters import compute_dimensionless_numbers
-from tud_lbm.io.analysis.physical_parameters import compute_ohnesorge_number
-from tud_lbm.io.analysis.physical_parameters.physical_parameters import _nu
-from tud_lbm.io.analysis.physical_parameters.physical_parameters import compute_archimedes_number
-from tud_lbm.io.analysis.physical_parameters.physical_parameters import compute_reynolds_number
+from src.config import SimulationConfig
+from src.simulation_io.analysis.physical_parameters import BondNumbers
+from src.simulation_io.analysis.physical_parameters import build_overview
+from src.simulation_io.analysis.physical_parameters import compute_bond_numbers
+from src.simulation_io.analysis.physical_parameters import compute_dimensionless_numbers
+from src.simulation_io.analysis.physical_parameters import compute_ohnesorge_number
+from src.simulation_io.analysis.physical_parameters.physical_parameters import _nu
+from src.simulation_io.analysis.physical_parameters.physical_parameters import compute_archimedes_number
+from src.simulation_io.analysis.physical_parameters.physical_parameters import compute_reynolds_number
 
 
 def _mp_config(**kwargs) -> SimulationConfig:

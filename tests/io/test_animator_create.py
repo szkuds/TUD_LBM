@@ -5,8 +5,8 @@ import builtins
 import sys
 import types
 import pytest
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.animator import Animator
+from src.config import SimulationConfig
+from src.simulation_io.plotting.animator import Animator
 
 
 def _animator(tmp_path):

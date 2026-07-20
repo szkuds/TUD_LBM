@@ -7,8 +7,8 @@ full simulation.
 
 from __future__ import annotations
 import pytest
-from tud_lbm.config.simulation_config import SimulationConfig
-from tud_lbm.pipeline.setup import build_setup
+from src.config.simulation_config import SimulationConfig
+from src.pipeline.setup import build_setup
 
 _BASE: dict = {"grid_shape": (8, 8), "tau": 0.8, "nt": 5}
 

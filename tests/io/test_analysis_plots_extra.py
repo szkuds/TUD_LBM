@@ -5,47 +5,48 @@ from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting._analysis_common import _empty_data_message
-from tud_lbm.io.plotting._analysis_common import _extract_rho_2d
-from tud_lbm.io.plotting._analysis_common import _extract_u_mag_2d
-from tud_lbm.io.plotting._analysis_common import _load_timesteps
-from tud_lbm.io.plotting._analysis_common import _parse_timestep
-from tud_lbm.io.plotting._analysis_common import _render_scatter
-from tud_lbm.io.plotting.contact_angle_plot import ContactAnglesPairPlot
-from tud_lbm.io.plotting.contact_line_speed_plot import ContactLineSpeedLeftPlot
-from tud_lbm.io.plotting.contact_line_speed_plot import ContactLineSpeedsPairPlot
-from tud_lbm.io.plotting.scalar_history_plot import DensityRatioPlot
-from tud_lbm.io.plotting.simulation_csv import _derive_surface_tension
-from tud_lbm.io.plotting.simulation_csv import _resolve_initial_radius
-from tud_lbm.io.plotting.simulation_csv import _resolve_step_x
+from src.config import SimulationConfig
+from src.simulation_io.analysis.droplet_metrics import analytical_sigma_lg
+from src.simulation_io.analysis.droplet_metrics import extract_rho_2d
+from src.simulation_io.analysis.droplet_metrics import parse_timestep
+from src.simulation_io.analysis.droplet_metrics import resolve_step_x
+from src.simulation_io.plotting._analysis_common import _empty_data_message
+from src.simulation_io.plotting._analysis_common import _extract_u_mag_2d
+from src.simulation_io.plotting._analysis_common import _reduce_timesteps
+from src.simulation_io.plotting._analysis_common import _render_scatter
+from src.simulation_io.plotting.contact_angle_plot import ContactAnglesPairPlot
+from src.simulation_io.plotting.contact_line_speed_plot import ContactLineSpeedLeftPlot
+from src.simulation_io.plotting.contact_line_speed_plot import ContactLineSpeedsPairPlot
+from src.simulation_io.plotting.scalar_history_plot import DensityRatioPlot
+from tests.support.run_dirs import build_run_dir
+from tests.support.run_dirs import wetting_config
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
 def test_parse_timestep_invalid_returns_none():
-    assert _parse_timestep("timestep_x") is None
+    assert parse_timestep("timestep_x") is None
 
 
 def test_extract_rho_and_u_raise_on_unsupported_ndim():
     bad_rho = np.ones((2,))
     bad_u = np.ones((2, 2))
     with pytest.raises(ValueError, match="Unsupported rho shape"):
-        _extract_rho_2d(bad_rho)
+        extract_rho_2d(bad_rho)
     with pytest.raises(ValueError, match="Unsupported u shape"):
         _extract_u_mag_2d(bad_u)
 
 
-def test_load_timesteps_skips_invalid_names_and_missing_keys(tmp_path: Path):
+def test_reduce_timesteps_skips_invalid_names_and_missing_keys(tmp_path: Path):
     np.savez(tmp_path / "nonsense.npz", rho=np.ones((2, 2, 1, 1, 1)))
     np.savez(tmp_path / "timestep_1.npz", rho=np.ones((2, 2, 1, 1, 1)))
     np.savez(tmp_path / "timestep_2.npz", rho=np.ones((2, 2, 1, 1, 1)), u=np.zeros((2, 2, 1, 1, 2)))
 
-    iters, snaps = _load_timesteps(sorted(tmp_path.glob("*.npz")), ("u",))
+    iters, values = _reduce_timesteps(sorted(tmp_path.glob("*.npz")), ("u",), lambda snap: float(snap["u"].sum()))
 
     assert iters.tolist() == [2]
-    assert len(snaps) == 1
+    assert values.tolist() == [0.0]
 
 
 def test_render_scatter_empty_state_writes_placeholder():
@@ -59,9 +60,12 @@ def test_render_scatter_empty_state_writes_placeholder():
 
 
 def test_contact_line_speed_left_single_snapshot_returns_zero(tmp_path: Path):
-    np.savez(tmp_path / "timestep_5.npz", cll_left=np.array(3.0))
+    """One snapshot has no predecessor, so its speed is 0.0 rather than undefined."""
+    config = wetting_config()
+    run_dir = build_run_dir(tmp_path, iterations=(5,), config=config)
+    files = sorted((run_dir / "data").glob("timestep_*.npz"))
 
-    result = ContactLineSpeedLeftPlot().compute(sorted(tmp_path.glob("*.npz")))
+    result = ContactLineSpeedLeftPlot(config=config).compute(files)
 
     assert result["iters"].tolist() == [5]
     assert result["values"].tolist() == [0.0]
@@ -108,10 +112,10 @@ def test_extract_rho_2d_covers_supported_shapes():
     rho4 = np.ones((2, 3, 1, 1))
     rho5 = np.ones((2, 3, 1, 1, 1))
 
-    assert _extract_rho_2d(rho2).shape == (2, 3)
-    assert _extract_rho_2d(rho3).shape == (2, 3)
-    assert _extract_rho_2d(rho4).shape == (2, 3)
-    assert _extract_rho_2d(rho5).shape == (2, 3)
+    assert extract_rho_2d(rho2).shape == (2, 3)
+    assert extract_rho_2d(rho3).shape == (2, 3)
+    assert extract_rho_2d(rho4).shape == (2, 3)
+    assert extract_rho_2d(rho5).shape == (2, 3)
 
 
 def test_extract_u_mag_2d_covers_supported_shapes():
@@ -150,15 +154,11 @@ def test_empty_message_and_config_resolvers_cover_branches():
         initialisation={"radii": [0.5]},
         chemical_step_config={"chemical_step_location": 0.25},
     )
-    assert _derive_surface_tension(cfg) is not None
-    assert _resolve_initial_radius(cfg) == 5.0
-    assert _resolve_step_x(cfg) == 5.0
+    assert analytical_sigma_lg(cfg) is not None
+    assert resolve_step_x(cfg) == 5.0
 
     cfg_no_step = SimulationConfig(grid_shape=(8, 8, 1), tau=0.8, nt=2, chemical_step_config={})
-    assert _resolve_step_x(cfg_no_step) is None
-
-    cfg_bad_radii = SimulationConfig(grid_shape=(8, 8, 1), tau=0.8, nt=2, initialisation={"radii": ["bad"]})
-    assert _resolve_initial_radius(cfg_bad_radii) is None
+    assert resolve_step_x(cfg_no_step) is None
 
 
 def test_density_ratio_render_uses_log_scale():
@@ -170,13 +170,3 @@ def test_density_ratio_render_uses_log_scale():
         assert ax.get_title() == "Density ratio vs timestep"
     finally:
         plt.close(fig)
-
-
-def test_contact_line_speed_left_duplicate_timestep_returns_zero_speed(tmp_path: Path):
-    np.savez(tmp_path / "a_1.npz", cll_left=np.array(1.0))
-    np.savez(tmp_path / "b_1.npz", cll_left=np.array(3.0))
-
-    result = ContactLineSpeedLeftPlot().compute(sorted(tmp_path.glob("*.npz")))
-
-    assert result["iters"].tolist() == [1, 1]
-    assert result["values"].tolist() == [0.0, 0.0]

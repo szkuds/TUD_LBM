@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from typing import NamedTuple
 import numpy as np
 import pytest
-from tud_lbm.io.analysis.surface_tension import surface_tension as st
+from src.simulation_io.analysis.surface_tension import surface_tension as st
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -26,6 +26,7 @@ def _stub_config(**overrides):
         "rho_l": 0.4,
         "rho_v": 0.02,
         "interface_width": 4,
+        "grid_shape": (64, 64, 1),
         "a_eos": 0.5,
         "b_eos": 4.0,
         "r_eos": 1.0,
@@ -56,11 +57,12 @@ def test_cache_round_trip(tmp_path, monkeypatch):
     radii = np.array([1.0, 2.0])
     delta_p = np.array([0.5, 0.25])
 
-    st._store_cache(key, radii, delta_p, sigma=0.5)
+    st._store_cache(key, radii, delta_p, sigma=0.5, grid_shape=config.grid_shape)
 
     stored = st._load_cache(path)
     assert key in stored
     assert stored[key]["sigma"] == 0.5
+    assert stored[key]["grid_shape"] == [64, 64, 1]
     assert json.loads(path.read_text())[key]["radii"] == [1.0, 2.0]
 
 
@@ -70,13 +72,20 @@ def test_cache_key_changes_with_eos_params(tmp_path):
     assert st._cache_key(base) != st._cache_key(changed)
 
 
+def test_cache_key_changes_with_grid_shape():
+    base = _stub_config(grid_shape=(64, 64, 1))
+    changed = _stub_config(grid_shape=(128, 128, 1))
+    assert st._cache_key(base) != st._cache_key(changed)
+
+
 def test_load_cache_drops_malformed_entries(tmp_path):
     path = tmp_path / st._CACHE_FILENAME
-    good_entry = {"sigma": 0.5, "radii": [1.0], "delta_p": [0.5]}
+    good_entry = {"sigma": 0.5, "radii": [1.0], "delta_p": [0.5], "grid_shape": [64, 64, 1]}
     good_key = st._cache_key(_stub_config())
     none_field_key = st._cache_key(_stub_config(a_eos=None))
     bad_entry_key = st._cache_key(_stub_config(kappa=0.02))
     missing_field_key = st._cache_key(_stub_config(kappa=0.03))
+    bad_grid_shape_key = st._cache_key(_stub_config(kappa=0.04))
     raw = {
         good_key: good_entry,
         none_field_key: good_entry,
@@ -85,8 +94,10 @@ def test_load_cache_drops_malformed_entries(tmp_path):
         json.dumps(dict(json.loads(good_key), eos="unknown-eos")): good_entry,
         json.dumps(dict(json.loads(good_key), kappa="0.1")): good_entry,
         json.dumps(dict(json.loads(good_key), kappa=True)): good_entry,
+        json.dumps(dict(json.loads(good_key), grid_shape=[64, 0, 1])): good_entry,
         bad_entry_key: "not a dict",
         missing_field_key: {"radii": [1.0], "delta_p": [0.5]},
+        bad_grid_shape_key: {"sigma": 0.5, "radii": [1.0], "delta_p": [0.5], "grid_shape": [64, 0, 1]},
     }
     path.write_text(json.dumps(raw))
 
@@ -105,15 +116,19 @@ def test_load_cache_rejects_non_dict_file(tmp_path):
 def test_store_cache_preserves_existing_valid_entries(tmp_path, monkeypatch):
     path = tmp_path / st._CACHE_FILENAME
     monkeypatch.setattr(st, "_SHARED_CACHE_PATH", path)
-    old_key = st._cache_key(_stub_config(kappa=0.5))
-    new_key = st._cache_key(_stub_config())
+    old_config = _stub_config(kappa=0.5, grid_shape=(64, 64, 1))
+    new_config = _stub_config(grid_shape=(128, 128, 1))
+    old_key = st._cache_key(old_config)
+    new_key = st._cache_key(new_config)
 
-    st._store_cache(old_key, np.array([1.0]), np.array([0.1]), sigma=0.7)
-    st._store_cache(new_key, np.array([2.0]), np.array([0.2]), sigma=0.9)
+    st._store_cache(old_key, np.array([1.0]), np.array([0.1]), sigma=0.7, grid_shape=old_config.grid_shape)
+    st._store_cache(new_key, np.array([2.0]), np.array([0.2]), sigma=0.9, grid_shape=new_config.grid_shape)
 
     stored = st._load_cache(path)
     assert stored[old_key]["sigma"] == 0.7
     assert stored[new_key]["sigma"] == 0.9
+    assert stored[old_key]["grid_shape"] == [64, 64, 1]
+    assert stored[new_key]["grid_shape"] == [128, 128, 1]
 
 
 def test_calibrate_uses_cache_and_writes_plot(tmp_path, monkeypatch):
@@ -150,6 +165,32 @@ def test_calibrate_uses_cache_and_writes_plot(tmp_path, monkeypatch):
     assert data_b == data_a
 
 
+def test_calibrate_cache_is_grid_specific(tmp_path, monkeypatch):
+    config_a = _stub_config(grid_shape=(64, 64, 1))
+    config_b = _stub_config(grid_shape=(128, 128, 1))
+
+    seen_grid_shapes: list[tuple[int, ...]] = []
+
+    def fake_measure(config, states_dir=None):
+        del states_dir
+        seen_grid_shapes.append(tuple(config.grid_shape))
+        radii = np.array([10.0, 20.0, 30.0])
+        sigma = 0.02 if tuple(config.grid_shape) == (64, 64, 1) else 0.03
+        return radii, sigma / radii
+
+    monkeypatch.setattr(st, "_measure_pressure_jumps", fake_measure)
+    monkeypatch.setattr(st, "_SHARED_CACHE_PATH", tmp_path / st._CACHE_FILENAME)
+
+    sigma_a = st.calibrate_surface_tension(config_a, tmp_path / "run_a")
+    sigma_b = st.calibrate_surface_tension(config_b, tmp_path / "run_b")
+    sigma_a_cached = st.calibrate_surface_tension(config_a, tmp_path / "run_c")
+
+    assert sigma_a == pytest.approx(0.02, rel=1e-9)
+    assert sigma_b == pytest.approx(0.03, rel=1e-9)
+    assert sigma_a_cached == pytest.approx(sigma_a)
+    assert seen_grid_shapes == [(64, 64, 1), (128, 128, 1)]
+
+
 def test_save_state_writes_array_fields_and_skips_none(tmp_path):
     from typing import NamedTuple
 
@@ -179,7 +220,7 @@ def test_save_state_writes_array_fields_and_skips_none(tmp_path):
 
 def _multiphase_params(**overrides):
     from typing import Any
-    from tud_lbm.operators.macroscopic import MultiphaseParams
+    from src.operators.macroscopic import MultiphaseParams
 
     base: dict[str, Any] = {
         "eos": "carnahan-starling",
@@ -197,7 +238,7 @@ def _multiphase_params(**overrides):
 
 
 def test_bulk_pressure_fn_carnahan_starling_matches_reference():
-    from tud_lbm.operators.macroscopic.eos import carnahan_starling_pressure
+    from src.operators.macroscopic.eos import carnahan_starling_pressure
 
     mp = _multiphase_params()
     pressure_fn = st._bulk_pressure_fn(mp)
@@ -208,7 +249,7 @@ def test_bulk_pressure_fn_carnahan_starling_matches_reference():
 
 
 def test_bulk_pressure_fn_double_well_matches_reference():
-    from tud_lbm.operators.macroscopic.eos import double_well_pressure
+    from src.operators.macroscopic.eos import double_well_pressure
 
     mp = _multiphase_params(eos="double-well", a_eos=None, b_eos=None, r_eos=None, t_eos=None)
     pressure_fn = st._bulk_pressure_fn(mp)
@@ -234,7 +275,7 @@ def test_bulk_pressure_fn_unknown_eos_raises():
 def _cs_config(**overrides):
     """A real, valid Carnahan-Starling multiphase SimulationConfig."""
     from typing import Any
-    from tud_lbm.config.simulation_config import SimulationConfig
+    from src.config.simulation_config import SimulationConfig
 
     base: dict[str, Any] = {
         "sim_type": "multiphase",

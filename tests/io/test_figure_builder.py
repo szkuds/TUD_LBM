@@ -6,8 +6,8 @@ import warnings
 from pathlib import Path
 from unittest.mock import MagicMock
 import numpy as np
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting import FigureBuilder
+from src.config import SimulationConfig
+from src.simulation_io.plotting import FigureBuilder
 
 
 class TestFigureBuilderGuardFor3D:
@@ -24,7 +24,7 @@ class TestFigureBuilderGuardFor3D:
             builder = FigureBuilder(config, run_dir=tmpdir)
             # For 2D (nz=1), operators should be initialized (or empty if no plotting registered)
             # The key is that _operators is a list (not None) and no warning is raised
-            assert isinstance(builder._operators, list)
+            assert isinstance(builder.field_operators, list)
 
     def test_3d_simulation_nz_2_raises_warning(self):
         """FigureBuilder should warn and leave _operators empty for 3D simulations (nz=2)."""
@@ -45,7 +45,7 @@ class TestFigureBuilderGuardFor3D:
                 assert "(nz=2)" in str(w[-1].message)
 
             # Operators should be empty (guard returned early)
-            assert builder._operators == []
+            assert builder.field_operators == []
 
     def test_3d_simulation_nz_4_raises_warning(self):
         """FigureBuilder should warn and leave _operators empty for larger 3D simulations (nz=4)."""
@@ -66,7 +66,7 @@ class TestFigureBuilderGuardFor3D:
                 assert "(nz=4)" in str(w[-1].message)
 
             # Operators should be empty
-            assert builder._operators == []
+            assert builder.field_operators == []
 
     def test_3d_simulation_build_returns_none(self):
         """When operators are empty due to 3D guard, build() should warn and return None."""
@@ -182,7 +182,7 @@ def test_build_csv_runs_when_simulation_csv_selected(monkeypatch, tmp_path):
         assert config_arg == config
         return run_dir / "simulation_data.csv"
 
-    monkeypatch.setattr("tud_lbm.io.plotting.simulation_csv.build_simulation_csv", _fake_export)
+    monkeypatch.setattr("src.simulation_io.plotting.simulation_csv.build_simulation_csv", _fake_export)
 
     out = builder.build_csv()
     assert called["n"] == 1
@@ -200,7 +200,7 @@ def test_build_csv_skips_when_simulation_csv_not_selected(monkeypatch, tmp_path)
         msg = "build_simulation_csv should not be called"
         raise AssertionError(msg)
 
-    monkeypatch.setattr("tud_lbm.io.plotting.simulation_csv.build_simulation_csv", _fail_if_called)
+    monkeypatch.setattr("src.simulation_io.plotting.simulation_csv.build_simulation_csv", _fail_if_called)
 
     out = builder.build_csv()
     assert out is None

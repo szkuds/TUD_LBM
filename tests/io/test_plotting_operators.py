@@ -4,10 +4,10 @@ from __future__ import annotations
 import tempfile
 import matplotlib.pyplot as plt
 import numpy as np
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting import FigureBuilder
-from tud_lbm.io.plotting.force import ExternalForcePlotOperator
-from tud_lbm.io.plotting.force import ForcePlotOperator
+from src.config import SimulationConfig
+from src.simulation_io.plotting import FigureBuilder
+from src.simulation_io.plotting.force import ExternalForcePlotOperator
+from src.simulation_io.plotting.force import ForcePlotOperator
 
 
 class TestPlottingOperatorsShapeHandling:
@@ -15,7 +15,7 @@ class TestPlottingOperatorsShapeHandling:
 
     def test_density_operator_2d_shape(self):
         """Density operator should produce correct 2D array from data."""
-        from tud_lbm.io.plotting.density import DensityPlotOperator
+        from src.simulation_io.plotting.density import DensityPlotOperator
 
         config = SimulationConfig(
             grid_shape=(100, 100, 1),
@@ -37,7 +37,7 @@ class TestPlottingOperatorsShapeHandling:
 
     def test_velocity_operator_2d_shape(self):
         """Velocity operator should produce correct 2D array from data."""
-        from tud_lbm.io.plotting.velocity import VelocityPlotOperator
+        from src.simulation_io.plotting.velocity import VelocityPlotOperator
 
         config = SimulationConfig(
             grid_shape=(100, 100, 1),

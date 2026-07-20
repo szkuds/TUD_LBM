@@ -3,8 +3,8 @@
 from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.density import DensityPlotOperator
+from src.config import SimulationConfig
+from src.simulation_io.plotting.density import DensityPlotOperator
 
 
 def test_density_operator_uses_log_scale_for_large_multiphase_ratio():

@@ -1,4 +1,4 @@
-"""Tests for tud_lbm.io.plotting.ca_theta_plot."""
+"""Tests for src.simulation_io.plotting.ca_theta_plot."""
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
@@ -11,8 +11,8 @@ if TYPE_CHECKING:
 
 mpl.use("Agg")
 
-from tud_lbm.io.plotting.ca_theta_plot import plot_contact_angle_vs_capillary_number
-from tud_lbm.io.plotting.ca_theta_plot import save_figure
+from src.simulation_io.plotting.ca_theta_plot import plot_contact_angle_vs_capillary_number
+from src.simulation_io.plotting.ca_theta_plot import save_figure
 
 _CA_TRAILING = np.array([1e-4, 5e-4, 1e-3])
 _THETA_TRAILING = np.array([100.0, 105.0, 110.0])
@@ -148,21 +148,21 @@ _TH_LE = np.array([85.0, 82.0, 79.0, 76.0, 73.0])
 
 def test_plot_dual_axis_ca_theta_returns_figure():
     import matplotlib.figure
-    from tud_lbm.io.plotting import plot_dual_axis_ca_theta
+    from src.simulation_io.plotting import plot_dual_axis_ca_theta
 
     fig = plot_dual_axis_ca_theta(_X, _CA_TR, _CA_LE, _TH_TR, _TH_LE)
     assert isinstance(fig, matplotlib.figure.Figure)
 
 
 def test_dual_axis_has_two_axes():
-    from tud_lbm.io.plotting import plot_dual_axis_ca_theta
+    from src.simulation_io.plotting import plot_dual_axis_ca_theta
 
     fig = plot_dual_axis_ca_theta(_X, _CA_TR, _CA_LE, _TH_TR, _TH_LE)
     assert len(fig.axes) == 2
 
 
 def test_dual_axis_axis_labels():
-    from tud_lbm.io.plotting import plot_dual_axis_ca_theta
+    from src.simulation_io.plotting import plot_dual_axis_ca_theta
 
     fig = plot_dual_axis_ca_theta(_X, _CA_TR, _CA_LE, _TH_TR, _TH_LE, x_label="x-label")
     ax1, ax2 = fig.axes
@@ -171,7 +171,7 @@ def test_dual_axis_axis_labels():
 
 
 def test_dual_axis_four_scatter_collections():
-    from tud_lbm.io.plotting import plot_dual_axis_ca_theta
+    from src.simulation_io.plotting import plot_dual_axis_ca_theta
 
     fig = plot_dual_axis_ca_theta(_X, _CA_TR, _CA_LE, _TH_TR, _TH_LE)
     total_collections = sum(len(ax.collections) for ax in fig.axes)
@@ -184,7 +184,7 @@ def test_dual_axis_four_scatter_collections():
 
 
 def _wetting_config():
-    from tud_lbm.config import SimulationConfig
+    from src.config import SimulationConfig
 
     return SimulationConfig(
         sim_type="multiphase_wetting",
@@ -220,7 +220,7 @@ def _write_ca_snapshot(
 
 
 def test_ca_theta_vs_time_operator_compute(tmp_path: Path):
-    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsTimePlot
+    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsTimePlot
 
     _write_ca_snapshot(tmp_path, 5, ca_left=85.0, ca_right=95.0, cll_left=3.0, cll_right=10.0)
     _write_ca_snapshot(tmp_path, 10, ca_left=86.0, ca_right=96.0, cll_left=3.5, cll_right=10.5)
@@ -239,13 +239,15 @@ def test_ca_theta_vs_time_operator_compute(tmp_path: Path):
     }
     assert len(result["theta_trailing"]) == 2
     assert len(result["x_time"]) == 2
-    assert len(result["x_pos"]) == 0
+    # Both x-axis variants come from one shared series, so x_pos is populated
+    # here too even though this operator renders against x_time.
+    assert len(result["x_pos"]) == 2
     assert list(result["timesteps"]) == [5, 10]
 
 
 def test_ca_theta_vs_time_operator_render(tmp_path: Path):
     import matplotlib.pyplot as plt
-    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsTimePlot
+    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsTimePlot
 
     _write_ca_snapshot(tmp_path, 5, ca_left=85.0, ca_right=95.0, cll_left=3.0, cll_right=10.0)
     _write_ca_snapshot(tmp_path, 10, ca_left=86.0, ca_right=96.0, cll_left=3.5, cll_right=10.5)
@@ -262,7 +264,7 @@ def test_ca_theta_vs_time_operator_render(tmp_path: Path):
 
 
 def test_ca_theta_vs_x_operator_compute(tmp_path: Path):
-    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsXPlot
+    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsXPlot
 
     _write_ca_snapshot(tmp_path, 5, ca_left=85.0, ca_right=95.0, cll_left=3.0, cll_right=10.0)
     _write_ca_snapshot(tmp_path, 10, ca_left=86.0, ca_right=96.0, cll_left=3.5, cll_right=10.5)
@@ -275,7 +277,7 @@ def test_ca_theta_vs_x_operator_compute(tmp_path: Path):
 
 def test_ca_theta_vs_time_operator_no_config(tmp_path: Path):
     import matplotlib.pyplot as plt
-    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsTimePlot
+    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsTimePlot
 
     _write_ca_snapshot(tmp_path, 5, ca_left=85.0, ca_right=95.0, cll_left=3.0, cll_right=10.0)
 

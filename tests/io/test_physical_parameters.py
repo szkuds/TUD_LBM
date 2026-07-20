@@ -5,15 +5,15 @@ import math
 from types import SimpleNamespace
 import numpy as np
 import pytest
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.analysis.physical_parameters import build_overview
-from tud_lbm.io.analysis.physical_parameters import write_physical_parameters
-from tud_lbm.io.analysis.physical_parameters.physical_parameters import _contact_line_length_from_rho
-from tud_lbm.io.analysis.physical_parameters.physical_parameters import _droplet_area_from_rho
-from tud_lbm.io.analysis.physical_parameters.physical_parameters import _get_contact_line_length_from_file
-from tud_lbm.io.analysis.physical_parameters.physical_parameters import _get_setup_droplet_area
-from tud_lbm.io.analysis.physical_parameters.physical_parameters import _resolve_gravity_inclination
-from tud_lbm.io.analysis.physical_parameters.physical_parameters import _resolve_gravity_value
+from src.config import SimulationConfig
+from src.simulation_io.analysis.physical_parameters import build_overview
+from src.simulation_io.analysis.physical_parameters import write_physical_parameters
+from src.simulation_io.analysis.physical_parameters.physical_parameters import _contact_line_length_from_rho
+from src.simulation_io.analysis.physical_parameters.physical_parameters import _droplet_area_from_rho
+from src.simulation_io.analysis.physical_parameters.physical_parameters import _get_contact_line_length_from_file
+from src.simulation_io.analysis.physical_parameters.physical_parameters import _get_setup_droplet_area
+from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_inclination
+from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_value
 
 
 def _mp_config(**kwargs) -> SimulationConfig:
