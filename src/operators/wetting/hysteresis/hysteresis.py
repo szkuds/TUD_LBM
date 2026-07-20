@@ -34,11 +34,11 @@ from typing import Protocol
 from typing import cast
 import jax
 import jax.numpy as jnp
-from src.config.config_overview import DEBUG_FLAG_WETTING
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
 from src.operators.wetting._params import WettingParams
 from src.registry import wetting_operator
+from src.simulation_io.analysis import wetting_debug
 
 if TYPE_CHECKING:
     import types
@@ -254,13 +254,7 @@ def _optimise_single_param(
         body_fn,
         init_carry,
     )
-    if DEBUG_FLAG_WETTING:
-        jax.debug.print(
-            "opt exit: iters={i}/{m} loss={l:.3e}",
-            i=iters,
-            m=max_iterations,
-            l=final_loss,
-        )
+    wetting_debug.log_optimiser_exit(iters, max_iterations, final_loss)
     return final_params, final_loss
 
 
@@ -421,45 +415,31 @@ def _update_wetting_state_impl(
         final_params,
     )
 
-    if DEBUG_FLAG_WETTING:
-        phi_engaged_right = phi_active_right & (final_params.phi_right > _PHI_NEUTRAL)
-        fallback_right = phi_active_right & ~phi_engaged_right
-        phi_engaged_left = phi_active_left & (final_params.phi_left > _PHI_NEUTRAL)
-        fallback_left = phi_active_left & ~phi_engaged_left
-
-        # mode: 0=d_rho(normal), 1=phi(engaged), 2=d_rho(fallback)
-        mode_right = jnp.where(phi_engaged_right, jnp.array(1), jnp.where(fallback_right, jnp.array(2), jnp.array(0)))
-        mode_left = jnp.where(phi_engaged_left, jnp.array(1), jnp.where(fallback_left, jnp.array(2), jnp.array(0)))
-
-        jax.debug.print(
-            "\n[R] CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | "
-            "mode={mode}(0=d_rho,1=phi,2=fb) | "
-            "phi: {phi:.6f} | "
-            "d_rho: {d_rho:.6f} | "
-            "loss={loss:.3e}",
-            ca=ca_right_tplus1,
-            ca_adv=ca_adv_right,
-            ca_rec=ca_rec_right,
-            cll=cll_right_tplus1,
-            mode=mode_right,
-            phi=final_params.phi_right,
-            d_rho=final_params.d_rho_right,
-            loss=right_objective(final_params),
-        )
-        jax.debug.print(
-            "[L] CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | "
-            "mode={mode}(0=d_rho,1=phi,2=fb) | "
-            "phi: {phi:.6f} | "
-            "d_rho: {d_rho:.6f} | "
-            "loss={loss:.3e}",
-            ca=ca_left_tplus1,
-            ca_adv=ca_adv_left,
-            ca_rec=ca_rec_left,
-            cll=cll_left_tplus1,
-            mode=mode_left,
-            phi=final_params.phi_left,
-            d_rho=final_params.d_rho_left,
-            loss=left_objective(final_params),
+    # Guarded at the call site because the loss terms below each cost a
+    # full trial step — `log_sides` re-checks the flag itself.
+    if wetting_debug.enabled():
+        wetting_debug.log_sides(
+            wetting_debug.SideDebugSample(
+                ca=ca_left_tplus1,
+                ca_adv=ca_adv_left,
+                ca_rec=ca_rec_left,
+                cll=cll_left_tplus1,
+                phi=final_params.phi_left,
+                d_rho=final_params.d_rho_left,
+                phi_active=phi_active_left,
+                loss=left_objective(final_params),
+            ),
+            wetting_debug.SideDebugSample(
+                ca=ca_right_tplus1,
+                ca_adv=ca_adv_right,
+                ca_rec=ca_rec_right,
+                cll=cll_right_tplus1,
+                phi=final_params.phi_right,
+                d_rho=final_params.d_rho_right,
+                phi_active=phi_active_right,
+                loss=right_objective(final_params),
+            ),
+            phi_neutral=_PHI_NEUTRAL,
         )
 
     return wetting._replace(
