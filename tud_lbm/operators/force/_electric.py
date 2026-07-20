@@ -55,8 +55,12 @@ class ElectricParams(NamedTuple):
         applied_voltage: Applied voltage across the domain (top - bottom).
         voltage_top: Potential at the top boundary.
         voltage_bottom: Potential at the bottom boundary.
-        gradient_standard: Closed-over gradient callable (grid) → (nx, ny, 1, 2),
-                          injected at build time from build_diff_ops.
+
+    Note:
+        The gradient closure is *not* stored here.  ``compute`` receives
+        ``gradient_standard`` as a keyword argument, injected per step by
+        ``compute_total_force_ext`` from ``SimulationSetup.gradient_standard``
+        (built once in ``build_setup`` via ``build_diff_ops``).
     """
 
     permittivity_liquid: float
