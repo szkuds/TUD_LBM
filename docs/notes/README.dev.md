@@ -143,7 +143,7 @@ Add these to your `~/.bashrc` to avoid filling `/home`:
 
 ```bash
 export UV_CACHE_DIR=/scratch/<netid>/.uv_cache
-export UV_PROJECT_ENVIRONMENT=/scratch/<netid>/src/.venv
+export UV_PROJECT_ENVIRONMENT=/scratch/<netid>/tud_lbm/.venv
 ```
 
 Then reload:
@@ -156,7 +156,7 @@ source ~/.bashrc
 
 ```bash
 cd /scratch/<netid>
-mkdir src && tar -xzf tud_lbm.tar.gz -C tud_lbm
+mkdir tud_lbm && tar -xzf tud_lbm.tar.gz -C tud_lbm
 cd tud_lbm
 
 uv sync
@@ -473,8 +473,8 @@ In a new terminal:
 
 ```shell
 # OPTIONAL: prepare a new directory with fresh git clone
-cd $(mktemp -d src.XXXXXX)
-git clone git@github.com:szkuds/src .
+cd $(mktemp -d tud_lbm.XXXXXX)
+git clone git@github.com:szkuds/tud_lbm .
 
 python -m pip install --upgrade pip
 python -m pip install .[publishing]
