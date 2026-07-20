@@ -274,6 +274,7 @@ class RunFlags:
     debug_stability: bool = False
     init_wetting: bool = False
     run_compare: bool = False
+    continue_run: bool = False
 
 
 def _run_impl(
@@ -293,7 +294,13 @@ def _run_impl(
 
     _enable_debug_flags(debug_wetting=flags.debug_wetting, debug_stability=flags.debug_stability)
 
-    _validate_cli_args(overrides, config_path, init_wetting=flags.init_wetting, init_dir=init_dir)
+    _validate_cli_args(
+        overrides,
+        config_path,
+        init_wetting=flags.init_wetting,
+        init_dir=init_dir,
+        continue_run=flags.continue_run,
+    )
 
     if flags.init_wetting:
         if config_path is None:
@@ -310,7 +317,7 @@ def _run_impl(
         return False
 
     if config_path:
-        raw_config = _load_raw_config(config_path, overrides, init_dir=init_dir)
+        raw_config = _load_raw_config(config_path, overrides, init_dir=init_dir, continue_run=flags.continue_run)
         configs, config, sweep_metadata, parameters_list = _expand_raw_config(raw_config)
     else:
         raw_config = None

@@ -90,6 +90,12 @@ from tud_lbm.cli.execution import _run_impl
     ),
 )
 @click.option(
+    "--continue",
+    "continue_run",
+    is_flag=True,
+    help="Resume from the highest-numbered snapshot in CONFIG_PATH's data directory.",
+)
+@click.option(
     "--compare",
     "run_compare",
     is_flag=True,
@@ -155,11 +161,15 @@ def run(**cli_kwargs: object) -> None:
 
         # Resume from a saved snapshot
         tud-lbm run config.toml --init-dir /path/to/timestep_1000.npz
+
+        # Resume from the latest snapshot saved by this run
+        tud-lbm run /path/to/run/config.toml --continue
     """
     config_path = cast("str | None", cli_kwargs["config_path"])
     max_workers = cast("int | None", cli_kwargs["max_workers"])
     overrides = cast("tuple[str, ...]", cli_kwargs["overrides"])
     init_dir = cast("str | None", cli_kwargs["init_dir"])
+    continue_run = cast("bool", cli_kwargs["continue_run"])
     flags = RunFlags(
         no_prompt=cast("bool", cli_kwargs["no_prompt"]),
         dry_run=cast("bool", cli_kwargs["dry_run"]),
@@ -171,6 +181,7 @@ def run(**cli_kwargs: object) -> None:
         debug_stability=cast("bool", cli_kwargs["debug_stability"]),
         init_wetting=cast("bool", cli_kwargs["init_wetting"]),
         run_compare=cast("bool", cli_kwargs["run_compare"]),
+        continue_run=continue_run,
     )
 
     if _run_impl(config_path, overrides, max_workers, init_dir, flags):

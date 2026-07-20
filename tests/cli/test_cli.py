@@ -14,6 +14,7 @@ from tud_lbm.cli.commands.analysis import compare
 from tud_lbm.cli.commands.run import run
 from tud_lbm.cli.commands.visualise import animate
 from tud_lbm.cli.commands.visualise import visualise
+from tud_lbm.cli.config_loading import _find_latest_snapshot
 from tud_lbm.cli.config_loading import _validate_cli_args
 from tud_lbm.cli.display import _display_config_summary
 from tud_lbm.cli.display import _display_full_overview
@@ -659,6 +660,15 @@ class TestClickCommandPaths:
         assert result.exit_code == 0
         assert mock_impl.call_args.args[-1].debug_stability is True
 
+    def test_run_continue_option_forwards(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("", encoding="utf-8")
+        runner = CliRunner()
+        with patch("tud_lbm.cli.commands.run._run_impl", return_value=False) as mock_impl:
+            result = runner.invoke(cli, ["run", str(cfg_toml), "--continue"])
+        assert result.exit_code == 0
+        assert mock_impl.call_args.args[-1].continue_run is True
+
     def test_run_general_exception_exits_1(self):
         runner = CliRunner()
         with patch("tud_lbm.cli.commands.run._run_impl", side_effect=RuntimeError("boom")):
@@ -1084,6 +1094,51 @@ def test_load_cli_wraps_missing_optional_dependencies(cli_pkg, monkeypatch):
 def test_validate_cli_args_requires_config_path():
     with pytest.raises(click.UsageError, match="--override requires CONFIG_PATH"):
         _validate_cli_args(("tau=0.7",), None)
+
+
+def test_validate_cli_args_continue_requires_config_path():
+    with pytest.raises(click.UsageError, match="--continue requires CONFIG_PATH"):
+        _validate_cli_args((), None, continue_run=True)
+
+
+def test_validate_cli_args_continue_rejects_init_dir():
+    with pytest.raises(click.UsageError, match="cannot be used with --init-dir"):
+        _validate_cli_args((), "config.toml", init_dir="snapshot.npz", continue_run=True)
+
+
+def test_find_latest_snapshot_uses_highest_timestep(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("", encoding="utf-8")
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    for step in (5, 100, 12):
+        (data_dir / f"timestep_{step}.npz").write_bytes(b"")
+    (data_dir / "timestep_invalid.npz").write_bytes(b"")
+
+    assert _find_latest_snapshot(str(config_path)) == data_dir / "timestep_100.npz"
+
+
+def test_find_latest_snapshot_requires_saved_snapshots(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError, match="No saved snapshots found"):
+        _find_latest_snapshot(str(config_path))
+
+
+def test_load_raw_config_continue_injects_latest_snapshot(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("", encoding="utf-8")
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    latest = data_dir / "timestep_42.npz"
+    latest.write_bytes(b"")
+    monkeypatch.setattr("tud_lbm.config.adapter_toml.TomlAdapter.load_raw", lambda _self, _path: {})
+
+    raw = _load_raw_config(str(config_path), (), continue_run=True)
+
+    assert raw["init_dir"] == str(latest)
+    assert raw["init_type"] == "init_from_file"
 
 
 def test_check_sweep_errors_raises_on_failed_results():

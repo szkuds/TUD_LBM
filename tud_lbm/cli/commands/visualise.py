@@ -22,6 +22,7 @@ _FIELD_KINDS = ("plotting",)
 _ANALYSIS_KINDS = ("analysis",)
 _BOTH_KINDS = ("plotting", "analysis")
 
+_USER_INTERRUPT = "Visualisation interrupted by user."
 _RUN_CONFIG_LABEL = "this run's config.toml"
 _MIN_GRID_DIMENSIONS = 2
 _SINGLE_SNAPSHOT_USAGE = "--single requires PATH to point to an existing .npz snapshot file."
@@ -356,12 +357,12 @@ def visualise_analysis(obj: VisualiseContext) -> None:
 # click invokes subcommands *after* the group callback returns, so a decorator
 # on the group callback would never see a subcommand's exceptions. Decorate the
 # work functions instead.
-_visualise_both = cli_command(title="Visualisation", interrupt_message="Visualisation interrupted by user.")(
+_visualise_both = cli_command(title="Visualisation", interrupt_message=_USER_INTERRUPT)(
     lambda obj: _build_figures(obj, _BOTH_KINDS)
 )
-_visualise_fields_only = cli_command(
-    title="Visualisation - fields", interrupt_message="Visualisation interrupted by user."
-)(lambda obj: _build_figures(obj, _FIELD_KINDS))
-_visualise_analysis_only = cli_command(
-    title="Visualisation - analysis", interrupt_message="Visualisation interrupted by user."
-)(lambda obj: _build_figures(obj, _ANALYSIS_KINDS))
+_visualise_fields_only = cli_command(title="Visualisation - fields", interrupt_message=_USER_INTERRUPT)(
+    lambda obj: _build_figures(obj, _FIELD_KINDS)
+)
+_visualise_analysis_only = cli_command(title="Visualisation - analysis", interrupt_message=_USER_INTERRUPT)(
+    lambda obj: _build_figures(obj, _ANALYSIS_KINDS)
+)

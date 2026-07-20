@@ -20,18 +20,23 @@ def _validate_cli_args(
     *,
     init_wetting: bool = False,
     init_dir: str | None = None,
+    continue_run: bool = False,
 ) -> None:
     """Reject option combinations that need a CONFIG_PATH but were given none.
 
     Raising here rather than inside ``run``'s body keeps this a click
     ``UsageError`` (exit code 2) rather than a generic command failure.
     """
+    if continue_run and init_dir is not None:
+        msg = "--continue cannot be used with --init-dir"
+        raise click.UsageError(msg)
     if config_path:
         return
     requires_config = (
         ("--override", overrides),
         ("--init-wetting", init_wetting),
         ("--init-dir", init_dir),
+        ("--continue", continue_run),
     )
     for option, given in requires_config:
         if given:
@@ -39,17 +44,35 @@ def _validate_cli_args(
             raise click.UsageError(msg)
 
 
+def _find_latest_snapshot(config_path: str) -> Path:
+    """Return the highest-numbered NumPy snapshot saved beside *config_path*."""
+    data_dir = Path(config_path).expanduser().resolve().parent / "data"
+    snapshots = [
+        (int(step), path)
+        for path in data_dir.glob("timestep_*.npz")
+        if path.is_file() and (step := path.stem.removeprefix("timestep_")).isdigit()
+    ]
+    if not snapshots:
+        msg = f"No saved snapshots found in {data_dir}; --continue requires timestep_<N>.npz files."
+        raise FileNotFoundError(msg)
+    return max(snapshots, key=lambda snapshot: snapshot[0])[1]
+
+
 def _load_raw_config(
     config_path: str,
     overrides: tuple[str, ...],
     *,
     init_dir: str | None = None,
+    continue_run: bool = False,
 ) -> dict[str, Any]:
-    """Load a TOML file, apply init_dir defaults and CLI overrides; return the raw dict."""
+    """Load a TOML file, apply resume defaults and CLI overrides; return the raw dict."""
     from tud_lbm.config.adapter_toml import TomlAdapter
 
     console.print(f"[cyan]Loading configuration from:[/cyan] {config_path}")
     raw_config = TomlAdapter().load_raw(config_path) or {}
+    if continue_run:
+        init_dir = str(_find_latest_snapshot(config_path))
+        console.print(f"[cyan]Continuing from latest snapshot:[/cyan] {init_dir}")
     if init_dir is not None:
         raw_config["init_dir"] = str(init_dir)
         raw_config["init_type"] = "init_from_file"
