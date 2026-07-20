@@ -24,7 +24,7 @@ class TestFigureBuilderGuardFor3D:
             builder = FigureBuilder(config, run_dir=tmpdir)
             # For 2D (nz=1), operators should be initialized (or empty if no plotting registered)
             # The key is that _operators is a list (not None) and no warning is raised
-            assert isinstance(builder._operators, list)
+            assert isinstance(builder.field_operators, list)
 
     def test_3d_simulation_nz_2_raises_warning(self):
         """FigureBuilder should warn and leave _operators empty for 3D simulations (nz=2)."""
@@ -45,7 +45,7 @@ class TestFigureBuilderGuardFor3D:
                 assert "(nz=2)" in str(w[-1].message)
 
             # Operators should be empty (guard returned early)
-            assert builder._operators == []
+            assert builder.field_operators == []
 
     def test_3d_simulation_nz_4_raises_warning(self):
         """FigureBuilder should warn and leave _operators empty for larger 3D simulations (nz=4)."""
@@ -66,7 +66,7 @@ class TestFigureBuilderGuardFor3D:
                 assert "(nz=4)" in str(w[-1].message)
 
             # Operators should be empty
-            assert builder._operators == []
+            assert builder.field_operators == []
 
     def test_3d_simulation_build_returns_none(self):
         """When operators are empty due to 3D guard, build() should warn and return None."""

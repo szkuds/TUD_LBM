@@ -74,8 +74,6 @@ class FigureBuilder:
         self._field_operators: list = []
         self._analysis_operators: list = []
         self._analysis_export_operators: list = []
-        # Backward-compatible alias used in existing tests.
-        self._operators = self._field_operators
 
         # Guard: plotting only supports 2D simulations (nz=1)
         nz = getattr(config, "nz", config.grid_shape[2] if len(config.grid_shape) > 2 else 1)  # noqa: PLR2004

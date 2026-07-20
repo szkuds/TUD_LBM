@@ -1,7 +1,10 @@
-"""Cross-run comparison plots and batch CSV-export CLI entry point."""
+"""Cross-run comparison plots over per-run ``simulation_data.csv`` files.
+
+These plots overlay N runs. Per-run history plots are registered ``analysis``
+operators; this module is deliberately not one of them.
+"""
 
 from __future__ import annotations
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import TypedDict
@@ -312,27 +315,3 @@ def process_parent_dir(
         print(f"Done. Comparison plots in {parent / _COMPARISON_DIR}")
 
     return len(run_dirs), n_ok
-
-
-def main(parent_dir: str | None = None) -> None:
-    """Script entry point for batch CSV export and run comparison plots."""
-    if parent_dir is None:
-        parent_dir = input("Enter parent directory (absolute path): ").strip()
-
-    parent = Path(parent_dir)
-    if not parent.is_dir():
-        print(f"Directory not found: {parent}")
-        sys.exit(1)
-
-    n_runs, n_ok = process_parent_dir(parent_dir)
-
-    if n_runs == 0:
-        print("No simulation run directories found.")
-        sys.exit(1)
-    if n_ok == 0:
-        print("No runs produced CSV data. Check sim_type and data files.")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else None)

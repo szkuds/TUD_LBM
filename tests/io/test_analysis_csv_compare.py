@@ -4,13 +4,11 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 import pandas as pd
-import pytest
 from tud_lbm.config import SimulationConfig
 from tud_lbm.io.analysis.droplet_metrics import DropletSeries
 from tud_lbm.io.analysis.droplet_metrics import MetricScales
 from tud_lbm.io.plotting.run_comparison import _clean_dir_label
 from tud_lbm.io.plotting.run_comparison import _safe_load_config
-from tud_lbm.io.plotting.run_comparison import main
 from tud_lbm.io.plotting.run_comparison import process_parent_dir
 from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
@@ -167,9 +165,3 @@ def test_process_parent_dir_skips_special_folders(monkeypatch, tmp_path: Path):
     assert n_runs == 1
     assert n_ok == 1
     assert called["n"] == 1
-
-
-def test_main_exits_for_missing_directory():
-    with pytest.raises(SystemExit) as exc:
-        main("/definitely/missing/dir")
-    assert exc.value.code == 1

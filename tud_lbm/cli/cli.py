@@ -1688,33 +1688,5 @@ def analyse(config_toml: str, surface_tension: bool, out_dir: str | None) -> Non
         sys.exit(1)
 
 
-@click.command(
-    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
-    add_help_option=False,
-)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def main(args: tuple[str, ...]) -> None:
-    """Backward-compatible shim for launchers still targeting ``...:main``.
-
-    Supports both legacy direct run style (``tud-lbm CONFIG.toml``) and
-    newer subcommand style (``tud-lbm run ...`` / ``tud-lbm animate ...``).
-    """
-    forwarded = list(args)
-
-    # Allow stale wrappers to pass through the explicit "run" subcommand token.
-    if forwarded and forwarded[0] == "run":
-        run.main(args=forwarded[1:], standalone_mode=False)
-        return
-
-    # New-style help/version and any registered subcommand use the command group.
-    # The subcommand set is derived from the group itself so that a newly added
-    # command is never silently misrouted to `run` as a config path.
-    if forwarded and (forwarded[0] in {"--help", "-h", "--version"} or forwarded[0] in cli.commands):
-        cli.main(args=forwarded, standalone_mode=False)
-        return
-
-    run.main(args=forwarded, standalone_mode=False)
-
-
 if __name__ == "__main__":
     cli()

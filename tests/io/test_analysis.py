@@ -1,7 +1,7 @@
 """Coverage boost for tud_lbm/io/plotting/analysis.py.
 
 Targets the uncovered paths in compare_runs, _load_comparison_entries,
-the analysis.main() entry point, and render paths for operators with
+render paths for operators with
 and without data.
 """
 
@@ -23,7 +23,6 @@ from tud_lbm.config import SimulationConfig
 from tud_lbm.io.plotting._analysis_common import _set_empty_state
 from tud_lbm.io.plotting.run_comparison import _load_comparison_entries
 from tud_lbm.io.plotting.run_comparison import compare_runs
-from tud_lbm.io.plotting.run_comparison import main
 from tud_lbm.io.plotting.run_comparison import process_parent_dir
 from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
@@ -237,53 +236,6 @@ class TestLoadComparisonEntries:
             result = _load_comparison_entries(tmp_path)
 
         assert result == []
-
-
-class TestAnalysisMain:
-    """Tests for the analysis.main() CLI entry point."""
-
-    def test_main_exits_1_for_missing_directory(self):
-        with pytest.raises(SystemExit) as exc:
-            main("/definitely/not/a/real/path")
-        assert exc.value.code == 1
-
-    def test_main_exits_1_for_empty_directory(self, tmp_path):
-        path = str(tmp_path)
-        with pytest.raises(SystemExit) as exc:
-            main(path)
-        assert exc.value.code == 1
-
-    def test_main_exits_1_when_no_runs_produce_csv(self, tmp_path):
-        run_dir = tmp_path / "run1"
-        run_dir.mkdir()
-        (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
-
-        cfg = _wetting_cfg(sim_type="single_phase")  # unsupported type → no CSV
-        path = str(tmp_path)
-        with (
-            patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg),
-            pytest.raises(SystemExit) as exc,
-        ):
-            main(path)
-
-        assert exc.value.code == 1
-
-    def test_main_succeeds_when_csv_is_produced(self, tmp_path):
-        pytest.importorskip("pandas")
-
-        run_dir = tmp_path / "run1"
-        data_dir = run_dir / "data"
-        data_dir.mkdir(parents=True)
-        _write_snapshot(data_dir, 10)
-        _write_snapshot(data_dir, 20)
-        (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
-
-        cfg = _wetting_cfg(simulation_name="run1")
-        with (
-            patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg),
-            patch("tud_lbm.io.plotting.run_comparison.compare_runs"),
-        ):
-            main(str(tmp_path))  # should not raise SystemExit
 
 
 # ---------------------------------------------------------------------------

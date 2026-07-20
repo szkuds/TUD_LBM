@@ -1,7 +1,6 @@
 """Tests for CLI helper functions and edge cases."""
 
 from __future__ import annotations
-import importlib
 from pathlib import Path
 from types import ModuleType
 from types import SimpleNamespace
@@ -25,7 +24,7 @@ from tud_lbm.cli.cli import _validate_cli_args
 from tud_lbm.cli.cli import animate
 from tud_lbm.cli.cli import cli
 from tud_lbm.cli.cli import compare
-from tud_lbm.cli.cli import main
+from tud_lbm.cli.cli import run
 from tud_lbm.cli.cli import visualise
 from tud_lbm.config import SimulationConfig
 from tud_lbm.config.array_expansion import ArrayParameterSet
@@ -810,22 +809,6 @@ class TestClickCommandPaths:
         assert result.exit_code in (0, 1)
         assert "No figures" in result.output or result.exit_code == 0
 
-    def test_main_shim_animate_route(self, tmp_path):
-        runner = CliRunner()
-        result = runner.invoke(main, ["animate", str(tmp_path)])
-        assert result.exit_code in (0, 1, 2)
-
-    def test_main_shim_visualise_route(self, tmp_path):
-        runner = CliRunner()
-        result = runner.invoke(main, ["visualise", str(tmp_path)])
-        assert result.exit_code in (0, 1, 2)
-
-    def test_main_shim_compare_route(self, tmp_path):
-        runner = CliRunner()
-        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(0, 0)):
-            result = runner.invoke(main, ["compare", str(tmp_path)])
-        assert result.exit_code in (0, 1, 2)
-
     def test_run_with_dry_run_and_config(self, tmp_path):
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text(
@@ -1010,16 +993,6 @@ class TestClickCommands:
         assert result.exit_code == 0
         assert "No simulation" in result.output
 
-    def test_main_shim_forwards_run_subcommand(self, tmp_path):
-        runner = CliRunner()
-        result = runner.invoke(main, ["nonexistent.toml"])
-        assert result.exit_code in (0, 1, 2)
-
-    def test_main_shim_handles_help_flag(self):
-        runner = CliRunner()
-        result = runner.invoke(main, ["--help"])
-        assert result.exit_code in (0, 1)
-
     def test_run_override_without_config_exits_nonzero(self):
         runner = CliRunner()
         result = runner.invoke(cli, ["run", "--override", "tau=0.8"])
@@ -1121,37 +1094,6 @@ def test_check_sweep_errors_raises_on_failed_results():
         _check_sweep_errors([ok, bad])
 
 
-def test_main_dispatches_help_to_click_group(monkeypatch):
-    cli_module = importlib.import_module("tud_lbm.cli.cli")
-
-    calls: list[list[str]] = []
-    monkeypatch.setattr(cli_module.cli, "main", lambda args, standalone_mode: calls.append(args))
-
-    cli_module.main.callback(("--help",))  # ty: ignore[call-non-callable]
-    assert calls == [["--help"]]
-
-
-def test_main_dispatch_strips_run_token(monkeypatch):
-    cli_module = importlib.import_module("tud_lbm.cli.cli")
-
-    calls: list[list[str]] = []
-    monkeypatch.setattr(cli_module.run, "main", lambda args, standalone_mode: calls.append(args))
-
-    cli_module.main.callback(("run", "config.toml", "--dry-run"))  # ty: ignore[call-non-callable]
-    assert calls == [["config.toml", "--dry-run"]]
-
-
-@pytest.mark.parametrize("token", ["animate", "visualise", "compare"])
-def test_main_dispatches_subcommands_to_click_group(monkeypatch, token):
-    cli_module = importlib.import_module("tud_lbm.cli.cli")
-
-    calls: list[list[str]] = []
-    monkeypatch.setattr(cli_module.cli, "main", lambda args, standalone_mode: calls.append(args))
-
-    cli_module.main.callback((token, "run_dir"))  # ty: ignore[call-non-callable]
-    assert calls == [[token, "run_dir"]]
-
-
 def test_validate_run_dir_has_config_success(tmp_path):
     from tud_lbm.cli.cli import _validate_run_dir_has_config
 
@@ -1202,14 +1144,14 @@ def test_cli_single_config_uses_single_run(monkeypatch, tmp_path):
 
     monkeypatch.setattr("tud_lbm.cli.cli._run_simulation", _fake_single_run)
 
-    result = CliRunner().invoke(main, [str(cfg_path), "--no-prompt"])
+    result = CliRunner().invoke(run, [str(cfg_path), "--no-prompt"])
 
     assert result.exit_code == 0
     assert called["single"] is True
 
 
 def test_cli_list_operators_includes_plotting_and_analysis():
-    result = CliRunner().invoke(main, ["--list-simulation-analysis"])
+    result = CliRunner().invoke(run, ["--list-simulation-analysis"])
 
     assert result.exit_code == 0
     assert "plotting" in result.output
@@ -1260,7 +1202,7 @@ def test_cli_array_config_uses_parallel_sweep(monkeypatch, tmp_path):
 
     monkeypatch.setattr("tud_lbm.cli.cli._run_parallel_sweep", _fake_parallel_sweep)
 
-    result = CliRunner().invoke(main, [str(cfg_path), "--no-prompt"])
+    result = CliRunner().invoke(run, [str(cfg_path), "--no-prompt"])
 
     assert result.exit_code == 0
     assert captured["called"] is True
@@ -1303,7 +1245,7 @@ def test_cli_array_config_dry_run_skips_parallel_execution(monkeypatch, tmp_path
 
     monkeypatch.setattr("tud_lbm.cli.cli._run_parallel_sweep", _fake_parallel_sweep)
 
-    result = CliRunner().invoke(main, [str(cfg_path), "--no-prompt", "--dry-run"])
+    result = CliRunner().invoke(run, [str(cfg_path), "--no-prompt", "--dry-run"])
 
     assert result.exit_code == 0
     assert called["parallel"] is False
@@ -2355,12 +2297,12 @@ class TestAnalyseCommand:
             result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
         assert result.exit_code == 130
 
-    def test_main_shim_forwards_analyse(self, tmp_path):
+    def test_analyse_reports_calibrated_surface_tension(self, tmp_path):
         cfg_toml = self._write_multiphase_toml(tmp_path)
         with patch(
             "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
             return_value=0.0123,
         ):
-            result = CliRunner().invoke(main, ["analyse", cfg_toml, "--surface-tension"])
+            result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
         assert result.exit_code == 0
         assert "0.0123" in result.output
