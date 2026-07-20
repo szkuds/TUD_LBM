@@ -117,7 +117,7 @@ Ensure the following files are committed in your local repo before archiving:
 From your repo root:
 
 ```bash
-git archive --format=tar.gz --output=src.tar.gz HEAD
+git archive --format=tar.gz --output=tud_lbm.tar.gz HEAD
 ```
 
 `git archive HEAD` produces a clean snapshot of committed files only — no `.venv`, no `__pycache__`, no `.git` bloat.
@@ -125,7 +125,7 @@ git archive --format=tar.gz --output=src.tar.gz HEAD
 ### 2. Transfer to DelftBlue
 
 ```bash
-scp src.tar.gz <netid>@login.delftblue.tudelft.nl:/scratch/<netid>/
+scp tud_lbm.tar.gz <netid>@login.delftblue.tudelft.nl:/scratch/<netid>/
 ```
 
 > **Use `/scratch`, not `/home`.** Package installs generate many small files and `/home` quota is limited.
@@ -156,8 +156,8 @@ source ~/.bashrc
 
 ```bash
 cd /scratch/<netid>
-mkdir src && tar -xzf src.tar.gz -C src
-cd src
+mkdir src && tar -xzf tud_lbm.tar.gz -C tud_lbm
+cd tud_lbm
 
 uv sync
 ```
@@ -170,12 +170,12 @@ After making changes locally:
 
 ```bash
 # Local
-git archive --format=tar.gz --output=src.tar.gz HEAD
-scp src.tar.gz <netid>@login.delftblue.tudelft.nl:/scratch/<netid>/
+git archive --format=tar.gz --output=tud_lbm.tar.gz HEAD
+scp tud_lbm.tar.gz <netid>@login.delftblue.tudelft.nl:/scratch/<netid>/
 
 # On DelftBlue
-cd /scratch/<netid>/src
-tar -xzf ../src.tar.gz   # overwrites changed files in place
+cd /scratch/<netid>/tud_lbm
+tar -xzf ../tud_lbm.tar.gz   # overwrites changed files in place
 uv sync                        # no-op if uv.lock hasn't changed
 ```
 
