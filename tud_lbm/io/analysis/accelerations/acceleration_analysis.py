@@ -105,13 +105,29 @@ def save_diagnostic_plot(result: AccelerationResult, window: tuple[int, int] | N
     import matplotlib.pyplot as plt
 
     fig, ax_ca = plt.subplots(figsize=DEFAULT_STYLE.analysis_figsize)
-    ax_ca.plot(result.iteration, result.ca, color=_CA_COLOR, label="Ca")
+    ax_ca.scatter(
+        result.iteration,
+        result.ca,
+        s=DEFAULT_STYLE.scatter_marker_size,
+        alpha=DEFAULT_STYLE.scatter_alpha,
+        color=_CA_COLOR,
+        edgecolors="none",
+        label="Ca",
+    )
     ax_ca.set_xlabel("Normalised iteration", fontsize=DEFAULT_STYLE.axis_label_fontsize)
     ax_ca.set_ylabel("Ca", color=_CA_COLOR, fontsize=DEFAULT_STYLE.axis_label_fontsize)
     ax_ca.tick_params(axis="y", labelcolor=_CA_COLOR)
 
     ax_accel = ax_ca.twinx()
-    ax_accel.plot(result.iteration, result.accel, color=_ACCEL_COLOR, alpha=0.6, label="accel")
+    ax_accel.scatter(
+        result.iteration,
+        result.accel,
+        s=DEFAULT_STYLE.scatter_marker_size,
+        alpha=DEFAULT_STYLE.scatter_alpha,
+        color=_ACCEL_COLOR,
+        edgecolors="none",
+        label="accel",
+    )
     ax_accel.set_ylabel("Acceleration", color=_ACCEL_COLOR, fontsize=DEFAULT_STYLE.axis_label_fontsize)
     ax_accel.tick_params(axis="y", labelcolor=_ACCEL_COLOR)
 
