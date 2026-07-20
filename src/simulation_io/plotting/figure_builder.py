@@ -10,18 +10,14 @@ mpl.use("Agg")
 
 from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
-import numpy as np
 from src.registry import get_operators
-from . import ca_theta_plot as _ca_theta_plot_mod  # noqa: F401
-from . import contact_angle_plot as _contact_angle_plot_mod  # noqa: F401
-from . import contact_line_speed_plot as _contact_line_speed_plot_mod  # noqa: F401
-from . import overview_simulation_inc_snapshots as _overview_mod  # noqa: F401
-from . import scalar_history_plot as _scalar_history_plot_mod  # noqa: F401
-from . import simulation_csv as _simulation_csv_mod  # noqa: F401
+from src.simulation_io.analysis.droplet_metrics import parse_timestep
+from src.simulation_io.plotting._analysis_common import load_snapshot
 from .figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
     import os
+    import numpy as np
     from src.config import SimulationConfig
 
 _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
@@ -42,10 +38,23 @@ _WETTING_SIM_TYPES: frozenset[str] = frozenset(
 _ANALYSIS_PANEL_FACECOLOR = "#f5f5f5"
 
 
+def _render_error(ax: plt.Axes, name: str, exc: Exception) -> None:
+    """Replace a panel's contents with the exception that broke it."""
+    ax.set_title(f"{name} - ERROR")
+    ax.text(
+        0.5,
+        0.5,
+        str(exc),
+        ha="center",
+        va="center",
+        transform=ax.transAxes,
+        fontsize=DEFAULT_STYLE.error_text_fontsize,
+        color="red",
+    )
+
+
 class FigureBuilder:
     """Build and save composite figures for saved simulation snapshots."""
-
-    _SMALL_LAYOUTS: dict[int, tuple[int, int]] = _SMALL_LAYOUTS
 
     def __init__(
         self,
@@ -124,10 +133,11 @@ class FigureBuilder:
                 stacklevel=2,
             )
 
-    def _sorted_timed_files(self) -> list[tuple[int, Path]]:
+    def sorted_timed_files(self) -> list[tuple[int, Path]]:
+        """Return ``(timestep, path)`` pairs sorted by timestep."""
         timed_files: list[tuple[int, Path]] = []
         for fp in self._data_dir.glob("*.npz"):
-            timestep = self._extract_timestep(fp.stem)
+            timestep = parse_timestep(fp.stem)
             if timestep is not None:
                 timed_files.append((timestep, fp))
         timed_files.sort(key=lambda item: item[0])
@@ -158,16 +168,17 @@ class FigureBuilder:
         """Configured analysis plot operators."""
         return self._analysis_operators
 
-    def sorted_timed_files(self) -> list[tuple[int, Path]]:
-        """Return ``(timestep, path)`` pairs sorted by timestep."""
-        return self._sorted_timed_files()
+    def build_analysis(self, files: list[Path] | None = None) -> list[Path]:
+        """Build standalone analysis figures from all saved snapshots.
 
-    def build_analysis(self) -> list[Path]:
-        """Build standalone analysis figures from all saved snapshots."""
+        *files* lets a caller that has already globbed the run directory pass
+        the snapshot list in rather than have it re-globbed here.
+        """
         if not self._analysis_operators or not self._data_dir.exists():
             return []
 
-        files = [fp for _, fp in self._sorted_timed_files()]
+        if files is None:
+            files = [fp for _, fp in self.sorted_timed_files()]
         if not files:
             return []
 
@@ -179,17 +190,7 @@ class FigureBuilder:
                     fig = op.render_figure(files)
                 except Exception as exc:  # noqa: BLE001
                     fig, ax = plt.subplots(1, 1, figsize=DEFAULT_STYLE.analysis_figsize, squeeze=False)
-                    ax[0][0].set_title(f"{op.name} - ERROR")
-                    ax[0][0].text(
-                        0.5,
-                        0.5,
-                        str(exc),
-                        ha="center",
-                        va="center",
-                        transform=ax[0][0].transAxes,
-                        fontsize=DEFAULT_STYLE.error_text_fontsize,
-                        color="red",
-                    )
+                    _render_error(ax[0][0], op.name, exc)
                 out_path = self._analysis_dir / f"{op.name}.png"
                 fig.savefig(out_path, dpi=self.dpi)
                 plt.close(fig)
@@ -201,17 +202,7 @@ class FigureBuilder:
                 precomputed = op.compute(files)
                 op.render(ax[0][0], precomputed)
             except Exception as exc:  # noqa: BLE001
-                ax[0][0].set_title(f"{op.name} - ERROR")
-                ax[0][0].text(
-                    0.5,
-                    0.5,
-                    str(exc),
-                    ha="center",
-                    va="center",
-                    transform=ax[0][0].transAxes,
-                    fontsize=DEFAULT_STYLE.error_text_fontsize,
-                    color="red",
-                )
+                _render_error(ax[0][0], op.name, exc)
             plt.tight_layout()
             out_path = self._analysis_dir / f"{op.name}.png"
             fig.savefig(out_path, dpi=self.dpi)
@@ -247,7 +238,7 @@ class FigureBuilder:
         if not panels:
             return None
 
-        ncols, nrows = self._layout(len(panels))
+        ncols, nrows = self.layout(len(panels))
         panel_w, panel_h = DEFAULT_STYLE.panel_figsize
         fig, axes = plt.subplots(
             nrows,
@@ -261,17 +252,7 @@ class FigureBuilder:
             try:
                 op(axes[row][col], data, timestep)
             except Exception as exc:  # noqa: BLE001
-                axes[row][col].set_title(f"{op.name} - ERROR")
-                axes[row][col].text(
-                    0.5,
-                    0.5,
-                    str(exc),
-                    ha="center",
-                    va="center",
-                    transform=axes[row][col].transAxes,
-                    fontsize=DEFAULT_STYLE.error_text_fontsize,
-                    color="red",
-                )
+                _render_error(axes[row][col], op.name, exc)
 
         offset = len(field_ops)
         for idx, op in enumerate(analysis_ops):
@@ -280,17 +261,7 @@ class FigureBuilder:
             try:
                 op.update(ax, history_files)
             except Exception as exc:  # noqa: BLE001
-                ax.set_title(f"{op.name} - ERROR")
-                ax.text(
-                    0.5,
-                    0.5,
-                    str(exc),
-                    ha="center",
-                    va="center",
-                    transform=ax.transAxes,
-                    fontsize=DEFAULT_STYLE.error_text_fontsize,
-                    color="red",
-                )
+                _render_error(ax, op.name, exc)
             # Apply after render so ax.clear() inside render() doesn't reset it
             ax.set_facecolor(_ANALYSIS_PANEL_FACECOLOR)
 
@@ -329,11 +300,11 @@ class FigureBuilder:
     def build_single(self, snapshot_path: str | os.PathLike, filename: str | None = None) -> Path | None:
         """Build one figure beside a specific ``.npz`` snapshot."""
         fp = Path(snapshot_path)
-        timestep = self._extract_timestep(fp.stem) or 0
+        timestep = parse_timestep(fp.stem) or 0
 
         history_files: list[Path] | None = None
         if self._analysis_operators:
-            files = [candidate for _, candidate in self._sorted_timed_files()]
+            files = [candidate for _, candidate in self.sorted_timed_files()]
             resolved = fp.resolve()
             for idx, candidate in enumerate(files):
                 if candidate.resolve() == resolved:
@@ -342,8 +313,7 @@ class FigureBuilder:
             else:
                 history_files = [fp]
 
-        with np.load(fp) as raw:
-            data = {key: raw[key] for key in raw.files}
+        data = load_snapshot(fp)
 
         out_name = filename or f"{fp.stem}.png"
         fig = self.render_figure(data, timestep, history_files=history_files)
@@ -364,41 +334,24 @@ class FigureBuilder:
         if not self._data_dir.exists():
             return []
 
-        files = [fp for _, fp in self._sorted_timed_files()]
+        timed_files = self.sorted_timed_files()
         saved: list[Path] = []
 
         if self._field_operators:
-            for fp in files[skip:]:
-                timestep = self._extract_timestep(fp.stem)
-                if timestep is None:
-                    continue
-                with np.load(fp) as raw:
-                    data = {key: raw[key] for key in raw.files}
-                path = self.build(data, timestep)
+            for timestep, fp in timed_files[skip:]:
+                path = self.build(load_snapshot(fp), timestep)
                 if path is not None:
                     saved.append(path)
 
-        saved.extend(self.build_analysis())
+        saved.extend(self.build_analysis([fp for _, fp in timed_files]))
         self.build_csv()
         return saved
 
     @staticmethod
-    def _extract_timestep(stem: str) -> int | None:
-        try:
-            return int(stem.rsplit("_", maxsplit=1)[-1])
-        except ValueError:
-            return None
-
-    @staticmethod
-    def _layout(n: int) -> tuple[int, int]:
+    def layout(n: int) -> tuple[int, int]:
         """Choose a compact subplot layout for *n* panels."""
-        if layout := FigureBuilder._SMALL_LAYOUTS.get(n):
+        if layout := _SMALL_LAYOUTS.get(n):
             return layout
         ncols = math.ceil(math.sqrt(n))
         nrows = math.ceil(n / ncols)
         return ncols, nrows
-
-    @staticmethod
-    def layout(n: int) -> tuple[int, int]:
-        """Public wrapper for selecting a compact subplot layout."""
-        return FigureBuilder._layout(n)

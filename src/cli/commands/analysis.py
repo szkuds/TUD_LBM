@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
 import click
-from rich.panel import Panel
 from src.cli._console import cli_command
 from src.cli._console import console
+from src.cli._console import success
 from src.cli.app import cli
 from src.cli.config_loading import _load_single_config
-from src.cli.field_select import _prompt_fields
+from src.cli.field_select import prompt_fields_marked
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
@@ -39,7 +39,12 @@ def compare(parent_dir: str, no_prompt: bool) -> None:
         fields: list[str] | None = None
     else:
         comparison_ops = get_operators("analysis")
-        fields = _prompt_fields(comparison_ops, None, "per-run comparison operators")
+        fields = prompt_fields_marked(
+            comparison_ops,
+            None,
+            label="per-run comparison operators",
+            config_label="the run config",
+        )
 
     if fields:
         console.print(f"[dim]Operators     : {', '.join(fields)}[/dim]")
@@ -54,13 +59,7 @@ def compare(parent_dir: str, no_prompt: bool) -> None:
         return
 
     out_dir = Path(parent_dir) / _COMPARISON_DIR
-    console.print()
-    console.print(
-        Panel.fit(
-            f"[bold green]Comparison analysis complete![/bold green]  {n_ok}/{n_runs} run(s) processed",
-            title="Success",
-        ),
-    )
+    success(f"Comparison analysis complete!  {n_ok}/{n_runs} run(s) processed")
     console.print(f"[bold green]Plots saved to:[/bold green] {out_dir}")
 
 
@@ -102,13 +101,7 @@ def regime_map(dirs_txt: str, allowed_roots: tuple[str, ...], out_dir: str | Non
         console.print("[yellow]No runs produced a usable classification.[/yellow]")
         sys.exit(1)
 
-    console.print()
-    console.print(
-        Panel.fit(
-            "[bold green]Regime map complete![/bold green]",
-            title="Success",
-        ),
-    )
+    success("Regime map complete!")
     console.print(f"[bold green]Plot saved to:[/bold green] {out_path}")
 
 
@@ -127,13 +120,7 @@ def _analyse_surface_tension(config: SimulationConfig, out_dir: Path) -> None:
 
     sigma = calibrate_surface_tension(config, out_dir)
 
-    console.print()
-    console.print(
-        Panel.fit(
-            f"[bold green]Surface tension: σ = {sigma:.6g}[/bold green]",
-            title="Success",
-        ),
-    )
+    success(f"Surface tension: σ = {sigma:.6g}")
     console.print(f"[bold green]Calibration figure saved to:[/bold green] {out_dir / _PLOT_FILENAME}")
 
 

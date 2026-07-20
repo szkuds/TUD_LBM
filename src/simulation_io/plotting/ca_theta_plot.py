@@ -11,6 +11,8 @@ from src.simulation_io.plotting._analysis_common import _CONTACT_ANGLE_Y_LABEL
 from src.simulation_io.plotting._analysis_common import _set_empty_state
 from src.simulation_io.plotting.base import AnalysisPlot
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
+from src.simulation_io.plotting.figure_config import LABEL_IT_NORM
+from src.simulation_io.plotting.figure_config import LABEL_X_AVG_NORM
 
 if TYPE_CHECKING:
     import matplotlib.axes
@@ -362,8 +364,6 @@ def save_figure(fig: matplotlib.figure.Figure, path: str | Path, *, dpi: int = 3
 # ---------------------------------------------------------------------------
 
 _CA_THETA_TITLE = "Contact line Ca and contact angle"
-_LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
-_LABEL_X_AVG_NORM = r"$X_{\mathrm{avg}}/R_0$"
 
 
 #: Panel keys, all empty. Returned when no series can be computed.
@@ -423,7 +423,7 @@ class CaThetaVsTimePlot(AnalysisPlot):
             precomputed["ca_leading"],
             precomputed["theta_trailing"],
             precomputed["theta_leading"],
-            x_label=_LABEL_IT_NORM,
+            x_label=LABEL_IT_NORM,
             style=DualAxisStyle(legend_fontsize=DEFAULT_STYLE.panel_legend_fontsize, legend_outside=True),
         )
 
@@ -455,6 +455,6 @@ class CaThetaVsXPlot(AnalysisPlot):
             precomputed["ca_leading"],
             precomputed["theta_trailing"],
             precomputed["theta_leading"],
-            x_label=_LABEL_X_AVG_NORM,
+            x_label=LABEL_X_AVG_NORM,
             style=DualAxisStyle(legend_fontsize=DEFAULT_STYLE.panel_legend_fontsize, legend_outside=True),
         )

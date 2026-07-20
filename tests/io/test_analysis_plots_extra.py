@@ -7,12 +7,12 @@ import numpy as np
 import pytest
 from src.config import SimulationConfig
 from src.simulation_io.analysis.droplet_metrics import analytical_sigma_lg
+from src.simulation_io.analysis.droplet_metrics import extract_rho_2d
+from src.simulation_io.analysis.droplet_metrics import parse_timestep
 from src.simulation_io.analysis.droplet_metrics import resolve_step_x
 from src.simulation_io.plotting._analysis_common import _empty_data_message
-from src.simulation_io.plotting._analysis_common import _extract_rho_2d
 from src.simulation_io.plotting._analysis_common import _extract_u_mag_2d
-from src.simulation_io.plotting._analysis_common import _load_timesteps
-from src.simulation_io.plotting._analysis_common import _parse_timestep
+from src.simulation_io.plotting._analysis_common import _reduce_timesteps
 from src.simulation_io.plotting._analysis_common import _render_scatter
 from src.simulation_io.plotting.contact_angle_plot import ContactAnglesPairPlot
 from src.simulation_io.plotting.contact_line_speed_plot import ContactLineSpeedLeftPlot
@@ -26,27 +26,27 @@ if TYPE_CHECKING:
 
 
 def test_parse_timestep_invalid_returns_none():
-    assert _parse_timestep("timestep_x") is None
+    assert parse_timestep("timestep_x") is None
 
 
 def test_extract_rho_and_u_raise_on_unsupported_ndim():
     bad_rho = np.ones((2,))
     bad_u = np.ones((2, 2))
     with pytest.raises(ValueError, match="Unsupported rho shape"):
-        _extract_rho_2d(bad_rho)
+        extract_rho_2d(bad_rho)
     with pytest.raises(ValueError, match="Unsupported u shape"):
         _extract_u_mag_2d(bad_u)
 
 
-def test_load_timesteps_skips_invalid_names_and_missing_keys(tmp_path: Path):
+def test_reduce_timesteps_skips_invalid_names_and_missing_keys(tmp_path: Path):
     np.savez(tmp_path / "nonsense.npz", rho=np.ones((2, 2, 1, 1, 1)))
     np.savez(tmp_path / "timestep_1.npz", rho=np.ones((2, 2, 1, 1, 1)))
     np.savez(tmp_path / "timestep_2.npz", rho=np.ones((2, 2, 1, 1, 1)), u=np.zeros((2, 2, 1, 1, 2)))
 
-    iters, snaps = _load_timesteps(sorted(tmp_path.glob("*.npz")), ("u",))
+    iters, values = _reduce_timesteps(sorted(tmp_path.glob("*.npz")), ("u",), lambda snap: float(snap["u"].sum()))
 
     assert iters.tolist() == [2]
-    assert len(snaps) == 1
+    assert values.tolist() == [0.0]
 
 
 def test_render_scatter_empty_state_writes_placeholder():
@@ -112,10 +112,10 @@ def test_extract_rho_2d_covers_supported_shapes():
     rho4 = np.ones((2, 3, 1, 1))
     rho5 = np.ones((2, 3, 1, 1, 1))
 
-    assert _extract_rho_2d(rho2).shape == (2, 3)
-    assert _extract_rho_2d(rho3).shape == (2, 3)
-    assert _extract_rho_2d(rho4).shape == (2, 3)
-    assert _extract_rho_2d(rho5).shape == (2, 3)
+    assert extract_rho_2d(rho2).shape == (2, 3)
+    assert extract_rho_2d(rho3).shape == (2, 3)
+    assert extract_rho_2d(rho4).shape == (2, 3)
+    assert extract_rho_2d(rho5).shape == (2, 3)
 
 
 def test_extract_u_mag_2d_covers_supported_shapes():

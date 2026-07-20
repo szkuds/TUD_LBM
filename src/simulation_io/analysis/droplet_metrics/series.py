@@ -230,10 +230,36 @@ class DropletSeries:
         )
 
 
-def _read_snapshot(
-    path: Path,
-    scales: MetricScales,
-) -> tuple[float, float, float, float, float, float, float, float, float] | None:
+#: Per-snapshot metric memo. Animation builds a figure per frame from a growing
+#: prefix of the run's snapshots, so every frame re-derives all preceding ones —
+#: without this, a run of N snapshots costs N(N+1)/2 reads instead of N. Entries
+#: are 9-float tuples, so the cache holds a long run for negligible memory.
+_MAX_CACHED_SNAPSHOTS = 4096
+_SnapshotKey = tuple[str, int, int, MetricScales]
+_SnapshotMetrics = tuple[float, float, float, float, float, float, float, float, float]
+_SNAPSHOT_CACHE: OrderedDict[_SnapshotKey, _SnapshotMetrics | None] = OrderedDict()
+
+
+def _read_snapshot(path: Path, scales: MetricScales) -> _SnapshotMetrics | None:
+    """Memoized :func:`_read_snapshot_uncached`, keyed on file identity and *scales*.
+
+    The key carries the file's size and mtime, so a rewritten snapshot is
+    re-read rather than served stale.
+    """
+    stat = path.stat()
+    key: _SnapshotKey = (str(path.resolve()), stat.st_size, stat.st_mtime_ns, scales)
+    if key in _SNAPSHOT_CACHE:
+        _SNAPSHOT_CACHE.move_to_end(key)
+        return _SNAPSHOT_CACHE[key]
+
+    metrics = _read_snapshot_uncached(path, scales)
+    _SNAPSHOT_CACHE[key] = metrics
+    while len(_SNAPSHOT_CACHE) > _MAX_CACHED_SNAPSHOTS:
+        _SNAPSHOT_CACHE.popitem(last=False)
+    return metrics
+
+
+def _read_snapshot_uncached(path: Path, scales: MetricScales) -> _SnapshotMetrics | None:
     """Extract one snapshot's metrics, deriving any absent from the density field."""
     with np.load(path) as raw:
         if "rho" not in raw:
@@ -362,5 +388,6 @@ def droplet_series_for_run(run_dir: str | Path, config: SimulationConfig) -> Dro
 
 
 def clear_series_cache() -> None:
-    """Drop every cached series. Intended for tests."""
+    """Drop every cached series and per-snapshot metric. Intended for tests."""
     _CACHE.clear()
+    _SNAPSHOT_CACHE.clear()

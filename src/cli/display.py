@@ -133,18 +133,6 @@ def _display_analysis_operators() -> None:
     _display_operators(analysis=True)
 
 
-def _build_fields_table(names: list[str], available: dict) -> Table:
-    """Build a Rich table listing selectable operator fields."""
-    table = Table(show_header=True, header_style=_BOLD_CYAN, box=None, padding=(0, 1))
-    table.add_column("#", style="dim", width=4)
-    table.add_column("Name", style="green", no_wrap=True)
-    table.add_column("Description", style="white")
-    for i, name in enumerate(names, 1):
-        description = _operator_description(available[name].target)
-        table.add_row(str(i), name, description)
-    return table
-
-
 def build_choices_table(choices: list[OperatorChoice]) -> Table:
     """List selectable operators, marking which the stored config already names."""
     table = Table(show_header=True, header_style=_BOLD_CYAN, box=None, padding=(0, 1))

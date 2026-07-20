@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from rich.prompt import Prompt
 from src.cli._console import console
-from src.cli.display import _build_fields_table
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -76,55 +75,11 @@ def _parse_field_tokens(raw: str, names: list[str], available: dict) -> list[str
     return selected
 
 
-def _prompt_fields(
-    available: dict,
-    current: list[str] | None,
-    label: str,
-) -> list[str] | None:
-    """Interactively select plot operators from *available*.
-
-    Args:
-        available: ``{name: OperatorEntry}`` dict of all selectable operators.
-        current: Pre-selected names (from config), or ``None`` for all.
-        label: Human-readable context shown in the prompt header.
-
-    Returns:
-        Validated list of operator names, or ``None`` when the user accepts the
-        default (meaning "use all available / whatever the builder defaults to").
-    """
-    names = sorted(available.keys())
-
-    console.print()
-    console.print(f"[bold cyan]Available {label}:[/bold cyan]")
-    console.print(_build_fields_table(names, available))
-
-    default_str = ", ".join(current) if current else "(all)"
-    console.print(f"\n[dim]Current selection:[/dim] {default_str}")
-    console.print("[dim]Enter comma-separated numbers (e.g. 1,3) or names (e.g. density,force).[/dim]")
-    console.print("[dim]Press Enter to keep current selection.[/dim]")
-
-    try:
-        raw = Prompt.ask("Select fields", default="")
-    except EOFError:
-        return current
-
-    if not raw.strip():
-        return current  # None → builder default; list → exact config selection
-
-    selected = _parse_field_tokens(raw, names, available)
-
-    if not selected:
-        console.print("[dim]No valid selection — keeping current.[/dim]")
-        return current
-
-    return selected
-
-
 def prompt_fields_marked(
     available: dict,
     current: list[str] | None,
     *,
-    configured: Iterable[str],
+    configured: Iterable[str] = (),
     label: str,
     config_label: str,
 ) -> list[str] | None:
@@ -134,11 +89,13 @@ def prompt_fields_marked(
         available: ``{name: OperatorEntry}`` of every selectable operator.
         current: Pre-selected names, or ``None`` to accept the builder default.
         configured: Names the run's config lists — used only for the marking.
+            Empty means nothing is marked as in-config.
         label: Human-readable context shown in the prompt header.
         config_label: What ``configured`` came from, named in the footer.
 
     Returns:
-        The chosen operator names, or ``None`` when the user takes the default.
+        The chosen operator names, or ``None`` when the user takes the default
+        (meaning "use all available / whatever the builder defaults to").
     """
     from src.cli.display import build_choices_table
     from src.cli.display import choices_footer
@@ -162,7 +119,7 @@ def prompt_fields_marked(
         return current
 
     if not raw.strip():
-        return current
+        return current  # None → builder default; list → exact config selection
 
     selected = _parse_field_tokens(raw, names, available)
     if not selected:

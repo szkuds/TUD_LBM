@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
-from rich.panel import Panel
 from rich.prompt import Prompt
 from src.cli._console import console
+from src.cli._console import success
 from src.cli.config_loading import _expand_raw_config
 from src.cli.config_loading import _load_config_interactive
 from src.cli.config_loading import _load_raw_config
@@ -307,13 +307,7 @@ def _run_impl(
             msg = "config_path is required for wetting initialisation"
             raise ValueError(msg)
         _run_two_phase_wetting_init(config_path, overrides, no_prompt=flags.no_prompt, overview=flags.overview)
-        console.print()
-        console.print(
-            Panel.fit(
-                "[bold green]Wetting initialisation complete![/bold green]",
-                title="Success",
-            ),
-        )
+        success("Wetting initialisation complete!")
         return False
 
     if config_path:

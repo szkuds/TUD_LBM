@@ -14,6 +14,10 @@ from src.simulation_io.analysis.droplet_metrics._scales import measured_sigma_lg
 from src.simulation_io.analysis.droplet_metrics._scales import resolve_r_zero
 from src.simulation_io.analysis.droplet_metrics._scales import resolve_scales
 from src.simulation_io.analysis.droplet_metrics._scales import resolve_step_x
+from src.simulation_io.analysis.droplet_metrics._snapshot import extract_rho_2d
+from src.simulation_io.analysis.droplet_metrics._snapshot import extract_velocity_components_2d
+from src.simulation_io.analysis.droplet_metrics._snapshot import parse_timestep
+from src.simulation_io.analysis.droplet_metrics._snapshot import parse_timestep_from_path
 from src.simulation_io.analysis.droplet_metrics.series import CSV_COLUMNS
 from src.simulation_io.analysis.droplet_metrics.series import DropletSeries
 from src.simulation_io.analysis.droplet_metrics.series import backward_diff
@@ -32,8 +36,12 @@ __all__ = [
     "clear_series_cache",
     "compute_droplet_series",
     "droplet_series_for_run",
+    "extract_rho_2d",
+    "extract_velocity_components_2d",
     "inclination_angle_deg",
     "measured_sigma_lg",
+    "parse_timestep",
+    "parse_timestep_from_path",
     "resolve_r_zero",
     "resolve_scales",
     "resolve_step_x",

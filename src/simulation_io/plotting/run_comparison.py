@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import TypedDict
 from matplotlib.colors import TABLEAU_COLORS
+from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
+from src.simulation_io.plotting.figure_config import LABEL_CA
+from src.simulation_io.plotting.figure_config import LABEL_IT_NORM
+from src.simulation_io.plotting.figure_config import LABEL_RE
+from src.simulation_io.plotting.figure_config import LABEL_X_AVG_NORM
 from src.simulation_io.plotting.simulation_csv import _CSV_FILENAME
 
 if TYPE_CHECKING:
@@ -17,10 +22,6 @@ if TYPE_CHECKING:
     from src.config import SimulationConfig
 
 _DIR_SPLIT_PARTS = 2
-_LABEL_CA = r"$\mathrm{Ca}$"
-_LABEL_RE = r"$\mathrm{Re}$"
-_LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
-_LABEL_X_AVG_NORM = r"$X_{\mathrm{avg}}/R_0$"
 _CONFIG_TOML = "config.toml"
 _COMPARISON_DIR = "comparison_analysis"
 
@@ -41,52 +42,52 @@ _COMPARISON_PLOT_CONFIGS: list[_PlotConfig] = [
         "filename": "01_Ca_vs_iteration.png",
         "x": "normalised_iteration",
         "y": "Ca",
-        "xlabel": _LABEL_IT_NORM,
-        "ylabel": _LABEL_CA,
+        "xlabel": LABEL_IT_NORM,
+        "ylabel": LABEL_CA,
     },
     {
         "filename": "02_Ca_vs_x_avg.png",
         "x": "avg_x_location_norm",
         "y": "Ca",
-        "xlabel": _LABEL_X_AVG_NORM,
-        "ylabel": _LABEL_CA,
+        "xlabel": LABEL_X_AVG_NORM,
+        "ylabel": LABEL_CA,
     },
     {
         "filename": "03_Ca_contact_line_vs_iteration.png",
         "x": "normalised_iteration",
         "y_pair": ("Ca_cll_left", "Ca_cll_right"),
         "pair_labels": ("Trailing", "Leading"),
-        "xlabel": _LABEL_IT_NORM,
-        "ylabel": _LABEL_CA,
+        "xlabel": LABEL_IT_NORM,
+        "ylabel": LABEL_CA,
     },
     {
         "filename": "04_Ca_contact_line_vs_x_avg.png",
         "x": "avg_x_location_norm",
         "y_pair": ("Ca_cll_left", "Ca_cll_right"),
         "pair_labels": ("Trailing", "Leading"),
-        "xlabel": _LABEL_X_AVG_NORM,
-        "ylabel": _LABEL_CA,
+        "xlabel": LABEL_X_AVG_NORM,
+        "ylabel": LABEL_CA,
     },
     {
         "filename": "05_Ca_cm_vs_iteration.png",
         "x": "normalised_iteration",
         "y": "Ca_cm",
-        "xlabel": _LABEL_IT_NORM,
-        "ylabel": _LABEL_CA,
+        "xlabel": LABEL_IT_NORM,
+        "ylabel": LABEL_CA,
     },
     {
         "filename": "06_Ca_cm_vs_x_avg.png",
         "x": "avg_x_location_norm",
         "y": "Ca_cm",
-        "xlabel": _LABEL_X_AVG_NORM,
-        "ylabel": _LABEL_CA,
+        "xlabel": LABEL_X_AVG_NORM,
+        "ylabel": LABEL_CA,
     },
     {
         "filename": "07_contact_angles_vs_iteration.png",
         "x": "normalised_iteration",
         "y_pair": ("ca_left", "ca_right"),
         "pair_labels": ("Trailing", "Leading"),
-        "xlabel": _LABEL_IT_NORM,
+        "xlabel": LABEL_IT_NORM,
         "ylabel": "Contact angle (degrees)",
     },
     {
@@ -94,7 +95,7 @@ _COMPARISON_PLOT_CONFIGS: list[_PlotConfig] = [
         "x": "avg_x_location_norm",
         "y_pair": ("ca_left", "ca_right"),
         "pair_labels": ("Trailing", "Leading"),
-        "xlabel": _LABEL_X_AVG_NORM,
+        "xlabel": LABEL_X_AVG_NORM,
         "ylabel": r"$\theta$ (degrees)",
     },
     {
@@ -109,15 +110,15 @@ _COMPARISON_PLOT_CONFIGS: list[_PlotConfig] = [
         "filename": "10_Re_vs_iteration.png",
         "x": "normalised_iteration",
         "y": "Re",
-        "xlabel": _LABEL_IT_NORM,
-        "ylabel": _LABEL_RE,
+        "xlabel": LABEL_IT_NORM,
+        "ylabel": LABEL_RE,
     },
     {
         "filename": "11_Re_vs_x_avg.png",
         "x": "avg_x_location_norm",
         "y": "Re",
-        "xlabel": _LABEL_X_AVG_NORM,
-        "ylabel": _LABEL_RE,
+        "xlabel": LABEL_X_AVG_NORM,
+        "ylabel": LABEL_RE,
     },
 ]
 
@@ -185,7 +186,15 @@ def _scatter_series(
 ) -> None:
     """Scatter one x/y series when both columns exist in *df*."""
     if x_col in df.columns and y_col in df.columns:
-        ax.scatter(df[x_col], df[y_col], marker=marker, s=15, color=color, alpha=alpha, label=label)
+        ax.scatter(
+            df[x_col],
+            df[y_col],
+            marker=marker,
+            s=DEFAULT_STYLE.scatter_marker_size,
+            color=color,
+            alpha=alpha,
+            label=label,
+        )
 
 
 def _plot_comparison_entry(
@@ -220,7 +229,6 @@ def compare_runs(parent_dir: str | Path) -> None:
         parent_dir: Parent directory that contains the individual run directories.
     """
     import matplotlib.pyplot as plt
-    from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
     parent_dir = Path(parent_dir).resolve()
     entries = _load_comparison_entries(parent_dir)

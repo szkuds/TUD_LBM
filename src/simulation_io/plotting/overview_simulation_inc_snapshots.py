@@ -6,17 +6,18 @@ from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 import numpy as np
 from src.registry import analysis_operator
+from src.simulation_io.analysis.droplet_metrics import parse_timestep
 from src.simulation_io.plotting._analysis_common import _CONTACT_ANGLE_Y_LABEL
-from src.simulation_io.plotting._analysis_common import _parse_timestep
 from src.simulation_io.plotting._analysis_common import _set_empty_state
+from src.simulation_io.plotting._analysis_common import load_snapshot
 from src.simulation_io.plotting.base import AnalysisPlot
 from src.simulation_io.plotting.ca_theta_plot import _CA_THETA_TITLE
-from src.simulation_io.plotting.ca_theta_plot import _LABEL_X_AVG_NORM
 from src.simulation_io.plotting.ca_theta_plot import DualAxisStyle
 from src.simulation_io.plotting.ca_theta_plot import _compute_ca_theta_arrays
 from src.simulation_io.plotting.ca_theta_plot import _draw_dual_axis_on_ax
 from src.simulation_io.plotting.density import DensityPlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
+from src.simulation_io.plotting.figure_config import LABEL_X_AVG_NORM
 from src.simulation_io.plotting.velocity import VelocityPlotOperator
 
 if TYPE_CHECKING:
@@ -73,8 +74,7 @@ def _render_snapshot_block(
     ax_u.set_anchor("N")
 
     if fp is not None:
-        with np.load(fp) as raw:
-            snap = {key: np.asarray(raw[key]) for key in raw.files}
+        snap = load_snapshot(fp)
         if density_op.is_available(snap):
             density_op(ax_rho, snap, actual_ts)
         if velocity_op.is_available(snap):
@@ -160,7 +160,7 @@ class SnapshotOverviewPlot(AnalysisPlot):
             _set_empty_state(ax, title=_CA_THETA_TITLE, ylabel=_CONTACT_ANGLE_Y_LABEL)
             return fig
 
-        file_by_ts = {_parse_timestep(fp.stem): fp for fp in files if _parse_timestep(fp.stem) is not None}
+        file_by_ts = {parse_timestep(fp.stem): fp for fp in files if parse_timestep(fp.stem) is not None}
 
         # Nearest-match each requested timestep to an available one, dedupe, sort ascending
         # so the right-hand snapshot column reads top-to-bottom in chronological order.
@@ -198,7 +198,7 @@ class SnapshotOverviewPlot(AnalysisPlot):
             data["ca_leading"],
             data["theta_trailing"],
             data["theta_leading"],
-            x_label=_LABEL_X_AVG_NORM,
+            x_label=LABEL_X_AVG_NORM,
             style=DualAxisStyle(
                 legend_fontsize=DEFAULT_STYLE.panel_legend_fontsize * 2,
                 legend_outside=True,

@@ -55,3 +55,10 @@ class FigureStyle:
 
 
 DEFAULT_STYLE = FigureStyle()
+
+#: Axis labels shared across plot modules, so the same quantity is always
+#: rendered with the same LaTeX label.
+LABEL_CA = r"$\mathrm{Ca}$"
+LABEL_RE = r"$\mathrm{Re}$"
+LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
+LABEL_X_AVG_NORM = r"$X_{\mathrm{avg}}/R_0$"

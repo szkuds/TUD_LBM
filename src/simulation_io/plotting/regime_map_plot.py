@@ -19,9 +19,9 @@ from src.simulation_io.analysis.accelerations import classify_regime
 from src.simulation_io.analysis.accelerations import compute_acceleration
 from src.simulation_io.analysis.accelerations import save_diagnostic_plot
 from src.simulation_io.analysis.droplet_metrics import droplet_series_for_run
-from src.simulation_io.analysis.droplet_metrics import resolve_r_zero
 from src.simulation_io.analysis.physical_parameters import compute_dimensionless_numbers
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
+from src.simulation_io.plotting.run_comparison import _CONFIG_TOML
 from src.simulation_io.plotting.run_comparison import _clean_dir_label
 from src.simulation_io.plotting.run_comparison import _safe_load_config
 from src.simulation_io.plotting.simulation_csv import build_simulation_csv
@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     import pandas as pd
     from src.config import SimulationConfig
 
-_CONFIG_TOML = "config.toml"
 _REGIME_MAP_DIR = "regime_map_analysis"
 _REGIME_MAP_FILENAME = "regime_map.png"
 _DIAGNOSTIC_FILENAME = "acceleration_analysis.png"
@@ -166,13 +165,14 @@ def _resolve_run_dir_entry(line: str, txt_path: Path, parent: Path, resolved_roo
     raise ValueError(msg)
 
 
-def _load_or_build_csv(run_dir: Path, config: SimulationConfig) -> pd.DataFrame | None:
-    """Metric table for *run_dir*, also writing ``simulation_data.csv`` on disk.
+def _load_or_build_csv(run_dir: Path, config: SimulationConfig) -> tuple[pd.DataFrame, float] | None:
+    """Metric table and ``r_zero`` for *run_dir*, also writing ``simulation_data.csv``.
 
     The frame is built in memory from the shared droplet series rather than
     read back from the file just written. ``build_simulation_csv`` is still
     called for its on-disk side effect; it hits the same cached series, so the
-    snapshots are read only once.
+    snapshots are read only once. ``r_zero`` is returned from the series' own
+    scales rather than re-resolved, which would re-open the init snapshot.
     """
     # Preserves the historical gate: unsupported sim_types produce no CSV.
     if build_simulation_csv(run_dir, config) is None:
@@ -180,7 +180,7 @@ def _load_or_build_csv(run_dir: Path, config: SimulationConfig) -> pd.DataFrame 
     series = droplet_series_for_run(run_dir, config)
     if series is None:
         return None
-    return series.to_dataframe()
+    return series.to_dataframe(), series.scales.r_zero
 
 
 def process_run_dir(run_dir: Path, *, smoothing: Smoothing = "raw") -> RunRegimeEntry | None:
@@ -189,10 +189,11 @@ def process_run_dir(run_dir: Path, *, smoothing: Smoothing = "raw") -> RunRegime
     if config is None:
         return None
 
-    df = _load_or_build_csv(run_dir, config)
-    if df is None:
+    built = _load_or_build_csv(run_dir, config)
+    if built is None:
         print(f"  Skipped {run_dir}: no simulation data available")
         return None
+    df, r_zero = built
     if len(df) < _MIN_CSV_ROWS:
         print(f"  Skipped {run_dir}: simulation_data.csv has fewer than {_MIN_CSV_ROWS} rows")
         return None
@@ -202,7 +203,6 @@ def process_run_dir(run_dir: Path, *, smoothing: Smoothing = "raw") -> RunRegime
         print(f"  Skipped {run_dir}: Oh/Bo_parallel could not be resolved (missing surface tension or gravity)")
         return None
 
-    r_zero = resolve_r_zero(config).value
     accel_result = compute_acceleration(df, smoothing=smoothing)
     regime_result = classify_regime(df["cm_x"].to_numpy(dtype=float), r_zero, accel_result)
     save_diagnostic_plot(

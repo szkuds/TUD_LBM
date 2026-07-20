@@ -40,11 +40,3 @@ class _LazyCLI:
 
 
 cli = _LazyCLI()
-
-
-def __getattr__(name: str):  # noqa: ANN202
-    """Lazy-load CLI only when accessed (requires click)."""
-    if name == "cli":
-        return cli
-    msg = f"module {__name__!r} has no attribute {name!r}"
-    raise AttributeError(msg)

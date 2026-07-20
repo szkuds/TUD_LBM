@@ -12,11 +12,18 @@ Public surface:
 from __future__ import annotations  # noqa: I001
 
 # Trigger operator self-registration at import time.
+#
+# NOT auto-discovered: unlike the operator subpackages, plot operators live in
+# public modules, and a blanket public-module scan also pulls in
+# ``regime_map_plot`` -> ``analysis.accelerations`` -> ``plotting.figure_config``,
+# which re-enters this package before it is initialised. Breaking that cycle
+# means moving ``figure_config`` out of the plotting package first.
 from . import ca_theta_plot as _ca_theta_plot_mod  # noqa: F401
 from . import contact_angle_plot as _contact_angle_plot_mod  # noqa: F401
 from . import contact_line_speed_plot as _contact_line_speed_plot_mod  # noqa: F401
 from . import density as _density_mod  # noqa: F401
 from . import force as _force_mod  # noqa: F401
+from . import overview_simulation_inc_snapshots as _overview_mod  # noqa: F401
 from . import run_comparison as _run_comparison_mod  # noqa: F401
 from . import scalar_history_plot as _scalar_history_plot_mod  # noqa: F401
 from . import simulation_csv as _simulation_csv_mod  # noqa: F401

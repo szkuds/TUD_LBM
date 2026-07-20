@@ -318,23 +318,17 @@ def _visualise_context(
     single: bool,
 ) -> VisualiseContext:
     """Build the shared context for the ``visualise`` group and subcommands."""
-    if not single:
+    if single:
+        snapshot_path, config = _resolve_single_snapshot(path_arg)
+        run_dir = snapshot_path.parent
+    else:
         run_dir = Path(path_arg)
         if not run_dir.is_dir():
             raise click.UsageError(_RUN_DIRECTORY_USAGE)
-        return VisualiseContext(
-            run_dir=run_dir,
-            snapshot_path=None,
-            config=None,
-            skip=skip,
-            dpi=dpi,
-            fields=fields,
-            no_prompt=no_prompt,
-        )
+        snapshot_path, config = None, None
 
-    snapshot_path, config = _resolve_single_snapshot(path_arg)
     return VisualiseContext(
-        run_dir=snapshot_path.parent,
+        run_dir=run_dir,
         snapshot_path=snapshot_path,
         config=config,
         skip=skip,

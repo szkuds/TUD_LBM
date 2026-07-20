@@ -9,20 +9,18 @@ modules (``scalar_history_plot.py``, ``contact_angle_plot.py``,
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
+from src.simulation_io.analysis.droplet_metrics import extract_velocity_components_2d
+from src.simulation_io.analysis.droplet_metrics import parse_timestep
 from src.simulation_io.analysis.droplet_metrics import series_for_files
 from src.simulation_io.plotting.base import AnalysisPlot
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
     import matplotlib.axes
     from src.config import SimulationConfig
     from src.simulation_io.analysis.droplet_metrics import DropletSeries
-
-_NDIM_2D = 2
-_NDIM_3D = 3
-_NDIM_4D = 4
-_NDIM_5D = 5
 
 _X_LABEL_TIMESTEP = "Timestep"
 _EMPTY_DATA_TEXT = "No data"
@@ -30,9 +28,6 @@ _REQUIRES_PREFIX = "(Requires: "
 _CONTACT_ANGLE_Y_LABEL = "Contact angle (deg)"
 _CONTACT_LINE_SPEED_Y_LABEL = "d(cll)/dt"
 _COLOR_TAB_BLUE = DEFAULT_STYLE.colors["max_velocity"]
-_COLOR_TAB_PURP = DEFAULT_STYLE.colors["contact_angle_left"]
-_COLOR_TAB_RED = DEFAULT_STYLE.colors["contact_angle_right"]
-_COLOR_TAB_ORANGE = DEFAULT_STYLE.colors["density_ratio"]
 
 
 def _empty_data_message(required_keys: tuple[str, ...] | None = None) -> str:
@@ -63,57 +58,40 @@ def _set_empty_state(
     ax.set_ylabel(ylabel)
 
 
-def _parse_timestep(stem: str) -> int | None:
-    try:
-        return int(stem.rsplit("_", maxsplit=1)[-1])
-    except ValueError:
-        return None
-
-
-def _extract_rho_2d(rho: np.ndarray) -> np.ndarray:
-    arr = np.asarray(rho)
-    if arr.ndim >= _NDIM_5D:
-        return arr[:, :, 0, 0, 0]
-    if arr.ndim == _NDIM_4D:
-        return arr[:, :, 0, 0]
-    if arr.ndim == _NDIM_3D:
-        return arr[:, :, 0]
-    if arr.ndim == _NDIM_2D:
-        return arr
-    msg = f"Unsupported rho shape: {arr.shape}"
-    raise ValueError(msg)
+def load_snapshot(path: Path) -> dict[str, np.ndarray]:
+    """Read every array in a ``.npz`` snapshot into a plain dict."""
+    with np.load(path) as raw:
+        return {key: np.asarray(raw[key]) for key in raw.files}
 
 
 def _extract_u_mag_2d(u: np.ndarray) -> np.ndarray:
-    arr = np.asarray(u)
-    if arr.ndim >= _NDIM_5D:
-        ux = arr[:, :, 0, 0, 0]
-        uy = arr[:, :, 0, 0, 1]
-    elif arr.ndim == _NDIM_4D:
-        ux = arr[:, :, 0, 0]
-        uy = arr[:, :, 0, 1]
-    elif arr.ndim == _NDIM_3D:
-        ux = arr[:, :, 0]
-        uy = arr[:, :, 1]
-    else:
-        msg = f"Unsupported u shape: {arr.shape}"
-        raise ValueError(msg)
-    return np.sqrt(ux**2 + uy**2)
+    """Velocity magnitude over the 2-D slice of *u*."""
+    u_x, u_y = extract_velocity_components_2d(u)
+    return np.hypot(u_x, u_y)
 
 
-def _load_timesteps(files: list[Path], required: tuple[str, ...]) -> tuple[np.ndarray, list[dict[str, np.ndarray]]]:
+def _reduce_timesteps(
+    files: list[Path],
+    required: tuple[str, ...],
+    reduce_fn: Callable[[dict[str, np.ndarray]], float],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Stream *files*, reducing each snapshot to one scalar via *reduce_fn*.
+
+    The reduction runs per snapshot so only one snapshot's fields are resident
+    at a time — the whole-run field arrays are never accumulated.
+    """
     iters: list[int] = []
-    snapshots: list[dict[str, np.ndarray]] = []
+    values: list[float] = []
     for fp in files:
-        step = _parse_timestep(fp.stem)
+        step = parse_timestep(fp.stem)
         if step is None:
             continue
         with np.load(fp) as raw:
             if not all(key in raw for key in required):
                 continue
-            snapshots.append({key: np.asarray(raw[key]) for key in required})
+            values.append(reduce_fn({key: np.asarray(raw[key]) for key in required}))
             iters.append(step)
-    return np.asarray(iters, dtype=int), snapshots
+    return np.asarray(iters, dtype=int), np.asarray(values, dtype=float)
 
 
 def _droplet_series(config: SimulationConfig | None, files: list[Path]) -> DropletSeries | None:
@@ -182,3 +160,67 @@ class _BaseAnalysisPlot(AnalysisPlot):
             ylog=self.ylog,
             required_keys=self.required_keys,
         )
+
+
+class _SeriesAttrPlot(_BaseAnalysisPlot):
+    """One :class:`DropletSeries` attribute plotted against iteration."""
+
+    #: Attribute on :class:`DropletSeries` holding the plotted values.
+    series_attr: str
+
+    def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
+        """The configured series attribute per snapshot, from the shared series."""
+        series = _droplet_series(self.config, files)
+        if series is None:
+            return _empty_series_arrays("iters", "values")
+        return {"iters": series.iteration, "values": getattr(series, self.series_attr)}
+
+
+class _PairSeriesPlot(AnalysisPlot):
+    """Left/right pair of :class:`DropletSeries` attributes on shared axes."""
+
+    title: str
+    ylabel: str
+    left_attr: str
+    right_attr: str
+    left_color: str
+    right_color: str
+    legend_kwargs: dict[str, object] = {}  # noqa: RUF012
+    required_keys: tuple[str, ...] = ()
+
+    def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
+        """Both sides' values per snapshot, from the shared series."""
+        series = _droplet_series(self.config, files)
+        if series is None:
+            return _empty_series_arrays("iters", "left", "right")
+        return {
+            "iters": series.iteration,
+            "left": getattr(series, self.left_attr),
+            "right": getattr(series, self.right_attr),
+        }
+
+    def render(self, ax: matplotlib.axes.Axes, precomputed: dict[str, np.ndarray]) -> None:
+        """Draw both sides as labelled scatter series."""
+        ax.clear()
+        iters = precomputed["iters"]
+        if len(iters) == 0:
+            _set_empty_state(ax, title=self.title, ylabel=self.ylabel, required_keys=self.required_keys)
+            return
+        for key, color, label in (
+            ("left", self.left_color, "Left"),
+            ("right", self.right_color, "Right"),
+        ):
+            ax.scatter(
+                iters,
+                precomputed[key],
+                s=DEFAULT_STYLE.scatter_marker_size,
+                color=color,
+                alpha=DEFAULT_STYLE.scatter_alpha,
+                edgecolors="none",
+                label=label,
+            )
+        ax.set_title(self.title)
+        ax.set_xlabel(_X_LABEL_TIMESTEP)
+        ax.set_ylabel(self.ylabel)
+        ax.grid(False)
+        ax.legend(**self.legend_kwargs)

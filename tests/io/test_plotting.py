@@ -29,15 +29,15 @@ def simple_config():
 
 
 def test_layout_1():
-    assert FigureBuilder._layout(1) == (1, 1)
+    assert FigureBuilder.layout(1) == (1, 1)
 
 
 def test_layout_4():
-    assert FigureBuilder._layout(4) == (2, 2)
+    assert FigureBuilder.layout(4) == (2, 2)
 
 
 def test_layout_5():
-    ncols, nrows = FigureBuilder._layout(5)
+    ncols, nrows = FigureBuilder.layout(5)
     assert ncols * nrows >= 5
 
 

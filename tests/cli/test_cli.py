@@ -45,7 +45,6 @@ from src.cli.config_loading import _expand_raw_config
 from src.cli.config_loading import _expand_single_phase
 from src.cli.config_loading import _load_config_interactive
 from src.cli.config_loading import _load_raw_config
-from src.cli.display import _build_fields_table
 from src.cli.display import _build_standard_table
 from src.cli.display import _build_visual_table
 from src.cli.display import _display_summary
@@ -56,9 +55,14 @@ from src.cli.execution import _run_compare_single
 from src.cli.execution import _run_compare_sweep
 from src.cli.execution import _run_with_optional_overrides
 from src.cli.field_select import _parse_field_tokens
-from src.cli.field_select import _prompt_fields
 from src.cli.field_select import _resolve_token
+from src.cli.field_select import prompt_fields_marked
 from src.cli.wetting_init import _run_two_phase_wetting_init
+
+
+def _prompt_fields_unmarked(ops, current):
+    """prompt_fields_marked with nothing marked as in-config (the `compare` call shape)."""
+    return prompt_fields_marked(ops, current, label="plotting", config_label="the run config")
 
 
 def test_package_cli_import_is_callable():
@@ -1404,25 +1408,6 @@ class TestBuildStandardTable:
 
 
 # =========================================================================
-# _build_fields_table
-# =========================================================================
-
-
-class TestBuildFieldsTable:
-    """Tests for _build_fields_table interactive-selection table."""
-
-    def test_table_has_three_columns(self):
-        ops = {"density": _make_entry(_sample_target)}
-        table = _build_fields_table(["density"], ops)
-        assert len(table.columns) == 3
-
-    def test_row_count_matches_names(self):
-        ops = {"a": _make_entry(_sample_target), "b": _make_entry(_sample_target)}
-        table = _build_fields_table(["a", "b"], ops)
-        assert table.row_count == 2
-
-
-# =========================================================================
 # _resolve_token
 # =========================================================================
 
@@ -1496,41 +1481,41 @@ class TestParseFieldTokens:
 
 
 # =========================================================================
-# _prompt_fields
+# prompt_fields_marked
 # =========================================================================
 
 
 class TestPromptFields:
-    """Tests for _prompt_fields interactive operator selection."""
+    """Tests for prompt_fields_marked interactive operator selection."""
 
     def _ops(self):
         return {"density": _make_entry(_sample_target), "velocity": _make_entry(_sample_target)}
 
     def test_eof_returns_current(self):
         with _patch("rich.prompt.Prompt.ask", side_effect=EOFError):
-            result = _prompt_fields(self._ops(), ["density"], "plotting")
+            result = _prompt_fields_unmarked(self._ops(), ["density"])
         assert result == ["density"]
 
     def test_empty_input_returns_current(self):
         with _patch("rich.prompt.Prompt.ask", return_value=""):
-            result = _prompt_fields(self._ops(), ["density"], "plotting")
+            result = _prompt_fields_unmarked(self._ops(), ["density"])
         assert result == ["density"]
 
     def test_valid_input_returns_selection(self):
         # Use index-based input (name-based resolution is dead code in _resolve_token)
         with _patch("rich.prompt.Prompt.ask", return_value="1"):
-            result = _prompt_fields(self._ops(), None, "plotting")
+            result = _prompt_fields_unmarked(self._ops(), None)
         assert result is not None
         assert len(result) == 1
 
     def test_invalid_input_returns_current(self, capsys):
         with _patch("rich.prompt.Prompt.ask", return_value="nonexistent"):
-            result = _prompt_fields(self._ops(), ["density"], "plotting")
+            result = _prompt_fields_unmarked(self._ops(), ["density"])
         assert result == ["density"]
 
     def test_current_none_shown_as_all(self, capsys):
         with _patch("rich.prompt.Prompt.ask", return_value=""):
-            result = _prompt_fields(self._ops(), None, "plotting")
+            result = _prompt_fields_unmarked(self._ops(), None)
         assert result is None
 
 
