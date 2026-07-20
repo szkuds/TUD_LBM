@@ -27,21 +27,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.analysis import RZero
-from tud_lbm.io.plotting.analysis import SimulationCsvExport
-from tud_lbm.io.plotting.analysis import _avg_x_location
-from tud_lbm.io.plotting.analysis import _backward_diff
-from tud_lbm.io.plotting.analysis import _ca_from_rho
-from tud_lbm.io.plotting.analysis import _center_of_mass
-from tud_lbm.io.plotting.analysis import _clean_dir_label
-from tud_lbm.io.plotting.analysis import _cll_from_rho
-from tud_lbm.io.plotting.analysis import _inclination_angle_deg
-from tud_lbm.io.plotting.analysis import _interpolate_interface
-from tud_lbm.io.plotting.analysis import _parse_timestep_from_path
-from tud_lbm.io.plotting.analysis import _resolve_r_zero
-from tud_lbm.io.plotting.analysis import _sigma_lg
-from tud_lbm.io.plotting.analysis import build_simulation_csv
-from tud_lbm.io.plotting.analysis import process_parent_dir
+from tud_lbm.io.plotting.run_comparison import _clean_dir_label
+from tud_lbm.io.plotting.run_comparison import process_parent_dir
+from tud_lbm.io.plotting.simulation_csv import RZero
+from tud_lbm.io.plotting.simulation_csv import SimulationCsvExport
+from tud_lbm.io.plotting.simulation_csv import _avg_x_location
+from tud_lbm.io.plotting.simulation_csv import _backward_diff
+from tud_lbm.io.plotting.simulation_csv import _ca_from_rho
+from tud_lbm.io.plotting.simulation_csv import _center_of_mass
+from tud_lbm.io.plotting.simulation_csv import _cll_from_rho
+from tud_lbm.io.plotting.simulation_csv import _inclination_angle_deg
+from tud_lbm.io.plotting.simulation_csv import _interpolate_interface
+from tud_lbm.io.plotting.simulation_csv import _parse_timestep_from_path
+from tud_lbm.io.plotting.simulation_csv import _resolve_r_zero
+from tud_lbm.io.plotting.simulation_csv import _sigma_lg
+from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -360,7 +360,7 @@ def test_build_simulation_csv_skips_empty_data_dir(tmp_path):
 
 
 def test_build_simulation_csv_writes_file(tmp_path):
-    pytest.importorskip("pandas")
+    pd = pytest.importorskip("pandas")
 
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -390,6 +390,13 @@ def test_build_simulation_csv_writes_file(tmp_path):
     assert result is not None
     assert result.exists()
     assert result.suffix == ".csv"
+
+    df = pd.read_csv(result)
+    assert "Re" in df.columns
+    nu = (0.8 - 0.5) / 3.0
+    r_zero = _resolve_r_zero(cfg).value
+    expected_re = df["avg_u_x"] * (2.0 * r_zero) / nu
+    np.testing.assert_allclose(df["Re"].to_numpy(), expected_re.to_numpy())
 
 
 # ---------------------------------------------------------------------------
@@ -440,8 +447,8 @@ def test_process_parent_dir_counts_valid_run(tmp_path):
     # Write a config.toml so the discovery loop finds the run
     (run_dir / "config.toml").write_text("", encoding="utf-8")
     with (
-        patch("tud_lbm.io.plotting.analysis._safe_load_config", return_value=cfg),
-        patch("tud_lbm.io.plotting.analysis.compare_runs"),
+        patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg),
+        patch("tud_lbm.io.plotting.run_comparison.compare_runs"),
     ):
         n_runs, _ = process_parent_dir(tmp_path)
 

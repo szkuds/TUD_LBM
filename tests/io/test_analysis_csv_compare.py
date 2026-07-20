@@ -6,12 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.analysis import _clean_dir_label
-from tud_lbm.io.plotting.analysis import _finalize_csv_dataframe
-from tud_lbm.io.plotting.analysis import _safe_load_config
-from tud_lbm.io.plotting.analysis import build_simulation_csv
-from tud_lbm.io.plotting.analysis import main
-from tud_lbm.io.plotting.analysis import process_parent_dir
+from tud_lbm.io.plotting.run_comparison import _clean_dir_label
+from tud_lbm.io.plotting.run_comparison import _safe_load_config
+from tud_lbm.io.plotting.run_comparison import main
+from tud_lbm.io.plotting.run_comparison import process_parent_dir
+from tud_lbm.io.plotting.simulation_csv import _finalize_csv_dataframe
+from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
 
 def _wetting_config() -> SimulationConfig:
@@ -129,9 +129,9 @@ def test_process_parent_dir_skips_special_folders(monkeypatch, tmp_path: Path):
         (rd / "config.toml").write_text("[simulation_type]\ntype='single_phase'\n", encoding="utf-8")
 
     cfg = _wetting_config()
-    monkeypatch.setattr("tud_lbm.io.plotting.analysis._safe_load_config", lambda _p: cfg)
+    monkeypatch.setattr("tud_lbm.io.plotting.run_comparison._safe_load_config", lambda _p: cfg)
     monkeypatch.setattr(
-        "tud_lbm.io.plotting.analysis.build_simulation_csv", lambda rd, _cfg: Path(rd) / "simulation_data.csv"
+        "tud_lbm.io.plotting.run_comparison.build_simulation_csv", lambda rd, _cfg: Path(rd) / "simulation_data.csv"
     )
 
     called = {"n": 0}
@@ -139,7 +139,7 @@ def test_process_parent_dir_skips_special_folders(monkeypatch, tmp_path: Path):
     def _fake_compare(_parent):
         called["n"] += 1
 
-    monkeypatch.setattr("tud_lbm.io.plotting.analysis.compare_runs", _fake_compare)
+    monkeypatch.setattr("tud_lbm.io.plotting.run_comparison.compare_runs", _fake_compare)
 
     n_runs, n_ok = process_parent_dir(parent)
 

@@ -336,17 +336,20 @@ class TestTomlAdapterErrors:
     """Tests for error handling in the adapter."""
 
     def test_file_not_found(self):
+        adapter = TomlAdapter()
         with pytest.raises(FileNotFoundError, match="Config file not found"):
-            TomlAdapter().load("/nonexistent/path/app_setup.toml")
+            adapter.load("/nonexistent/path/app_setup.toml")
 
     def test_missing_simulation_table(self, tmp_path):
-        p = tmp_path / "empty.toml"
+        p: Path = tmp_path / "empty.toml"
         p.write_text("[output]\nresults_dir = '/tmp'\n")
+        p_str: str = str(p)
+        adapter = TomlAdapter()
         with pytest.raises(
             ValueError,
-            match="missing the required \\[simulation_type\\] table",
+            match="missing the required 'simulation_type' section",
         ):
-            TomlAdapter().load(str(p))
+            adapter.load(p_str)
 
     def test_unknown_simulation_type(self, tmp_path):
         content = textwrap.dedent("""\
@@ -357,8 +360,10 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_type.toml"
         p.write_text(content)
+        p_str: str = str(p)
+        adapter = TomlAdapter()
         with pytest.raises(ValueError, match="Unknown simulation type"):
-            TomlAdapter().load(str(p))
+            adapter.load(p_str)
 
     def test_unknown_force_type_raises_key_error(self, tmp_path):
         content = textwrap.dedent("""\
@@ -379,8 +384,10 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_force.toml"
         p.write_text(content)
+        p_str: str = str(p)
+        adapter = TomlAdapter()
         with pytest.raises(KeyError, match="Unknown force type"):
-            TomlAdapter().load(str(p))
+            adapter.load(p_str)
 
     def test_invalid_tau_raises_validation_error(self, tmp_path):
         content = textwrap.dedent("""\
@@ -391,8 +398,10 @@ class TestTomlAdapterErrors:
         """)
         p = tmp_path / "bad_tau.toml"
         p.write_text(content)
+        p_str: str = str(p)
+        adapter = TomlAdapter()
         with pytest.raises(ValueError, match=r"tau must be > 0\.5"):
-            TomlAdapter().load(str(p))
+            adapter.load(p_str)
 
 
 # ── ConfigAdapter ABC ────────────────────────────────────────────────
@@ -478,8 +487,9 @@ class TestTomlAdapterSave:
 
         monkeypatch.setattr(mod, "tomli_w", None)
         config = TomlAdapter().load(simple_toml_file)
+        adapter = TomlAdapter()
         with pytest.raises(ImportError, match="tomli_w is required"):
-            TomlAdapter().save(config, "/tmp/ignored.toml")
+            adapter.save(config, "/tmp/ignored.toml")
 
 
 # ── _validate_and_process_forces: TypeError branch ───────────────────
@@ -489,6 +499,5 @@ class TestValidateAndProcessForces:
     """Tests for _validate_and_process_forces static helper."""
 
     def test_non_dict_force_value_raises_type_error(self):
-        adapter = TomlAdapter()
         with pytest.raises(TypeError, match="must be a table"):
-            adapter._validate_and_process_forces({"gravity_force": "not_a_dict"}, {})
+            TomlAdapter._process_forces({"gravity_force": "not_a_dict"}, {})

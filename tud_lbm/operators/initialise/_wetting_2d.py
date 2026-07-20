@@ -1,5 +1,5 @@
 """Wetting initialisation — pure function.
-ip
+
 Places a sessile droplet (half-circle) at the bottom wall.
 """
 

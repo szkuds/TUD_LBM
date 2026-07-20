@@ -31,7 +31,7 @@ def test_clamp_params_limits_ranges():
         d_rho_right=jnp.array(1.0),
     )
 
-    out = _clamp_params(raw)
+    out = _clamp_params(raw, jnp.array(5.0))
 
     assert float(out.phi_left) == pytest.approx(1.0)
     assert float(out.phi_right) == pytest.approx(1.5)

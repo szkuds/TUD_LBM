@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 import jax
 import jax.numpy as jnp
+import tud_lbm.config.config_overview as _flags
 from tud_lbm.pipeline.state.state import State
 
 if TYPE_CHECKING:
@@ -183,10 +184,31 @@ def run(
         raise TypeError(msg)
     _step_fn = setup.step_fn  # capture narrowed value for closures
 
+    # ── Stability diagnostics (--debug-stability) ────────────────
+    # Flag read as a module attribute at call time; a from-import would
+    # freeze the value at import, before the CLI can set it.
+    do_stab = None
+    if _flags.DEBUG_FLAG_STABILITY:
+        from tud_lbm.io.analysis.stability import make_stability_callback
+
+        stab_dir = (
+            Path(io_handler.run_dir)
+            if io_handler is not None
+            else Path(setup.config.results_dir).expanduser() / "stability_debug"
+        )
+        do_stab = make_stability_callback(
+            stab_dir,
+            gradient_density=setup.gradient_density,
+            mp=setup.multiphase_params,
+            log_interval=save_interval if save_interval >= 1 else max(1, nt // 10),
+            vapor_frac=_flags.STABILITY_VAPOR_FRACTION,
+            grad_frac=_flags.STABILITY_GRAD_RHO_FRACTION,
+        )
+
     # ── Streaming I/O mode ───────────────────────────────────────
     if io_handler is not None:
-        from tud_lbm.pipeline.io_callbacks import _state_to_numpy
-        from tud_lbm.pipeline.io_callbacks import make_save_callback
+        from tud_lbm.io.callbacks import _state_to_numpy
+        from tud_lbm.io.callbacks import make_save_callback
 
         do_save = make_save_callback(
             io_handler,
@@ -198,6 +220,8 @@ def run(
         @jax.jit
         def scan_body_io(state: State, _t: int) -> tuple[State, None]:
             new_state = _step_fn(setup, state)
+            if do_stab is not None:
+                do_stab(new_state, new_state.t)
             do_save(new_state, new_state.t)
             return new_state, None
 
@@ -218,6 +242,8 @@ def run(
     @jax.jit
     def scan_body(state: State, _t: int) -> tuple[State, State]:
         new_state = _step_fn(setup, state)
+        if do_stab is not None:
+            do_stab(new_state, new_state.t)
         return new_state, new_state
 
     final_state, trajectory = jax.lax.scan(

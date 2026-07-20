@@ -1,14 +1,15 @@
-"""Extra branch coverage for io_callbacks helpers."""
+"""Extra branch coverage for callbacks helpers."""
 
 from __future__ import annotations
 import jax.numpy as jnp
 import numpy as np
+import pytest
 from tud_lbm.pipeline.state.state import State
 from tud_lbm.pipeline.state.state import WettingState
 
 
 def _state_with_wetting() -> State:
-    wet = WettingState(*(jnp.array(v, dtype=jnp.float32) for v in (1, 1, 0, 0, 90, 90, 3, 9)))
+    wet = WettingState(*(jnp.array(v, dtype=jnp.float64) for v in (1, 1, 0, 0, 90, 90, 3, 9)))
     return State(
         f=jnp.ones((2, 2, 1, 9, 1)),
         rho=jnp.ones((2, 2, 1, 1, 1)),
@@ -18,25 +19,27 @@ def _state_with_wetting() -> State:
     )
 
 
-def test_state_to_numpy_persists_wetting_even_with_field_filter(monkeypatch):
-    from tud_lbm.pipeline import io_callbacks
+def test_state_to_numpy_persists_wetting_even_with_field_filter():
+    from tud_lbm.io import callbacks
 
-    printed = {"count": 0}
-    monkeypatch.setattr(
-        io_callbacks.jax.debug, "print", lambda *a, **k: printed.__setitem__("count", printed["count"] + 1)
-    )
-
-    state = _state_with_wetting()._replace(rho=jnp.array([[[[[np.nan]]]]]))
-    data = io_callbacks._state_to_numpy(state, fields=("rho",), t=7)
+    data = callbacks._state_to_numpy(_state_with_wetting(), fields=("rho",), t=7)
 
     assert "rho" in data
     assert "ca_left" in data
     assert "cll_right" in data
-    assert printed["count"] == 1
+
+
+def test_state_to_numpy_raises_on_nan():
+    from tud_lbm.io import callbacks
+
+    state = _state_with_wetting()._replace(rho=jnp.array([[[[[np.nan]]]]]))
+
+    with pytest.raises(FloatingPointError, match=r"NaNs detected at t=7.*rho"):
+        callbacks._state_to_numpy(state, fields=("rho",), t=7)
 
 
 def test_make_save_callback_runs_only_on_matching_interval(monkeypatch):
-    from tud_lbm.pipeline import io_callbacks
+    from tud_lbm.io import callbacks
 
     saved: list[tuple[int, dict]] = []
 
@@ -45,13 +48,13 @@ def test_make_save_callback_runs_only_on_matching_interval(monkeypatch):
             saved.append((step, data))
 
     monkeypatch.setattr(
-        io_callbacks.jax.lax,
+        callbacks.jax.lax,
         "cond",
         lambda pred, on_true, on_false, state, t: on_true(state, t) if pred else on_false(state, t),
     )
-    monkeypatch.setattr(io_callbacks.jax.debug, "callback", lambda fn, state, t, ordered=True: fn(state, t))
+    monkeypatch.setattr(callbacks.jax.debug, "callback", lambda fn, state, t, ordered=True: fn(state, t))
 
-    do_save = io_callbacks.make_save_callback(_IO(), save_interval=2, skip_interval=1, save_fields=("rho",))  # ty: ignore[invalid-argument-type]
+    do_save = callbacks.make_save_callback(_IO(), save_interval=2, skip_interval=1, save_fields=("rho",))  # ty: ignore[invalid-argument-type]
     state = _state_with_wetting()
 
     do_save(state, 1)

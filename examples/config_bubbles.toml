@@ -56,6 +56,6 @@ inclination_angle_deg = 90
 
 # ─── Output / IO ────────────────────────────────────────────────────
 [output]
-results_dir = "~/TUD_LBM_data/results"
+results_dir = "~/TUD_LBM_data/example_results"
 save_fields = ["rho", "u"]
 plot_fields = ["density", "velocity"]

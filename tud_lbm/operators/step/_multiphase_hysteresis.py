@@ -11,6 +11,7 @@ operators from setup (gradient_density_wetting, laplacian_density_wetting).
 from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
+from typing import cast
 import jax.numpy as jnp
 from tud_lbm.operators.force import compute_total_force_ext
 from tud_lbm.operators.step._common import _multiphase_pipeline
@@ -61,7 +62,7 @@ def _make_wetting_ops(
     def lap(grid: jnp.ndarray) -> jnp.ndarray:
         return _lap_wetting(grid, wetting.phi_left, wetting.phi_right, wetting.d_rho_left, wetting.d_rho_right)
 
-    return grad, lap
+    return cast("DifferentialOperator", grad), cast("DifferentialOperator", lap)
 
 
 # ── Part B: Trial step helper for hysteresis optimiser ──
@@ -111,8 +112,11 @@ def _trial_step(
 
     num_steps: int = setup.config.hysteresis_config.get("trial_steps", 2)
 
+    grad_op = cast("DifferentialOperator", grad)
+    lap_op = cast("DifferentialOperator", lap)
+
     def body_fn(carry_f: jnp.ndarray, _) -> tuple[Array, Array]:  # noqa: ANN001
-        f_next, rho_next, _u, _force_tot = _multiphase_pipeline(setup, carry_f, force_ext, grad, lap)
+        f_next, rho_next, _u, _force_tot = _multiphase_pipeline(setup, carry_f, force_ext, grad_op, lap_op)
         return f_next, rho_next
 
     import jax

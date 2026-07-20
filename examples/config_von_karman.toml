@@ -1,0 +1,38 @@
+# TUD-LBM Von Karman Vortex Street Example
+#
+# 2D D2Q9 channel flow past a circular cylinder, set up to shed
+# periodic vortices (Re ~ 100, mid shedding regime).
+#
+#   D = 2*radius = 20 lattice units
+#   u0 = 0.04 (safe LBM inflow velocity)
+#   nu = u0*D/Re = 0.04*20/100 = 0.008
+#   tau = 0.5 + 3*nu = 0.524
+
+[simulation_type]
+simulation_name = 'von_karman_vortex_street'
+type = "single_phase"
+grid_shape = [400, 100, 1]
+lattice_type = "D2Q9"
+tau = 0.99
+nt = 40000
+save_interval = 200
+init_type = "standard"
+
+[boundary_conditions]
+top = "bounce-back"
+bottom = "bounce-back"
+left = "velocity-inlet"
+right = "outlet"
+
+[boundary_conditions.left_velocity_inlet]
+u0 = 0.04
+
+[obstacle]
+center_x = 80
+center_y = 50
+radius = 10
+
+[output]
+results_dir = "~/TUD_LBM_data/example_results"
+save_fields = ["rho", "u"]
+plot_fields = ["density", "velocity"]

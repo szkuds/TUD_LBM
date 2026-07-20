@@ -1,6 +1,6 @@
 # `tud_lbm` developer documentation
 
-If you're looking for user documentation, go [here](README.md).
+If you're looking for user documentation, go [here](../../README.md).
 
 ## Development install
 
@@ -315,7 +315,6 @@ The codebase is organised into the following top-level packages under `tud_lbm/`
 | `setup`           | `SimulationSetup`, `build_setup`              | **Immutable `NamedTuple` operator container** (JAX pytree). Built from `SimulationConfig` via `build_setup`. Holds operators, masks, and physics scalars for JIT.   |
 | `runner`          | `run`, `init_state`                           | `lax.scan`-based time-stepping loop. Supports in-memory trajectory and streaming I/O modes. Call `init_state(setup)` first, then `run(setup, state, nt=...)`.       |
 | `parallel_runner` | `run_parallel_simulations`, `SimulationResult`| Executes multiple `SimulationConfig` objects in parallel via `ProcessPoolExecutor`. Returns a list of `SimulationResult` objects with status and metadata.           |
-| `io_callbacks`    | —                                             | `jax.debug.callback` wrappers for streaming I/O during `lax.scan`.                                                                                                  |
 | `state/`          | `State`, `WettingState`                       | Dataclasses representing simulation state (distribution function, density, velocity, wetting fields).                                                                |
 
 ---
@@ -424,10 +423,11 @@ Structural `Protocol` types (`CollisionOperator`, `StreamingOperator`, `Macrosco
 | Module               | Description                                                                                                           |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `save`               | `SimulationIO` — saves timestep data (`.npz`), configuration snapshots (`.toml`), and manages directory structure.  |
-| `physical_parameters`| Helpers for computing and storing physical parameters.                                                                |
+| `callbacks`          | `jax.debug.callback` wrappers for streaming I/O during `lax.scan`; called from `pipeline.runner.run()`.               |
 | `output_data/`       | Output data formatting helpers.                                                                                       |
 | `plotting/`          | Post-processing plotting utilities. Loads results and config from run directories.                                    |
 | `readers/`           | Readers for loading saved simulation data.                                                                            |
+| `analysis/`          | `stability` (NaN/checkerboard diagnostics), `physical_parameters/` (Bond/Ohnesorge overview), `accelerations/` (acceleration fitting + regime classification), `surface_tension/` (Young-Laplace calibration). |
 
 ---
 
@@ -463,7 +463,7 @@ bump-my-version bump patch  # bumps from e.g. 0.3.2 to 0.3.3
 
 ### (1/3) Preparation
 
-1. Verify that the information in [`CITATION.cff`](CITATION.cff) is correct.
+1. Verify that the information in [`CITATION.cff`](../../CITATION.cff) is correct.
 2. Make sure the [version has been updated](#versioning).
 3. Run the unit tests with `pytest -v`.
 

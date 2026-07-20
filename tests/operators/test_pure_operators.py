@@ -339,7 +339,7 @@ class TestComputeMacroscopic:
         from tud_lbm.operators.macroscopic._single_phase import compute_macroscopic
 
         feq, rho_expected, u_expected = rest_state
-        rho, u = compute_macroscopic(feq, lattice)  # ty: ignore[invalid-assignment]
+        rho, u, _ = compute_macroscopic(feq, lattice)
 
         np.testing.assert_allclose(np.array(rho), np.array(rho_expected), atol=1e-6)
         np.testing.assert_allclose(np.array(u), np.array(u_expected), atol=1e-6)
@@ -350,7 +350,7 @@ class TestComputeMacroscopic:
         key = jax.random.PRNGKey(1)
         f = jax.random.uniform(key, (NX, NY, NZ, 9, 1), minval=0.05)
 
-        rho, _ = compute_macroscopic(f, lattice)  # ty: ignore[invalid-assignment]
+        rho, _, _ = compute_macroscopic(f, lattice)
 
         expected_rho = jnp.sum(f, axis=3, keepdims=True)
         np.testing.assert_allclose(np.array(rho), np.array(expected_rho), atol=1e-6)
@@ -371,7 +371,7 @@ class TestComputeMacroscopic:
         from tud_lbm.operators.macroscopic._single_phase import compute_macroscopic
 
         feq, _, _ = rest_state
-        rho, u = compute_macroscopic(feq, lattice)  # ty: ignore[invalid-assignment]
+        rho, u, _ = compute_macroscopic(feq, lattice)
         assert rho.shape == (NX, NY, NZ, 1, 1)
         assert u.shape == (NX, NY, NZ, 1, 2)
 
@@ -380,7 +380,7 @@ class TestComputeMacroscopic:
 
         feq, _, _ = rest_state
         jitted_mac = jax.jit(partial(compute_macroscopic, lattice=lattice))
-        rho, _ = jitted_mac(feq)
+        rho, _, _ = jitted_mac(feq)
         assert rho.shape == (NX, NY, NZ, 1, 1)
 
 
@@ -670,7 +670,7 @@ class TestEndToEndPureFunctions:
         tau = 0.8
 
         # Step: macroscopic → equilibrium → collision → streaming
-        rho_new, u_new = compute_macroscopic(f, lattice)  # ty: ignore[invalid-assignment]
+        rho_new, u_new, _ = compute_macroscopic(f, lattice)
         feq = compute_equilibrium(rho_new, u_new, lattice)
         f_col = collide_bgk(f, feq, tau)
         f_stream = stream(f_col, lattice)
@@ -688,7 +688,7 @@ class TestEndToEndPureFunctions:
         from tud_lbm.operators.streaming._streaming import stream
 
         def one_step(f, tau):
-            rho, u = compute_macroscopic(f, lattice)  # ty: ignore[invalid-assignment]
+            rho, u, _ = compute_macroscopic(f, lattice)
             feq = compute_equilibrium(rho, u, lattice)
             f_col = collide_bgk(f, feq, tau)
             return stream(f_col, lattice)
@@ -724,7 +724,7 @@ class TestEndToEndPureFunctions:
         f = compute_equilibrium(rho, u, lattice)
         tau = 0.8
 
-        rho_n, u_new = compute_macroscopic(f, lattice)  # ty: ignore[invalid-assignment]
+        rho_n, u_new, _ = compute_macroscopic(f, lattice)
         feq = compute_equilibrium(rho_n, u_new, lattice)
         f_col = collide_bgk(f, feq, tau)
         f_stream = stream(f_col, lattice)
@@ -830,7 +830,7 @@ class TestBuildBC:
         f = compute_equilibrium(rho, u, lattice)
         tau = 0.8
 
-        rho_n, u_new = compute_macroscopic(f, lattice)  # ty: ignore[invalid-assignment]
+        rho_n, u_new, _ = compute_macroscopic(f, lattice)
         feq = compute_equilibrium(rho_n, u_new, lattice)
         f_col = collide_bgk(f, feq, tau)
         f_stream = stream(f_col, lattice)

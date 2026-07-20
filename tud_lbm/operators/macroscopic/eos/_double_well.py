@@ -6,6 +6,7 @@ from tud_lbm.registry import eos_operator
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
+    import numpy as np
     from tud_lbm.operators.macroscopic import MultiphaseParams
     from tud_lbm.operators.protocols import EOSFunction
 
@@ -18,6 +19,23 @@ def _eos_double_well(
 ) -> jnp.ndarray:
     """Double-well equation-of-state derivative for bulk chemical potential."""
     return 2.0 * beta * (rho - rho_l) * (rho - rho_v) * (2.0 * rho - rho_l - rho_v)
+
+
+def double_well_pressure(
+    rho: jnp.ndarray | np.ndarray,
+    beta: float,
+    rho_l: float,
+    rho_v: float,
+) -> jnp.ndarray | np.ndarray:
+    """Double-well bulk thermodynamic pressure ``p_0(rho)``.
+
+    ``p_0 = beta * (rho - rho_l) * (rho - rho_v) * (3.0 * rho ** 2 - rho_l*rho_v - rho * (rho_l+rho_v))``
+    with the bulk free-energy density ``psi(rho) = beta * (rho - rho_l)^2 * (rho - rho_v)^2``, so it is
+    exactly consistent with ``_eos_double_well`` (``mu_0 = d(psi)/d(rho)``). Used by the
+    surface-tension calibration; not part of the force pipeline. Accepts NumPy
+    or JAX arrays.
+    """
+    return beta * (rho - rho_l) * (rho - rho_v) * (3.0 * rho**2 - rho_l * rho_v - rho * (rho_l + rho_v))
 
 
 @eos_operator(name="double-well")

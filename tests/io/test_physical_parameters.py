@@ -1,16 +1,19 @@
 """Tests for physical parameter overview generation."""
 
 from __future__ import annotations
+import math
 from types import SimpleNamespace
 import numpy as np
 import pytest
 from tud_lbm.config import SimulationConfig
-from tud_lbm.io.physical_parameters import _contact_line_length_from_rho
-from tud_lbm.io.physical_parameters import _get_contact_line_length_from_file
-from tud_lbm.io.physical_parameters import _resolve_gravity_inclination
-from tud_lbm.io.physical_parameters import _resolve_gravity_value
-from tud_lbm.io.physical_parameters import build_overview
-from tud_lbm.io.physical_parameters import write_physical_parameters
+from tud_lbm.io.analysis.physical_parameters import build_overview
+from tud_lbm.io.analysis.physical_parameters import write_physical_parameters
+from tud_lbm.io.analysis.physical_parameters.physical_parameters import _contact_line_length_from_rho
+from tud_lbm.io.analysis.physical_parameters.physical_parameters import _droplet_area_from_rho
+from tud_lbm.io.analysis.physical_parameters.physical_parameters import _get_contact_line_length_from_file
+from tud_lbm.io.analysis.physical_parameters.physical_parameters import _get_setup_droplet_area
+from tud_lbm.io.analysis.physical_parameters.physical_parameters import _resolve_gravity_inclination
+from tud_lbm.io.analysis.physical_parameters.physical_parameters import _resolve_gravity_value
 
 
 def _mp_config(**kwargs) -> SimulationConfig:
@@ -28,7 +31,7 @@ def _mp_config(**kwargs) -> SimulationConfig:
     return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
-def test_build_overview_uses_contact_line_length_when_available():
+def test_build_overview_uses_droplet_area_length_when_available():
     cfg = _mp_config(initialisation={"centres": [[0.5, 0.1]], "radii": [0.4]})
 
     text = build_overview(cfg)
@@ -36,10 +39,10 @@ def test_build_overview_uses_contact_line_length_when_available():
     assert "gamma (surface tension):" in text
     assert "Oh (Ohnesorge number):" in text
     assert "Bo (Bond number):" in text
-    assert "contact line" in text
+    assert "sqrt(A/pi), init geometry" in text
 
 
-def test_build_overview_falls_back_to_grid_x_length_when_contact_line_missing():
+def test_build_overview_falls_back_to_grid_x_length_when_droplet_missing():
     cfg = _mp_config(initialisation={"centres": [], "radii": []})
 
     text = build_overview(cfg)
@@ -83,7 +86,9 @@ def test_build_overview_uses_init_from_file_length_scale(tmp_path):
     cfg = _mp_config(init_type="init_from_file", init_dir=str(npz_path), initialisation={})
     text = build_overview(cfg)
 
-    assert "L=20 (init_from_file)" in text
+    # 20 liquid cells -> L_eff = sqrt(20/pi) ~= 2.523
+    expected = math.sqrt(20.0 / math.pi)
+    assert f"L_eff={expected:.4g} (sqrt(A/pi), init_from_file)" in text
 
 
 def test_build_overview_falls_back_when_init_from_file_rho_missing(tmp_path):
@@ -115,6 +120,38 @@ def test_resolve_gravity_value_rejects_both_force_variants():
 def test_resolve_gravity_inclination_defaults_to_zero_when_missing_key():
     cfg = _mp_config(gravity_force={"force_g": 1e-6})
     assert _resolve_gravity_inclination(cfg) == pytest.approx(0.0)
+
+
+def test_setup_droplet_area_full_circle_away_from_walls():
+    # r = 0.25 * min(40, 20) = 5; nearest wall at distance 10 >= r -> full circle
+    cfg = _mp_config(initialisation={"centres": [[0.5, 0.5]], "radii": [0.25]})
+    area = _get_setup_droplet_area(cfg)
+    assert area == pytest.approx(math.pi * 5.0**2)
+
+
+def test_setup_droplet_area_clipped_by_nearest_wall():
+    # r = 0.4 * 20 = 8; centre 2 lu from the bottom wall -> circular segment removed
+    cfg = _mp_config(initialisation={"centres": [[0.5, 0.1]], "radii": [0.4]})
+    r, d = 8.0, 2.0
+    expected = math.pi * r**2 - (r**2 * math.acos(d / r) - d * math.sqrt(r**2 - d**2))
+    area = _get_setup_droplet_area(cfg)
+    assert area == pytest.approx(expected)
+
+
+def test_setup_droplet_area_returns_none_without_droplet():
+    cfg = _mp_config(initialisation={"centres": [], "radii": []})
+    assert _get_setup_droplet_area(cfg) is None
+
+
+def test_droplet_area_from_rho_counts_liquid_cells():
+    rho = np.full((40, 20, 1, 1, 1), 0.5)
+    rho[10:30, 3:8, 0, 0, 0] = 1.0
+    assert _droplet_area_from_rho(rho, rho_mean=0.75) == pytest.approx(20.0 * 5.0)
+
+
+def test_droplet_area_from_rho_returns_none_for_all_vapour_field():
+    rho = np.full((40, 20, 1, 1, 1), 0.5)
+    assert _droplet_area_from_rho(rho, rho_mean=0.75) is None
 
 
 def test_contact_line_length_from_rho_returns_none_for_degenerate_profile():

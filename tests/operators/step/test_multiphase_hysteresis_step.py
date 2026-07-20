@@ -222,13 +222,15 @@ class TestMakeWettingOpsGuards:
 
     def test_raises_when_gradient_density_wetting_none(self):
         setup = SimpleNamespace(gradient_density_wetting=None, laplacian_density_wetting=lambda *_a: None)
+        wetting = _make_wetting_state()
         with pytest.raises(TypeError, match="gradient_density_wetting is required"):
-            mh._make_wetting_ops(setup, _make_wetting_state())  # ty: ignore[invalid-argument-type]
+            mh._make_wetting_ops(setup, wetting)  # ty: ignore[invalid-argument-type]
 
     def test_raises_when_laplacian_density_wetting_none(self):
         setup = SimpleNamespace(gradient_density_wetting=lambda *_a: None, laplacian_density_wetting=None)
+        wetting = _make_wetting_state()
         with pytest.raises(TypeError, match="laplacian_density_wetting is required"):
-            mh._make_wetting_ops(setup, _make_wetting_state())  # ty: ignore[invalid-argument-type]
+            mh._make_wetting_ops(setup, wetting)  # ty: ignore[invalid-argument-type]
 
 
 class TestTrialStepGuards:
@@ -246,8 +248,9 @@ class TestTrialStepGuards:
             d_rho_left=jnp.array(0.0),
             d_rho_right=jnp.array(0.0),
         )
+        f_t, force_ext = jnp.array(1.0), jnp.array(0.0)
         with pytest.raises(TypeError, match="gradient_density_wetting is required"):
-            mh._trial_step(setup, jnp.array(1.0), jnp.array(0.0), params)  # ty: ignore[invalid-argument-type]
+            mh._trial_step(setup, f_t, force_ext, params)  # ty: ignore[invalid-argument-type]
 
     def test_raises_when_laplacian_density_wetting_none(self):
         setup = SimpleNamespace(
@@ -261,8 +264,9 @@ class TestTrialStepGuards:
             d_rho_left=jnp.array(0.0),
             d_rho_right=jnp.array(0.0),
         )
+        f_t, force_ext = jnp.array(1.0), jnp.array(0.0)
         with pytest.raises(TypeError, match="laplacian_density_wetting is required"):
-            mh._trial_step(setup, jnp.array(1.0), jnp.array(0.0), params)  # ty: ignore[invalid-argument-type]
+            mh._trial_step(setup, f_t, force_ext, params)  # ty: ignore[invalid-argument-type]
 
     def test_raises_when_hysteresis_config_none(self):
         setup = SimpleNamespace(
@@ -276,8 +280,9 @@ class TestTrialStepGuards:
             d_rho_left=jnp.array(0.0),
             d_rho_right=jnp.array(0.0),
         )
+        f_t, force_ext = jnp.array(1.0), jnp.array(0.0)
         with pytest.raises(TypeError, match="hysteresis_config is required"):
-            mh._trial_step(setup, jnp.array(1.0), jnp.array(0.0), params)  # ty: ignore[invalid-argument-type]
+            mh._trial_step(setup, f_t, force_ext, params)  # ty: ignore[invalid-argument-type]
 
 
 class TestStepHysteresisGuard:

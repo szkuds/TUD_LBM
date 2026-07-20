@@ -82,7 +82,7 @@ def test_clamp_params_clips_phi_below_minimum():
         d_rho_left=jnp.array(-0.1),
         d_rho_right=jnp.array(0.3),
     )
-    clamped = _clamp_params(p)
+    clamped = _clamp_params(p, jnp.array(5.0))
     assert float(clamped.phi_left) == pytest.approx(1.0)
     assert float(clamped.phi_right) == pytest.approx(1.5)
     assert float(clamped.d_rho_left) == pytest.approx(0.0)
@@ -96,11 +96,25 @@ def test_clamp_params_leaves_valid_values_unchanged():
         d_rho_left=jnp.array(0.1),
         d_rho_right=jnp.array(0.2),
     )
-    clamped = _clamp_params(p)
+    clamped = _clamp_params(p, jnp.array(5.0))
     assert float(clamped.phi_left) == pytest.approx(1.2)
     assert float(clamped.phi_right) == pytest.approx(1.3)
     assert float(clamped.d_rho_left) == pytest.approx(0.1)
     assert float(clamped.d_rho_right) == pytest.approx(0.2)
+
+
+def test_clamp_params_bounds_scale_with_interface_width():
+    p = WettingParams(
+        phi_left=jnp.array(2.0),
+        phi_right=jnp.array(2.0),
+        d_rho_left=jnp.array(1.0),
+        d_rho_right=jnp.array(1.0),
+    )
+    clamped = _clamp_params(p, jnp.array(10.0))
+    assert float(clamped.phi_left) == pytest.approx(1.25)
+    assert float(clamped.phi_right) == pytest.approx(1.25)
+    assert float(clamped.d_rho_left) == pytest.approx(0.15)
+    assert float(clamped.d_rho_right) == pytest.approx(0.15)
 
 
 # ---------------------------------------------------------------------------
@@ -244,10 +258,12 @@ class TestUpdateWettingStateGuards:
 
     def test_raises_when_hysteresis_config_none(self):
         setup = SimpleNamespace(config=SimpleNamespace(hysteresis_config=None))
+        wetting = _dummy_wetting()
+        rho = jnp.ones((4, 4, 1, 1, 1))
         with pytest.raises(TypeError, match="hysteresis_config is required"):
             update_wetting_state(
-                _dummy_wetting(),
-                jnp.ones((4, 4, 1, 1, 1)),
+                wetting,
+                rho,
                 setup,  # ty: ignore[invalid-argument-type]
                 trial_step_fn=_dummy_trial_fn,
             )
@@ -263,16 +279,19 @@ class TestUpdateWettingStateImplGuards:
             multiphase_params=None,
             config=SimpleNamespace(hysteresis_config={"ca_advancing": 110.0, "ca_receding": 85.0}),
         )
+        wetting = _dummy_wetting()
+        rho = jnp.ones((4, 4, 1, 1, 1))
+        ca_adv, ca_rec = jnp.array(110.0), jnp.array(85.0)
         with pytest.raises(TypeError, match="multiphase_params is required"):
             _update_wetting_state_impl(
-                _dummy_wetting(),
-                jnp.ones((4, 4, 1, 1, 1)),
+                wetting,
+                rho,
                 setup,  # ty: ignore[invalid-argument-type]
                 _dummy_trial_fn,
-                ca_adv_left=jnp.array(110.0),
-                ca_rec_left=jnp.array(85.0),
-                ca_adv_right=jnp.array(110.0),
-                ca_rec_right=jnp.array(85.0),
+                ca_adv_left=ca_adv,
+                ca_rec_left=ca_rec,
+                ca_adv_right=ca_adv,
+                ca_rec_right=ca_rec,
             )
 
     def test_raises_when_hysteresis_config_none(self):
@@ -280,14 +299,17 @@ class TestUpdateWettingStateImplGuards:
             multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.33),
             config=SimpleNamespace(hysteresis_config=None),
         )
+        wetting = _dummy_wetting()
+        rho = jnp.ones((4, 4, 1, 1, 1))
+        ca_adv, ca_rec = jnp.array(110.0), jnp.array(85.0)
         with pytest.raises(TypeError, match="hysteresis_config is required"):
             _update_wetting_state_impl(
-                _dummy_wetting(),
-                jnp.ones((4, 4, 1, 1, 1)),
+                wetting,
+                rho,
                 setup,  # ty: ignore[invalid-argument-type]
                 _dummy_trial_fn,
-                ca_adv_left=jnp.array(110.0),
-                ca_rec_left=jnp.array(85.0),
-                ca_adv_right=jnp.array(110.0),
-                ca_rec_right=jnp.array(85.0),
+                ca_adv_left=ca_adv,
+                ca_rec_left=ca_rec,
+                ca_adv_right=ca_adv,
+                ca_rec_right=ca_rec,
             )

@@ -203,6 +203,15 @@ def macroscopic_operator(
     return register_operator("macroscopic", name=name, **meta)
 
 
+def obstacle_operator(
+    *,
+    name: str | None = None,
+    **meta: object,
+) -> Callable[[_OT], _OT]:
+    """Register an obstacle operator (kind ``"obstacle"``)."""
+    return register_operator("obstacle", name=name, **meta)
+
+
 def eos_operator(
     *,
     name: str | None = None,

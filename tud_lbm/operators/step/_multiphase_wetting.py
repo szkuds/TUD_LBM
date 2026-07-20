@@ -13,6 +13,7 @@ purely in how setup.gradient_density and setup.laplacian_density are constructed
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import cast
 import jax.numpy as jnp
 from tud_lbm.operators.force import compute_total_force_ext
 from tud_lbm.operators.step._common import _multiphase_pipeline
@@ -24,6 +25,7 @@ from tud_lbm.registry import update_timestep_operator
 if TYPE_CHECKING:
     from tud_lbm.pipeline.setup import SimulationSetup
     from tud_lbm.pipeline.state.state import State
+    from tud_lbm.pipeline.state.state import WettingState
 
 
 @update_timestep_operator(name="multiphase_wetting")
@@ -75,7 +77,8 @@ def step_multiphase_wetting(setup: SimulationSetup, state: State) -> State:
         rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
         ca_left, ca_right = compute_contact_angle(rho, jnp.array(rho_mean))
         cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, jnp.array(rho_mean))
-        updated_wetting = state.wetting._replace(
+        wetting = cast("WettingState", state.wetting)
+        updated_wetting = wetting._replace(
             ca_left=ca_left,
             ca_right=ca_right,
             cll_left=cll_left,

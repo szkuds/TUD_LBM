@@ -398,6 +398,46 @@ class TestCsEosPipeline:
         assert not np.allclose(np.array(force_cs), np.array(force_dw)), "CS and DW forces should differ"
 
 
+# =====================================================================
+# 4. Double-well bulk pressure (surface-tension calibration)
+# =====================================================================
+
+
+class TestDoubleWellPressure:
+    """``double_well_pressure`` is thermodynamically consistent with ``_eos_double_well``."""
+
+    _BETA = 8.0 * _KAPPA / (_INTERFACE_WIDTH**2 * (_RHO_L - _RHO_V) ** 2)
+
+    def test_zero_at_both_coexistence_densities(self):
+        """Flat-interface coexistence: mu_0 = 0 and psi = 0 at rho_l and rho_v, so p_0 = 0."""
+        from tud_lbm.operators.macroscopic.eos import double_well_pressure
+
+        p = double_well_pressure(np.array([_RHO_V, _RHO_L]), self._BETA, _RHO_L, _RHO_V)
+        np.testing.assert_allclose(np.asarray(p), 0.0, atol=1e-12)
+
+    def test_gibbs_duhem_consistency(self):
+        """dp/drho = rho * dmu_0/drho across the physical density range."""
+        from tud_lbm.operators.macroscopic.eos import double_well_pressure
+        from tud_lbm.operators.macroscopic.eos._double_well import _eos_double_well
+
+        rho = np.linspace(_RHO_V, _RHO_L, 2001)
+        p = np.asarray(double_well_pressure(rho, self._BETA, _RHO_L, _RHO_V))
+        mu_0 = np.asarray(_eos_double_well(jnp.asarray(rho), self._BETA, _RHO_L, _RHO_V))
+
+        dp = np.gradient(p, rho)
+        rho_dmu = rho * np.gradient(mu_0, rho)
+
+        scale = np.max(np.abs(dp))
+        np.testing.assert_allclose(dp, rho_dmu, atol=1e-3 * scale)
+
+    def test_accepts_jax_arrays(self):
+        from tud_lbm.operators.macroscopic.eos import double_well_pressure
+
+        rho = jnp.ones((NX, NY, NZ, 1, 1)) * _RHO_L
+        p = double_well_pressure(rho, self._BETA, _RHO_L, _RHO_V)
+        assert p.shape == rho.shape
+
+
 # ---------------------------------------------------------------------------
 # build_multiphase_params
 # ---------------------------------------------------------------------------
@@ -420,9 +460,9 @@ class TestBuildMultiphaseParams:
 
         base = {"eos": "double-well", "kappa": 0.01, "rho_l": 1.0, "rho_v": 0.1, "interface_width": 4}
         for field in ("kappa", "rho_l", "rho_v", "interface_width"):
-            kwargs = {**base, field: None}
+            cfg = SimpleNamespace(**{**base, field: None})
             with pytest.raises(ValueError, match=f"'{field}' is required"):
-                build_multiphase_params(SimpleNamespace(**kwargs))  # ty: ignore[invalid-argument-type]
+                build_multiphase_params(cfg)  # ty: ignore[invalid-argument-type]
 
     def test_builds_correctly_with_valid_config(self):
         from types import SimpleNamespace

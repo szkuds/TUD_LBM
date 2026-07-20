@@ -6,10 +6,11 @@ grid_shape = [
     101,
     1,
 ]
-nt = 200
+nt = 20000
 tau = 0.99
 collision_scheme = "bgk"
 init_type = "multiphase_bubbles"
+skip_interval = 1
 type = "multiphase_hysteresis_chemical_step"
 
 [boundary_conditions]
@@ -56,7 +57,7 @@ rho_v = 0.001
 interface_width = 5
 
 [output]
-results_dir = "~/TUD_LBM_data/results"
+results_dir = "~/TUD_LBM_data/example_results"
 save_fields = [
     "rho",
     "u",

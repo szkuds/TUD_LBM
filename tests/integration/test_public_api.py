@@ -16,8 +16,8 @@ import pytest
 from tud_lbm import SimulationConfig
 from tud_lbm import build_setup
 from tud_lbm import run
+from tud_lbm.io.readers import DictAdapter
 from tud_lbm.pipeline.runner import init_state
-from tud_lbm.readers import DictAdapter
 
 
 class TestMinimalSimulation:

@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 import importlib
+from pathlib import Path
 from types import ModuleType
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 from unittest.mock import patch
 import click
 import pytest
 from click.testing import CliRunner
 from tud_lbm.cli.cli import _WETTING_PARAM_DEFAULTS
+from tud_lbm.cli.cli import RunFlags
 from tud_lbm.cli.cli import _build_wetting_gravity_raw
 from tud_lbm.cli.cli import _build_wetting_init_raw
 from tud_lbm.cli.cli import _check_sweep_errors
@@ -486,17 +489,19 @@ class TestCheckSweepErrors:
         _check_sweep_errors([SimpleNamespace(status="success")])
 
     def test_one_failure_raises(self):
+        results = [
+            SimpleNamespace(status="success"),
+            SimpleNamespace(status="failed"),
+        ]
+
         with pytest.raises(RuntimeError, match="failed simulation"):
-            _check_sweep_errors(
-                [
-                    SimpleNamespace(status="success"),
-                    SimpleNamespace(status="failed"),
-                ]
-            )
+            _check_sweep_errors(results)
 
     def test_multiple_failures_mention_count(self):
+        results = [SimpleNamespace(status="failed")] * 3
+
         with pytest.raises(RuntimeError, match="3 failed"):
-            _check_sweep_errors([SimpleNamespace(status="failed")] * 3)
+            _check_sweep_errors(results)
 
 
 class TestRunImplFlags:
@@ -505,17 +510,10 @@ class TestRunImplFlags:
     def test_list_operators_returns_false(self):
         result = _run_impl(
             config_path=None,
-            no_prompt=True,
-            dry_run=False,
-            list_operators=True,
-            list_analysis=False,
-            max_workers=None,
-            fail_fast=False,
             overrides=(),
-            overview=False,
-            debug_wetting=False,
-            init_wetting=False,
+            max_workers=None,
             init_dir=None,
+            flags=RunFlags(no_prompt=True, list_operators=True),
         )
         assert result is False
 
@@ -532,17 +530,10 @@ class TestRunImplFlags:
         ):
             result = _run_impl(
                 config_path=str(cfg_toml),
-                no_prompt=True,
-                dry_run=True,
-                list_operators=False,
-                list_analysis=False,
-                max_workers=None,
-                fail_fast=False,
                 overrides=(),
-                overview=False,
-                debug_wetting=False,
-                init_wetting=False,
+                max_workers=None,
                 init_dir=None,
+                flags=RunFlags(no_prompt=True, dry_run=True),
             )
         assert result is False
 
@@ -555,17 +546,10 @@ class TestRunImplFlags:
         ):
             _run_impl(
                 config_path=str(cfg_toml),
-                no_prompt=True,
-                dry_run=True,
-                list_operators=False,
-                list_analysis=False,
-                max_workers=None,
-                fail_fast=False,
                 overrides=(),
-                overview=True,
-                debug_wetting=False,
-                init_wetting=False,
+                max_workers=None,
                 init_dir=None,
+                flags=RunFlags(no_prompt=True, dry_run=True, overview=True),
             )
         assert "PHYSICAL PARAMETER OVERVIEW" in capsys.readouterr().out
 
@@ -587,17 +571,10 @@ class TestRunImplFlags:
         ):
             result = _run_impl(
                 config_path=str(cfg_toml),
-                no_prompt=True,
-                dry_run=True,
-                list_operators=False,
-                list_analysis=False,
-                max_workers=None,
-                fail_fast=False,
                 overrides=(),
-                overview=True,
-                debug_wetting=False,
-                init_wetting=False,
+                max_workers=None,
                 init_dir=None,
+                flags=RunFlags(no_prompt=True, dry_run=True, overview=True),
             )
         assert result is False
 
@@ -612,17 +589,10 @@ class TestRunImplFlags:
         monkeypatch.setattr("tud_lbm.cli.cli._load_config_interactive", _fake)
         result = _run_impl(
             config_path=None,
-            no_prompt=True,
-            dry_run=True,
-            list_operators=False,
-            list_analysis=False,
-            max_workers=None,
-            fail_fast=False,
             overrides=(),
-            overview=False,
-            debug_wetting=False,
-            init_wetting=False,
+            max_workers=None,
             init_dir=None,
+            flags=RunFlags(no_prompt=True, dry_run=True),
         )
         assert called["n"] == 1
         assert result is False
@@ -630,7 +600,7 @@ class TestRunImplFlags:
     def test_debug_wetting_sets_flag(self, tmp_path):
         import tud_lbm.config.config_overview as _flags
 
-        original = _flags.DEBUG_FLAG
+        original = _flags.DEBUG_FLAG_WETTING
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         try:
@@ -640,21 +610,36 @@ class TestRunImplFlags:
             ):
                 _run_impl(
                     config_path=str(cfg_toml),
-                    no_prompt=True,
-                    dry_run=True,
-                    list_operators=False,
-                    list_analysis=False,
-                    max_workers=None,
-                    fail_fast=False,
                     overrides=(),
-                    overview=False,
-                    debug_wetting=True,
-                    init_wetting=False,
+                    max_workers=None,
                     init_dir=None,
+                    flags=RunFlags(no_prompt=True, dry_run=True, debug_wetting=True),
                 )
-            assert _flags.DEBUG_FLAG is True
+            assert _flags.DEBUG_FLAG_WETTING is True
         finally:
-            _flags.DEBUG_FLAG = original
+            _flags.DEBUG_FLAG_WETTING = original
+
+    def test_debug_stability_sets_flag(self, tmp_path):
+        import tud_lbm.config.config_overview as _flags
+
+        original = _flags.DEBUG_FLAG_STABILITY
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
+        try:
+            with (
+                patch("tud_lbm.cli.cli._load_raw_config", return_value={}),
+                patch("tud_lbm.cli.cli._expand_raw_config", return_value=self._single_config()),
+            ):
+                _run_impl(
+                    config_path=str(cfg_toml),
+                    overrides=(),
+                    max_workers=None,
+                    init_dir=None,
+                    flags=RunFlags(no_prompt=True, dry_run=True, debug_stability=True),
+                )
+            assert _flags.DEBUG_FLAG_STABILITY is True
+        finally:
+            _flags.DEBUG_FLAG_STABILITY = original
 
 
 class TestClickCommandPaths:
@@ -665,6 +650,15 @@ class TestClickCommandPaths:
         with patch("tud_lbm.cli.cli._run_impl", side_effect=KeyboardInterrupt):
             result = runner.invoke(cli, ["run"])
         assert result.exit_code == 130
+
+    def test_run_debug_stability_option_forwards(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
+        runner = CliRunner()
+        with patch("tud_lbm.cli.cli._run_impl", return_value=False) as mock_impl:
+            result = runner.invoke(cli, ["run", str(cfg_toml), "--debug-stability", "--dry-run"])
+        assert result.exit_code == 0
+        assert mock_impl.call_args.args[-1].debug_stability is True
 
     def test_run_general_exception_exits_1(self):
         runner = CliRunner()
@@ -710,34 +704,68 @@ class TestClickCommandPaths:
 
     def test_compare_no_runs_prints_message(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(0, 0)):
+        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(0, 0)):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 0
         assert "No simulation" in result.output
 
     def test_compare_runs_with_zero_ok(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(1, 0)):
+        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(1, 0)):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 0
         assert "no runs produced" in result.output.lower()
 
     def test_compare_runs_with_success(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(2, 2)):
+        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(2, 2)):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 0
 
     def test_compare_keyboard_interrupt_exits_130(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.analysis.process_parent_dir", side_effect=KeyboardInterrupt):
+        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", side_effect=KeyboardInterrupt):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 130
 
     def test_compare_general_exception_exits_1(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.analysis.process_parent_dir", side_effect=RuntimeError("fail")):
+        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", side_effect=RuntimeError("fail")):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
+        assert result.exit_code == 1
+
+    def test_regime_map_success(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        runner = CliRunner()
+        out_path = tmp_path / "regime_map_analysis" / "regime_map.png"
+        with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", return_value=out_path):
+            result = runner.invoke(cli, ["regime-map", str(dirs_txt)], env={"COLUMNS": "200", "LINES": "50"})
+        assert result.exit_code == 0
+        assert "regime_map.png" in result.output
+
+    def test_regime_map_no_usable_runs_exits_1(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        runner = CliRunner()
+        with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", return_value=None):
+            result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
+        assert result.exit_code == 1
+
+    def test_regime_map_keyboard_interrupt_exits_130(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        runner = CliRunner()
+        with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", side_effect=KeyboardInterrupt):
+            result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
+        assert result.exit_code == 130
+
+    def test_regime_map_general_exception_exits_1(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        runner = CliRunner()
+        with patch("tud_lbm.io.plotting.regime_map_plot.build_regime_map", side_effect=RuntimeError("fail")):
+            result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
         assert result.exit_code == 1
 
     def test_animate_with_mocked_internals(self, tmp_path):
@@ -794,7 +822,7 @@ class TestClickCommandPaths:
 
     def test_main_shim_compare_route(self, tmp_path):
         runner = CliRunner()
-        with patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(0, 0)):
+        with patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(0, 0)):
             result = runner.invoke(main, ["compare", str(tmp_path)])
         assert result.exit_code in (0, 1, 2)
 
@@ -901,6 +929,16 @@ class TestBuildWettingInitRaw:
         base = self._base_raw()
         _build_wetting_init_raw(base, {})
         assert base["sim_type"] == "multiphase_hysteresis"
+
+    def test_simulation_name_suffixed_with_base_name(self):
+        base = self._base_raw()
+        base["simulation_name"] = "droplet_run_42"
+        result = _build_wetting_init_raw(base, {})
+        assert result["simulation_name"] == "wetting_init_droplet_run_42"
+
+    def test_simulation_name_falls_back_when_unset(self):
+        result = _build_wetting_init_raw(self._base_raw(), {})
+        assert result["simulation_name"] == "wetting_init"
 
 
 class TestBuildWettingGravityRaw:
@@ -1130,9 +1168,10 @@ def test_validate_run_dir_has_config_missing_file_raises(tmp_path):
 
     run_dir = tmp_path / "run"
     run_dir.mkdir()
+    run_dir_str = str(run_dir)
 
     with pytest.raises(FileNotFoundError, match=r"No config\.toml found"):
-        _validate_run_dir_has_config(str(run_dir))
+        _ = _validate_run_dir_has_config(run_dir_str)
 
 
 def _make_config(results_dir: str, tau: float = 0.8) -> SimulationConfig:
@@ -1410,13 +1449,10 @@ class TestResolveToken:
         result = _resolve_token("5", names, self._ops())
         assert result is None
 
-    def test_name_token_returns_none(self, capsys):
-        # The else-clause in _resolve_token is unreachable dead code (try block always returns
-        # before else when no ValueError; else does not run when ValueError is raised).
-        # So a name-based token always returns None.
+    def test_name_token_resolves_name(self, capsys):
         names = ["density", "velocity"]
         result = _resolve_token("density", names, self._ops())
-        assert result is None
+        assert result == "density"
 
     def test_unknown_name_returns_none(self, capsys):
         names = ["density"]
@@ -1832,7 +1868,7 @@ class TestRunCompareSingle:
     def test_csv_path_none_prints_warning(self, tmp_path, capsys):
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
         with (
-            _patch("tud_lbm.io.plotting.analysis.build_simulation_csv", return_value=None),
+            _patch("tud_lbm.io.plotting.simulation_csv.build_simulation_csv", return_value=None),
         ):
             _run_compare_single(tmp_path, cfg)
         assert "skipped" in capsys.readouterr().out.lower()
@@ -1842,8 +1878,8 @@ class TestRunCompareSingle:
         csv_file = tmp_path / "results.csv"
         csv_file.touch()
         with (
-            _patch("tud_lbm.io.plotting.analysis.build_simulation_csv", return_value=csv_file),
-            _patch("tud_lbm.io.plotting.analysis.compare_runs") as mock_cmp,
+            _patch("tud_lbm.io.plotting.simulation_csv.build_simulation_csv", return_value=csv_file),
+            _patch("tud_lbm.io.plotting.run_comparison.compare_runs") as mock_cmp,
         ):
             _run_compare_single(tmp_path, cfg)
         mock_cmp.assert_called_once_with(tmp_path)
@@ -1853,12 +1889,12 @@ class TestRunCompareSweep:
     """Tests for _run_compare_sweep sweep-level comparison."""
 
     def test_no_ok_runs_prints_warning(self, tmp_path, capsys):
-        with _patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(2, 0)):
+        with _patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(2, 0)):
             _run_compare_sweep(tmp_path)
         assert "no runs" in capsys.readouterr().out.lower()
 
     def test_ok_runs_prints_success(self, tmp_path, capsys):
-        with _patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(2, 2)):
+        with _patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(2, 2)):
             _run_compare_sweep(tmp_path)
         assert "Comparison plots" in capsys.readouterr().out
 
@@ -1966,17 +2002,10 @@ class TestRunImplAdditional:
     def test_list_analysis_returns_false(self):
         result = _run_impl(
             config_path=None,
-            no_prompt=True,
-            dry_run=False,
-            list_operators=False,
-            list_analysis=True,
-            max_workers=None,
-            fail_fast=False,
             overrides=(),
-            overview=False,
-            debug_wetting=False,
-            init_wetting=False,
+            max_workers=None,
             init_dir=None,
+            flags=RunFlags(no_prompt=True, list_analysis=True),
         )
         assert result is False
 
@@ -2001,18 +2030,10 @@ class TestRunImplAdditional:
         ):
             result = _run_impl(
                 config_path=str(cfg_toml),
-                no_prompt=True,
-                dry_run=False,
-                list_operators=False,
-                list_analysis=False,
-                max_workers=None,
-                fail_fast=False,
                 overrides=(),
-                overview=False,
-                debug_wetting=False,
-                init_wetting=False,
+                max_workers=None,
                 init_dir=None,
-                run_compare=True,
+                flags=RunFlags(no_prompt=True, run_compare=True),
             )
         assert result is True
         assert compare_called["n"] == 1
@@ -2028,17 +2049,10 @@ class TestRunImplAdditional:
         with _patch("tud_lbm.cli.cli._run_two_phase_wetting_init", _fake_wetting):
             result = _run_impl(
                 config_path=str(cfg_toml),
-                no_prompt=True,
-                dry_run=False,
-                list_operators=False,
-                list_analysis=False,
-                max_workers=None,
-                fail_fast=False,
                 overrides=(),
-                overview=False,
-                debug_wetting=False,
-                init_wetting=True,
+                max_workers=None,
                 init_dir=None,
+                flags=RunFlags(no_prompt=True, init_wetting=True),
             )
         assert called["n"] == 1
         assert result is False
@@ -2121,20 +2135,44 @@ class TestVisualiseCommandPaths:
             result = runner.invoke(cli, ["visualise", str(run_dir)])
         assert result.exit_code == 1
 
+    def test_visualise_snapshot_fig_prompts_for_timesteps(self, tmp_path):
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        runner = CliRunner()
+
+        fake_op = MagicMock()
+        fake_op.name = "snapshot_fig"
+
+        with (
+            _patch("tud_lbm.config.from_toml", return_value=cfg),
+            _patch("tud_lbm.io.plotting.FigureBuilder") as mock_fb,
+            _patch("tud_lbm.cli.cli.Prompt.ask", return_value="5,10"),
+        ):
+            mock_fb.return_value.sorted_timed_files.return_value = [(0, tmp_path), (5, tmp_path), (10, tmp_path)]
+            mock_fb.return_value.analysis_operators = [fake_op]
+            mock_fb.return_value.build_all.return_value = [tmp_path / "fig.png"]
+            mock_fb.return_value.plot_dir = tmp_path
+            result = runner.invoke(cli, ["visualise", str(run_dir), "--fields", "snapshot_fig"])
+
+        assert result.exit_code in (0, 1)
+        assert fake_op.timesteps == [5, 10]
+
 
 class TestCompareCommandPaths:
     """Tests for the compare CLI command additional paths."""
 
     def test_compare_no_prompt_skips_fields(self, tmp_path):
         runner = CliRunner()
-        with _patch("tud_lbm.io.plotting.analysis.process_parent_dir", return_value=(3, 3)):
+        with _patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", return_value=(3, 3)):
             result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt"])
         assert result.exit_code == 0
 
     def test_compare_debug_env_reraises(self, tmp_path, monkeypatch):
         monkeypatch.setenv("TUD_LBM_DEBUG", "1")
         runner = CliRunner()
-        with _patch("tud_lbm.io.plotting.analysis.process_parent_dir", side_effect=RuntimeError("err")):
+        with _patch("tud_lbm.io.plotting.run_comparison.process_parent_dir", side_effect=RuntimeError("err")):
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 1
 
@@ -2207,3 +2245,122 @@ class TestRunCommandListFlags:
                 ["run", "--list-simulation-operators", "--list-simulation-analysis"],
             )
         assert result.exit_code == 0
+
+
+# =========================================================================
+# analyse command Tests
+# =========================================================================
+
+_MULTIPHASE_TOML = """
+[simulation_type]
+simulation_name = "test_analyse"
+type = "multiphase"
+grid_shape = [16, 16]
+lattice_type = "D2Q9"
+tau = 0.99
+nt = 10
+init_type = "multiphase_bubbles"
+
+[initialisation]
+centres = [[0.5, 0.5]]
+radii = [0.2]
+dispersed = "liquid"
+
+[multiphase]
+kappa = 0.04
+rho_l = 1.0
+rho_v = 0.001
+interface_width = 5
+eos = "double-well"
+
+[boundary_conditions]
+left = "periodic"
+right = "periodic"
+top = "periodic"
+bottom = "periodic"
+
+[output]
+results_dir = "{results_dir}"
+"""
+
+
+class TestAnalyseCommand:
+    """`tud-lbm analyse CONFIG_TOML --surface-tension` paths via CliRunner."""
+
+    @staticmethod
+    def _write_multiphase_toml(tmp_path, extra: str = "") -> str:
+        cfg_toml = tmp_path / "config.toml"
+        content = _MULTIPHASE_TOML.format(results_dir=tmp_path.as_posix()) + extra
+        cfg_toml.write_text(content, encoding="utf-8")
+        return str(cfg_toml)
+
+    def test_no_analysis_flag_is_usage_error(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        result = CliRunner().invoke(cli, ["analyse", cfg_toml])
+        assert result.exit_code == 2
+        assert "select at least one analysis" in result.output
+
+    def test_missing_config_is_usage_error(self):
+        result = CliRunner().invoke(cli, ["analyse", "/nonexistent/config.toml", "--surface-tension"])
+        assert result.exit_code == 2
+
+    def test_sweep_config_rejected(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        content = (tmp_path / "config.toml").read_text(encoding="utf-8")
+        (tmp_path / "config.toml").write_text(content.replace("tau = 0.99", "tau = [0.6, 0.99]"), encoding="utf-8")
+        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+        assert result.exit_code == 2
+        assert "parameter sweeps" in result.output
+
+    def test_single_phase_config_errors(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\ngrid_shape=[8, 8]\n", encoding="utf-8")
+        result = CliRunner().invoke(cli, ["analyse", str(cfg_toml), "--surface-tension"])
+        assert result.exit_code == 1
+        assert "multiphase" in result.output
+
+    def test_surface_tension_success(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        with patch(
+            "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
+            return_value=0.0123,
+        ) as mock_calibrate:
+            result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+        assert result.exit_code == 0
+        assert "0.0123" in result.output
+        config_arg, out_dir_arg = mock_calibrate.call_args.args
+        assert config_arg.sim_type == "multiphase"
+        assert out_dir_arg == Path(cfg_toml).resolve().parent
+
+    def test_out_dir_option_overrides_default(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        out_dir = tmp_path / "analysis_out"
+        with patch(
+            "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
+            return_value=0.0123,
+        ) as mock_calibrate:
+            result = CliRunner().invoke(
+                cli,
+                ["analyse", cfg_toml, "--surface-tension", "--out-dir", str(out_dir)],
+            )
+        assert result.exit_code == 0
+        assert mock_calibrate.call_args.args[1] == out_dir
+
+    def test_keyboard_interrupt_exits_130(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        with patch(
+            "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
+            side_effect=KeyboardInterrupt,
+        ):
+            result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+        assert result.exit_code == 130
+
+    def test_main_shim_forwards_analyse(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        with patch(
+            "tud_lbm.io.analysis.surface_tension.calibrate_surface_tension",
+            return_value=0.0123,
+        ):
+            result = CliRunner().invoke(main, ["analyse", cfg_toml, "--surface-tension"])
+        assert result.exit_code == 0
+        assert "0.0123" in result.output

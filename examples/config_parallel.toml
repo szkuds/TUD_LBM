@@ -67,7 +67,7 @@ inclination_angle_deg = [50, 60]
 # max_iterations = 20
 
 [output]
-results_dir = "~/TUD_LBM_data/sweep_results"
+results_dir = "~/TUD_LBM_data/example_results/sweep"
 save_fields = ["rho", "u"]
 plot_fields = ["density"]
 

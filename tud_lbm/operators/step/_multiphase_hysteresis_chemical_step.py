@@ -43,6 +43,9 @@ def step_multiphase_hysteresis_chemical_step(setup: SimulationSetup, state: Stat
     force_ext, state = compute_total_force_ext(setup, state, setup.forces)
 
     # 2. Build operators from live wetting parameters
+    if state.wetting is None:
+        msg = "state.wetting is required for hysteresis step"
+        raise TypeError(msg)
     grad, lap = _make_wetting_ops(setup, state.wetting)
 
     # 3. Run multiphase physics kernel

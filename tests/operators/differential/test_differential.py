@@ -39,7 +39,7 @@ def const_field():
 @pytest.fixture(scope="module")
 def linear_x_field():
     """f(i,j) = i, so df/dx = 1, df/dy = 0 (periodic wrap)."""
-    xs = jnp.arange(NX, dtype=jnp.float32)
+    xs = jnp.arange(NX, dtype=jnp.float64)
     return jnp.broadcast_to(xs[:, None, None, None, None], (NX, NY, NZ, 1, 1))
 
 
@@ -120,7 +120,7 @@ class TestComputeLaplacian:
         """f(i,j) = i² — Laplacian should be ~2 in the interior."""
         from tud_lbm.operators.differential._laplacian import compute_laplacian
 
-        xs = jnp.arange(NX, dtype=jnp.float32)
+        xs = jnp.arange(NX, dtype=jnp.float64)
         field = (xs**2)[:, None, None, None, None] * jnp.ones((NX, NY, NZ, 1, 1))
         out = compute_laplacian(field, lattice.w, periodic_pad)
         # Interior (avoid periodic wrap artefacts at boundaries)

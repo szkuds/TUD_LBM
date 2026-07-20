@@ -16,8 +16,11 @@ import os
 import sys
 import tomllib
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
+from typing import cast
 import click
 from rich.console import Console
 from rich.panel import Panel
@@ -26,6 +29,10 @@ from rich.prompt import Prompt
 from rich.table import Table
 from tud_lbm.config import SimulationConfig
 from tud_lbm.config.array_expansion import ArrayParameterSet
+
+if TYPE_CHECKING:
+    from tud_lbm.io.analysis.accelerations import Smoothing
+    from tud_lbm.io.plotting import FigureBuilder
 
 console = Console()
 _CLI_SUBTITLE = "Delft University of Technology"
@@ -387,16 +394,15 @@ def _resolve_token(token: str, names: list[str], available: dict) -> str | None:
     """
     try:
         idx = int(token) - 1
-        if 0 <= idx < len(names):
-            return names[idx]
-        console.print(f"[yellow]Number {token} out of range — skipped[/yellow]")
-        return None
     except ValueError:
-        pass
-    else:
         if token in available:
             return token
         console.print(f"[yellow]Unknown field '{token}' — skipped[/yellow]")
+        return None
+    else:
+        if 0 <= idx < len(names):
+            return names[idx]
+        console.print(f"[yellow]Number {token} out of range — skipped[/yellow]")
         return None
 
 
@@ -457,6 +463,27 @@ def _prompt_fields(
     return selected
 
 
+def _prompt_snapshot_timesteps(available: list[int]) -> list[int]:
+    """Interactively collect the timesteps to snapshot for the ``snapshot_fig`` plot."""
+    console.print(f"[dim]Available timesteps: {', '.join(str(t) for t in available)}[/dim]")
+    try:
+        raw_ts = Prompt.ask("Enter snapshot timesteps (comma-separated)")
+    except EOFError:
+        return []
+    return [int(tok.strip()) for tok in raw_ts.split(",") if tok.strip()]
+
+
+def _configure_snapshot_fig(builder: "FigureBuilder", field_list: list[str] | None) -> None:
+    """Prompt for and wire up snapshot timesteps when ``snapshot_fig`` is requested."""
+    if not field_list or "snapshot_fig" not in field_list:
+        return
+    available = [t for t, _ in builder.sorted_timed_files()]
+    requested_ts = _prompt_snapshot_timesteps(available)
+    for op in builder.analysis_operators:
+        if op.name == "snapshot_fig":
+            op.timesteps = requested_ts
+
+
 def _display_config_summary(config: SimulationConfig | None) -> None:
     """Display a compact summary of the simulation configuration."""
     if config is None:
@@ -507,7 +534,7 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
 def _display_full_overview(config: SimulationConfig | None) -> None:
     """Display the full physical-parameter overview from build_overview()."""
     from rich.text import Text
-    from tud_lbm.io.physical_parameters import build_overview
+    from tud_lbm.io.analysis.physical_parameters import build_overview
 
     if config is None:
         console.print("[yellow]No configuration available.[/yellow]")
@@ -546,6 +573,10 @@ def _run_simulation(config: SimulationConfig) -> str:
         config=config,
         simulation_name=config.simulation_name,
     )
+
+    from tud_lbm.io.analysis.surface_tension import record_surface_tension
+
+    config = record_surface_tension(config, io.run_dir)
 
     console.print("[bold green]Starting simulation...[/bold green]")
     console.print(f"[dim]Results directory: {io.run_dir}[/dim]")
@@ -762,7 +793,8 @@ def _build_wetting_init_raw(base_raw: dict[str, Any], wetting_params: dict[str, 
     init_raw["nt"] = _WETTING_INIT_NT
     init_raw["save_interval"] = _WETTING_INIT_NT
     init_raw["output_format"] = "numpy"
-    init_raw["simulation_name"] = "wetting_init"
+    base_name = base_raw.get("simulation_name")
+    init_raw["simulation_name"] = f"wetting_init_{base_name}" if base_name else "wetting_init"
     init_raw.setdefault("wetting_config", {}).update(wetting_params)
     return init_raw
 
@@ -924,9 +956,9 @@ def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
     Uses the in-memory config to avoid re-loading from disk which loses
     expanded/flattened fields.
     """
-    from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
-    from tud_lbm.io.plotting.analysis import build_simulation_csv
-    from tud_lbm.io.plotting.analysis import compare_runs
+    from tud_lbm.io.plotting.run_comparison import _COMPARISON_DIR
+    from tud_lbm.io.plotting.run_comparison import compare_runs
+    from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
     console.print("[dim]Running comparison analysis...[/dim]")
     csv_path = build_simulation_csv(run_dir, config)
@@ -941,8 +973,8 @@ def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
 
 def _run_compare_sweep(results_dir: Path) -> None:
     """Build CSVs and comparison plots across all runs in a sweep directory."""
-    from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
-    from tud_lbm.io.plotting.analysis import process_parent_dir
+    from tud_lbm.io.plotting.run_comparison import _COMPARISON_DIR
+    from tud_lbm.io.plotting.run_comparison import process_parent_dir
 
     console.print("[dim]Running comparison analysis...[/dim]")
     _n_runs, n_ok = process_parent_dir(results_dir)
@@ -996,43 +1028,64 @@ def _run_with_optional_overrides(
         _display_summary(config, sweep_metadata, configs, overview=overview)
 
 
-def _run_impl(
-    config_path: str | None,
-    no_prompt: bool,
-    dry_run: bool,
-    list_operators: bool,
-    list_analysis: bool,
-    max_workers: int | None,
-    fail_fast: bool,
-    overrides: tuple[str, ...],
-    overview: bool,
-    debug_wetting: bool,
-    init_wetting: bool,
-    init_dir: str | None,
-    run_compare: bool = False,
-) -> bool:
-    if list_operators:
-        _display_simulation_operators()
-        return False
+def _enable_debug_flags(*, debug_wetting: bool, debug_stability: bool) -> None:
+    """Set the module-global debug flags in config_overview before setup/run traces."""
+    if not (debug_wetting or debug_stability):
+        return
 
-    if list_analysis:
-        _display_analysis_operators()
-        return False
+    import tud_lbm.config.config_overview as _flags
 
     if debug_wetting:
-        import tud_lbm.config.config_overview as _flags
-
-        _flags.DEBUG_FLAG = True
+        _flags.DEBUG_FLAG_WETTING = True
         console.print("[dim]Wetting debug logging enabled.[/dim]")
         console.print()
 
-    _validate_cli_args(overrides, config_path, init_wetting=init_wetting, init_dir=init_dir)
+    if debug_stability:
+        _flags.DEBUG_FLAG_STABILITY = True
+        console.print("[dim]Stability diagnostics enabled (stability_log.csv + NaN guard).[/dim]")
+        console.print()
 
-    if init_wetting:
+
+@dataclass(frozen=True)
+class RunFlags:
+    """Boolean flags for `run`, bundled to keep `_run_impl`'s signature within S107's limit."""
+
+    no_prompt: bool = False
+    dry_run: bool = False
+    list_operators: bool = False
+    list_analysis: bool = False
+    fail_fast: bool = False
+    overview: bool = False
+    debug_wetting: bool = False
+    debug_stability: bool = False
+    init_wetting: bool = False
+    run_compare: bool = False
+
+
+def _run_impl(
+    config_path: str | None,
+    overrides: tuple[str, ...],
+    max_workers: int | None,
+    init_dir: str | None,
+    flags: RunFlags,
+) -> bool:
+    if flags.list_operators:
+        _display_simulation_operators()
+        return False
+
+    if flags.list_analysis:
+        _display_analysis_operators()
+        return False
+
+    _enable_debug_flags(debug_wetting=flags.debug_wetting, debug_stability=flags.debug_stability)
+
+    _validate_cli_args(overrides, config_path, init_wetting=flags.init_wetting, init_dir=init_dir)
+
+    if flags.init_wetting:
         if config_path is None:
             msg = "config_path is required for wetting initialisation"
             raise ValueError(msg)
-        _run_two_phase_wetting_init(config_path, overrides, no_prompt=no_prompt, overview=overview)
+        _run_two_phase_wetting_init(config_path, overrides, no_prompt=flags.no_prompt, overview=flags.overview)
         console.print()
         console.print(
             Panel.fit(
@@ -1049,8 +1102,8 @@ def _run_impl(
         raw_config = None
         configs, config, sweep_metadata, parameters_list = _load_config_interactive()
 
-    _display_summary(config, sweep_metadata, configs, overview=overview)
-    if dry_run:
+    _display_summary(config, sweep_metadata, configs, overview=flags.overview)
+    if flags.dry_run:
         _print_dry_run_message(sweep_metadata)
         return False
 
@@ -1060,13 +1113,13 @@ def _run_impl(
         config=config,
         sweep_metadata=sweep_metadata,
         parameters_list=parameters_list,
-        no_prompt=no_prompt,
-        overview=overview,
+        no_prompt=flags.no_prompt,
+        overview=flags.overview,
     )
     if not configs:
         return False
 
-    _execute_run(configs, config, sweep_metadata, parameters_list, max_workers, fail_fast, run_compare)
+    _execute_run(configs, config, sweep_metadata, parameters_list, max_workers, flags.fail_fast, flags.run_compare)
     return True
 
 
@@ -1126,7 +1179,16 @@ def cli() -> None:
 @click.option(
     "--debug-wetting",
     is_flag=True,
-    help="Enable wetting debug output (sets DEBUG_FLAG in config_overview)",
+    help="Enable wetting debug output (sets DEBUG_FLAG_WETTING in config_overview)",
+)
+@click.option(
+    "--debug-stability",
+    is_flag=True,
+    help=(
+        "Enable stability diagnostics: per-save-interval max|u|/max|grad mu|/rho-range/"
+        "checkerboard logging to stability_log.csv plus a NaN guard that aborts the run "
+        "(sets DEBUG_FLAG_STABILITY in config_overview; not propagated to sweep workers)"
+    ),
 )
 @click.option(
     "--init-wetting",
@@ -1152,21 +1214,7 @@ def cli() -> None:
     is_flag=True,
     help="Generate comparison plots after a parameter sweep completes.",
 )
-def run(
-    config_path: str,
-    no_prompt: bool,
-    dry_run: bool,
-    list_operators: bool,
-    list_analysis: bool,
-    max_workers: int | None,
-    fail_fast: bool,
-    overrides: tuple[str, ...],
-    overview: bool,
-    debug_wetting: bool,
-    init_wetting: bool,
-    init_dir: str | None,
-    run_compare: bool,
-) -> None:
+def run(**cli_kwargs: object) -> None:
     """Run a TUD-LBM simulation from CONFIG_PATH.
 
     CONFIG_PATH is an optional path to a configuration file (.toml).
@@ -1217,6 +1265,9 @@ def run(
         # Enable wetting debug output
         tud-lbm run config.toml --debug-wetting
 
+        # Enable stability diagnostics (stability_log.csv + NaN guard)
+        tud-lbm run config.toml --debug-stability
+
         # Two-phase wetting init: equilibrate without gravity then run with gravity
         tud-lbm run config.toml --init-wetting
 
@@ -1225,22 +1276,25 @@ def run(
     """
     _print_run_banner()
 
+    config_path = cast("str | None", cli_kwargs["config_path"])
+    max_workers = cast("int | None", cli_kwargs["max_workers"])
+    overrides = cast("tuple[str, ...]", cli_kwargs["overrides"])
+    init_dir = cast("str | None", cli_kwargs["init_dir"])
+    flags = RunFlags(
+        no_prompt=cast("bool", cli_kwargs["no_prompt"]),
+        dry_run=cast("bool", cli_kwargs["dry_run"]),
+        list_operators=cast("bool", cli_kwargs["list_operators"]),
+        list_analysis=cast("bool", cli_kwargs["list_analysis"]),
+        fail_fast=cast("bool", cli_kwargs["fail_fast"]),
+        overview=cast("bool", cli_kwargs["overview"]),
+        debug_wetting=cast("bool", cli_kwargs["debug_wetting"]),
+        debug_stability=cast("bool", cli_kwargs["debug_stability"]),
+        init_wetting=cast("bool", cli_kwargs["init_wetting"]),
+        run_compare=cast("bool", cli_kwargs["run_compare"]),
+    )
+
     try:
-        completed = _run_impl(
-            config_path,
-            no_prompt,
-            dry_run,
-            list_operators,
-            list_analysis,
-            max_workers,
-            fail_fast,
-            overrides,
-            overview,
-            debug_wetting,
-            init_wetting,
-            init_dir,
-            run_compare,
-        )
+        completed = _run_impl(config_path, overrides, max_workers, init_dir, flags)
         if completed:
             console.print()
             console.print(
@@ -1392,6 +1446,7 @@ def visualise(run_dir: str, skip: int, dpi: int, fields: str | None, no_prompt: 
         console.print()
 
         builder = FigureBuilder(config=config, run_dir=run_dir, dpi=dpi, fields=field_list)
+        _configure_snapshot_fig(builder, field_list)
         saved = builder.build_all(skip=skip)
 
         if not saved:
@@ -1419,8 +1474,8 @@ def visualise(run_dir: str, skip: int, dpi: int, fields: str | None, no_prompt: 
 )
 def compare(parent_dir: str, no_prompt: bool) -> None:
     """Build CSV metrics and comparison plots for all runs in PARENT_DIR."""
-    from tud_lbm.io.plotting.analysis import _COMPARISON_DIR
-    from tud_lbm.io.plotting.analysis import process_parent_dir
+    from tud_lbm.io.plotting.run_comparison import _COMPARISON_DIR
+    from tud_lbm.io.plotting.run_comparison import process_parent_dir
     from tud_lbm.registry import get_operators
 
     console.print()
@@ -1463,8 +1518,169 @@ def compare(parent_dir: str, no_prompt: bool) -> None:
         )
         console.print(f"[bold green]Plots saved to:[/bold green] {out_dir}")
     except KeyboardInterrupt:
-        console.print("\n[yellow]Analysis interrupted by user.[/yellow]")
+        console.print("\n[yellow]Comparison interrupted by user.[/yellow]")
         sys.exit(130)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        if os.environ.get("TUD_LBM_DEBUG"):
+            raise
+        sys.exit(1)
+
+
+@cli.command(name="regime-map")
+@click.argument("dirs_txt", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--allowed-root",
+    "allowed_roots",
+    multiple=True,
+    type=click.Path(exists=True, file_okay=False),
+    help="Additional directory that a referenced run directory may resolve within, beyond the "
+    "default results root (repeatable — e.g. one per HPC mount).",
+)
+@click.option(
+    "--out-dir",
+    "out_dir",
+    type=click.Path(file_okay=False),
+    default=None,
+    help="Output directory for regime_map.png (default: <dirs_txt parent>/regime_map_analysis).",
+)
+@click.option(
+    "--smoothing",
+    "smoothing",
+    type=click.Choice(["raw", "savgol"]),
+    default="raw",
+    help="Acceleration-curve smoothing for peak detection: 'raw' (default, unsmoothed) or "
+    "'savgol' (Savitzky-Golay filtered, reduces spikiness).",
+)
+def regime_map(dirs_txt: str, allowed_roots: tuple[str, ...], out_dir: str | None, smoothing: str) -> None:
+    """Classify runs listed in DIRS_TXT into pinning/viscous/inertial/unknown and plot Bo_parallel vs Oh."""
+    from tud_lbm.io.plotting.regime_map_plot import build_regime_map
+
+    console.print()
+    console.print(
+        Panel.fit(
+            "[bold blue]TUD-LBM[/bold blue] - Regime Map",
+            subtitle=_CLI_SUBTITLE,
+        ),
+    )
+    console.print()
+
+    try:
+        console.print(f"[dim]Run-dir list : {dirs_txt}[/dim]")
+        console.print()
+
+        out_path = build_regime_map(dirs_txt, allowed_roots, out_dir=out_dir, smoothing=cast("Smoothing", smoothing))
+        if out_path is None:
+            console.print("[yellow]No runs produced a usable classification.[/yellow]")
+            sys.exit(1)
+
+        console.print()
+        console.print(
+            Panel.fit(
+                "[bold green]Regime map complete![/bold green]",
+                title="Success",
+            ),
+        )
+        console.print(f"[bold green]Plot saved to:[/bold green] {out_path}")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Regime map analysis interrupted by user.[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        if os.environ.get("TUD_LBM_DEBUG"):
+            raise
+        sys.exit(1)
+
+
+def _load_single_config(config_toml: str) -> SimulationConfig:
+    """Load CONFIG_TOML and expand it to exactly one config; sweeps are rejected."""
+    raw_config = _load_raw_config(config_toml, ())
+    _configs, config, sweep_metadata, _params = _expand_raw_config(raw_config)
+    if sweep_metadata is not None or config is None:
+        msg = "analyse does not support parameter sweeps; remove list-valued fields from the config"
+        raise click.UsageError(msg)
+    return config
+
+
+def _analyse_surface_tension(config: SimulationConfig, out_dir: Path) -> None:
+    """Run the Young-Laplace calibration for *config* and report sigma."""
+    if not config.is_multiphase:
+        msg = f"surface tension requires a multiphase configuration; got sim_type='{config.sim_type}'"
+        raise ValueError(msg)
+
+    from tud_lbm.config.jax_config import configure_jax
+
+    configure_jax()
+
+    from tud_lbm.io.analysis.surface_tension import calibrate_surface_tension
+    from tud_lbm.io.analysis.surface_tension.surface_tension import _PLOT_FILENAME
+
+    sigma = calibrate_surface_tension(config, out_dir)
+
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold green]Surface tension: σ = {sigma:.6g}[/bold green]",
+            title="Success",
+        ),
+    )
+    console.print(f"[bold green]Calibration figure saved to:[/bold green] {out_dir / _PLOT_FILENAME}")
+
+
+@cli.command()
+@click.argument("config_toml", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--surface-tension",
+    "surface_tension",
+    is_flag=True,
+    help="Measure the lattice surface tension via the Young-Laplace droplet sweep for the configured "
+    "EOS (cached results are reused; a cache miss runs the full droplet sweep).",
+)
+@click.option(
+    "--out-dir",
+    "out_dir",
+    type=click.Path(file_okay=False),
+    default=None,
+    help="Directory for analysis outputs (default: the config file's directory).",
+)
+def analyse(config_toml: str, surface_tension: bool, out_dir: str | None) -> None:
+    """Run standalone analyses for the configuration in CONFIG_TOML.
+
+    Unlike the automatic calibration during `tud-lbm run` (which only
+    triggers for EOS without a closed-form sigma), --surface-tension forces
+    the Young-Laplace measurement for any supported multiphase EOS.
+
+    Examples:
+        # Measure surface tension for the configured EOS
+        tud-lbm analyse config.toml --surface-tension
+
+        # Write outputs somewhere other than the config's directory
+        tud-lbm analyse config.toml --surface-tension --out-dir results/
+    """
+    if not surface_tension:
+        msg = "select at least one analysis, e.g. --surface-tension"
+        raise click.UsageError(msg)
+
+    console.print()
+    console.print(
+        Panel.fit(
+            "[bold blue]TUD-LBM[/bold blue] - Analysis",
+            subtitle=_CLI_SUBTITLE,
+        ),
+    )
+    console.print()
+
+    try:
+        target_dir = Path(out_dir) if out_dir is not None else Path(config_toml).resolve().parent
+        config = _load_single_config(config_toml)
+        console.print(f"[dim]Output directory : {target_dir}[/dim]")
+        console.print()
+        _analyse_surface_tension(config, target_dir)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Surface tension analysis interrupted by user.[/yellow]")
+        sys.exit(130)
+    except click.UsageError:
+        raise
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         if os.environ.get("TUD_LBM_DEBUG"):
@@ -1486,7 +1702,7 @@ def main(args: tuple[str, ...]) -> None:
     forwarded = list(args)
 
     # New-style help/version and subcommands should use the command group.
-    if forwarded and forwarded[0] in {"--help", "-h", "--version", "animate", "visualise", "compare"}:
+    if forwarded and forwarded[0] in {"--help", "-h", "--version", "animate", "visualise", "compare", "analyse"}:
         cli.main(args=forwarded, standalone_mode=False)
         return
 

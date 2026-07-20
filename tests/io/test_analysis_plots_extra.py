@@ -6,19 +6,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.analysis import ContactAnglesPairPlot
-from tud_lbm.io.plotting.analysis import ContactLineSpeedLeftPlot
-from tud_lbm.io.plotting.analysis import ContactLineSpeedsPairPlot
-from tud_lbm.io.plotting.analysis import DensityRatioPlot
-from tud_lbm.io.plotting.analysis import _derive_surface_tension
-from tud_lbm.io.plotting.analysis import _empty_data_message
-from tud_lbm.io.plotting.analysis import _extract_rho_2d
-from tud_lbm.io.plotting.analysis import _extract_u_mag_2d
-from tud_lbm.io.plotting.analysis import _load_timesteps
-from tud_lbm.io.plotting.analysis import _parse_timestep
-from tud_lbm.io.plotting.analysis import _render_scatter
-from tud_lbm.io.plotting.analysis import _resolve_initial_radius
-from tud_lbm.io.plotting.analysis import _resolve_step_x
+from tud_lbm.io.plotting._analysis_common import _empty_data_message
+from tud_lbm.io.plotting._analysis_common import _extract_rho_2d
+from tud_lbm.io.plotting._analysis_common import _extract_u_mag_2d
+from tud_lbm.io.plotting._analysis_common import _load_timesteps
+from tud_lbm.io.plotting._analysis_common import _parse_timestep
+from tud_lbm.io.plotting._analysis_common import _render_scatter
+from tud_lbm.io.plotting.contact_angle_plot import ContactAnglesPairPlot
+from tud_lbm.io.plotting.contact_line_speed_plot import ContactLineSpeedLeftPlot
+from tud_lbm.io.plotting.contact_line_speed_plot import ContactLineSpeedsPairPlot
+from tud_lbm.io.plotting.scalar_history_plot import DensityRatioPlot
+from tud_lbm.io.plotting.simulation_csv import _derive_surface_tension
+from tud_lbm.io.plotting.simulation_csv import _resolve_initial_radius
+from tud_lbm.io.plotting.simulation_csv import _resolve_step_x
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -29,10 +29,12 @@ def test_parse_timestep_invalid_returns_none():
 
 
 def test_extract_rho_and_u_raise_on_unsupported_ndim():
+    bad_rho = np.ones((2,))
+    bad_u = np.ones((2, 2))
     with pytest.raises(ValueError, match="Unsupported rho shape"):
-        _extract_rho_2d(np.ones((2,)))
+        _extract_rho_2d(bad_rho)
     with pytest.raises(ValueError, match="Unsupported u shape"):
-        _extract_u_mag_2d(np.ones((2, 2)))
+        _extract_u_mag_2d(bad_u)
 
 
 def test_load_timesteps_skips_invalid_names_and_missing_keys(tmp_path: Path):

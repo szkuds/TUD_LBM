@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from tud_lbm.operators.protocols import HysteresisOperator
     from tud_lbm.operators.protocols import InitialPopulationOperator
     from tud_lbm.operators.protocols import MacroscopicOperator
+    from tud_lbm.operators.protocols import ObstacleOperator
     from tud_lbm.operators.protocols import StepOperator
     from tud_lbm.operators.protocols import StreamingOperator
 
@@ -118,6 +119,8 @@ class SimulationSetup(NamedTuple):
     bc_masks: BCMasks | None = None
     forces: ForceSetup | None = None
     multiphase_params: MultiphaseParams | None = None
+    obstacle_mask: jnp.ndarray | None = None
+    obstacle_fn: ObstacleOperator | None = None
 
     # ── Differential operator closures (pre-built) ──
     gradient_standard: DifferentialOperator | None = None
@@ -175,6 +178,8 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     from tud_lbm.operators.initialise import build_initialise_fn
     from tud_lbm.operators.macroscopic import build_macroscopic_fn
     from tud_lbm.operators.macroscopic import build_multiphase_params
+    from tud_lbm.operators.obstacle import build_obstacle_fn
+    from tud_lbm.operators.obstacle import build_obstacle_mask
     from tud_lbm.operators.step import build_step_fn
     from tud_lbm.operators.streaming import build_streaming_fn
     from tud_lbm.operators.wetting import build_wetting_fn
@@ -207,6 +212,9 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         else build_macroscopic_fn("standard")  # single-phase
     )
     bc_fn = build_bc(config.bc_config, lattice)
+
+    obstacle_mask = build_obstacle_mask(config.obstacle_config, cast("tuple[int, int, int]", tuple(config.grid_shape)))
+    obstacle_fn = build_obstacle_fn(obstacle_mask, lattice)
 
     # Build wetting function for hysteresis-capable runs.
     wetting_fn = None
@@ -243,6 +251,8 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         bc_masks=bc_masks,
         forces=forces,
         multiphase_params=mp_params,
+        obstacle_mask=obstacle_mask,
+        obstacle_fn=obstacle_fn,
         gradient_standard=gradient_standard,
         gradient_density=gradient_density,
         laplacian_density=laplacian_density,

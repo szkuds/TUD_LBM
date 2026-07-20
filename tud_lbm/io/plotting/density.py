@@ -5,6 +5,7 @@ import matplotlib.axes
 import matplotlib.colors
 import numpy as np
 from tud_lbm.io.plotting.base import PlotOperator
+from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
 from tud_lbm.registry import plotting_operator
 
 # Density ratio threshold for using log scale
@@ -44,12 +45,12 @@ class DensityPlotOperator(PlotOperator):
                 plot_data,
                 origin="lower",
                 aspect="equal",
-                cmap="viridis",
+                cmap=DEFAULT_STYLE.colormap_density,
                 norm=matplotlib.colors.LogNorm(),
             )
             ax.set_title(f"Density (log)  t={timestep}")
         else:
-            im = ax.imshow(rho, origin="lower", aspect="equal", cmap="viridis")
+            im = ax.imshow(rho, origin="lower", aspect="equal", cmap=DEFAULT_STYLE.colormap_density)
             ax.set_title(f"Density  t={timestep}")
 
         ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Density")

@@ -49,6 +49,12 @@ See https://github.com/tudelft-ceg/tud-lbm for documentation.
 
 __version__ = "0.3.0"
 
+# Apply JAX settings (x64 precision) before any submodule creates arrays;
+# module-level constants bake in the dtype active at import time.
+from tud_lbm.config.jax_config import configure_jax as _configure_jax
+
+_configure_jax()
+
 
 # Lazy imports to avoid circular dependencies
 def __getattr__(name):  # noqa: PLR0911, ANN001, ANN202

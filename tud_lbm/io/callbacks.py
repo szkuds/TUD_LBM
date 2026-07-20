@@ -16,7 +16,7 @@ Two strategies are supported:
 
 Usage (strategy 2)::
 
-    from runner.io_callbacks import make_save_callback
+    from tud_lbm.io.callbacks import make_save_callback
 
     # Outside jit:
     io_handler = SimulationIO(...)
@@ -38,7 +38,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from tud_lbm.io import SimulationIO
+    from tud_lbm.io.save import SimulationIO
     from tud_lbm.pipeline.state import State
 
 
@@ -74,7 +74,8 @@ def _state_to_numpy(state: State, fields: tuple | None = None, t: int | None = N
 
     bad = [k for k, v in data.items() if np.isnan(v).any()]
     if bad:
-        jax.debug.print("NaNs detected at t={t} in fields: {bad}", t=t, bad=bad)
+        msg = f"NaNs detected at t={t} in fields: {bad}; aborting simulation"
+        raise FloatingPointError(msg)
     return data
 
 
