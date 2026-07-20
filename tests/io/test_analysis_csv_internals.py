@@ -10,7 +10,7 @@ Exercises:
 - backward_diff: with interval>1 and interval=1
 - build_simulation_csv: skip when wrong sim_type, skip when no data dir,
   and successful write when valid files exist
-- process_parent_dir: no-run and single-run paths (mocked CSV write)
+- analyse_tree: no-run and single-run paths (mocked CSV write)
 - _clean_dir_label: digit prefix stripping
 - parse_timestep_from_path: valid and invalid stems
 - SimulationCsvExport.compute and .render
@@ -24,6 +24,7 @@ mpl.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from tud_lbm.cli.analysis_routing import analyse_tree
 from tud_lbm.config import SimulationConfig
 from tud_lbm.io.analysis.droplet_metrics import RZero
 from tud_lbm.io.analysis.droplet_metrics import analytical_sigma_lg
@@ -37,7 +38,6 @@ from tud_lbm.io.analysis.droplet_metrics._snapshot import contact_lines_from_rho
 from tud_lbm.io.analysis.droplet_metrics._snapshot import interpolate_interface
 from tud_lbm.io.analysis.droplet_metrics._snapshot import parse_timestep_from_path
 from tud_lbm.io.plotting.run_comparison import _clean_dir_label
-from tud_lbm.io.plotting.run_comparison import process_parent_dir
 from tud_lbm.io.plotting.simulation_csv import SimulationCsvExport
 from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
@@ -230,23 +230,42 @@ def test_avg_x_location():
 # ---------------------------------------------------------------------------
 
 
-def test_backward_diff_interval_one():
+def test_backward_diff_unit_gaps():
     arr = np.array([0.0, 2.0, 4.0, 8.0])
-    diff = backward_diff(arr, 1)
+    diff = backward_diff(arr, np.array([0, 1, 2, 3]), 1)
     np.testing.assert_allclose(diff, [0.0, 2.0, 2.0, 4.0])
 
 
-def test_backward_diff_interval_greater_than_one():
+def test_backward_diff_uniform_gaps_greater_than_one():
     arr = np.array([0.0, 10.0, 20.0, 30.0])
-    diff = backward_diff(arr, 10)
-    # Each step is 10 position / 10 interval = 1.0
+    diff = backward_diff(arr, np.array([0, 10, 20, 30]), 10)
+    # Each step is 10 position / 10 iterations = 1.0
     np.testing.assert_allclose(diff[1:], [1.0, 1.0, 1.0])
 
 
-def test_backward_diff_zero_interval_treated_as_one():
+def test_backward_diff_uses_actual_gap_not_nominal_interval():
+    """A run whose snapshots were pruned must not report inflated velocities."""
+    arr = np.array([0.0, 0.5, 1.0])
+    iterations = np.array([0, 10, 50])
+
+    diff = backward_diff(arr, iterations, 10)
+
+    # Second gap is 40, not the nominal 10: 0.5/40, not 0.5/10.
+    np.testing.assert_allclose(diff, [0.0, 0.05, 0.0125])
+
+
+def test_backward_diff_repeated_iteration_yields_zero_not_inf():
     arr = np.array([0.0, 3.0, 6.0])
-    diff = backward_diff(arr, 0)
-    np.testing.assert_allclose(diff, [0.0, 3.0, 3.0])
+
+    diff = backward_diff(arr, np.array([0, 5, 5]), 5)
+
+    np.testing.assert_allclose(diff, [0.0, 0.6, 0.0])
+
+
+def test_backward_diff_leading_element_is_zero():
+    diff = backward_diff(np.array([7.0, 9.0]), np.array([5, 10]), 5)
+
+    assert diff[0] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -398,24 +417,24 @@ def test_build_simulation_csv_writes_file(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# process_parent_dir
+# analyse_tree
 # ---------------------------------------------------------------------------
 
 
-def test_process_parent_dir_returns_zero_zero_when_no_runs(tmp_path):
-    n_runs, n_ok = process_parent_dir(tmp_path)
+def test_analyse_tree_returns_zero_zero_when_no_runs(tmp_path):
+    n_runs, n_ok = analyse_tree(tmp_path)
     assert (n_runs, n_ok) == (0, 0)
 
 
-def test_process_parent_dir_skips_init_dirs(tmp_path):
+def test_analyse_tree_skips_init_dirs(tmp_path):
     init_dir = tmp_path / "init" / "run1"
     init_dir.mkdir(parents=True)
     (init_dir / "config.toml").write_text("[simulation_type]\nsim_type='single'\n", encoding="utf-8")
-    n_runs, _ = process_parent_dir(tmp_path)
+    n_runs, _ = analyse_tree(tmp_path)
     assert n_runs == 0
 
 
-def test_process_parent_dir_counts_valid_run(tmp_path):
+def test_analyse_tree_counts_valid_run(tmp_path):
     pytest.importorskip("pandas")
 
     run_dir = tmp_path / "run1"
@@ -445,9 +464,9 @@ def test_process_parent_dir_counts_valid_run(tmp_path):
     # Write a config.toml so the discovery loop finds the run
     (run_dir / "config.toml").write_text("", encoding="utf-8")
     with (
-        patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg),
-        patch("tud_lbm.io.plotting.run_comparison.compare_runs"),
+        patch("tud_lbm.cli.analysis_routing._safe_load_config", return_value=cfg),
+        patch("tud_lbm.cli.analysis_routing.compare_runs"),
     ):
-        n_runs, _ = process_parent_dir(tmp_path)
+        n_runs, _ = analyse_tree(tmp_path)
 
     assert n_runs == 1

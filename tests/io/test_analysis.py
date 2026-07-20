@@ -19,11 +19,11 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
+from tud_lbm.cli.analysis_routing import analyse_tree
 from tud_lbm.config import SimulationConfig
 from tud_lbm.io.plotting._analysis_common import _set_empty_state
 from tud_lbm.io.plotting.run_comparison import _load_comparison_entries
 from tud_lbm.io.plotting.run_comparison import compare_runs
-from tud_lbm.io.plotting.run_comparison import process_parent_dir
 from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
 # ---------------------------------------------------------------------------
@@ -239,11 +239,11 @@ class TestLoadComparisonEntries:
 
 
 # ---------------------------------------------------------------------------
-# process_parent_dir — n_ok > 0 path (compare_runs is actually called)
+# analyse_tree — n_ok > 0 path (compare_runs is actually called)
 # ---------------------------------------------------------------------------
 
 
-def test_process_parent_dir_calls_compare_runs_when_csv_produced(tmp_path):
+def test_analyse_tree_calls_compare_runs_when_csv_produced(tmp_path):
     pytest.importorskip("pandas")
 
     run_dir = tmp_path / "run1"
@@ -260,17 +260,17 @@ def test_process_parent_dir_calls_compare_runs_when_csv_produced(tmp_path):
         compare_called["n"] += 1
 
     with (
-        patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg),
-        patch("tud_lbm.io.plotting.run_comparison.compare_runs", side_effect=_fake_compare),
+        patch("tud_lbm.cli.analysis_routing._safe_load_config", return_value=cfg),
+        patch("tud_lbm.cli.analysis_routing.compare_runs", side_effect=_fake_compare),
     ):
-        n_runs, n_ok = process_parent_dir(tmp_path)
+        n_runs, n_ok = analyse_tree(tmp_path)
 
     assert n_runs == 1
     assert n_ok == 1
     assert compare_called["n"] == 1
 
 
-def test_process_parent_dir_does_not_call_compare_when_all_fail(tmp_path):
+def test_analyse_tree_does_not_call_compare_when_all_fail(tmp_path):
     pytest.importorskip("pandas")
 
     run_dir = tmp_path / "run1"
@@ -280,8 +280,8 @@ def test_process_parent_dir_does_not_call_compare_when_all_fail(tmp_path):
     cfg = _wetting_cfg(sim_type="single_phase")
     compare_called = {"n": 0}
 
-    with patch("tud_lbm.io.plotting.run_comparison._safe_load_config", return_value=cfg):
-        n_runs, n_ok = process_parent_dir(tmp_path)
+    with patch("tud_lbm.cli.analysis_routing._safe_load_config", return_value=cfg):
+        n_runs, n_ok = analyse_tree(tmp_path)
 
     assert n_runs == 1
     assert n_ok == 0

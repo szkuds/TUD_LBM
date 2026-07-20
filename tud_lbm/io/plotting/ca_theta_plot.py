@@ -5,25 +5,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
-from tud_lbm.io.analysis.droplet_metrics import analytical_sigma_lg
-from tud_lbm.io.analysis.droplet_metrics import backward_diff
-from tud_lbm.io.analysis.droplet_metrics import resolve_r_zero
-from tud_lbm.io.analysis.droplet_metrics import resolve_step_x
-from tud_lbm.io.analysis.droplet_metrics._snapshot import avg_x_location
-from tud_lbm.io.analysis.droplet_metrics._snapshot import contact_angles_from_rho
-from tud_lbm.io.analysis.droplet_metrics._snapshot import contact_lines_from_rho
-from tud_lbm.io.analysis.droplet_metrics._snapshot import optional_contact_metrics
-from tud_lbm.io.analysis.droplet_metrics._snapshot import parse_timestep_from_path
+from tud_lbm.io.analysis.droplet_metrics import series_for_files
 from tud_lbm.io.plotting._analysis_common import _CONTACT_ANGLE_Y_LABEL
-from tud_lbm.io.plotting._analysis_common import _extract_rho_2d
-from tud_lbm.io.plotting._analysis_common import _parse_timestep
 from tud_lbm.io.plotting._analysis_common import _set_empty_state
 from tud_lbm.io.plotting.base import AnalysisPlot
 from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
 from tud_lbm.registry import analysis_operator
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     import matplotlib.axes
     import matplotlib.figure
     from tud_lbm.config import SimulationConfig
@@ -377,130 +366,33 @@ _LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
 _LABEL_X_AVG_NORM = r"$X_{\mathrm{avg}}/R_0$"
 
 
-def _resolve_pair(
-    left: float | None,
-    right: float | None,
-    rho_2d: np.ndarray | None,
-    rho_mean: float,
-    from_rho: Callable[[np.ndarray, float], tuple[float, float]],
-) -> tuple[float, float]:
-    """Return ``(left, right)``, deriving missing values from ``rho_2d`` via *from_rho*."""
-    if left is not None and right is not None:
-        return left, right
-    if rho_2d is not None:
-        return from_rho(rho_2d, rho_mean)
-    return 0.0, 0.0
+#: Panel keys, all empty. Returned when no series can be computed.
+_ARRAY_KEYS = ("theta_trailing", "theta_leading", "ca_trailing", "ca_leading", "x_time", "x_pos", "timesteps")
 
 
-def _read_snapshot_metrics(
-    fp: Path,
-    rho_mean: float,
-    offset_x: float,
-    *,
-    compute_x_pos: bool,
-) -> tuple[int, float, float, float, float, float] | None:
-    """Read ``(timestep, ca_l, ca_r, cll_l, cll_r, x_pos)`` from one snapshot file.
+def _empty_arrays() -> dict[str, np.ndarray]:
+    """Fresh empty arrays for every panel key."""
+    return {key: np.array([]) for key in _ARRAY_KEYS}
 
-    Metrics missing from the file are derived from the density field when
-    present, else 0.0. Returns ``None`` when the filename has no timestep.
+
+def _compute_ca_theta_arrays(files: list[Path], config: SimulationConfig) -> dict[str, np.ndarray]:
+    """Adapt the shared droplet series to this module's panel array layout.
+
+    Both x-axis variants (time and position) come from the same series, so the
+    snapshots are read once no matter how many Ca/θ panels a figure contains.
     """
-    it = _parse_timestep(fp.stem)
-    if it is None:
-        return None
-    with np.load(fp) as raw:
-        ca_l, ca_r, cll_l, cll_r = optional_contact_metrics(raw)
-        needs_rho = ca_l is None or ca_r is None or cll_l is None or cll_r is None or compute_x_pos
-        rho_2d = _extract_rho_2d(np.asarray(raw["rho"])) if needs_rho and "rho" in raw else None
-        ca_l, ca_r = _resolve_pair(ca_l, ca_r, rho_2d, rho_mean, contact_angles_from_rho)
-        cll_l, cll_r = _resolve_pair(cll_l, cll_r, rho_2d, rho_mean, contact_lines_from_rho)
-        x_pos_val = avg_x_location(rho_2d, rho_mean, offset_x) if rho_2d is not None else 0.0
-    return it, float(ca_l), float(ca_r), float(cll_l), float(cll_r), x_pos_val
-
-
-def _compute_ca_theta_arrays(
-    files: list[Path],
-    config: SimulationConfig,
-    *,
-    compute_x_pos: bool,
-) -> dict[str, np.ndarray]:
-    """Compute Ca, θ and optional position arrays from snapshot files.
-
-    Returns a dict with keys:
-    ``theta_trailing``, ``theta_leading``, ``ca_trailing``, ``ca_leading``,
-    ``x_time``, ``x_pos`` (empty when *compute_x_pos* is ``False``).
-    Returns all-empty arrays when *config* lacks required multiphase fields.
-    """
-    _empty: dict[str, np.ndarray] = {
-        "theta_trailing": np.array([]),
-        "theta_leading": np.array([]),
-        "ca_trailing": np.array([]),
-        "ca_leading": np.array([]),
-        "x_time": np.array([]),
-        "x_pos": np.array([]),
-        "timesteps": np.array([], dtype=int),
-    }
-
-    if config.rho_l is None or config.rho_v is None:
-        return _empty
-
-    rho_mean = (float(config.rho_l) + float(config.rho_v)) / 2.0
-
-    sorted_files = sorted(files, key=parse_timestep_from_path)
-
-    timesteps: list[int] = []
-    ca_left_list: list[float] = []
-    ca_right_list: list[float] = []
-    cll_left_list: list[float] = []
-    cll_right_list: list[float] = []
-    x_pos_list: list[float] = []
-
-    step_x = resolve_step_x(config)
-    offset_x = step_x if step_x is not None else float(config.grid_shape[0] // 2)
-
-    for fp in sorted_files:
-        metrics = _read_snapshot_metrics(fp, rho_mean, offset_x, compute_x_pos=compute_x_pos)
-        if metrics is None:
-            continue
-        it, ca_l, ca_r, cll_l, cll_r, x_pos_val = metrics
-        timesteps.append(it)
-        ca_left_list.append(ca_l)
-        ca_right_list.append(ca_r)
-        cll_left_list.append(cll_l)
-        cll_right_list.append(cll_r)
-        if compute_x_pos:
-            x_pos_list.append(x_pos_val)
-
-    if not ca_left_list:
-        return _empty
-
-    sigma = analytical_sigma_lg(config)
-    if sigma is None:
-        return _empty
-
-    nu = (float(config.tau) - 0.5) / 3.0
-    save_iv = max(config.save_interval, 1)
-
-    v_left = backward_diff(np.array(cll_left_list), save_iv)
-    v_right = backward_diff(np.array(cll_right_list), save_iv)
-
-    t_arr = np.array(timesteps, dtype=float)
-    t_min, t_max = t_arr.min(), t_arr.max()
-    x_time = (t_arr - t_min) / (t_max - t_min) if t_max > t_min else np.zeros_like(t_arr)
-
-    if compute_x_pos:
-        r_zero = resolve_r_zero(config)
-        x_pos = np.array(x_pos_list) / r_zero.value if r_zero.value > 0 else np.zeros(len(x_pos_list))
-    else:
-        x_pos = np.array([])
+    series = series_for_files(files, config)
+    if series is None:
+        return _empty_arrays()
 
     return {
-        "theta_trailing": np.array(ca_left_list),
-        "theta_leading": np.array(ca_right_list),
-        "ca_trailing": v_left * nu / sigma,
-        "ca_leading": v_right * nu / sigma,
-        "x_time": x_time,
-        "x_pos": x_pos,
-        "timesteps": np.array(timesteps, dtype=int),
+        "theta_trailing": series.theta_left,
+        "theta_leading": series.theta_right,
+        "ca_trailing": series.ca_cll_left,
+        "ca_leading": series.ca_cll_right,
+        "x_time": series.normalised_iteration,
+        "x_pos": series.avg_x_location_norm,
+        "timesteps": series.iteration,
     }
 
 
@@ -514,11 +406,8 @@ class CaThetaVsTimePlot(AnalysisPlot):
     def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
         """Compute Ca, θ and x_time arrays from snapshot files."""
         if self.config is None:
-            return {
-                k: np.array([])
-                for k in ("theta_trailing", "theta_leading", "ca_trailing", "ca_leading", "x_time", "x_pos")
-            }
-        return _compute_ca_theta_arrays(files, self.config, compute_x_pos=False)
+            return _empty_arrays()
+        return _compute_ca_theta_arrays(files, self.config)
 
     def render(self, ax: matplotlib.axes.Axes, precomputed: dict[str, np.ndarray]) -> None:
         """Draw dual-axis Ca/θ scatter with normalised time on x."""
@@ -549,11 +438,8 @@ class CaThetaVsXPlot(AnalysisPlot):
     def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
         """Compute Ca, θ and x_pos arrays from snapshot files."""
         if self.config is None:
-            return {
-                k: np.array([])
-                for k in ("theta_trailing", "theta_leading", "ca_trailing", "ca_leading", "x_time", "x_pos")
-            }
-        return _compute_ca_theta_arrays(files, self.config, compute_x_pos=True)
+            return _empty_arrays()
+        return _compute_ca_theta_arrays(files, self.config)
 
     def render(self, ax: matplotlib.axes.Axes, precomputed: dict[str, np.ndarray]) -> None:
         """Draw dual-axis Ca/θ scatter with normalised position on x."""

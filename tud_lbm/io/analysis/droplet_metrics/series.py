@@ -55,17 +55,33 @@ CSV_COLUMNS: tuple[str, ...] = (
     "Ca_cm",
     "Ca_norm",
     "Re",
+    # Appended after the historical 21. Consumers select by name, so appending
+    # is safe; reordering would not be.
+    "sigma_lg",
+    "sigma_lg_source",
+    "Ca_analytical",
 )
 
 
-def backward_diff(values: np.ndarray, interval: int) -> np.ndarray:
-    """Backward difference of *values* over a fixed *interval*.
+def backward_diff(values: np.ndarray, iterations: np.ndarray, fallback_interval: int) -> np.ndarray:
+    """Backward difference of *values* with respect to *iterations*.
 
-    The leading element is zero because no earlier sample exists.
+    Divides by the **actual** gap between consecutive samples rather than the
+    nominal save interval. The two differ whenever a run was resumed, used a
+    ``skip_interval``, or had snapshots pruned — in which case a fixed-interval
+    difference over-reports the rate by the ratio of the gaps.
+
+    The leading element is 0.0 (no earlier sample), as are any samples sharing
+    an iteration with their predecessor.
     """
-    shifted = np.roll(values, 1)
-    shifted[0] = values[0]
-    return (values - shifted) / max(interval, 1)
+    vals = np.asarray(values, dtype=float)
+    iters = np.asarray(iterations, dtype=float)
+    if vals.size == 0:
+        return np.zeros_like(vals)
+
+    deltas = np.diff(vals, prepend=vals[0])
+    gaps = np.diff(iters, prepend=iters[0] - max(fallback_interval, 1))
+    return np.divide(deltas, gaps, out=np.zeros_like(deltas), where=gaps > 0)
 
 
 @dataclass(frozen=True)
@@ -113,37 +129,51 @@ class DropletSeries:
     @cached_property
     def v_left(self) -> np.ndarray:
         """Left contact-line velocity."""
-        return backward_diff(self.cll_left, self.scales.save_interval)
+        return backward_diff(self.cll_left, self.iteration, self.scales.save_interval)
 
     @cached_property
     def v_right(self) -> np.ndarray:
         """Right contact-line velocity."""
-        return backward_diff(self.cll_right, self.scales.save_interval)
+        return backward_diff(self.cll_right, self.iteration, self.scales.save_interval)
 
     @cached_property
     def v_cm(self) -> np.ndarray:
         """Centre-of-mass velocity in x."""
-        return backward_diff(self.cm_x, self.scales.save_interval)
+        return backward_diff(self.cm_x, self.iteration, self.scales.save_interval)
+
+    def _capillary(self, velocity: np.ndarray, sigma: float | None) -> np.ndarray:
+        """``Ca = v * nu / sigma``, all zeros when *sigma* is unavailable."""
+        if not sigma:
+            return np.zeros_like(velocity)
+        return (velocity * self.scales.nu) / sigma
 
     @cached_property
     def ca(self) -> np.ndarray:
-        """Capillary number from the mean liquid velocity."""
-        return (self.avg_u_x * self.scales.nu) / self.scales.sigma_lg
+        """Capillary number from the mean liquid velocity, using the primary sigma."""
+        return self._capillary(self.avg_u_x, self.scales.sigma_primary)
+
+    @cached_property
+    def ca_analytical(self) -> np.ndarray:
+        """:attr:`ca` forced onto the closed-form sigma, for comparison.
+
+        Equals :attr:`ca` unless the run carries a measured calibration.
+        """
+        return self._capillary(self.avg_u_x, self.scales.sigma_analytical)
 
     @cached_property
     def ca_cll_left(self) -> np.ndarray:
         """Capillary number of the left (trailing) contact line."""
-        return (self.v_left * self.scales.nu) / self.scales.sigma_lg
+        return self._capillary(self.v_left, self.scales.sigma_primary)
 
     @cached_property
     def ca_cll_right(self) -> np.ndarray:
         """Capillary number of the right (leading) contact line."""
-        return (self.v_right * self.scales.nu) / self.scales.sigma_lg
+        return self._capillary(self.v_right, self.scales.sigma_primary)
 
     @cached_property
     def ca_cm(self) -> np.ndarray:
         """Capillary number of the centre of mass."""
-        return (self.v_cm * self.scales.nu) / self.scales.sigma_lg
+        return self._capillary(self.v_cm, self.scales.sigma_primary)
 
     @cached_property
     def ca_norm(self) -> np.ndarray:
@@ -192,6 +222,9 @@ class DropletSeries:
                 "Ca_cm": self.ca_cm,
                 "Ca_norm": self.ca_norm,
                 "Re": self.re,
+                "sigma_lg": self.scales.sigma_primary,
+                "sigma_lg_source": self.scales.sigma_source,
+                "Ca_analytical": self.ca_analytical,
             },
             columns=list(CSV_COLUMNS),
         )
@@ -298,6 +331,7 @@ def _config_fingerprint(config: SimulationConfig) -> tuple[object, ...]:
         config.init_dir,
         step_location,
         incl,
+        config.extra.get("surface_tension"),
     )
 
 

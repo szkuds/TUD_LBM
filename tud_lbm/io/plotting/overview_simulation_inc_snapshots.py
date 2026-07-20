@@ -153,7 +153,7 @@ class SnapshotOverviewPlot(AnalysisPlot):
             msg = f"snapshot_fig supports at most {_MAX_SNAPSHOTS} timesteps (A-Z)."
             raise ValueError(msg)
 
-        data = _compute_ca_theta_arrays(files, self.config, compute_x_pos=True)
+        data = _compute_ca_theta_arrays(files, self.config)
         ts_arr = data["timesteps"]
         if ts_arr.size == 0:
             fig, ax = plt.subplots(figsize=DEFAULT_STYLE.analysis_figsize)

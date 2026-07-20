@@ -68,7 +68,7 @@ Issues     = "https://github.com/szkuds/tud_lbm/issues"
 ReadTheDocs = "https://tud_lbm.readthedocs.io"
 
 [project.scripts]
-tud-lbm = "tud_lbm.cli.cli:cli"
+tud-lbm = "tud_lbm.cli.commands:cli"
 
 # ---------------------------------------------------------------------------
 # uv
@@ -169,9 +169,9 @@ extend-immutable-calls = ["array_field"]
 "tud_lbm/pipeline/**"                             = ["T201"]
 "tud_lbm/operators/wetting/hysteresis/hysteresis.py" = ["C901", "PLR0915"]
 "tud_lbm/io/plotting/run_comparison.py"   = ["T201"]
+"tud_lbm/cli/analysis_routing.py"          = ["T201"]
 "tud_lbm/io/plotting/simulation_csv.py"   = ["T201"]
 "tud_lbm/io/plotting/regime_map_plot.py"  = ["T201"]
-"tud_lbm/io/plotting/ca_theta_plot.py"    = ["C901", "PLR0912", "PLR0915"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tud_lbm"]

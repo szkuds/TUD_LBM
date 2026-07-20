@@ -9,12 +9,15 @@ modules (``scalar_history_plot.py``, ``contact_angle_plot.py``,
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
+from tud_lbm.io.analysis.droplet_metrics import series_for_files
 from tud_lbm.io.plotting.base import AnalysisPlot
 from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
     from pathlib import Path
     import matplotlib.axes
+    from tud_lbm.config import SimulationConfig
+    from tud_lbm.io.analysis.droplet_metrics import DropletSeries
 
 _NDIM_2D = 2
 _NDIM_3D = 3
@@ -111,6 +114,23 @@ def _load_timesteps(files: list[Path], required: tuple[str, ...]) -> tuple[np.nd
             snapshots.append({key: np.asarray(raw[key]) for key in required})
             iters.append(step)
     return np.asarray(iters, dtype=int), snapshots
+
+
+def _droplet_series(config: SimulationConfig | None, files: list[Path]) -> DropletSeries | None:
+    """Shared droplet series for *files*, or ``None`` when unavailable.
+
+    Operators derive contact angles and contact-line positions from the density
+    field rather than from stored ``.npz`` keys, so panels render even for runs
+    that did not save those scalars.
+    """
+    if config is None:
+        return None
+    return series_for_files(files, config)
+
+
+def _empty_series_arrays(*keys: str) -> dict[str, np.ndarray]:
+    """Empty arrays under *keys*, for operators with no computable series."""
+    return {key: np.asarray([], dtype=float) for key in keys}
 
 
 def _render_scatter(

@@ -46,6 +46,17 @@ def analytical_sigma_lg(config: SimulationConfig) -> float | None:
     return (2.0 / 3.0) * (float(kappa) / float(width)) * drho**2
 
 
+def measured_sigma_lg(config: SimulationConfig) -> float | None:
+    """Calibrated surface tension measured at run time, when one is stored.
+
+    Written into ``config.extra["surface_tension"]`` by
+    :mod:`tud_lbm.io.analysis.surface_tension`. Absent for runs that were never
+    calibrated.
+    """
+    measured = config.extra.get("surface_tension")
+    return None if measured is None else float(measured)
+
+
 def resolve_r_zero(config: SimulationConfig) -> RZero:
     """Initial droplet radius in lattice units.
 
@@ -91,7 +102,8 @@ class MetricScales:
     """Scalar quantities that normalise a run's droplet metrics."""
 
     rho_mean: float
-    sigma_lg: float
+    sigma_measured: float | None
+    sigma_analytical: float | None
     nu: float
     r_zero: float
     r_zero_is_fallback: bool
@@ -99,25 +111,43 @@ class MetricScales:
     incl_deg: float
     save_interval: int
 
+    @property
+    def sigma_primary(self) -> float | None:
+        """The surface tension to normalise with: measured when calibrated.
+
+        Note that ``sigma_analytical`` is the closed-form double-well value. It
+        is not valid for ``carnahan-starling``, where only a measured value is
+        physically meaningful — hence the preference order.
+        """
+        return self.sigma_measured if self.sigma_measured is not None else self.sigma_analytical
+
+    @property
+    def sigma_source(self) -> str:
+        """``"measured"`` or ``"analytical"`` — which value ``sigma_primary`` returned."""
+        return "measured" if self.sigma_measured is not None else "analytical"
+
 
 def resolve_scales(config: SimulationConfig) -> MetricScales | None:
     """Resolve every scaling quantity for *config*.
 
     Returns ``None`` when the config lacks the multiphase parameters required
-    to define a liquid-gas interface, which is a capability failure rather than
-    an error: callers skip the run.
+    to define a liquid-gas interface — neither a measured nor a closed-form
+    surface tension is obtainable. That is a capability failure rather than an
+    error: callers skip the run.
     """
     if config.rho_l is None or config.rho_v is None:
         return None
-    sigma_lg = analytical_sigma_lg(config)
-    if sigma_lg is None:
+    sigma_measured = measured_sigma_lg(config)
+    sigma_analytical = analytical_sigma_lg(config)
+    if sigma_measured is None and sigma_analytical is None:
         return None
 
     r_zero = resolve_r_zero(config)
     step_x = resolve_step_x(config)
     return MetricScales(
         rho_mean=(float(config.rho_l) + float(config.rho_v)) / 2.0,
-        sigma_lg=sigma_lg,
+        sigma_measured=sigma_measured,
+        sigma_analytical=sigma_analytical,
         nu=(float(config.tau) - 0.5) / 3.0,
         r_zero=r_zero.value,
         r_zero_is_fallback=r_zero.used_fallback,

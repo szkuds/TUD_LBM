@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 import inspect
+from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -291,13 +292,18 @@ class TestNoBannedPatterns:
         assert "Operators" not in source
 
     def test_cli_no_app_setup(self):
+        """No module in the CLI package may reach for the legacy API."""
         try:
-            from tud_lbm.cli import cli
+            import tud_lbm.cli.commands  # imports every CLI module
         except ImportError as e:
             if "click" in str(e) or "rich" in str(e):
                 pytest.skip("click or rich dependency not installed")
             raise
 
-        source = inspect.getsource(cli)
-        assert "from app_setup" not in source
-        assert "from tud_lbm.pipeline.runner import Run" not in source
+        cli_root = Path(inspect.getfile(tud_lbm.cli)).parent
+        sources = list(cli_root.rglob("*.py"))
+        assert sources, "expected to find CLI modules to scan"
+        for path in sources:
+            source = path.read_text(encoding="utf-8")
+            assert "from app_setup" not in source, path
+            assert "from tud_lbm.pipeline.runner import Run" not in source, path

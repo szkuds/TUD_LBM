@@ -66,6 +66,65 @@ def test_each_snapshot_is_read_exactly_once(tmp_path: Path, count_loads) -> None
     assert count_loads["n"] == len(iterations)
 
 
+def test_two_analysis_operators_share_one_read(tmp_path: Path, count_loads) -> None:
+    """Both Ca/theta operators over the same files read each snapshot once total.
+
+    This is the duplication the shared layer exists to remove: previously each
+    operator ran its own loop over every ``.npz``.
+    """
+    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsTimePlot
+    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsXPlot
+
+    iterations = (5, 10, 15, 20)
+    run_dir = build_run_dir(tmp_path, iterations=iterations)
+    files = sorted((run_dir / "data").glob("timestep_*.npz"))
+    config = wetting_config()
+
+    CaThetaVsTimePlot(config=config).compute(files)
+    CaThetaVsXPlot(config=config).compute(files)
+
+    assert count_loads["n"] == len(iterations)
+
+
+def test_ca_theta_operators_agree_on_shared_columns(tmp_path: Path) -> None:
+    """The two operators differ only in which x-axis they render."""
+    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsTimePlot
+    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsXPlot
+
+    run_dir = build_run_dir(tmp_path)
+    files = sorted((run_dir / "data").glob("timestep_*.npz"))
+    config = wetting_config()
+
+    by_time = CaThetaVsTimePlot(config=config).compute(files)
+    by_x = CaThetaVsXPlot(config=config).compute(files)
+
+    for key in ("theta_trailing", "theta_leading", "ca_trailing", "ca_leading", "timesteps"):
+        np.testing.assert_allclose(by_time[key], by_x[key])
+
+
+def test_ca_theta_arrays_match_the_csv_columns(tmp_path: Path) -> None:
+    """The plot adapter and the CSV serialiser cannot drift apart."""
+    import pandas as pd
+    from tud_lbm.io.plotting.ca_theta_plot import CaThetaVsXPlot
+    from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
+
+    config = wetting_config()
+    run_dir = build_run_dir(tmp_path, config=config)
+    files = sorted((run_dir / "data").glob("timestep_*.npz"))
+
+    arrays = CaThetaVsXPlot(config=config).compute(files)
+    csv_path = build_simulation_csv(run_dir, config)
+
+    assert csv_path is not None
+    df = pd.read_csv(csv_path)
+    # ca_left/ca_right are ANGLES in the CSV; Ca_cll_* are the capillary numbers.
+    np.testing.assert_allclose(arrays["theta_trailing"], df["ca_left"].to_numpy())
+    np.testing.assert_allclose(arrays["theta_leading"], df["ca_right"].to_numpy())
+    np.testing.assert_allclose(arrays["ca_trailing"], df["Ca_cll_left"].to_numpy())
+    np.testing.assert_allclose(arrays["ca_leading"], df["Ca_cll_right"].to_numpy())
+    np.testing.assert_allclose(arrays["x_pos"], df["avg_x_location_norm"].to_numpy())
+
+
 def test_changed_config_is_not_served_from_cache(tmp_path: Path) -> None:
     """A config change that affects scaling produces a distinct series."""
     run_dir = build_run_dir(tmp_path)

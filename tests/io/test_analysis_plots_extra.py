@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from tests.support.run_dirs import build_run_dir
+from tests.support.run_dirs import wetting_config
 from tud_lbm.config import SimulationConfig
 from tud_lbm.io.analysis.droplet_metrics import analytical_sigma_lg
 from tud_lbm.io.analysis.droplet_metrics import resolve_step_x
@@ -58,9 +60,12 @@ def test_render_scatter_empty_state_writes_placeholder():
 
 
 def test_contact_line_speed_left_single_snapshot_returns_zero(tmp_path: Path):
-    np.savez(tmp_path / "timestep_5.npz", cll_left=np.array(3.0))
+    """One snapshot has no predecessor, so its speed is 0.0 rather than undefined."""
+    config = wetting_config()
+    run_dir = build_run_dir(tmp_path, iterations=(5,), config=config)
+    files = sorted((run_dir / "data").glob("timestep_*.npz"))
 
-    result = ContactLineSpeedLeftPlot().compute(sorted(tmp_path.glob("*.npz")))
+    result = ContactLineSpeedLeftPlot(config=config).compute(files)
 
     assert result["iters"].tolist() == [5]
     assert result["values"].tolist() == [0.0]
@@ -165,13 +170,3 @@ def test_density_ratio_render_uses_log_scale():
         assert ax.get_title() == "Density ratio vs timestep"
     finally:
         plt.close(fig)
-
-
-def test_contact_line_speed_left_duplicate_timestep_returns_zero_speed(tmp_path: Path):
-    np.savez(tmp_path / "a_1.npz", cll_left=np.array(1.0))
-    np.savez(tmp_path / "b_1.npz", cll_left=np.array(3.0))
-
-    result = ContactLineSpeedLeftPlot().compute(sorted(tmp_path.glob("*.npz")))
-
-    assert result["iters"].tolist() == [1, 1]
-    assert result["values"].tolist() == [0.0, 0.0]

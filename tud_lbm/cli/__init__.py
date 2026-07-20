@@ -19,7 +19,7 @@ from typing import Any
 def _load_cli() -> Any:  # noqa: ANN401
     """Import and return the click CLI command object."""
     try:
-        from tud_lbm.cli.cli import cli as click_cli
+        from tud_lbm.cli.commands import cli as click_cli
     except ImportError as e:
         if getattr(e, "name", None) not in {"click", "rich"}:
             raise

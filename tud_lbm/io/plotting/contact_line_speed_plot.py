@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-import numpy as np
 from tud_lbm.io.plotting._analysis_common import _CONTACT_LINE_SPEED_Y_LABEL
 from tud_lbm.io.plotting._analysis_common import _X_LABEL_TIMESTEP
 from tud_lbm.io.plotting._analysis_common import _BaseAnalysisPlot
-from tud_lbm.io.plotting._analysis_common import _load_timesteps
+from tud_lbm.io.plotting._analysis_common import _droplet_series
+from tud_lbm.io.plotting._analysis_common import _empty_series_arrays
 from tud_lbm.io.plotting._analysis_common import _set_empty_state
 from tud_lbm.io.plotting.base import AnalysisPlot
 from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
@@ -15,26 +15,23 @@ from tud_lbm.registry import analysis_operator
 if TYPE_CHECKING:
     from pathlib import Path
     import matplotlib.axes
+    import numpy as np
 
 _CONTACT_LINE_SPEEDS_TITLE = "Contact-line speeds vs timestep"
 
 
 class _ContactLineSpeedBase(_BaseAnalysisPlot):
-    cl_key: str
+    """Contact-line speed for one side, differentiated over actual iteration gaps."""
+
+    #: Attribute on :class:`DropletSeries` holding this side's speed.
+    speed_attr: str
 
     def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
-        iters, snapshots = _load_timesteps(files, (self.cl_key,))
-        cl = np.asarray([float(np.asarray(s[self.cl_key]).squeeze()) for s in snapshots], dtype=float)
-        if len(cl) == 0:
-            return {"iters": iters, "values": cl}
-        if len(cl) == 1:
-            return {"iters": iters, "values": np.asarray([0.0], dtype=float)}
-        d_iter = np.diff(iters).astype(float)
-        d_iter[d_iter == 0] = np.nan
-        speeds = np.diff(cl) / d_iter
-        vals = np.concatenate(([0.0], speeds))
-        vals = np.nan_to_num(vals, nan=0.0)
-        return {"iters": iters, "values": vals}
+        """Contact-line speed per snapshot, from the shared series."""
+        series = _droplet_series(self.config, files)
+        if series is None:
+            return _empty_series_arrays("iters", "values")
+        return {"iters": series.iteration, "values": getattr(series, self.speed_attr)}
 
 
 @analysis_operator(name="contact_line_speed_left")
@@ -45,7 +42,7 @@ class ContactLineSpeedLeftPlot(_ContactLineSpeedBase):
     title = "Left contact-line speed vs timestep"
     ylabel = "d(cll_left)/dt"
     color = DEFAULT_STYLE.colors["contact_line_speed_left"]
-    cl_key = "cll_left"
+    speed_attr = "v_left"
     required_keys = ("cll_left",)
 
 
@@ -57,7 +54,7 @@ class ContactLineSpeedRightPlot(_ContactLineSpeedBase):
     title = "Right contact-line speed vs timestep"
     ylabel = "d(cll_right)/dt"
     color = DEFAULT_STYLE.colors["contact_line_speed_right"]
-    cl_key = "cll_right"
+    speed_attr = "v_right"
     required_keys = ("cll_right",)
 
 
@@ -69,11 +66,11 @@ class ContactLineSpeedsPairPlot(AnalysisPlot):
     required_keys = ("cll_left", "cll_right")
 
     def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
-        """Compute left/right contact-line speed arrays for all snapshots."""
-        left = ContactLineSpeedLeftPlot().compute(files)
-        right = ContactLineSpeedRightPlot().compute(files)
-        iters = left["iters"] if len(left["iters"]) >= len(right["iters"]) else right["iters"]
-        return {"iters": iters, "left": left["values"], "right": right["values"]}
+        """Left and right contact-line speeds per snapshot, from the shared series."""
+        series = _droplet_series(self.config, files)
+        if series is None:
+            return _empty_series_arrays("iters", "left", "right")
+        return {"iters": series.iteration, "left": series.v_left, "right": series.v_right}
 
     def render(self, ax: matplotlib.axes.Axes, precomputed: dict[str, np.ndarray]) -> None:
         """Draw the paired contact-line speed scatter plot."""

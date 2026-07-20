@@ -239,7 +239,9 @@ def test_ca_theta_vs_time_operator_compute(tmp_path: Path):
     }
     assert len(result["theta_trailing"]) == 2
     assert len(result["x_time"]) == 2
-    assert len(result["x_pos"]) == 0
+    # Both x-axis variants come from one shared series, so x_pos is populated
+    # here too even though this operator renders against x_time.
+    assert len(result["x_pos"]) == 2
     assert list(result["timesteps"]) == [5, 10]
 
 

@@ -10,6 +10,7 @@ from tud_lbm.io.analysis.droplet_metrics._scales import MetricScales
 from tud_lbm.io.analysis.droplet_metrics._scales import RZero
 from tud_lbm.io.analysis.droplet_metrics._scales import analytical_sigma_lg
 from tud_lbm.io.analysis.droplet_metrics._scales import inclination_angle_deg
+from tud_lbm.io.analysis.droplet_metrics._scales import measured_sigma_lg
 from tud_lbm.io.analysis.droplet_metrics._scales import resolve_r_zero
 from tud_lbm.io.analysis.droplet_metrics._scales import resolve_scales
 from tud_lbm.io.analysis.droplet_metrics._scales import resolve_step_x
@@ -32,6 +33,7 @@ __all__ = [
     "compute_droplet_series",
     "droplet_series_for_run",
     "inclination_angle_deg",
+    "measured_sigma_lg",
     "resolve_r_zero",
     "resolve_scales",
     "resolve_step_x",

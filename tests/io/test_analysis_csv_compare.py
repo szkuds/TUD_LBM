@@ -4,12 +4,12 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 import pandas as pd
+from tud_lbm.cli.analysis_routing import analyse_tree
 from tud_lbm.config import SimulationConfig
 from tud_lbm.io.analysis.droplet_metrics import DropletSeries
 from tud_lbm.io.analysis.droplet_metrics import MetricScales
 from tud_lbm.io.plotting.run_comparison import _clean_dir_label
 from tud_lbm.io.plotting.run_comparison import _safe_load_config
-from tud_lbm.io.plotting.run_comparison import process_parent_dir
 from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
 
@@ -79,7 +79,8 @@ def _series(*, incl_deg: float) -> DropletSeries:
     """A two-sample series with simple, hand-checkable scales."""
     scales = MetricScales(
         rho_mean=0.6,
-        sigma_lg=0.5,
+        sigma_measured=None,
+        sigma_analytical=0.5,
         nu=0.1,
         r_zero=2.0,
         r_zero_is_fallback=False,
@@ -134,7 +135,7 @@ def test_clean_dir_label_removes_numeric_prefix_and_underscores():
     assert _clean_dir_label("plain_name") == "Plain name"
 
 
-def test_process_parent_dir_skips_special_folders(monkeypatch, tmp_path: Path):
+def test_analyse_tree_skips_special_folders(monkeypatch, tmp_path: Path):
     parent = tmp_path / "runs"
     run_ok = parent / "001_valid"
     run_skip_init = parent / "init" / "002_skip"
@@ -148,9 +149,9 @@ def test_process_parent_dir_skips_special_folders(monkeypatch, tmp_path: Path):
         (rd / "config.toml").write_text("[simulation_type]\ntype='single_phase'\n", encoding="utf-8")
 
     cfg = _wetting_config()
-    monkeypatch.setattr("tud_lbm.io.plotting.run_comparison._safe_load_config", lambda _p: cfg)
+    monkeypatch.setattr("tud_lbm.cli.analysis_routing._safe_load_config", lambda _p: cfg)
     monkeypatch.setattr(
-        "tud_lbm.io.plotting.run_comparison.build_simulation_csv", lambda rd, _cfg: Path(rd) / "simulation_data.csv"
+        "tud_lbm.cli.analysis_routing.build_simulation_csv", lambda rd, _cfg: Path(rd) / "simulation_data.csv"
     )
 
     called = {"n": 0}
@@ -158,9 +159,9 @@ def test_process_parent_dir_skips_special_folders(monkeypatch, tmp_path: Path):
     def _fake_compare(_parent):
         called["n"] += 1
 
-    monkeypatch.setattr("tud_lbm.io.plotting.run_comparison.compare_runs", _fake_compare)
+    monkeypatch.setattr("tud_lbm.cli.analysis_routing.compare_runs", _fake_compare)
 
-    n_runs, n_ok = process_parent_dir(parent)
+    n_runs, n_ok = analyse_tree(parent)
 
     assert n_runs == 1
     assert n_ok == 1

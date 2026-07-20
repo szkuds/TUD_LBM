@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 from typing import TypedDict
 from matplotlib.colors import TABLEAU_COLORS
 from tud_lbm.io.plotting.simulation_csv import _CSV_FILENAME
-from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
 if TYPE_CHECKING:
     import matplotlib.axes
@@ -259,59 +258,3 @@ def compare_runs(parent_dir: str | Path) -> None:
         fig.savefig(out_path, dpi=DEFAULT_STYLE.dpi, bbox_inches="tight")
         plt.close(fig)
         print(f"Saved {out_path}")
-
-
-def process_parent_dir(
-    parent_dir: str | Path,
-    fields: list[str] | None = None,
-) -> tuple[int, int]:
-    """Discover runs, export per-run CSVs, and generate comparison plots.
-
-    Discovers runs by searching for ``config.toml`` files recursively.
-    Skips directories whose path contains ``"init"`` or ``"comparison_analysis"``.
-    Writes ``simulation_data.csv`` per run, then generates 8 comparison plots
-    when at least one run produced CSV data.
-
-    Args:
-        parent_dir: Absolute or relative path to the parent directory.
-        fields: Comparison operator names to run as per-run analysis plots.
-            When ``None``, no per-run analysis plots are generated beyond the CSV.
-
-    Returns:
-        A tuple ``(n_runs_found, n_runs_with_csv)``.
-    """
-    from tud_lbm.io.plotting.figure_builder import FigureBuilder
-
-    parent = Path(parent_dir)
-    skip_dirs = {"init", _COMPARISON_DIR}
-
-    run_dirs: list[Path] = []
-    seen: set[Path] = set()
-    for toml in sorted(parent.rglob(_CONFIG_TOML)):
-        rd = toml.parent
-        if rd in seen or any(s in str(rd).lower() for s in skip_dirs):
-            continue
-        seen.add(rd)
-        run_dirs.append(rd)
-
-    if not run_dirs:
-        return 0, 0
-
-    print(f"Found {len(run_dirs)} simulation(s) to process.")
-
-    n_ok = 0
-    for rd in run_dirs:
-        config = _safe_load_config(rd / _CONFIG_TOML)
-        if config is None:
-            continue
-        if build_simulation_csv(rd, config) is not None:
-            n_ok += 1
-        if fields:
-            FigureBuilder(config=config, run_dir=rd, fields=fields).build_analysis()
-
-    if n_ok > 0:
-        print("\nGenerating comparison plots...")
-        compare_runs(parent)
-        print(f"Done. Comparison plots in {parent / _COMPARISON_DIR}")
-
-    return len(run_dirs), n_ok
