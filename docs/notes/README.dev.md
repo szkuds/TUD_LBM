@@ -17,8 +17,8 @@ Install `uv` by following the official instructions for your platform:
 ### Linux and macOS
 
 ```shell
-git clone git@github.com:szkuds/src.git
-cd src
+git clone git@github.com:szkuds/tud_lbm.git
+cd tud_lbm
 uv venv --python 3.14
 source .venv/bin/activate
 uv pip install -e .[dev]
@@ -27,8 +27,8 @@ uv pip install -e .[dev]
 ### Windows
 
 ```shell
-git clone git@github.com:szkuds/src.git
-cd src
+git clone git@github.com:szkuds/tud_lbm.git
+cd tud_lbm
 uv venv --python 3.14
 .venv\Scripts\activate
 uv pip install -e .[dev]
