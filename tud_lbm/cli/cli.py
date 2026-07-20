@@ -49,13 +49,13 @@ _SECTION_ALIAS_MAP = {
 
 _VISUAL_KINDS = {
     "plotting": "Field plots - rendered per timestep snapshot",
-    "comparison": "Comparison plots - computed over snapshot history",
+    "analysis": "Analysis plots - computed over a run's snapshot history",
 }
 
 # Which CLI commands consume each analysis kind — shown in --list-simulation-analysis output.
 _ANALYSIS_USAGE = {
     "plotting": "tud-lbm animate, tud-lbm visualise",
-    "comparison": "tud-lbm animate, tud-lbm visualise, tud-lbm compare",
+    "analysis": "tud-lbm animate, tud-lbm visualise, tud-lbm compare",
 }
 
 # Number of timesteps for the no-gravity wetting equilibration phase.
@@ -305,7 +305,7 @@ def _build_standard_table(kind: str, ops: dict) -> Table:
     return table
 
 
-_ANALYSIS_KINDS = frozenset({"plotting", "comparison"})
+_ANALYSIS_KINDS = frozenset({"plotting", "analysis"})
 
 
 def _display_simulation_operators() -> None:
@@ -1360,7 +1360,7 @@ def animate(run_dir: str, output: str | None, fps: int, no_prompt: bool) -> None
         if no_prompt:
             fields = default_fields
         else:
-            all_ops = {**get_operators("plotting"), **get_operators("comparison")}
+            all_ops = {**get_operators("plotting"), **get_operators("analysis")}
             fields = _prompt_fields(all_ops, default_fields, "animation fields")
 
         if fields:
@@ -1434,7 +1434,7 @@ def visualise(run_dir: str, skip: int, dpi: int, fields: str | None, no_prompt: 
         elif no_prompt:
             field_list = list(config.plot_fields or []) or None
         else:
-            all_ops = {**get_operators("plotting"), **get_operators("comparison")}
+            all_ops = {**get_operators("plotting"), **get_operators("analysis")}
             default_fields = list(config.plot_fields or []) or None
             field_list = _prompt_fields(all_ops, default_fields, "visualisation fields")
 
@@ -1493,7 +1493,7 @@ def compare(parent_dir: str, no_prompt: bool) -> None:
         if no_prompt:
             fields: list[str] | None = None
         else:
-            comparison_ops = get_operators("comparison")
+            comparison_ops = get_operators("analysis")
             fields = _prompt_fields(comparison_ops, None, "per-run comparison operators")
 
         if fields:
@@ -1701,14 +1701,17 @@ def main(args: tuple[str, ...]) -> None:
     """
     forwarded = list(args)
 
-    # New-style help/version and subcommands should use the command group.
-    if forwarded and forwarded[0] in {"--help", "-h", "--version", "animate", "visualise", "compare", "analyse"}:
-        cli.main(args=forwarded, standalone_mode=False)
-        return
-
     # Allow stale wrappers to pass through the explicit "run" subcommand token.
     if forwarded and forwarded[0] == "run":
-        forwarded = forwarded[1:]
+        run.main(args=forwarded[1:], standalone_mode=False)
+        return
+
+    # New-style help/version and any registered subcommand use the command group.
+    # The subcommand set is derived from the group itself so that a newly added
+    # command is never silently misrouted to `run` as a config path.
+    if forwarded and (forwarded[0] in {"--help", "-h", "--version"} or forwarded[0] in cli.commands):
+        cli.main(args=forwarded, standalone_mode=False)
+        return
 
     run.main(args=forwarded, standalone_mode=False)
 

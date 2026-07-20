@@ -5,22 +5,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
+from tud_lbm.io.analysis.droplet_metrics import analytical_sigma_lg
+from tud_lbm.io.analysis.droplet_metrics import backward_diff
+from tud_lbm.io.analysis.droplet_metrics import resolve_r_zero
+from tud_lbm.io.analysis.droplet_metrics import resolve_step_x
+from tud_lbm.io.analysis.droplet_metrics._snapshot import avg_x_location
+from tud_lbm.io.analysis.droplet_metrics._snapshot import contact_angles_from_rho
+from tud_lbm.io.analysis.droplet_metrics._snapshot import contact_lines_from_rho
+from tud_lbm.io.analysis.droplet_metrics._snapshot import optional_contact_metrics
+from tud_lbm.io.analysis.droplet_metrics._snapshot import parse_timestep_from_path
 from tud_lbm.io.plotting._analysis_common import _CONTACT_ANGLE_Y_LABEL
 from tud_lbm.io.plotting._analysis_common import _extract_rho_2d
 from tud_lbm.io.plotting._analysis_common import _parse_timestep
 from tud_lbm.io.plotting._analysis_common import _set_empty_state
 from tud_lbm.io.plotting.base import AnalysisPlot
 from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
-from tud_lbm.io.plotting.simulation_csv import _avg_x_location
-from tud_lbm.io.plotting.simulation_csv import _backward_diff
-from tud_lbm.io.plotting.simulation_csv import _ca_from_rho
-from tud_lbm.io.plotting.simulation_csv import _cll_from_rho
-from tud_lbm.io.plotting.simulation_csv import _extract_optional_contact_metrics
-from tud_lbm.io.plotting.simulation_csv import _parse_timestep_from_path
-from tud_lbm.io.plotting.simulation_csv import _resolve_r_zero
-from tud_lbm.io.plotting.simulation_csv import _resolve_step_x
-from tud_lbm.io.plotting.simulation_csv import _sigma_lg
-from tud_lbm.registry import comparison_operator
+from tud_lbm.registry import analysis_operator
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -408,12 +408,12 @@ def _read_snapshot_metrics(
     if it is None:
         return None
     with np.load(fp) as raw:
-        ca_l, ca_r, cll_l, cll_r = _extract_optional_contact_metrics(raw)
+        ca_l, ca_r, cll_l, cll_r = optional_contact_metrics(raw)
         needs_rho = ca_l is None or ca_r is None or cll_l is None or cll_r is None or compute_x_pos
         rho_2d = _extract_rho_2d(np.asarray(raw["rho"])) if needs_rho and "rho" in raw else None
-        ca_l, ca_r = _resolve_pair(ca_l, ca_r, rho_2d, rho_mean, _ca_from_rho)
-        cll_l, cll_r = _resolve_pair(cll_l, cll_r, rho_2d, rho_mean, _cll_from_rho)
-        x_pos_val = _avg_x_location(rho_2d, rho_mean, offset_x) if rho_2d is not None else 0.0
+        ca_l, ca_r = _resolve_pair(ca_l, ca_r, rho_2d, rho_mean, contact_angles_from_rho)
+        cll_l, cll_r = _resolve_pair(cll_l, cll_r, rho_2d, rho_mean, contact_lines_from_rho)
+        x_pos_val = avg_x_location(rho_2d, rho_mean, offset_x) if rho_2d is not None else 0.0
     return it, float(ca_l), float(ca_r), float(cll_l), float(cll_r), x_pos_val
 
 
@@ -445,7 +445,7 @@ def _compute_ca_theta_arrays(
 
     rho_mean = (float(config.rho_l) + float(config.rho_v)) / 2.0
 
-    sorted_files = sorted(files, key=_parse_timestep_from_path)
+    sorted_files = sorted(files, key=parse_timestep_from_path)
 
     timesteps: list[int] = []
     ca_left_list: list[float] = []
@@ -454,7 +454,7 @@ def _compute_ca_theta_arrays(
     cll_right_list: list[float] = []
     x_pos_list: list[float] = []
 
-    step_x = _resolve_step_x(config)
+    step_x = resolve_step_x(config)
     offset_x = step_x if step_x is not None else float(config.grid_shape[0] // 2)
 
     for fp in sorted_files:
@@ -473,23 +473,22 @@ def _compute_ca_theta_arrays(
     if not ca_left_list:
         return _empty
 
-    try:
-        sigma = _sigma_lg(config)
-    except ValueError:
+    sigma = analytical_sigma_lg(config)
+    if sigma is None:
         return _empty
 
     nu = (float(config.tau) - 0.5) / 3.0
     save_iv = max(config.save_interval, 1)
 
-    v_left = _backward_diff(np.array(cll_left_list), save_iv)
-    v_right = _backward_diff(np.array(cll_right_list), save_iv)
+    v_left = backward_diff(np.array(cll_left_list), save_iv)
+    v_right = backward_diff(np.array(cll_right_list), save_iv)
 
     t_arr = np.array(timesteps, dtype=float)
     t_min, t_max = t_arr.min(), t_arr.max()
     x_time = (t_arr - t_min) / (t_max - t_min) if t_max > t_min else np.zeros_like(t_arr)
 
     if compute_x_pos:
-        r_zero = _resolve_r_zero(config)
+        r_zero = resolve_r_zero(config)
         x_pos = np.array(x_pos_list) / r_zero.value if r_zero.value > 0 else np.zeros(len(x_pos_list))
     else:
         x_pos = np.array([])
@@ -505,7 +504,7 @@ def _compute_ca_theta_arrays(
     }
 
 
-@comparison_operator(name="ca_theta_vs_time")
+@analysis_operator(name="ca_theta_vs_time")
 class CaThetaVsTimePlot(AnalysisPlot):
     """Dual-axis Ca/θ plot with normalised timestep (Δt/t_tot) on the x-axis."""
 
@@ -540,7 +539,7 @@ class CaThetaVsTimePlot(AnalysisPlot):
         )
 
 
-@comparison_operator(name="ca_theta_vs_x")
+@analysis_operator(name="ca_theta_vs_x")
 class CaThetaVsXPlot(AnalysisPlot):
     """Dual-axis Ca/θ plot with normalised position (X_avg/R_0) on the x-axis."""
 

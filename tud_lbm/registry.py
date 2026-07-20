@@ -293,13 +293,17 @@ def plotting_operator(
     return register_operator("plotting", name=name, **meta)
 
 
-def comparison_operator(
+def analysis_operator(
     *,
     name: str | None = None,
     **meta: object,
 ) -> Callable[[_OT], _OT]:
-    """Register a comparison plot operator (kind ``"comparison"``)."""
-    return register_operator("comparison", name=name, **meta)
+    """Register a snapshot-history analysis plot operator (kind ``"analysis"``).
+
+    These operators compute over a run's saved snapshot history. Cross-run
+    comparison is not an operator; see :mod:`tud_lbm.io.plotting.run_comparison`.
+    """
+    return register_operator("analysis", name=name, **meta)
 
 
 def extra_state_plugin(

@@ -10,7 +10,7 @@ from tud_lbm.io.plotting._analysis_common import _load_timesteps
 from tud_lbm.io.plotting._analysis_common import _set_empty_state
 from tud_lbm.io.plotting.base import AnalysisPlot
 from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
-from tud_lbm.registry import comparison_operator
+from tud_lbm.registry import analysis_operator
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 _CONTACT_ANGLES_TITLE = "Contact angles vs timestep"
 
 
-@comparison_operator(name="contact_angle_left")
+@analysis_operator(name="contact_angle_left")
 class ContactAngleLeftPlot(_BaseAnalysisPlot):
     """Plot left contact angle over time."""
 
@@ -36,7 +36,7 @@ class ContactAngleLeftPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@comparison_operator(name="contact_angle_right")
+@analysis_operator(name="contact_angle_right")
 class ContactAngleRightPlot(_BaseAnalysisPlot):
     """Plot right contact angle over time."""
 
@@ -53,7 +53,7 @@ class ContactAngleRightPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@comparison_operator(name="contact_angles_pair")
+@analysis_operator(name="contact_angles_pair")
 class ContactAnglesPairPlot(AnalysisPlot):
     """Render paired left/right contact-angle history."""
 

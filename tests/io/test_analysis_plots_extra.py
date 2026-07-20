@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from tud_lbm.config import SimulationConfig
+from tud_lbm.io.analysis.droplet_metrics import analytical_sigma_lg
+from tud_lbm.io.analysis.droplet_metrics import resolve_step_x
 from tud_lbm.io.plotting._analysis_common import _empty_data_message
 from tud_lbm.io.plotting._analysis_common import _extract_rho_2d
 from tud_lbm.io.plotting._analysis_common import _extract_u_mag_2d
@@ -16,9 +18,6 @@ from tud_lbm.io.plotting.contact_angle_plot import ContactAnglesPairPlot
 from tud_lbm.io.plotting.contact_line_speed_plot import ContactLineSpeedLeftPlot
 from tud_lbm.io.plotting.contact_line_speed_plot import ContactLineSpeedsPairPlot
 from tud_lbm.io.plotting.scalar_history_plot import DensityRatioPlot
-from tud_lbm.io.plotting.simulation_csv import _derive_surface_tension
-from tud_lbm.io.plotting.simulation_csv import _resolve_initial_radius
-from tud_lbm.io.plotting.simulation_csv import _resolve_step_x
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -150,15 +149,11 @@ def test_empty_message_and_config_resolvers_cover_branches():
         initialisation={"radii": [0.5]},
         chemical_step_config={"chemical_step_location": 0.25},
     )
-    assert _derive_surface_tension(cfg) is not None
-    assert _resolve_initial_radius(cfg) == 5.0
-    assert _resolve_step_x(cfg) == 5.0
+    assert analytical_sigma_lg(cfg) is not None
+    assert resolve_step_x(cfg) == 5.0
 
     cfg_no_step = SimulationConfig(grid_shape=(8, 8, 1), tau=0.8, nt=2, chemical_step_config={})
-    assert _resolve_step_x(cfg_no_step) is None
-
-    cfg_bad_radii = SimulationConfig(grid_shape=(8, 8, 1), tau=0.8, nt=2, initialisation={"radii": ["bad"]})
-    assert _resolve_initial_radius(cfg_bad_radii) is None
+    assert resolve_step_x(cfg_no_step) is None
 
 
 def test_density_ratio_render_uses_log_scale():

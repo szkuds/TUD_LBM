@@ -1,20 +1,18 @@
-"""Coverage for tud_lbm/io/plotting/analysis.py CSV-builder internals.
+"""Coverage for the shared droplet-metric layer and the CSV serializer.
 
-Targets the 228 uncovered lines (22.4 → ~70%+) by exercising:
-- _resolve_r_zero: all three paths (contact-line, init-radii, fallback 27)
-- _inclination_angle_deg: from gravity_force dict, and no-force fallback
-- _sigma_lg: basic computation
-- _interpolate_interface: left/right interface sub-cell positions
-- _ca_from_rho, _cll_from_rho: from synthetic rho fields
-- _center_of_mass, _avg_x_location: from synthetic rho fields
-- _backward_diff: with interval>1 and interval=1
-- _collect_csv_rows: end-to-end over real npz files
-- _finalize_csv_dataframe: column presence and normalisation
+Exercises:
+- resolve_r_zero: all three paths (contact-line, init-radii, fallback 27)
+- inclination_angle_deg: from gravity_force dict, and no-force fallback
+- analytical_sigma_lg: basic computation
+- interpolate_interface: left/right interface sub-cell positions
+- contact_angles_from_rho, contact_lines_from_rho: from synthetic rho fields
+- center_of_mass, avg_x_location: from synthetic rho fields
+- backward_diff: with interval>1 and interval=1
 - build_simulation_csv: skip when wrong sim_type, skip when no data dir,
   and successful write when valid files exist
 - process_parent_dir: no-run and single-run paths (mocked CSV write)
 - _clean_dir_label: digit prefix stripping
-- _parse_timestep_from_path: valid and invalid stems
+- parse_timestep_from_path: valid and invalid stems
 - SimulationCsvExport.compute and .render
 """
 
@@ -27,20 +25,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from tud_lbm.config import SimulationConfig
+from tud_lbm.io.analysis.droplet_metrics import RZero
+from tud_lbm.io.analysis.droplet_metrics import analytical_sigma_lg
+from tud_lbm.io.analysis.droplet_metrics import backward_diff
+from tud_lbm.io.analysis.droplet_metrics import inclination_angle_deg
+from tud_lbm.io.analysis.droplet_metrics import resolve_r_zero
+from tud_lbm.io.analysis.droplet_metrics._snapshot import avg_x_location
+from tud_lbm.io.analysis.droplet_metrics._snapshot import center_of_mass
+from tud_lbm.io.analysis.droplet_metrics._snapshot import contact_angles_from_rho
+from tud_lbm.io.analysis.droplet_metrics._snapshot import contact_lines_from_rho
+from tud_lbm.io.analysis.droplet_metrics._snapshot import interpolate_interface
+from tud_lbm.io.analysis.droplet_metrics._snapshot import parse_timestep_from_path
 from tud_lbm.io.plotting.run_comparison import _clean_dir_label
 from tud_lbm.io.plotting.run_comparison import process_parent_dir
-from tud_lbm.io.plotting.simulation_csv import RZero
 from tud_lbm.io.plotting.simulation_csv import SimulationCsvExport
-from tud_lbm.io.plotting.simulation_csv import _avg_x_location
-from tud_lbm.io.plotting.simulation_csv import _backward_diff
-from tud_lbm.io.plotting.simulation_csv import _ca_from_rho
-from tud_lbm.io.plotting.simulation_csv import _center_of_mass
-from tud_lbm.io.plotting.simulation_csv import _cll_from_rho
-from tud_lbm.io.plotting.simulation_csv import _inclination_angle_deg
-from tud_lbm.io.plotting.simulation_csv import _interpolate_interface
-from tud_lbm.io.plotting.simulation_csv import _parse_timestep_from_path
-from tud_lbm.io.plotting.simulation_csv import _resolve_r_zero
-from tud_lbm.io.plotting.simulation_csv import _sigma_lg
 from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
 # ---------------------------------------------------------------------------
@@ -80,7 +78,7 @@ def _wetting_config() -> SimulationConfig:
 
 
 # ---------------------------------------------------------------------------
-# _resolve_r_zero
+# resolve_r_zero
 # ---------------------------------------------------------------------------
 
 
@@ -101,7 +99,7 @@ def test_resolve_r_zero_from_contact_line_length(tmp_path):
         init_type="init_from_file",
         init_dir=str(npz),
     )
-    r = _resolve_r_zero(cfg)
+    r = resolve_r_zero(cfg)
     assert r[0] > 0.0
 
 
@@ -118,7 +116,7 @@ def test_resolve_r_zero_from_init_radii():
         interface_width=2,
         initialisation={"radii": [0.3]},
     )
-    r = _resolve_r_zero(cfg)
+    r = resolve_r_zero(cfg)
     # 0.3 * min(30, 10) = 3.0
     assert r == RZero(value=3.0, used_fallback=True)
 
@@ -136,30 +134,30 @@ def test_resolve_r_zero_fallback_27():
         interface_width=2,
         initialisation={},
     )
-    assert _resolve_r_zero(cfg) == RZero(value=27.0, used_fallback=True)
+    assert resolve_r_zero(cfg) == RZero(value=27.0, used_fallback=True)
 
 
 # ---------------------------------------------------------------------------
-# _inclination_angle_deg
+# inclination_angle_deg
 # ---------------------------------------------------------------------------
 
 
 def test_inclination_angle_from_gravity_force():
     cfg = SimulationConfig(gravity_force={"force_g": 1e-6, "inclination_angle_deg": 45.0})
-    assert _inclination_angle_deg(cfg) == pytest.approx(45.0)
+    assert inclination_angle_deg(cfg) == pytest.approx(45.0)
 
 
 def test_inclination_angle_defaults_zero_when_no_force():
     cfg = SimulationConfig()
-    assert _inclination_angle_deg(cfg) == pytest.approx(0.0)
+    assert inclination_angle_deg(cfg) == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
-# _sigma_lg
+# analytical_sigma_lg
 # ---------------------------------------------------------------------------
 
 
-def test_sigma_lg_computation():
+def test_analytical_sigma_lg_computation():
     cfg = SimulationConfig(
         sim_type="multiphase_wetting",
         grid_shape=(8, 8),
@@ -172,28 +170,28 @@ def test_sigma_lg_computation():
         interface_width=2,
     )
     expected = (2.0 / 3.0) * (0.02 / 2) * (0.5**2)
-    assert _sigma_lg(cfg) == pytest.approx(expected)
+    assert analytical_sigma_lg(cfg) == pytest.approx(expected)
 
 
 # ---------------------------------------------------------------------------
-# _interpolate_interface
+# interpolate_interface
 # ---------------------------------------------------------------------------
 
 
 def test_interpolate_interface_returns_pair():
     rho_2d = _droplet_rho_2d()
-    xl, xr = _interpolate_interface(rho_2d[:, 1], _RHO_MEAN)
+    xl, xr = interpolate_interface(rho_2d[:, 1], _RHO_MEAN)
     assert xl < xr
 
 
 # ---------------------------------------------------------------------------
-# _ca_from_rho and _cll_from_rho
+# contact_angles_from_rho and contact_lines_from_rho
 # ---------------------------------------------------------------------------
 
 
-def test_ca_from_rho_returns_two_floats():
+def test_contact_angles_from_rho_returns_two_floats():
     rho_2d = _droplet_rho_2d()
-    ca_l, ca_r = _ca_from_rho(rho_2d, _RHO_MEAN)
+    ca_l, ca_r = contact_angles_from_rho(rho_2d, _RHO_MEAN)
     assert isinstance(ca_l, float)
     assert isinstance(ca_r, float)
     # Both contact angles should be in a physically plausible range
@@ -201,20 +199,20 @@ def test_ca_from_rho_returns_two_floats():
     assert 0 < ca_r < 180
 
 
-def test_cll_from_rho_returns_left_right():
+def test_contact_lines_from_rho_returns_left_right():
     rho_2d = _droplet_rho_2d()
-    xl, xr = _cll_from_rho(rho_2d, _RHO_MEAN)
+    xl, xr = contact_lines_from_rho(rho_2d, _RHO_MEAN)
     assert xl < xr
 
 
 # ---------------------------------------------------------------------------
-# _center_of_mass and _avg_x_location
+# center_of_mass and avg_x_location
 # ---------------------------------------------------------------------------
 
 
 def test_center_of_mass_symmetric_droplet():
     rho_2d = _droplet_rho_2d(nx=30, ny=10, lo=10, hi=20)
-    cm_x, cm_y = _center_of_mass(rho_2d, _RHO_MEAN)
+    cm_x, cm_y = center_of_mass(rho_2d, _RHO_MEAN)
     # Symmetric droplet centred at x≈14.5
     assert 9 < cm_x < 21
     assert 0 <= cm_y < 10
@@ -222,48 +220,48 @@ def test_center_of_mass_symmetric_droplet():
 
 def test_avg_x_location():
     rho_2d = _droplet_rho_2d(nx=30, ny=10, lo=10, hi=20)
-    avg_x = _avg_x_location(rho_2d, _RHO_MEAN, offset_x=15.0)
+    avg_x = avg_x_location(rho_2d, _RHO_MEAN, offset_x=15.0)
     # Should be close to 0 for a centred droplet with offset=15
     assert abs(avg_x) < 2.0
 
 
 # ---------------------------------------------------------------------------
-# _backward_diff
+# backward_diff
 # ---------------------------------------------------------------------------
 
 
 def test_backward_diff_interval_one():
     arr = np.array([0.0, 2.0, 4.0, 8.0])
-    diff = _backward_diff(arr, 1)
+    diff = backward_diff(arr, 1)
     np.testing.assert_allclose(diff, [0.0, 2.0, 2.0, 4.0])
 
 
 def test_backward_diff_interval_greater_than_one():
     arr = np.array([0.0, 10.0, 20.0, 30.0])
-    diff = _backward_diff(arr, 10)
+    diff = backward_diff(arr, 10)
     # Each step is 10 position / 10 interval = 1.0
     np.testing.assert_allclose(diff[1:], [1.0, 1.0, 1.0])
 
 
 def test_backward_diff_zero_interval_treated_as_one():
     arr = np.array([0.0, 3.0, 6.0])
-    diff = _backward_diff(arr, 0)
+    diff = backward_diff(arr, 0)
     np.testing.assert_allclose(diff, [0.0, 3.0, 3.0])
 
 
 # ---------------------------------------------------------------------------
-# _parse_timestep_from_path
+# parse_timestep_from_path
 # ---------------------------------------------------------------------------
 
 
 def test_parse_timestep_from_path_valid(tmp_path):
     p = tmp_path / "timestep_42.npz"
-    assert _parse_timestep_from_path(p) == 42
+    assert parse_timestep_from_path(p) == 42
 
 
 def test_parse_timestep_from_path_invalid_returns_minus_one(tmp_path):
     p = tmp_path / "bad_name.npz"
-    assert _parse_timestep_from_path(p) == -1
+    assert parse_timestep_from_path(p) == -1
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +392,7 @@ def test_build_simulation_csv_writes_file(tmp_path):
     df = pd.read_csv(result)
     assert "Re" in df.columns
     nu = (0.8 - 0.5) / 3.0
-    r_zero = _resolve_r_zero(cfg).value
+    r_zero = resolve_r_zero(cfg).value
     expected_re = df["avg_u_x"] * (2.0 * r_zero) / nu
     np.testing.assert_allclose(df["Re"].to_numpy(), expected_re.to_numpy())
 

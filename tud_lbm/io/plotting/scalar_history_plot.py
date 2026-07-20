@@ -8,13 +8,13 @@ from tud_lbm.io.plotting._analysis_common import _extract_rho_2d
 from tud_lbm.io.plotting._analysis_common import _extract_u_mag_2d
 from tud_lbm.io.plotting._analysis_common import _load_timesteps
 from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
-from tud_lbm.registry import comparison_operator
+from tud_lbm.registry import analysis_operator
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-@comparison_operator(name="max_velocity")
+@analysis_operator(name="max_velocity")
 class MaxVelocityPlot(_BaseAnalysisPlot):
     """Plot maximum velocity magnitude over time."""
 
@@ -31,7 +31,7 @@ class MaxVelocityPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@comparison_operator(name="density_ratio")
+@analysis_operator(name="density_ratio")
 class DensityRatioPlot(_BaseAnalysisPlot):
     """Plot max/min density ratio over time."""
 
@@ -54,7 +54,7 @@ class DensityRatioPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": np.asarray(vals, dtype=float)}
 
 
-@comparison_operator(name="avg_density")
+@analysis_operator(name="avg_density")
 class AvgDensityPlot(_BaseAnalysisPlot):
     """Plot average density over time."""
 
@@ -71,7 +71,7 @@ class AvgDensityPlot(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@comparison_operator(name="total_mass")
+@analysis_operator(name="total_mass")
 class TotalMassPlot(_BaseAnalysisPlot):
     """Plot total domain mass (sum of rho) over time."""
 

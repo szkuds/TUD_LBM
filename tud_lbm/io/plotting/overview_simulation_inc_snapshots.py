@@ -17,7 +17,7 @@ from tud_lbm.io.plotting.ca_theta_plot import _draw_dual_axis_on_ax
 from tud_lbm.io.plotting.density import DensityPlotOperator
 from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
 from tud_lbm.io.plotting.velocity import VelocityPlotOperator
-from tud_lbm.registry import comparison_operator
+from tud_lbm.registry import analysis_operator
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -116,7 +116,7 @@ def _move_legend_left_center(ax: matplotlib.axes.Axes) -> None:
     ax.legend(handles, labels, loc="center left", bbox_to_anchor=(0.02, 0.5), fontsize=fontsize)
 
 
-@comparison_operator(name="snapshot_fig")
+@analysis_operator(name="snapshot_fig")
 class SnapshotOverviewPlot(AnalysisPlot):
     """ca_theta_vs_x plot with lettered density/velocity snapshots alongside it."""
 

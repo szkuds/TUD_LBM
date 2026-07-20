@@ -10,7 +10,7 @@ from tud_lbm.io.plotting._analysis_common import _load_timesteps
 from tud_lbm.io.plotting._analysis_common import _set_empty_state
 from tud_lbm.io.plotting.base import AnalysisPlot
 from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
-from tud_lbm.registry import comparison_operator
+from tud_lbm.registry import analysis_operator
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -37,7 +37,7 @@ class _ContactLineSpeedBase(_BaseAnalysisPlot):
         return {"iters": iters, "values": vals}
 
 
-@comparison_operator(name="contact_line_speed_left")
+@analysis_operator(name="contact_line_speed_left")
 class ContactLineSpeedLeftPlot(_ContactLineSpeedBase):
     """Plot left contact-line speed over time."""
 
@@ -49,7 +49,7 @@ class ContactLineSpeedLeftPlot(_ContactLineSpeedBase):
     required_keys = ("cll_left",)
 
 
-@comparison_operator(name="contact_line_speed_right")
+@analysis_operator(name="contact_line_speed_right")
 class ContactLineSpeedRightPlot(_ContactLineSpeedBase):
     """Plot right contact-line speed over time."""
 
@@ -61,7 +61,7 @@ class ContactLineSpeedRightPlot(_ContactLineSpeedBase):
     required_keys = ("cll_right",)
 
 
-@comparison_operator(name="contact_line_speeds_pair")
+@analysis_operator(name="contact_line_speeds_pair")
 class ContactLineSpeedsPairPlot(AnalysisPlot):
     """Render paired left/right contact-line speed history."""
 

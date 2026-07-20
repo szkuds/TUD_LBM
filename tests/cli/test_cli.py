@@ -1213,7 +1213,7 @@ def test_cli_list_operators_includes_plotting_and_analysis():
 
     assert result.exit_code == 0
     assert "plotting" in result.output
-    assert "comparison" in result.output
+    assert "analysis" in result.output
     assert "density" in result.output
     assert "max_velocity" in result.output
     assert "simulation_csv" in result.output

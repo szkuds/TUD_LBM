@@ -66,6 +66,20 @@ def mock_optax_present(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _clear_droplet_series_cache():
+    """Drop the shared droplet-metric cache between tests.
+
+    The cache is keyed on resolved file paths, and pytest reuses tmp_path names
+    across tests, so a stale entry could otherwise be served to a later test.
+    """
+    from tud_lbm.io.analysis.droplet_metrics import clear_series_cache
+
+    clear_series_cache()
+    yield
+    clear_series_cache()
+
+
+@pytest.fixture(autouse=True)
 def _close_figures():
     """Close all matplotlib figures after each test to avoid the
     'More than 20 figures' RuntimeWarning from accumulating across the suite.

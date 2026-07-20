@@ -6,11 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 from tud_lbm.config import SimulationConfig
+from tud_lbm.io.analysis.droplet_metrics import DropletSeries
+from tud_lbm.io.analysis.droplet_metrics import MetricScales
 from tud_lbm.io.plotting.run_comparison import _clean_dir_label
 from tud_lbm.io.plotting.run_comparison import _safe_load_config
 from tud_lbm.io.plotting.run_comparison import main
 from tud_lbm.io.plotting.run_comparison import process_parent_dir
-from tud_lbm.io.plotting.simulation_csv import _finalize_csv_dataframe
 from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
 
@@ -76,25 +77,45 @@ def test_build_simulation_csv_skips_unsupported_sim_type(tmp_path: Path):
     assert build_simulation_csv(run_dir, cfg) is None
 
 
-def test_finalize_csv_dataframe_ca_norm_uses_inclination_when_positive():
-    df = pd.DataFrame(
-        {
-            "iteration": [5, 10],
-            "avg_u_x": [0.01, 0.02],
-            "avg_u_y": [0.0, 0.0],
-            "avg_x_location": [2.0, 3.0],
-            "cll_left": [1.0, 1.5],
-            "cll_right": [4.0, 5.0],
-            "ca_left": [80.0, 81.0],
-            "ca_right": [95.0, 94.0],
-            "cm_x": [5.0, 5.5],
-            "cm_y": [3.0, 3.2],
-        }
+def _series(*, incl_deg: float) -> DropletSeries:
+    """A two-sample series with simple, hand-checkable scales."""
+    scales = MetricScales(
+        rho_mean=0.6,
+        sigma_lg=0.5,
+        nu=0.1,
+        r_zero=2.0,
+        r_zero_is_fallback=False,
+        offset_x=8.0,
+        incl_deg=incl_deg,
+        save_interval=5,
+    )
+    return DropletSeries(
+        iteration=np.array([5, 10]),
+        avg_u_x=np.array([0.01, 0.02]),
+        avg_u_y=np.array([0.0, 0.0]),
+        avg_x_location=np.array([2.0, 3.0]),
+        cll_left=np.array([1.0, 1.5]),
+        cll_right=np.array([4.0, 5.0]),
+        theta_left=np.array([80.0, 81.0]),
+        theta_right=np.array([95.0, 94.0]),
+        cm_x=np.array([5.0, 5.5]),
+        cm_y=np.array([3.0, 3.2]),
+        scales=scales,
     )
 
-    out = _finalize_csv_dataframe(df, r_zero=2.0, nu=0.1, sigma_lg=0.5, incl_deg=30.0, save_iv=5)
 
-    assert np.allclose(out["Ca_norm"].to_numpy(), out["Ca"].to_numpy() / 0.5)
+def test_ca_norm_divides_by_sine_of_inclination_when_positive():
+    """At 30 degrees, Ca_norm is Ca / sin(30) = Ca / 0.5."""
+    series = _series(incl_deg=30.0)
+
+    assert np.allclose(series.ca_norm, series.ca / 0.5)
+
+
+def test_ca_norm_equals_ca_when_not_inclined():
+    """With no inclination there is nothing to normalise against."""
+    series = _series(incl_deg=0.0)
+
+    assert np.allclose(series.ca_norm, series.ca)
 
 
 def test_safe_load_config_returns_none_on_parse_error(monkeypatch, tmp_path: Path):

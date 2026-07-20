@@ -104,7 +104,7 @@ class FigureBuilder:
     def _resolve_operators(self, requested: list[str]) -> None:
         """Instantiate the requested field/analysis operators into their lists."""
         all_ops = get_operators("plotting")
-        all_analysis_ops = get_operators("comparison")
+        all_analysis_ops = get_operators("analysis")
         for name in requested:
             entry = all_ops.get(name)
             if entry is not None:

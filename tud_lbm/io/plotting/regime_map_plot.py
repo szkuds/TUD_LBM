@@ -19,12 +19,12 @@ from tud_lbm.io.analysis.accelerations import Smoothing
 from tud_lbm.io.analysis.accelerations import classify_regime
 from tud_lbm.io.analysis.accelerations import compute_acceleration
 from tud_lbm.io.analysis.accelerations import save_diagnostic_plot
+from tud_lbm.io.analysis.droplet_metrics import resolve_r_zero
 from tud_lbm.io.analysis.physical_parameters import compute_dimensionless_numbers
 from tud_lbm.io.plotting.figure_config import DEFAULT_STYLE
 from tud_lbm.io.plotting.run_comparison import _clean_dir_label
 from tud_lbm.io.plotting.run_comparison import _safe_load_config
 from tud_lbm.io.plotting.simulation_csv import _CSV_FILENAME
-from tud_lbm.io.plotting.simulation_csv import _resolve_r_zero
 from tud_lbm.io.plotting.simulation_csv import build_simulation_csv
 
 if TYPE_CHECKING:
@@ -194,7 +194,7 @@ def process_run_dir(run_dir: Path, *, smoothing: Smoothing = "raw") -> RunRegime
         print(f"  Skipped {run_dir}: Oh/Bo_parallel could not be resolved (missing surface tension or gravity)")
         return None
 
-    r_zero = _resolve_r_zero(config).value
+    r_zero = resolve_r_zero(config).value
     accel_result = compute_acceleration(df, smoothing=smoothing)
     regime_result = classify_regime(df["cm_x"].to_numpy(dtype=float), r_zero, accel_result)
     save_diagnostic_plot(

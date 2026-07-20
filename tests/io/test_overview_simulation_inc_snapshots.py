@@ -58,7 +58,7 @@ def _write_snapshots(path: Path) -> list[Path]:
 
 
 def test_registered_under_snapshot_fig():
-    entry = get_operators("comparison").get("snapshot_fig")
+    entry = get_operators("analysis").get("snapshot_fig")
     assert entry is not None
     assert entry.target is SnapshotOverviewPlot
 

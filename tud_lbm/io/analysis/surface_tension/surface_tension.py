@@ -419,6 +419,8 @@ def _save_plot(path: Path, radii: np.ndarray, delta_p: np.ndarray, sigma: float)
     ax1.set_xlabel("1/R [lattice units]")
     ax1.set_ylabel("ΔP [lattice units]")
     ax1.set_title(f"Young–Laplace fit (R² = {r_squared:.4f})")
+    ax1.set_xlim(left=0)
+    ax1.set_ylim(bottom=0)
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
