@@ -85,3 +85,16 @@ def test_build_all_no_data_dir_returns_empty(tmp_path):
     builder = FigureBuilder(cfg, run_dir)
     saved = builder.build_all()
     assert saved == []
+
+
+def test_build_single_renders_only_requested_snapshot(tmp_path):
+    run_dir = _make_run_dir(tmp_path, n_steps=3)
+    cfg = SimulationConfig(plot_fields=["density"])
+    builder = FigureBuilder(cfg, run_dir)
+
+    saved = builder.build_single(run_dir / "data" / "timestep_2.npz")
+
+    assert saved is not None
+    assert saved == run_dir / "data" / "timestep_2.png"
+    assert saved.exists()
+    assert len(list((run_dir / "data").glob("*.png"))) == 1

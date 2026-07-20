@@ -11,6 +11,7 @@ Two click behaviours are load-bearing here and pinned first:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+import numpy as np
 import pytest
 from tests.support.run_dirs import build_run_dir
 from tests.support.run_dirs import wetting_config
@@ -99,3 +100,25 @@ def test_fields_flag_bypasses_the_prompt(runner, run_dir):
 
     assert result.exit_code == 0, result.output
     assert "Select fields" not in result.output
+
+
+def test_single_snapshot_builds_visual_beside_standalone_npz(runner, tmp_path):
+    snapshot = tmp_path / "radius_100.25_init.npz"
+    np.savez(
+        snapshot,
+        rho=np.ones((8, 8, 1, 1, 1)),
+        u=np.zeros((8, 8, 1, 1, 2)),
+    )
+
+    result = runner.invoke(cli, ["visualise", str(snapshot), "--single", "--no-prompt"])
+
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "radius_100.25_init.png").exists()
+    assert len(list(tmp_path.glob("*.png"))) == 1
+
+
+def test_single_snapshot_rejects_non_npz_path(runner, run_dir):
+    result = runner.invoke(cli, ["visualise", str(run_dir), "--single", "--no-prompt"])
+
+    assert result.exit_code == 2
+    assert "existing .npz snapshot file" in result.output

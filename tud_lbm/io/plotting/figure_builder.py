@@ -309,9 +309,10 @@ class FigureBuilder:
         data: dict[str, np.ndarray],
         timestep: int,
         filename: str | None = None,
+        history_files: list[Path] | None = None,
     ) -> Path | None:
         """Render one timestep figure and save it to disk."""
-        fig = self.render_figure(data, timestep)
+        fig = self.render_figure(data, timestep, history_files=history_files)
         if fig is None:
             warnings.warn(
                 f"FigureBuilder: no operators have data at t={timestep}.",
@@ -321,6 +322,39 @@ class FigureBuilder:
 
         out_name = filename or f"timestep_{timestep}.png"
         out_path = self._snapshots_dir / out_name
+        fig.savefig(out_path, dpi=self.dpi)
+        plt.close(fig)
+        return out_path
+
+    def build_single(self, snapshot_path: str | os.PathLike, filename: str | None = None) -> Path | None:
+        """Build one figure beside a specific ``.npz`` snapshot."""
+        fp = Path(snapshot_path)
+        timestep = self._extract_timestep(fp.stem) or 0
+
+        history_files: list[Path] | None = None
+        if self._analysis_operators:
+            files = [candidate for _, candidate in self._sorted_timed_files()]
+            resolved = fp.resolve()
+            for idx, candidate in enumerate(files):
+                if candidate.resolve() == resolved:
+                    history_files = files[: idx + 1]
+                    break
+            else:
+                history_files = [fp]
+
+        with np.load(fp) as raw:
+            data = {key: raw[key] for key in raw.files}
+
+        out_name = filename or f"{fp.stem}.png"
+        fig = self.render_figure(data, timestep, history_files=history_files)
+        if fig is None:
+            warnings.warn(
+                f"FigureBuilder: no operators have data in {fp.name}.",
+                stacklevel=2,
+            )
+            return None
+
+        out_path = fp.parent / out_name
         fig.savefig(out_path, dpi=self.dpi)
         plt.close(fig)
         return out_path

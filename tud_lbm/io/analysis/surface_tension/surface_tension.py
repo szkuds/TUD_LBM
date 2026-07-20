@@ -12,7 +12,8 @@ CONFIG.toml --surface-tension`` forces it for any supported multiphase EOS,
 e.g. to verify the closed-form double-well sigma numerically.
 
 The measurement is expensive, so results are cached on disk keyed by the
-thermodynamic parameters that determine sigma. The cache file lives at
+thermodynamic parameters and calibration grid size that determine sigma. The
+cache file lives at
 ``tud_lbm/io/analysis/surface_tension/data/surface_tension_cache.json`` — inside the repo, so
 it's shared with the team via the normal git workflow rather than re-measured
 by everyone individually (commit it after adding a new entry). The
@@ -20,7 +21,7 @@ calibration figure and the fitted ``(radii, delta_p, sigma)`` data file are
 written into the active run directory on every run, whether measured or
 served from cache, so each run keeps its own copy. When the sweep actually
 runs, the initial and equilibrated droplet state for every radius is also
-saved under ``<run_dir>/surface_tension_states/`` for inspection.
+saved under ``<run_dir>/plots/surface_tension_states/`` for inspection.
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ _EOS_REQUIRING_CALIBRATION = frozenset({"carnahan-starling"})
 
 _KNOWN_EOS = frozenset({"double-well", "carnahan-starling"})
 
+_MIN_GRID_SHAPE_DIMS = 2
 _N_RADII = 5
 _N_ITERATIONS = 200_000
 _PERIODIC_BC = {"top": "periodic", "bottom": "periodic", "left": "periodic", "right": "periodic"}
@@ -61,7 +63,18 @@ _STATES_DIRNAME = "surface_tension_states"
 _SHARED_CACHE_PATH = Path(__file__).resolve().parent / "data" / _CACHE_FILENAME
 
 # Parameters that uniquely determine the measured surface tension.
-_CACHE_KEYS = ("eos", "kappa", "rho_l", "rho_v", "interface_width", "a_eos", "b_eos", "r_eos", "t_eos")
+_CACHE_KEYS = (
+    "eos",
+    "kappa",
+    "rho_l",
+    "rho_v",
+    "interface_width",
+    "a_eos",
+    "b_eos",
+    "r_eos",
+    "t_eos",
+    "grid_shape",
+)
 
 console = Console()
 
@@ -116,7 +129,7 @@ def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> 
         )
         radii, delta_p = _measure_pressure_jumps(config, states_dir=run_dir / _STATES_DIRNAME)
         sigma = _fit_sigma(radii, delta_p)
-        _store_cache(key, radii, delta_p, sigma)
+        _store_cache(key, radii, delta_p, sigma, config.grid_shape)
         console.print(f"[bold green]Surface tension calibrated: σ = {sigma:.6g}[/bold green]")
 
     _save_plot(run_dir / _PLOT_FILENAME, radii, delta_p, sigma)
@@ -303,8 +316,13 @@ def _cache_path() -> Path:
     return _SHARED_CACHE_PATH
 
 
+def _cache_grid_shape(config: SimulationConfig) -> list[int]:
+    return [int(dim) for dim in config.grid_shape]
+
+
 def _cache_key(config: SimulationConfig) -> str:
     values = {k: getattr(config, k, None) for k in _CACHE_KEYS}
+    values["grid_shape"] = _cache_grid_shape(config)
     return json.dumps(values, sort_keys=True)
 
 
@@ -312,9 +330,10 @@ def _sanitize_key(raw_key: str) -> str | None:
     """Rebuild a cache key from validated primitives, or reject it.
 
     Valid keys are the canonical JSON produced by :func:`_cache_key`: exactly
-    the ``_CACHE_KEYS`` fields, with numeric or ``None`` values and an EOS
-    name from ``_KNOWN_EOS``. The returned key is re-serialized from coerced
-    primitives so nothing read from the cache file is echoed back verbatim.
+    the ``_CACHE_KEYS`` fields, with numeric or ``None`` values, a validated
+    ``grid_shape``, and an EOS name from ``_KNOWN_EOS``. The returned key is
+    re-serialized from coerced primitives so nothing read from the cache file
+    is echoed back verbatim.
     """
     try:
         values = json.loads(raw_key)
@@ -322,23 +341,36 @@ def _sanitize_key(raw_key: str) -> str | None:
         return None
     if not isinstance(values, dict) or set(values) != set(_CACHE_KEYS):
         return None
-    clean: dict[str, str | int | float | None] = {}
+    clean: dict[str, str | int | float | list[int] | None] = {}
     for field in _CACHE_KEYS:
-        value = values[field]
-        if field == "eos":
-            known = next((eos for eos in _KNOWN_EOS if eos == value), None)
-            if value is not None and known is None:
-                return None
-            clean[field] = known
-        elif value is None:
-            clean[field] = None
-        elif isinstance(value, int) and not isinstance(value, bool):
-            clean[field] = int(value)
-        elif isinstance(value, float):
-            clean[field] = float(value)
-        else:
+        clean_value = _sanitize_key_field(field, values[field])
+        if clean_value is None and values[field] is not None:
             return None
+        clean[field] = clean_value
     return json.dumps(clean, sort_keys=True)
+
+
+def _sanitize_key_field(field: str, value: object) -> str | int | float | list[int] | None:
+    clean: str | int | float | list[int] | None
+    if field == "eos":
+        known = next((eos for eos in _KNOWN_EOS if eos == value), None)
+        if value is not None and known is None:
+            return None
+        clean = known
+    elif field == "grid_shape":
+        try:
+            clean = _sanitize_grid_shape(value)
+        except ValueError:
+            return None
+    elif value is None:
+        clean = None
+    elif isinstance(value, int) and not isinstance(value, bool):
+        clean = int(value)
+    elif isinstance(value, float):
+        clean = float(value)
+    else:
+        clean = None
+    return clean
 
 
 def _sanitize_entry(raw_entry: dict) -> dict | None:
@@ -348,9 +380,23 @@ def _sanitize_entry(raw_entry: dict) -> dict | None:
             "sigma": float(raw_entry["sigma"]),
             "radii": [float(x) for x in raw_entry["radii"]],
             "delta_p": [float(x) for x in raw_entry["delta_p"]],
+            "grid_shape": _sanitize_grid_shape(raw_entry["grid_shape"]),
         }
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def _sanitize_grid_shape(raw_grid_shape: object) -> list[int]:
+    if not isinstance(raw_grid_shape, list) or len(raw_grid_shape) < _MIN_GRID_SHAPE_DIMS:
+        msg = "grid_shape must be a list with at least two positive integer dimensions"
+        raise ValueError(msg)
+    grid_shape: list[int] = []
+    for dim in raw_grid_shape:
+        if not isinstance(dim, int) or isinstance(dim, bool) or dim <= 0:
+            msg = "grid_shape must contain only positive integer dimensions"
+            raise ValueError(msg)
+        grid_shape.append(dim)
+    return grid_shape
 
 
 def _load_cache(path: Path) -> dict:
@@ -371,7 +417,9 @@ def _load_cache(path: Path) -> dict:
     return cache
 
 
-def _store_cache(key: str, radii: np.ndarray, delta_p: np.ndarray, sigma: float) -> None:
+def _store_cache(
+    key: str, radii: np.ndarray, delta_p: np.ndarray, sigma: float, grid_shape: tuple[int, ...] | list[int]
+) -> None:
     path = _cache_path().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     cache = _load_cache(path)
@@ -379,6 +427,7 @@ def _store_cache(key: str, radii: np.ndarray, delta_p: np.ndarray, sigma: float)
         "sigma": float(sigma),
         "radii": [float(x) for x in radii],
         "delta_p": [float(x) for x in delta_p],
+        "grid_shape": [int(dim) for dim in grid_shape],
     }
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(cache, indent=2), encoding="utf-8")
