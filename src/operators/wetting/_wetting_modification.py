@@ -55,18 +55,25 @@ def _apply_wetting_modification(
     # Interface mask: points between the density thresholds
     in_interface = (edge_slice < rho_upper) & (edge_slice > rho_lower)
 
-    # Find transition indices to split left/right contact-line regions
+    # Split the wall into left/right contact-line regions by the *positions*
+    # of the two interface transitions, not by their sign. A droplet (liquid on
+    # the wall) and a bubble (vapour on the wall) have opposite density profiles,
+    # so the sign of ``diff`` at each contact line flips between them; keying off
+    # the sign made bubble runs silently no-op. Sorting transitions by position
+    # keeps the leftmost transition as the left contact line for both topologies.
     mask_int = jnp.array(edge_slice < rho_upper, dtype=jnp.int32)
     diff = jnp.diff(mask_int)
 
-    # Left transition: where density drops below upper threshold (diff == -1)
-    left_idx = jnp.where(diff == -1, size=1, fill_value=0)[0] + width
-    # Right transition: where density rises above upper threshold (diff == 1)
-    right_idx = jnp.where(diff == 1, size=1, fill_value=0)[0] - width
+    # The two transitions in ascending index order: left contact line, then right.
+    transitions = jnp.where(jnp.abs(diff) == 1, size=2, fill_value=0)[0]
+    left_cl = transitions[0]
+    right_cl = transitions[1]
 
     indices = jnp.arange(edge_slice.shape[0])
-    is_left_region = in_interface & (indices < right_idx[0])
-    is_right_region = in_interface & (indices > left_idx[0])
+    # Left region: interface points left of (right contact line - width buffer).
+    is_left_region = in_interface & (indices < right_cl - width)
+    # Right region: interface points right of (left contact line + width buffer).
+    is_right_region = in_interface & (indices > left_cl + width)
 
     # Wetting modification: phi * rho - d_rho, clamped to density bounds
     modified_left = jnp.clip(phi_l * edge_slice - d_rho_l, rho_lower, rho_upper)

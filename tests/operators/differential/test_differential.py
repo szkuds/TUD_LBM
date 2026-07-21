@@ -430,6 +430,70 @@ class TestWettingUtil:
             assert float(np.max(result_np[modified_mask])) <= upper + 1e-6
             assert float(np.min(result_np[modified_mask])) >= lower - 1e-6
 
+    @staticmethod
+    def _wall_edge_profile(n: int, rho_l: float, rho_v: float, *, phase_center: str) -> jnp.ndarray:
+        """Build a 1-D wall density slice with two contact-line transitions.
+
+        ``phase_center="liquid"`` → droplet (liquid centre, vapour flanks).
+        ``phase_center="vapour"`` → bubble (vapour centre, liquid flanks).
+        The two topologies have inverted density profiles, so the sign of each
+        density transition flips between them.
+        """
+        x = np.arange(n, dtype=np.float64)
+        c1, c2, w = n * 0.35, n * 0.65, 3.0
+        # Raised band ≈ 1 inside [c1, c2], ≈ 0 outside.
+        band = 0.5 * (np.tanh((x - c1) / w) - np.tanh((x - c2) / w))
+        # Droplet raises the centre band above rho_v; bubble lowers it below rho_l.
+        prof = rho_v + (rho_l - rho_v) * band if phase_center == "liquid" else rho_l - (rho_l - rho_v) * band
+        return jnp.asarray(prof)
+
+    @pytest.mark.parametrize("phase_center", ["liquid", "vapour"])
+    def test_modification_responds_to_params_for_both_topologies(self, phase_center):
+        """phi/d_rho must alter the interface for a droplet *and* a bubble.
+
+        Regression: the interface splitter keyed off the *sign* of each density
+        transition, which is inverted for a bubble (vapour on the wall) versus a
+        droplet. Bubble runs therefore produced empty left/right region masks and
+        silently ignored phi and d_rho, collapsing every parameter choice to the
+        same state.
+        """
+        from src.operators.wetting._wetting_modification import _apply_wetting_modification
+
+        rho_l, rho_v = 1.0, 0.1
+        width = 4
+        edge = self._wall_edge_profile(80, rho_l, rho_v, phase_center=phase_center)
+
+        # Neutral params (phi=1, d_rho=0) leave interface cells exactly in place.
+        baseline = _apply_wetting_modification(edge, rho_l, rho_v, 1.0, 1.0, 0.0, 0.0, width)
+        np.testing.assert_allclose(np.array(baseline), np.array(edge), atol=1e-6)
+
+        # Non-trivial params must change the interface cells.
+        modified = _apply_wetting_modification(edge, rho_l, rho_v, 1.3, 1.3, 0.05, 0.05, width)
+        assert not np.allclose(np.array(modified), np.array(edge))
+
+    def test_bubble_left_right_regions_are_independent(self):
+        """A bubble's two contact lines receive their own phi/d_rho.
+
+        Guards the left/right assignment: perturbing only phi_left must act on
+        lower wall indices than perturbing only phi_right.
+        """
+        from src.operators.wetting._wetting_modification import _apply_wetting_modification
+
+        rho_l, rho_v = 1.0, 0.1
+        width = 4
+        edge = self._wall_edge_profile(80, rho_l, rho_v, phase_center="vapour")
+
+        left_only = _apply_wetting_modification(edge, rho_l, rho_v, 1.3, 1.0, 0.0, 0.0, width)
+        right_only = _apply_wetting_modification(edge, rho_l, rho_v, 1.0, 1.3, 0.0, 0.0, width)
+
+        left_changed = ~np.isclose(np.array(left_only), np.array(edge))
+        right_changed = ~np.isclose(np.array(right_only), np.array(edge))
+        assert left_changed.any(), "phi_left must affect the left contact line"
+        assert right_changed.any(), "phi_right must affect the right contact line"
+
+        # Left perturbation sits at lower wall indices than the right one.
+        assert float(np.mean(np.where(left_changed)[0])) < float(np.mean(np.where(right_changed)[0]))
+
     # --- Per-edge application via build_wetting_applicator -----------------
 
     def test_bottom_wetting_changes_bottom_ghost_row(self):
