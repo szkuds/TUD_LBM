@@ -177,6 +177,21 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
             msg,
         )
 
+    # ── Validation: hysteresis config requires a hysteresis sim_type ──
+    # Otherwise build_setup would still build a hysteresis wetting_fn, but the
+    # selected step operator would never supply a trial_step_fn, crashing the
+    # optimiser with a cryptic 'NoneType is not callable' deep inside the trace.
+    if config.hysteresis_config is not None and "hysteresis" not in config.sim_type:
+        msg = (
+            f"Hysteresis configuration present but sim_type is '{config.sim_type}'. "
+            "The hysteresis optimiser only runs under sim_type = 'multiphase_hysteresis' "
+            "(or 'multiphase_hysteresis_chemical_step'). "
+            "Set one of those sim_types, or remove the [hysteresis] config for a static wetting run."
+        )
+        raise ValueError(
+            msg,
+        )
+
     # Import here to avoid circular import issues at module level
     from src.operators.boundary import build_bc
     from src.operators.boundary import build_bc_masks

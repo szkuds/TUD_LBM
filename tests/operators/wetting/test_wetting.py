@@ -487,7 +487,7 @@ class TestUpdateWettingState:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            sim_type="multiphase_hysteresis",
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
@@ -598,7 +598,7 @@ class TestUpdateWettingState:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            sim_type="multiphase_hysteresis",
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
@@ -691,7 +691,7 @@ class TestUpdateWettingState:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            sim_type="multiphase_hysteresis",
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
@@ -737,7 +737,7 @@ class TestUpdateWettingState:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            sim_type="multiphase_hysteresis",
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
