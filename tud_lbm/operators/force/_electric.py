@@ -221,7 +221,7 @@ class ElectricForceModule:
         grad_eps_ey = grad(eps_ey_3d)  # input: (nx, ny, 1, 1, 1) → output: (nx, ny, 1, 1, 2)
         d_eps_ex_dx = grad_eps_ex[:, :, 0, 0, 0]
         d_eps_ey_dy = grad_eps_ey[:, :, 0, 0, 1]
-        rho_e = -(d_eps_ex_dx + d_eps_ey_dy)
+        rho_e = (d_eps_ex_dx + d_eps_ey_dy)
 
         e2 = ex * ex + ey * ey
         fx = rho_e * ex - 0.5 * e2 * deps_dx
