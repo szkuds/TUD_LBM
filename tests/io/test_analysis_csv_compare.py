@@ -87,6 +87,7 @@ def _series(*, incl_deg: float) -> DropletSeries:
         offset_x=8.0,
         incl_deg=incl_deg,
         save_interval=5,
+        wall_edge="bottom",
     )
     return DropletSeries(
         iteration=np.array([5, 10]),

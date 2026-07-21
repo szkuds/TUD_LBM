@@ -35,17 +35,18 @@ def test_is_active_detects_wetting_or_hysteresis():
 def test_init_state_uses_defaults_when_wetting_cfg_missing(monkeypatch):
     from src.operators.wetting import _extra_state as mod
 
-    monkeypatch.setattr(mod, "compute_contact_angle", lambda rho, rho_mean: (jnp.array(75.0), jnp.array(85.0)))
+    monkeypatch.setattr(mod, "compute_contact_angle", lambda rho, rho_mean, **_: (jnp.array(75.0), jnp.array(85.0)))
     monkeypatch.setattr(
         mod,
         "compute_contact_line_location",
-        lambda rho, ca_l, ca_r, rho_mean: (jnp.array(10.0), jnp.array(30.0)),
+        lambda rho, ca_l, ca_r, rho_mean, **_: (jnp.array(10.0), jnp.array(30.0)),
     )
 
     setup = SimpleNamespace(
         config=SimpleNamespace(wetting_config=None),
         initial_f_fn=lambda: jnp.ones((4, 4, 1, 9, 1)),
         multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.5),
+        wetting_edge="bottom",
     )
 
     out = mod.WettingExtraStatePlugin.init_state(setup)  # ty: ignore[invalid-argument-type]

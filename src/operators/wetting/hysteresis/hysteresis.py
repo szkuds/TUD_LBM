@@ -302,13 +302,15 @@ def _update_wetting_state_impl(
     mp = setup.multiphase_params
     rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
     w = jnp.array(float(mp.interface_width))
+    edge = setup.wetting_edge or "bottom"
 
-    ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean))
+    ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean), edge=edge)
     cll_left_tplus1, cll_right_tplus1 = compute_contact_line_location(
         rho_t_plus1,
         ca_left_tplus1,
         ca_right_tplus1,
         jnp.array(rho_mean),
+        edge=edge,
     )
 
     forward_drift_right = cll_right_tplus1 > wetting.cll_right
@@ -340,8 +342,8 @@ def _update_wetting_state_impl(
 
     def evaluate_fn(params: WettingParams) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         _, rho_out = trial_step_fn(params)
-        ca_l, ca_r = compute_contact_angle(rho_out, jnp.array(rho_mean))
-        cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, jnp.array(rho_mean))
+        ca_l, ca_r = compute_contact_angle(rho_out, jnp.array(rho_mean), edge=edge)
+        cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, jnp.array(rho_mean), edge=edge)
         return ca_l, ca_r, cll_l, cll_r
 
     def left_objective(p: WettingParams) -> jnp.ndarray:
@@ -543,14 +545,16 @@ def update_wetting_state_chemical_step(
         raise TypeError(msg)
     mp = setup.multiphase_params
     rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
+    edge = setup.wetting_edge or "bottom"
 
     # 1. Measure current contact angles and contact-line locations
-    ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean))
+    ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean), edge=edge)
     cll_left_tplus1, cll_right_tplus1 = compute_contact_line_location(
         rho_t_plus1,
         ca_left_tplus1,
         ca_right_tplus1,
         jnp.array(rho_mean),
+        edge=edge,
     )
 
     # Use current measured CLL to select the active pre/post hysteresis window.

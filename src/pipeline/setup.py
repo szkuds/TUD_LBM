@@ -95,6 +95,9 @@ class SimulationSetup(NamedTuple):
             implementing :class:`~operators.protocols.HysteresisOperator`.
             Built when ``hysteresis_config`` is present;
             ``None`` otherwise.
+        wetting_edge: The single wall marked ``"wetting"`` in ``bc_config``
+            (``"bottom"`` / ``"top"`` / ``"left"`` / ``"right"``), used to
+            orient contact-angle measurement. ``None`` for non-wetting runs.
         extra_state_plugins: Active plugin tuple used to initialise and update
             operation-specific extra state (e.g. electric potential, wetting state).
         collision_fn: Pre-built collision operator, resolved at setup time.
@@ -132,6 +135,7 @@ class SimulationSetup(NamedTuple):
     # ── Step function (unbound: (setup, state) -> State) ──
     step_fn: StepOperator | None = None
     wetting_fn: HysteresisOperator | None = None
+    wetting_edge: str | None = None
     extra_state_plugins: tuple[ExtraStatePlugin, ...] = ()
 
     # ── Pre-built operator closures (resolved at setup time) ──
@@ -224,6 +228,13 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         )
         wetting_fn = build_wetting_fn(wetting_scheme)
 
+    # Resolve the single wetting wall (validated to be exactly one when a
+    # wetting/hysteresis run reaches here) so measurement can orient itself.
+    from src.operators.wetting._edge_config import _resolve_wetting_edges
+
+    wetting_edges = _resolve_wetting_edges(config.bc_config) if config.bc_config else []
+    wetting_edge = wetting_edges[0][0] if wetting_edges else None
+
     extra_state_plugins = tuple(
         cast("ExtraStatePlugin", entry.target)
         for entry in sorted(get_operators("extra_state").values(), key=lambda e: e.name)
@@ -260,6 +271,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         laplacian_density_wetting=laplacian_density_wetting,
         step_fn=step_fn,
         wetting_fn=wetting_fn,
+        wetting_edge=wetting_edge,
         extra_state_plugins=extra_state_plugins,
         collision_fn=collision_fn,
         equilibrium_fn=equilibrium_fn,

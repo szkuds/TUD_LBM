@@ -44,6 +44,7 @@ def wetting_config(**overrides: object) -> SimulationConfig:
         "gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0},
         "initialisation": {"radii": [0.25], "centres": [[0.5, 0.5]]},
         "wetting_config": {"advancing_ca": 100.0},
+        "bc_config": {"bottom": "wetting"},
         "plot_fields": ["density", "ca_theta_vs_x"],
     }
     params.update(overrides)

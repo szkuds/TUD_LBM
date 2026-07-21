@@ -49,6 +49,42 @@ RHO_L, RHO_V = 1.0, 0.33
 RHO_MEAN = (RHO_L + RHO_V) / 2.0
 
 
+def _droplet_rho_2d_offset(nx: int, ny: int, centre_x: float, centre_y: float, radius: float):
+    """A 2D ``(nx, ny)`` droplet whose circle centre may sit off-grid.
+
+    Placing the centre *below* the wall (``centre_y < 0``) yields a
+    non-90° contact angle, which is what distinguishes a correct
+    measurement from the historical ``180° − θ`` bottom-wall bug.
+    """
+    _x = jnp.arange(nx, dtype=jnp.float64)[:, None]
+    _y = jnp.arange(ny, dtype=jnp.float64)[None, :]
+    dist = jnp.sqrt((_x - centre_x) ** 2 + (_y - centre_y) ** 2)
+    return jnp.where(dist < radius, RHO_L, RHO_V)
+
+
+def _place_on_edge(rho_bottom_2d, edge: str):
+    """Move a ``(nx, ny)`` droplet sitting on ``y=0`` onto *edge*.
+
+    The transforms are the geometric inverses of
+    :func:`~src.operators.wetting._canonical_view.to_canonical`, so each
+    edge's canonical view reduces to the original bottom field — the angle
+    must therefore be identical across all four walls. Returns a 5D
+    ``(nx', ny', 1, 1, 1)`` field.
+    """
+    if edge == "bottom":
+        arr = rho_bottom_2d
+    elif edge == "top":
+        arr = rho_bottom_2d[:, ::-1]
+    elif edge == "left":
+        arr = rho_bottom_2d.T
+    elif edge == "right":
+        arr = rho_bottom_2d.T[::-1, :]
+    else:
+        msg = f"unknown edge {edge!r}"
+        raise ValueError(msg)
+    return arr[:, :, None, None, None]
+
+
 # =====================================================================
 # compute_contact_angle
 # =====================================================================
@@ -90,6 +126,75 @@ class TestComputeContactAngle:
         ca_l, ca_r = jitted(rho)
         assert not jnp.isnan(ca_l)
         assert not jnp.isnan(ca_r)
+
+
+# =====================================================================
+# Edge-generic measurement — all four walls must agree
+# =====================================================================
+
+
+class TestEdgeGenericContactAngle:
+    """The same droplet on any wall must measure the same contact angle.
+
+    This is the invariant that the original bottom-only measurement
+    violated: a top-wall droplet was reported as ``180° − θ``.
+    """
+
+    @staticmethod
+    def _base_non_90():
+        # This geometry measures a 135° (obtuse) angle, so θ and its
+        # supplement (180 − θ = 45°) are clearly distinguishable.
+        return _droplet_rho_2d_offset(NX, NY, centre_x=NX / 2.0, centre_y=10.0, radius=18.0)
+
+    def test_all_four_walls_report_identical_angles(self):
+        from src.operators.wetting._contact_angle import compute_contact_angle
+
+        base = self._base_non_90()
+        ref_l, ref_r = compute_contact_angle(_place_on_edge(base, "bottom"), RHO_MEAN, edge="bottom")
+
+        for edge in ("top", "left", "right"):
+            ca_l, ca_r = compute_contact_angle(_place_on_edge(base, edge), RHO_MEAN, edge=edge)
+            np.testing.assert_allclose(float(ca_l), float(ref_l), atol=1e-6)
+            np.testing.assert_allclose(float(ca_r), float(ref_r), atol=1e-6)
+
+    def test_measured_angle_is_not_the_supplement(self):
+        """Guards specifically against the ``180° − θ`` regression."""
+        from src.operators.wetting._contact_angle import compute_contact_angle
+
+        base = self._base_non_90()
+        ca_bottom, _ = compute_contact_angle(_place_on_edge(base, "bottom"), RHO_MEAN, edge="bottom")
+        ca_top, _ = compute_contact_angle(_place_on_edge(base, "top"), RHO_MEAN, edge="top")
+
+        # The geometry is non-90°, so the supplement differs from the true value.
+        assert abs(float(ca_bottom) - 90.0) > 5.0
+        np.testing.assert_allclose(float(ca_top), float(ca_bottom), atol=1e-6)
+        assert abs(float(ca_top) - (180.0 - float(ca_bottom))) > 5.0
+
+    def test_contact_line_locations_agree_across_walls(self):
+        from src.operators.wetting._contact_angle import compute_contact_angle
+        from src.operators.wetting._contact_line import compute_contact_line_location
+
+        base = self._base_non_90()
+        rho_b = _place_on_edge(base, "bottom")
+        ca_l, ca_r = compute_contact_angle(rho_b, RHO_MEAN, edge="bottom")
+        ref_l, ref_r = compute_contact_line_location(rho_b, ca_l, ca_r, RHO_MEAN, edge="bottom")
+
+        # Bottom/top share the x tangential axis; the CLL values are identical.
+        rho_t = _place_on_edge(base, "top")
+        ca_l_t, ca_r_t = compute_contact_angle(rho_t, RHO_MEAN, edge="top")
+        cll_l_t, cll_r_t = compute_contact_line_location(rho_t, ca_l_t, ca_r_t, RHO_MEAN, edge="top")
+        np.testing.assert_allclose(float(cll_l_t), float(ref_l), atol=1e-6)
+        np.testing.assert_allclose(float(cll_r_t), float(ref_r), atol=1e-6)
+
+    def test_edge_default_is_bottom(self):
+        """Omitting ``edge`` reproduces the historical bottom-wall result."""
+        from src.operators.wetting._contact_angle import compute_contact_angle
+
+        rho = _place_on_edge(self._base_non_90(), "bottom")
+        default = compute_contact_angle(rho, RHO_MEAN)
+        explicit = compute_contact_angle(rho, RHO_MEAN, edge="bottom")
+        np.testing.assert_allclose(float(default[0]), float(explicit[0]), atol=1e-12)
+        np.testing.assert_allclose(float(default[1]), float(explicit[1]), atol=1e-12)
 
 
 # =====================================================================
@@ -517,12 +622,12 @@ class TestUpdateWettingState:
         monkeypatch.setattr(
             hysteresis_module,
             "compute_contact_angle",
-            lambda rho_in, rho_mean: (jnp.array(90.0), jnp.array(90.0)),
+            lambda rho_in, rho_mean, **_: (jnp.array(90.0), jnp.array(90.0)),
         )
         monkeypatch.setattr(
             hysteresis_module,
             "compute_contact_line_location",
-            lambda rho_in, ca_l, ca_r, rho_mean: (jnp.array(40.0), 40.0 + 10.0 * jnp.mean(rho_in)),
+            lambda rho_in, ca_l, ca_r, rho_mean, **_: (jnp.array(40.0), 40.0 + 10.0 * jnp.mean(rho_in)),
         )
 
         def trial_step_fn(params):
@@ -544,12 +649,12 @@ class TestUpdateWettingState:
         monkeypatch.setattr(
             hysteresis_module,
             "compute_contact_angle",
-            lambda rho_in, rho_mean: (jnp.array(90.0), jnp.array(90.0)),
+            lambda rho_in, rho_mean, **_: (jnp.array(90.0), jnp.array(90.0)),
         )
         monkeypatch.setattr(
             hysteresis_module,
             "compute_contact_line_location",
-            lambda rho_in, ca_l, ca_r, rho_mean: (jnp.array(20.0), jnp.array(52.0)),
+            lambda rho_in, ca_l, ca_r, rho_mean, **_: (jnp.array(20.0), jnp.array(52.0)),
         )
 
         new_wetting = hysteresis_module.update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
@@ -567,12 +672,12 @@ class TestUpdateWettingState:
         monkeypatch.setattr(
             hysteresis_module,
             "compute_contact_angle",
-            lambda rho_in, rho_mean: (jnp.array(130.0), jnp.array(90.0)),
+            lambda rho_in, rho_mean, **_: (jnp.array(130.0), jnp.array(90.0)),
         )
         monkeypatch.setattr(
             hysteresis_module,
             "compute_contact_line_location",
-            lambda rho_in, ca_l, ca_r, rho_mean: (jnp.array(22.0), jnp.array(53.0)),
+            lambda rho_in, ca_l, ca_r, rho_mean, **_: (jnp.array(22.0), jnp.array(53.0)),
         )
 
         new_wetting = hysteresis_module.update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
@@ -610,12 +715,12 @@ class TestUpdateWettingState:
         monkeypatch.setattr(
             hysteresis_module,
             "compute_contact_angle",
-            lambda rho_in, rho_mean: (jnp.array(90.0), jnp.array(120.2)),
+            lambda rho_in, rho_mean, **_: (jnp.array(90.0), jnp.array(120.2)),
         )
         monkeypatch.setattr(
             hysteresis_module,
             "compute_contact_line_location",
-            lambda rho_in, ca_l, ca_r, rho_mean: (jnp.array(40.0), jnp.array(52.0)),
+            lambda rho_in, ca_l, ca_r, rho_mean, **_: (jnp.array(40.0), jnp.array(52.0)),
         )
 
         def trial_step_fn(params):
@@ -663,12 +768,12 @@ class TestUpdateWettingState:
         monkeypatch.setattr(
             hysteresis_module,
             "compute_contact_angle",
-            lambda rho_in, rho_mean: (jnp.array(90.0), jnp.array(90.0)),
+            lambda rho_in, rho_mean, **_: (jnp.array(90.0), jnp.array(90.0)),
         )
         monkeypatch.setattr(
             hysteresis_module,
             "compute_contact_line_location",
-            lambda rho_in, ca_l, ca_r, rho_mean: (jnp.array(40.0), 40.0 + 10.0 * jnp.mean(rho_in)),
+            lambda rho_in, ca_l, ca_r, rho_mean, **_: (jnp.array(40.0), 40.0 + 10.0 * jnp.mean(rho_in)),
         )
 
         def trial_step_fn(params):

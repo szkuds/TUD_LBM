@@ -269,9 +269,9 @@ def _read_snapshot_uncached(path: Path, scales: MetricScales) -> _SnapshotMetric
         u_x, u_y = extract_velocity_components_2d(np.asarray(raw["u"])) if "u" in raw else (None, None)
 
     if cll_l is None or cll_r is None:
-        cll_l, cll_r = contact_lines_from_rho(rho_2d, scales.rho_mean)
+        cll_l, cll_r = contact_lines_from_rho(rho_2d, scales.rho_mean, scales.wall_edge)
     if theta_l is None or theta_r is None:
-        theta_l, theta_r = contact_angles_from_rho(rho_2d, scales.rho_mean)
+        theta_l, theta_r = contact_angles_from_rho(rho_2d, scales.rho_mean, scales.wall_edge)
 
     if u_x is None or u_y is None:
         avg_ux, avg_uy = 0.0, 0.0

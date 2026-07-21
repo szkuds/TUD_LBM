@@ -10,6 +10,7 @@ All operations are JAX-compatible and jittable.
 from __future__ import annotations
 import math
 import jax.numpy as jnp
+from src.operators.wetting._canonical_view import to_canonical
 from src.registry import wetting_operator
 
 
@@ -17,16 +18,23 @@ from src.registry import wetting_operator
 def compute_contact_angle(
     rho: jnp.ndarray,
     rho_mean: float | jnp.ndarray,
+    *,
+    edge: str = "bottom",
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Compute contact angles (left and right) from a density field.
 
-    The algorithm finds the liquid-vapour transition at the bottom two
-    rows (``j=1`` and ``j=2``), interpolates the interface x-position,
-    and derives the contact angle from the slope.
+    The field is first mapped into the wall-aligned canonical frame for
+    *edge* (see :func:`~src.operators.wetting._canonical_view.to_canonical`),
+    so the wetting wall is at column 0 with liquid above. The algorithm then
+    finds the liquid-vapour transition at the two fluid rows nearest the wall
+    (``j=1`` and ``j=2``), interpolates the interface tangential position, and
+    derives the contact angle from the slope.
 
     Args:
         rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
         rho_mean: Mean density ``(rho_l + rho_v) / 2``.
+        edge: Wetting wall — ``"bottom"`` (default), ``"top"``, ``"left"``,
+            or ``"right"``.
 
     Returns:
         ``(ca_left, ca_right)`` — contact angles in **degrees**
@@ -36,7 +44,7 @@ def compute_contact_angle(
         msg = "Contact angle computation only implemented in 2D (nz=1)"
         raise ValueError(msg)
 
-    rho_2d = rho[:, :, 0, 0, 0]  # (nx, ny)
+    rho_2d = to_canonical(rho[:, :, 0, 0, 0], edge)  # (tangential, normal)
 
     array_j0 = rho_2d[:, 1]
     array_j1 = rho_2d[:, 2]
@@ -48,11 +56,11 @@ def compute_contact_angle(
     diff_j0 = jnp.diff(mask_j0)
     diff_j1 = jnp.diff(mask_j1)
 
-    # Left transition: liquid → vapour (diff == -1)
+    # Droplet's left edge: liquid → vapour scanning +tangential (diff == -1)
     idx_left_j0 = jnp.where(diff_j0 == -1, size=1, fill_value=0)[0][0]
     idx_left_j1 = jnp.where(diff_j1 == -1, size=1, fill_value=0)[0][0]
 
-    # Right transition: vapour → liquid (diff == +1), then +1
+    # Droplet's right edge: vapour → liquid (diff == +1), then +1
     idx_right_j0 = jnp.where(diff_j0 == 1, size=1, fill_value=0)[0][0] + 1
     idx_right_j1 = jnp.where(diff_j1 == 1, size=1, fill_value=0)[0][0] + 1
 

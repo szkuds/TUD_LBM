@@ -184,7 +184,7 @@ def _measure_pressure_jumps(config: SimulationConfig, states_dir: Path | None = 
 
     nx, ny = int(config.grid_shape[0]), int(config.grid_shape[1])
     min_dim = min(nx, ny)
-    radii = np.linspace(min_dim / 4.0, min_dim / 2.0, _N_RADII)
+    radii = np.linspace(min_dim / 5.0, min_dim / 3.0, _N_RADII)
     width = int(config.interface_width)
     rho_l, rho_v = float(config.rho_l), float(config.rho_v)
 

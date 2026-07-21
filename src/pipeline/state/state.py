@@ -42,8 +42,10 @@ class WettingState(NamedTuple):
         d_rho_right: Density offset parameter (right contact line).
         ca_left: Current contact angle — left.
         ca_right: Current contact angle — right.
-        cll_left: Contact-line location — left.
-        cll_right: Contact-line location — right.
+        cll_left: Contact-line location — left. A coordinate *tangential* to the
+            wetting wall: x for bottom/top walls, y for left/right walls.
+        cll_right: Contact-line location — right. Tangential to the wetting wall
+            (see ``cll_left``).
     """
 
     phi_left: jnp.ndarray

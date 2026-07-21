@@ -9,6 +9,7 @@ All operations are JAX-compatible and jittable.
 
 from __future__ import annotations
 import jax.numpy as jnp
+from src.operators.wetting._canonical_view import to_canonical
 from src.registry import wetting_operator
 
 
@@ -18,11 +19,15 @@ def compute_contact_line_location(
     ca_left: jnp.ndarray,
     ca_right: jnp.ndarray,
     rho_mean: float | jnp.ndarray,
+    *,
+    edge: str = "bottom",
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Compute contact-line locations at the solid wall.
 
-    The algorithm finds the liquid-vapour transition at the wall row
-    (``j=0``), interpolates the interface x-position, and projects
+    The field is first mapped into the wall-aligned canonical frame for
+    *edge* (see :func:`~src.operators.wetting._canonical_view.to_canonical`).
+    The algorithm then finds the liquid-vapour transition at the wall row
+    (``j=0``), interpolates the interface tangential position, and projects
     down to the solid using the measured contact angle.
 
     Args:
@@ -30,16 +35,19 @@ def compute_contact_line_location(
         ca_left: Left contact angle in degrees (scalar).
         ca_right: Right contact angle in degrees (scalar).
         rho_mean: Mean density ``(rho_l + rho_v) / 2``.
+        edge: Wetting wall — ``"bottom"`` (default), ``"top"``, ``"left"``,
+            or ``"right"``. The returned coordinate is tangential to this
+            wall (x for bottom/top, y for left/right).
 
     Returns:
-        ``(cll_left, cll_right)`` — contact-line x-positions
+        ``(cll_left, cll_right)`` — contact-line tangential positions
         (scalar ``jnp.ndarray``).
     """
     if rho.shape[2] != 1:
         msg = "Contact line location computation only implemented in 2D (nz=1)"
         raise ValueError(msg)
 
-    rho_2d = rho[:, :, 0, 0, 0]  # (nx, ny)
+    rho_2d = to_canonical(rho[:, :, 0, 0, 0], edge)  # (tangential, normal)
     array_j0 = rho_2d[:, 0]
 
     mask_j0 = jnp.array(array_j0 < rho_mean, dtype=jnp.int32)

@@ -75,8 +75,9 @@ def step_multiphase_wetting(setup: SimulationSetup, state: State) -> State:
             raise TypeError(msg)
         mp = setup.multiphase_params
         rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
-        ca_left, ca_right = compute_contact_angle(rho, jnp.array(rho_mean))
-        cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, jnp.array(rho_mean))
+        edge = setup.wetting_edge or "bottom"
+        ca_left, ca_right = compute_contact_angle(rho, jnp.array(rho_mean), edge=edge)
+        cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, jnp.array(rho_mean), edge=edge)
         wetting = cast("WettingState", state.wetting)
         updated_wetting = wetting._replace(
             ca_left=ca_left,
