@@ -302,7 +302,10 @@ def _update_wetting_state_impl(
     mp = setup.multiphase_params
     rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
     w = jnp.array(float(mp.interface_width))
-    edge = setup.wetting_edge or "bottom"
+    if setup.wetting_edge is None:
+        msg = "wetting_edge is required for hysteresis wetting update"
+        raise TypeError(msg)
+    edge = setup.wetting_edge
 
     ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean), edge=edge)
     cll_left_tplus1, cll_right_tplus1 = compute_contact_line_location(
@@ -545,7 +548,10 @@ def update_wetting_state_chemical_step(
         raise TypeError(msg)
     mp = setup.multiphase_params
     rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
-    edge = setup.wetting_edge or "bottom"
+    if setup.wetting_edge is None:
+        msg = "wetting_edge is required for chemical step hysteresis"
+        raise TypeError(msg)
+    edge = setup.wetting_edge
 
     # 1. Measure current contact angles and contact-line locations
     ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean), edge=edge)

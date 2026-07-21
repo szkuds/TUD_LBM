@@ -488,6 +488,7 @@ class TestUpdateWettingState:
 
         cfg = SimulationConfig(
             sim_type="multiphase_hysteresis",
+            bc_config={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
@@ -599,6 +600,7 @@ class TestUpdateWettingState:
 
         cfg = SimulationConfig(
             sim_type="multiphase_hysteresis",
+            bc_config={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
@@ -692,6 +694,7 @@ class TestUpdateWettingState:
 
         cfg = SimulationConfig(
             sim_type="multiphase_hysteresis",
+            bc_config={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
@@ -738,6 +741,7 @@ class TestUpdateWettingState:
 
         cfg = SimulationConfig(
             sim_type="multiphase_hysteresis",
+            bc_config={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
@@ -795,6 +799,7 @@ class TestUpdateWettingState:
 
         cfg = SimulationConfig(
             sim_type="multiphase_hysteresis_chemical_step",
+            bc_config={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
@@ -843,6 +848,7 @@ class TestStepMultiphaseWithWetting:
 
         cfg = SimulationConfig(
             sim_type="multiphase",
+            bc_config={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=3,

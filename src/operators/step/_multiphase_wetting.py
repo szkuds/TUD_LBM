@@ -75,7 +75,10 @@ def step_multiphase_wetting(setup: SimulationSetup, state: State) -> State:
             raise TypeError(msg)
         mp = setup.multiphase_params
         rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
-        edge = setup.wetting_edge or "bottom"
+        if setup.wetting_edge is None:
+            msg = "wetting_edge is required for contact angle computation"
+            raise TypeError(msg)
+        edge = setup.wetting_edge
         ca_left, ca_right = compute_contact_angle(rho, jnp.array(rho_mean), edge=edge)
         cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, jnp.array(rho_mean), edge=edge)
         wetting = cast("WettingState", state.wetting)
