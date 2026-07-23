@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="SonarLintProjectSettings">
+    <option name="bindingEnabled" value="true" />
     <option name="fileExclusions">
       <list>
         <option value="DIRECTORY:dist" />
@@ -22,5 +23,7 @@
         <option value="FILE:docs/_build/html/_modules/tud_lbm/config/array_expansion.html" />
       </list>
     </option>
+    <option name="projectKey" value="szkuds_TUD_LBM" />
+    <option name="serverId" value="szkuds" />
   </component>
 </project>
