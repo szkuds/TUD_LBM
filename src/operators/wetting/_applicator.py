@@ -76,7 +76,6 @@ def build_wetting_applicator(
                 phi_r,
                 d_rho_l,
                 d_rho_r,
-                _width,
             )
         return gp
 

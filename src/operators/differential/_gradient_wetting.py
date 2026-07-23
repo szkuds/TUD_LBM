@@ -26,9 +26,8 @@ def build_wetting_gradient(
     c: jnp.ndarray,
     pad_mode: tuple[str, ...] | list[str],
     bc_config: dict | None = None,
-    rho_l: float | None = None,
-    rho_v: float | None = None,
-    width: int | None = None,
+    rho_l: jnp.ndarray | None = None,
+    rho_v: jnp.ndarray | None = None,
 ) -> Callable[..., jnp.ndarray]:
     """Return a wetting-corrected gradient closure.
 
@@ -53,7 +52,7 @@ def build_wetting_gradient(
 
     _pad_mode = tuple(pad_mode)
     _build_wetting_applicator = build_wetting_fn("applicator")
-    _apply_wetting = _build_wetting_applicator(rho_l, rho_v, width, bc_config)
+    _apply_wetting = _build_wetting_applicator(rho_l, rho_v, bc_config)
 
     def _grad(
         grid: jnp.ndarray,
