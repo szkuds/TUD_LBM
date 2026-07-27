@@ -26,7 +26,6 @@ def build_wetting_laplacian(
     bc_config: dict | None = None,
     rho_l: float | None = None,
     rho_v: float | None = None,
-    width: int | None = None,
 ) -> DifferentialOperator:
     """Return a wetting-corrected Laplacian closure.
 
@@ -50,7 +49,7 @@ def build_wetting_laplacian(
 
     _pad_mode = tuple(pad_mode)
     _build_wetting_applicator = build_wetting_fn("applicator")
-    _apply_wetting = _build_wetting_applicator(rho_l, rho_v, width, bc_config)
+    _apply_wetting = _build_wetting_applicator(rho_l, rho_v, bc_config)
 
     def _lap(
         grid: jnp.ndarray,
