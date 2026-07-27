@@ -28,7 +28,7 @@ def test_choices_mark_configured_operators():
 
 def test_configured_operators_are_listed_first():
     available = _entries("plotting")
-    target = sorted(available)[-1]
+    target = max(available)
 
     choices = build_choices(available, [target])
 
