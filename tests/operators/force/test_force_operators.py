@@ -185,6 +185,127 @@ class TestGravityMaskedForce:
         np.testing.assert_allclose(np.array(force), np.array(expected), atol=1e-12)
 
 
+class TestGravityMaskedDispersedPhase:
+    """The masked body force must drive the dispersed phase, bubble or droplet.
+
+    A droplet run (liquid dispersed in vapour) keeps the historical liquid mask;
+    a bubble run (vapour dispersed in liquid) takes its complement. Anything
+    else spends the force on the continuous phase, which in a periodic domain
+    accelerates the whole ambient body instead of the inclusion.
+    """
+
+    RHO_L = 1.0
+    RHO_V = 0.33
+
+    def _build(self, lattice, dispersed=None, *, initialisation=None, init_type=None):
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        cfg = SimpleNamespace(
+            rho_l=self.RHO_L,
+            rho_v=self.RHO_V,
+            initialisation=initialisation,
+            init_type=init_type,
+        )
+        params = {"force_g": 0.001}
+        if dispersed is not None:
+            params["dispersed"] = dispersed
+        return GravityForceModule.build(params, (NX, NY, NZ), config=cfg, lattice=lattice)
+
+    def _two_phase_state(self, lattice):
+        """Liquid in the left third, vapour in the right third, interface between."""
+        rho_2d = np.full((NX, NY), self.RHO_V)
+        rho_2d[: NX // 3, :] = self.RHO_L
+        rho_2d[NX // 3 : 2 * NX // 3, :] = 0.5 * (self.RHO_L + self.RHO_V)
+        rho = jnp.asarray(rho_2d.reshape(NX, NY, NZ, 1, 1))
+        f = jnp.broadcast_to(rho / lattice.q, (NX, NY, NZ, lattice.q, 1))
+        return State(
+            f=f,
+            rho=rho,
+            u=jnp.zeros((NX, NY, NZ, 1, lattice.d)),
+            t=jnp.array(0),
+        )
+
+    def test_bubble_drives_the_vapour_not_the_liquid(self, lattice):
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice, "vapour")
+        state = self._two_phase_state(lattice)
+        force = np.array(GravityForceModule.compute(state, precomputed))
+
+        # Bulk liquid gets nothing; bulk vapour carries the full -rho*g.
+        np.testing.assert_allclose(force[: NX // 3], 0.0, atol=1e-12)
+        expected_vapour = -np.array(precomputed.template)[2 * NX // 3 :] * self.RHO_V
+        np.testing.assert_allclose(force[2 * NX // 3 :], expected_vapour, atol=1e-12)
+
+    def test_droplet_drives_the_liquid_not_the_vapour(self, lattice):
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice, "liquid")
+        state = self._two_phase_state(lattice)
+        force = np.array(GravityForceModule.compute(state, precomputed))
+
+        np.testing.assert_allclose(force[2 * NX // 3 :], 0.0, atol=1e-12)
+        expected_liquid = -np.array(precomputed.template)[: NX // 3] * self.RHO_L
+        np.testing.assert_allclose(force[: NX // 3], expected_liquid, atol=1e-12)
+
+    def test_the_two_masks_are_complementary(self, lattice):
+        """Droplet plus bubble force recovers the unmasked ``-rho*g`` everywhere."""
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        state = self._two_phase_state(lattice)
+        liquid_force = GravityForceModule.compute(state, self._build(lattice, "liquid"))
+        vapour_force = GravityForceModule.compute(state, self._build(lattice, "vapour"))
+
+        template = self._build(lattice, "liquid").template
+        rho = jnp.sum(state.f, axis=-2, keepdims=True)
+        np.testing.assert_allclose(
+            np.array(liquid_force + vapour_force),
+            np.array(-template * rho),
+            atol=1e-12,
+        )
+
+    def test_topology_comes_from_the_initialisation_section(self, lattice):
+        precomputed = self._build(
+            lattice,
+            initialisation={"dispersed": "vapour"},
+            init_type="multiphase_bubbles",
+        )
+        assert precomputed.dispersed == "vapour"
+
+    def test_force_section_key_overrides_the_initialisation_section(self, lattice):
+        precomputed = self._build(
+            lattice,
+            "liquid",
+            initialisation={"dispersed": "vapour"},
+            init_type="multiphase_bubbles",
+        )
+        assert precomputed.dispersed == "liquid"
+
+    @pytest.mark.parametrize("init_type", ["multiphase_bubbles", "multiphase_bubble_top"])
+    def test_bubble_initialisers_infer_vapour_without_an_explicit_key(self, lattice, init_type):
+        """These initialisers place a vapour inclusion unless told otherwise."""
+        precomputed = self._build(lattice, initialisation={}, init_type=init_type)
+        assert precomputed.dispersed == "vapour"
+
+    @pytest.mark.parametrize("init_type", ["standard", "wetting", None])
+    def test_unknown_topology_falls_back_to_liquid(self, lattice, init_type):
+        """Pre-bubble behaviour: droplet and single-phase runs drive the liquid."""
+        precomputed = self._build(lattice, initialisation=None, init_type=init_type)
+        assert precomputed.dispersed == "liquid"
+
+    def test_invalid_dispersed_raises(self, lattice):
+        with pytest.raises(ValueError, match="dispersed"):
+            self._build(lattice, "solid")
+
+    def test_jittable(self, lattice):
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice, "vapour")
+        state = self._two_phase_state(lattice)
+        force = jax.jit(lambda s: GravityForceModule.compute(s, precomputed))(state)
+        assert force.shape == (NX, NY, NZ, 1, 2)
+
+
 # =====================================================================
 # Electric params
 # =====================================================================

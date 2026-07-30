@@ -11,6 +11,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 # =====================================================================
 # Helpers — build a synthetic droplet rho_t_plus1 field
@@ -42,6 +43,23 @@ def _droplet_rho(
     dist = jnp.sqrt((x - centre_x) ** 2 + y**2)
     rho_2d = jnp.where(dist < radius, rho_l, rho_v)
     return rho_2d[:, :, None, None, None]
+
+
+def _bubble_rho(
+    nx: int,
+    ny: int,
+    nz: int,
+    rho_l: float,
+    rho_v: float,
+    centre_x: float | None = None,
+    radius: float | None = None,
+):
+    """The exact inverse of :func:`_droplet_rho` — vapour on the wall.
+
+    Same geometry, swapped densities, so the wall row crosses ``rho_mean``
+    liquid→vapour first and ``detect_bubble`` reports the inverted topology.
+    """
+    return _droplet_rho(nx, ny, nz, rho_v, rho_l, centre_x, radius)
 
 
 NX, NY, NZ = 64, 32, 1
@@ -828,6 +846,323 @@ class TestUpdateWettingState:
         assert setup.wetting_fn is not None
         assert setup.wetting_fn.__name__ == "update_wetting_state_chemical_step"  # ty: ignore[unresolved-attribute]
         assert setup.config.wetting_config is not None
+
+
+class TestUpdateWettingStateBubble:
+    """``update_wetting_state`` on an inverted (bubble) density field.
+
+    ``phi`` and ``d_rho`` are liquid-frame knobs: ``phi`` makes the wall more
+    liquid-wetting, so it lowers the *liquid* angle.  The measured angle is
+    reported through the dispersed phase, which for a bubble is the vapour, so
+    ``phi`` *raises* the reported angle.  Every assertion here is therefore the
+    mirror of its droplet counterpart in :class:`TestUpdateWettingState`.
+    """
+
+    @staticmethod
+    def _make_setup(*, ca_advancing=120.0, ca_receding=60.0, loss_tol=None):
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
+
+        hysteresis_config = {
+            "ca_advancing": ca_advancing,
+            "ca_receding": ca_receding,
+            "learning_rate": 0.05,
+            "max_iterations": 10,
+        }
+        if loss_tol is not None:
+            hysteresis_config["loss_tol"] = loss_tol
+        cfg = SimulationConfig(
+            sim_type="multiphase_hysteresis",
+            bc_config={"bottom": "wetting"},
+            grid_shape=(NX, NY),
+            tau=0.99,
+            nt=5,
+            eos="double-well",
+            kappa=0.017,
+            rho_l=RHO_L,
+            rho_v=RHO_V,
+            interface_width=4,
+            hysteresis_config=hysteresis_config,
+        )
+        return build_setup(cfg)
+
+    @staticmethod
+    def _make_wetting_state(**overrides):
+        from src.pipeline.state import WettingState
+
+        state = WettingState(
+            phi_left=jnp.array(1.2),
+            phi_right=jnp.array(1.2),
+            d_rho_left=jnp.array(0.05),
+            d_rho_right=jnp.array(0.05),
+            ca_left=jnp.array(90.0),
+            ca_right=jnp.array(90.0),
+            cll_left=jnp.array(16.0),
+            cll_right=jnp.array(48.0),
+        )
+        return state._replace(**overrides) if overrides else state
+
+    @staticmethod
+    def _pin_measurements(monkeypatch, module, ca):
+        """Freeze CA at *ca* and CLL at the bubble's own footprint.
+
+        ``detect_bubble`` is deliberately **not** patched — it must read the
+        real field, since it is what drives the knob selection under test.
+        """
+        monkeypatch.setattr(
+            module,
+            "compute_contact_angle",
+            lambda rho_in, rho_mean, **_: (jnp.array(ca), jnp.array(ca)),
+        )
+        monkeypatch.setattr(
+            module,
+            "compute_contact_line_location",
+            lambda rho_in, ca_l, ca_r, rho_mean, **_: (jnp.array(16.0), jnp.array(48.0)),
+        )
+
+    # ── the real-field smoke tests, mirroring the droplet class ──────────
+
+    def test_detects_the_inverted_topology(self):
+        from src.operators.wetting._interface_crossings import detect_bubble
+
+        rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
+        assert bool(detect_bubble(rho, jnp.array(RHO_MEAN))) is True
+        assert bool(detect_bubble(_droplet_rho(NX, NY, NZ, RHO_L, RHO_V), jnp.array(RHO_MEAN))) is False
+
+    def test_returns_wetting_state_with_no_nan(self):
+        from src.operators.wetting.hysteresis import update_wetting_state
+        from src.pipeline.state import WettingState
+
+        setup = self._make_setup()
+        rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
+        wetting = self._make_wetting_state()
+
+        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+
+        assert isinstance(new_wetting, WettingState)
+        for field_name in WettingState._fields[:8]:
+            val = getattr(new_wetting, field_name)
+            if val is not None:
+                assert not jnp.isnan(val).any(), f"NaN in {field_name}"
+
+    def test_params_stay_clamped(self):
+        from src.operators.wetting.hysteresis import update_wetting_state
+
+        setup = self._make_setup()
+        rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
+        wetting = self._make_wetting_state()
+
+        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+
+        assert 0.0 <= float(new_wetting.d_rho_left) <= 1.5 / 4
+        assert 0.0 <= float(new_wetting.d_rho_right) <= 1.5 / 4
+        assert 1.0 <= float(new_wetting.phi_left) <= 1.0 + 2.5 / 4
+        assert 1.0 <= float(new_wetting.phi_right) <= 1.0 + 2.5 / 4
+
+    def test_contact_lines_stay_ordered(self):
+        from src.operators.wetting.hysteresis import update_wetting_state
+
+        setup = self._make_setup()
+        rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
+        wetting = self._make_wetting_state()
+
+        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+        assert float(new_wetting.cll_left) < float(new_wetting.cll_right)
+
+    # ── the directional assertions: which knob gets selected ─────────────
+    #
+    # The seeded parameter set is the observable: the *inactive* knob is
+    # snapped to its neutral value (phi -> 1.0, d_rho -> 0.0) while the active
+    # one warm-starts from the stored value. With the contact angle pinned to a
+    # constant the objective has no gradient, so Adam cannot move either knob
+    # off its seed — leaving the selection itself cleanly visible.
+
+    @staticmethod
+    def _assert_d_rho_selected(new_wetting):
+        assert float(new_wetting.phi_right) == 1.0
+        assert float(new_wetting.d_rho_right) != 0.0
+
+    @staticmethod
+    def _assert_phi_selected(new_wetting):
+        assert float(new_wetting.phi_right) != 1.0
+        assert float(new_wetting.d_rho_right) == 0.0
+
+    def test_above_window_selects_d_rho_for_a_bubble(self, monkeypatch):
+        """Above the window the reported angle must come down.
+
+        For a bubble that means a *less* liquid-wetting wall, i.e. ``d_rho`` —
+        the opposite of the droplet case below. Selecting ``phi`` here is the
+        bug this test pins: ``phi`` would be driven below 1.0, clipped, and
+        left with zero gradient at the bound.
+        """
+        import src.operators.wetting.hysteresis.hysteresis as hysteresis_module
+
+        setup = self._make_setup()
+        rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
+        self._pin_measurements(monkeypatch, hysteresis_module, 130.0)
+
+        new_wetting = hysteresis_module.update_wetting_state(
+            self._make_wetting_state(), rho, setup, trial_step_fn=lambda p: (rho, rho)
+        )
+        self._assert_d_rho_selected(new_wetting)
+
+    def test_above_window_selects_phi_for_a_droplet(self, monkeypatch):
+        """The droplet counterpart — unchanged behaviour, kept as the mirror."""
+        import src.operators.wetting.hysteresis.hysteresis as hysteresis_module
+
+        setup = self._make_setup()
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
+        self._pin_measurements(monkeypatch, hysteresis_module, 130.0)
+
+        new_wetting = hysteresis_module.update_wetting_state(
+            self._make_wetting_state(), rho, setup, trial_step_fn=lambda p: (rho, rho)
+        )
+        self._assert_phi_selected(new_wetting)
+
+    def test_below_window_selects_phi_for_a_bubble(self, monkeypatch):
+        """Below the window the reported angle must rise.
+
+        For a bubble that means a *more* liquid-wetting wall, i.e. ``phi``.
+        """
+        import src.operators.wetting.hysteresis.hysteresis as hysteresis_module
+
+        setup = self._make_setup()
+        rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
+        self._pin_measurements(monkeypatch, hysteresis_module, 40.0)
+
+        new_wetting = hysteresis_module.update_wetting_state(
+            self._make_wetting_state(), rho, setup, trial_step_fn=lambda p: (rho, rho)
+        )
+        self._assert_phi_selected(new_wetting)
+
+    def test_below_window_selects_d_rho_for_a_droplet(self, monkeypatch):
+        import src.operators.wetting.hysteresis.hysteresis as hysteresis_module
+
+        setup = self._make_setup()
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
+        self._pin_measurements(monkeypatch, hysteresis_module, 40.0)
+
+        new_wetting = hysteresis_module.update_wetting_state(
+            self._make_wetting_state(), rho, setup, trial_step_fn=lambda p: (rho, rho)
+        )
+        self._assert_d_rho_selected(new_wetting)
+
+    @pytest.mark.parametrize("dispersed_expanding", [True, False])
+    def test_in_window_knob_inverts_with_topology(self, monkeypatch, dispersed_expanding):
+        """In-window pinning resists whichever way the **liquid** is moving.
+
+        ``_phi_is_active`` takes the drift already converted to the liquid frame
+        by :func:`_liquid_is_advancing`, so its in-window branch carries no
+        further inversion. The selection nonetheless flips between topologies,
+        because one contact-line motion is the liquid advancing for a droplet
+        and the liquid receding for a bubble. Losing either half of that — the
+        conversion, or the absence of a second one — collapses this to a match.
+        """
+        import src.operators.wetting.hysteresis.hysteresis as hysteresis_module
+
+        setup = self._make_setup()
+        self._pin_measurements(monkeypatch, hysteresis_module, 90.0)
+        # The pinned measurement is (16, 48). Stored CLLs inside that pair mean
+        # the dispersed phase has expanded; outside it, contracted.
+        stored = (20.0, 44.0) if dispersed_expanding else (12.0, 52.0)
+        wetting = self._make_wetting_state(
+            cll_left=jnp.array(stored[0]),
+            cll_right=jnp.array(stored[1]),
+        )
+
+        selected = {}
+        for label, rho in (
+            ("droplet", _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)),
+            ("bubble", _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)),
+        ):
+            new_wetting = hysteresis_module.update_wetting_state(
+                wetting, rho, setup, trial_step_fn=lambda p, r=rho: (r, r)
+            )
+            # phi snapped to neutral == d_rho was the selected knob.
+            selected[label] = "d_rho" if float(new_wetting.phi_right) == 1.0 else "phi"
+
+        assert selected["droplet"] != selected["bubble"]
+        # A dispersed phase expanding is the liquid advancing for a droplet,
+        # which is resisted by making the wall less wetting.
+        assert selected["droplet"] == ("d_rho" if dispersed_expanding else "phi")
+
+    # ── the d_rho fallback ──────────────────────────────────────────────
+
+    @staticmethod
+    def _stuck_phi_measurements(monkeypatch, module):
+        """Make the objective reducible only by *raising* ``d_rho``.
+
+        The trial field encodes ``(phi - 1) - d_rho``, and the reported angle
+        grows with it. Above the window the loss therefore falls as ``phi``
+        drops — straight into its clamp floor at 1.0, where ``jnp.clip`` leaves
+        no gradient — while ``d_rho`` can still reduce it.
+        """
+        monkeypatch.setattr(
+            module,
+            "compute_contact_angle",
+            lambda rho_in, rho_mean, **_: (jnp.array(130.0), 130.0 + 50.0 * jnp.mean(rho_in)),
+        )
+        monkeypatch.setattr(
+            module,
+            "compute_contact_line_location",
+            lambda rho_in, ca_l, ca_r, rho_mean, **_: (jnp.array(16.0), jnp.array(48.0)),
+        )
+
+    @staticmethod
+    def _knob_encoding_trial_step(rho):
+        def trial_step_fn(params):
+            value = (params.phi_right - 1.0) - params.d_rho_right
+            return rho, jnp.full_like(rho, value)
+
+        return trial_step_fn
+
+    def test_fallback_retries_with_d_rho_when_phi_saturates(self, monkeypatch):
+        """The escape hatch for a mis-selected knob must actually fire.
+
+        It used to test ``phi < 1.0``, but ``_clamp_params`` pins ``phi`` at
+        exactly 1.0, so the strict inequality was unreachable and the fallback
+        was dead code.
+        """
+        import src.operators.wetting.hysteresis.hysteresis as hysteresis_module
+
+        setup = self._make_setup()
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
+        self._stuck_phi_measurements(monkeypatch, hysteresis_module)
+        wetting = self._make_wetting_state()
+
+        new_wetting = hysteresis_module.update_wetting_state(
+            wetting, rho, setup, trial_step_fn=self._knob_encoding_trial_step(rho)
+        )
+
+        # phi was selected, drove itself to the floor, and the fallback then
+        # made progress on d_rho from its stored value.
+        np.testing.assert_allclose(float(new_wetting.phi_right), 1.0, atol=1e-6)
+        assert float(new_wetting.d_rho_right) > float(wetting.d_rho_right)
+
+    def test_fallback_does_not_fire_once_converged(self, monkeypatch):
+        """A ``phi`` resting at 1.0 with an acceptable loss is not "stuck".
+
+        Without the ``loss > loss_tol`` conjunct every such side would pay a
+        second optimisation. A permissive ``loss_tol`` stands in for "already
+        converged".
+        """
+        import src.operators.wetting.hysteresis.hysteresis as hysteresis_module
+
+        setup = self._make_setup(loss_tol=1e6)
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
+        self._stuck_phi_measurements(monkeypatch, hysteresis_module)
+        # Start phi already at its floor so the saturation half of the guard is
+        # satisfied and only the loss half can suppress the fallback.
+        wetting = self._make_wetting_state(phi_right=jnp.array(1.0))
+
+        new_wetting = hysteresis_module.update_wetting_state(
+            wetting, rho, setup, trial_step_fn=self._knob_encoding_trial_step(rho)
+        )
+
+        np.testing.assert_allclose(float(new_wetting.phi_right), 1.0, atol=1e-6)
+        # d_rho stayed at the neutral value it was snapped to when phi was
+        # selected — the fallback never ran.
+        np.testing.assert_allclose(float(new_wetting.d_rho_right), 0.0, atol=1e-6)
 
 
 # =====================================================================

@@ -37,9 +37,9 @@ def compute_contact_line_location(
     Args:
         rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
         ca_left: Left contact angle in degrees (scalar), measured through the
-            liquid as returned by
+            dispersed phase as returned by
             :func:`~src.operators.wetting._contact_angle.compute_contact_angle`.
-        ca_right: Right contact angle in degrees (scalar).
+        ca_right: Right contact angle in degrees (scalar), same convention.
         rho_mean: Mean density ``(rho_l + rho_v) / 2``.
         edge: Wetting wall — ``"bottom"`` (default), ``"top"``, ``"left"``,
             or ``"right"``. The returned coordinate is tangential to this
@@ -54,14 +54,15 @@ def compute_contact_line_location(
         raise ValueError(msg)
 
     rho_2d = to_canonical(rho[:, :, 0, 0, 0], edge)  # (tangential, normal)
-    x_left_j0, x_right_j0, is_bubble = interface_crossings(rho_2d[:, 0], rho_mean)
+    x_left_j0, x_right_j0, _ = interface_crossings(rho_2d[:, 0], rho_mean)
 
     # Project the half-cell from the wall row down to the solid along the
-    # interface slope. The slope follows the angle through the phase on the
-    # far side of the interface; for a bubble that is the vapour, and
-    # cot(180 deg - theta) = -cot(theta), so the projection reverses.
-    cot_sign = jnp.where(is_bubble, -1.0, 1.0)
-    cll_left = x_left_j0 - cot_sign / (2.0 * jnp.tan(jnp.deg2rad(ca_left)))
-    cll_right = x_right_j0 + cot_sign / (2.0 * jnp.tan(jnp.deg2rad(ca_right)))
+    # interface slope. The angles subtend the dispersed phase, which is the
+    # region between the two crossings, so the projection carries the same sign
+    # for a droplet and a bubble: a dispersed phase that spreads (theta < 90
+    # deg) widens toward the wall, one that overhangs (theta > 90 deg) narrows,
+    # and cot(theta) changes sign at 90 deg to match.
+    cll_left = x_left_j0 - 1.0 / (2.0 * jnp.tan(jnp.deg2rad(ca_left)))
+    cll_right = x_right_j0 + 1.0 / (2.0 * jnp.tan(jnp.deg2rad(ca_right)))
 
     return cll_left, cll_right

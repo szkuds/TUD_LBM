@@ -4,15 +4,18 @@ A droplet (liquid dispersed in vapour) and a bubble (vapour dispersed in
 liquid) have mirror-image density profiles along the wall. These tests pin the
 two invariants that make the measurement work for both:
 
-1. Both report the contact angle **through the liquid**.
+1. Both report the contact angle **through the dispersed phase** — the liquid
+   for a droplet, the vapour for a bubble. A droplet and a bubble whose
+   dispersed phase subtends the same angle therefore measure the same, which is
+   what lets one hysteresis window apply to both.
 2. ``left``/``right`` are **positional**, matching how
    :func:`~src.operators.wetting._wetting_modification._apply_wetting_modification`
    splits the interface — the two must agree or the hysteresis optimiser tunes
    one contact line and the applicator applies the result to the other.
 
 Fields are analytic circular caps with a ``tanh`` interface, parameterised by
-the liquid-measured contact angle, so the expected answer is known in closed
-form for both topologies.
+the **dispersed-phase** contact angle, so the expected answer is the same known
+closed form for both topologies.
 """
 
 from __future__ import annotations
@@ -43,13 +46,15 @@ THETAS = [40.0, 60.0, 80.0, 100.0, 120.0, 140.0]
 
 
 def _cap_rho_2d(theta_deg: float, *, bubble: bool) -> np.ndarray:
-    """Circular cap on the bottom wall with liquid-measured contact angle *theta_deg*.
+    """Circular cap on the bottom wall whose dispersed phase subtends *theta_deg*.
 
-    For a bubble the vapour cap subtends ``180° − theta_deg``, so the same
-    liquid angle produces the mirror-image profile.
+    The cap itself is always the dispersed phase — liquid for a droplet, vapour
+    for a bubble — so ``theta_deg`` is the angle the measurement should report
+    in both cases. Only the density assignment differs, giving the mirror-image
+    profile at the same angle.
     """
     x, y = np.meshgrid(np.arange(NX, dtype=float), np.arange(NY, dtype=float), indexing="ij")
-    theta_cap = math.radians(180.0 - theta_deg if bubble else theta_deg)
+    theta_cap = math.radians(theta_deg)
     centre_y = -RADIUS * math.cos(theta_cap)
     dist = np.sqrt((x - CENTRE_X) ** 2 + (y - centre_y) ** 2)
     inside = 0.5 * (1.0 - np.tanh(2.0 * (dist - RADIUS) / WIDTH))
@@ -63,10 +68,13 @@ def _cap_rho(theta_deg: float, *, bubble: bool) -> jnp.ndarray:
     return jnp.asarray(_cap_rho_2d(theta_deg, bubble=bubble)[:, :, None, None, None])
 
 
-def _analytic_contact_lines(theta_deg: float, *, bubble: bool) -> tuple[float, float]:
-    """Exact tangential positions where the cap meets the wall."""
-    theta_cap = math.radians(180.0 - theta_deg if bubble else theta_deg)
-    half = RADIUS * math.sin(theta_cap)
+def _analytic_contact_lines(theta_deg: float) -> tuple[float, float]:
+    """Exact tangential positions where the cap meets the wall.
+
+    Independent of topology: the cap geometry is set by the dispersed-phase
+    angle alone (see :func:`_cap_rho_2d`).
+    """
+    half = RADIUS * math.sin(math.radians(theta_deg))
     return CENTRE_X - half, CENTRE_X + half
 
 
@@ -115,8 +123,8 @@ class TestDimensionGuards:
             compute_contact_line_location(rho, zero, zero, RHO_MEAN, edge="bottom")
 
 
-class TestContactAngleThroughLiquid:
-    """Both topologies report the angle measured through the liquid."""
+class TestContactAngleThroughDispersedPhase:
+    """Both topologies report the angle measured through the dispersed phase."""
 
     @pytest.mark.parametrize("theta", THETAS)
     @pytest.mark.parametrize("bubble", [False, True])
@@ -125,9 +133,20 @@ class TestContactAngleThroughLiquid:
         assert float(ca_left) == pytest.approx(theta, abs=ANGLE_TOL)
         assert float(ca_right) == pytest.approx(theta, abs=ANGLE_TOL)
 
+    @pytest.mark.parametrize("theta", THETAS)
+    def test_droplet_and_bubble_agree_at_the_same_dispersed_angle(self, theta):
+        """The invariant that lets one hysteresis window cover both topologies."""
+        drop_left, drop_right = compute_contact_angle(_cap_rho(theta, bubble=False), RHO_MEAN, edge="bottom")
+        bub_left, bub_right = compute_contact_angle(_cap_rho(theta, bubble=True), RHO_MEAN, edge="bottom")
+        assert float(bub_left) == pytest.approx(float(drop_left), abs=ANGLE_TOL)
+        assert float(bub_right) == pytest.approx(float(drop_right), abs=ANGLE_TOL)
+
     @pytest.mark.parametrize("theta", [60.0, 120.0])
-    def test_bubble_is_not_the_supplement_of_the_droplet(self, theta):
-        """Guards the sign of the correction: a bubble at 60° is ~60°, not ~120°."""
+    def test_reports_the_dispersed_angle_not_its_supplement(self, theta):
+        """Guards against a liquid-convention complement being reintroduced.
+
+        A bubble whose vapour subtends 60° must report ~60°, not ~120°.
+        """
         ca_bubble, _ = compute_contact_angle(_cap_rho(theta, bubble=True), RHO_MEAN, edge="bottom")
         assert abs(float(ca_bubble) - theta) < abs(float(ca_bubble) - (180.0 - theta))
 
@@ -145,7 +164,13 @@ class TestContactAngleThroughLiquid:
 
 
 class TestContactLinePositional:
-    """``cll_left < cll_right`` holds for a droplet and a bubble alike."""
+    """``cll_left < cll_right`` holds for a droplet and a bubble alike.
+
+    Also the guard on the half-cell projection sign: the ``cot`` term has to
+    carry the same sign for both topologies now that the angle subtends the
+    dispersed phase, so a reintroduced ``is_bubble`` flip shows up here as a
+    bubble contact line displaced the wrong way.
+    """
 
     @pytest.mark.parametrize("theta", THETAS)
     @pytest.mark.parametrize("bubble", [False, True])
@@ -154,7 +179,7 @@ class TestContactLinePositional:
         ca_left, ca_right = compute_contact_angle(rho, RHO_MEAN, edge="bottom")
         cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, RHO_MEAN, edge="bottom")
 
-        expected_left, expected_right = _analytic_contact_lines(theta, bubble=bubble)
+        expected_left, expected_right = _analytic_contact_lines(theta)
         assert float(cll_left) < float(cll_right)
         assert float(cll_left) == pytest.approx(expected_left, abs=CLL_TOL)
         assert float(cll_right) == pytest.approx(expected_right, abs=CLL_TOL)

@@ -1,0 +1,53 @@
+# Test config for step_multiphase_hysteresis with INVERTED phases.
+# The twin of config_multiphase_hysteresis.toml: identical geometry, but
+# `dispersed = "vapour"` puts a bubble on the wetting wall instead of a
+# droplet, so the optimiser has to select the opposite wetting knob.
+
+[simulation_type]
+simulation_name = "test_multiphase_hysteresis_bubble"
+type = "multiphase_hysteresis"
+grid_shape = [256, 64]
+lattice_type = "D2Q9"
+tau = 0.99
+nt = 500
+init_type = "multiphase_bubbles"
+
+[initialisation]
+centres = [[0.5, 0.0]]
+radii = [0.5]
+dispersed = "vapour"
+
+[multiphase]
+kappa = 0.017
+rho_l = 1.0
+rho_v = 0.33
+interface_width = 4
+eos = "double-well"
+
+[boundary_conditions]
+left = "periodic"
+right = "periodic"
+top = "bounce-back"
+bottom = "wetting"
+
+
+# Contact angles are measured through the DISPERSED phase, which is the
+# vapour here, so the window is in vapour terms. A physical surface with
+# liquid advancing/receding angles of 70/50 deg becomes [180-70, 180-50]:
+# vapour advancing is liquid receding, so the bounds also swap.
+# Deliberately asymmetric — a symmetric window is its own complement and
+# would not exercise the topology flip.
+[hysteresis]
+ca_advancing = 130.0
+ca_receding = 110.0
+learning_rate = 0.01
+max_iterations = 10
+
+[gravity_masked_force]
+force_g = 5e-06
+inclination_angle_deg = 60
+
+[output]
+results_dir = "~/TUD_LBM_data/test_runs"
+save_fields = ["rho", "u"]
+plot_fields = ["density", "velocity", "contact_angles_pair", "contact_line_speeds_pair"]

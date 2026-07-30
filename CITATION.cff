@@ -7,7 +7,7 @@ authors:
     given-names: Sacha
     orcid: "https://orcid.org/0009-0003-7915-874X"
 date-released: 2026-03-23
-version: "2026.0.1"
+version: "v0.3.0"
 repository-code: "https://github.com/szkuds/tud_lbm"
 keywords:
   - "LBM"

@@ -31,14 +31,22 @@ def compute_contact_angle(
     (``j=1`` and ``j=2``), interpolates the interface tangential position, and
     derives the contact angle from the slope.
 
-    Both angles are measured **through the liquid**, the standard wetting
-    convention, for a droplet and a bubble alike. ``left``/``right`` are
-    positional along the canonical tangential axis, matching how the wetting
-    applicator splits the interface.
+    Both angles are measured **through the dispersed phase** — the liquid for a
+    droplet, the vapour for a bubble. That is what makes the measurement mean
+    the same thing for both topologies: the dispersed phase spreading over the
+    wall is always a *decreasing* angle, so one hysteresis window applies
+    unchanged to a droplet and a bubble.
 
-    For a bubble the two-row slope yields the angle through the *vapour*, so it
-    is complemented to ``180° − θ_v``; see
-    :mod:`~src.operators.wetting._interface_crossings` for the topology test.
+    The convention falls out of the geometry rather than needing a correction.
+    :func:`~src.operators.wetting._interface_crossings.interface_crossings`
+    returns the two crossings in ascending tangential order, so the dispersed
+    phase is by construction the region *between* them; the mirrored argument
+    order below then measures into that region from either side.
+
+    ``left``/``right`` are positional along the canonical tangential axis,
+    matching how the wetting applicator splits the interface.
+
+    To recover the liquid angle for a bubble, take ``180° − θ``.
 
     Args:
         rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
@@ -47,7 +55,7 @@ def compute_contact_angle(
             or ``"right"``.
 
     Returns:
-        ``(ca_left, ca_right)`` — liquid-measured contact angles in **degrees**
+        ``(ca_left, ca_right)`` — dispersed-phase contact angles in **degrees**
         (scalar ``jnp.ndarray``).
     """
     if rho.shape[2] != 1:
@@ -57,16 +65,13 @@ def compute_contact_angle(
     rho_2d = to_canonical(rho[:, :, 0, 0, 0], edge)  # (tangential, normal)
 
     # Interface positions at the two fluid rows nearest the wall.
-    x_left_j0, x_right_j0, is_bubble = interface_crossings(rho_2d[:, 1], rho_mean)
+    x_left_j0, x_right_j0, _ = interface_crossings(rho_2d[:, 1], rho_mean)
     x_left_j1, x_right_j1, _ = interface_crossings(rho_2d[:, 2], rho_mean)
 
-    # Slope across the unit row spacing; the mirrored argument order makes both
-    # sides report the angle on the side the dispersed phase is not.
+    # Slope across the unit row spacing. The mirrored argument order measures
+    # into the region between the two crossings from either side, so both
+    # angles subtend the dispersed phase for a droplet and a bubble alike.
     ca_left = jnp.rad2deg(math.pi / 2.0 + jnp.arctan(x_left_j0 - x_left_j1))
     ca_right = jnp.rad2deg(math.pi / 2.0 + jnp.arctan(x_right_j1 - x_right_j0))
-
-    # For a bubble that side is the vapour, so complement back to the liquid.
-    ca_left = jnp.where(is_bubble, 180.0 - ca_left, ca_left)
-    ca_right = jnp.where(is_bubble, 180.0 - ca_right, ca_right)
 
     return ca_left, ca_right

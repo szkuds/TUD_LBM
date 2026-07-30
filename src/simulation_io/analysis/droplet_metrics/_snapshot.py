@@ -93,15 +93,22 @@ def interpolate_interface(row: np.ndarray, rho_mean: float) -> tuple[float, floa
 
 
 def contact_angles_from_rho(rho_2d: np.ndarray, rho_mean: float, wall_edge: str = "bottom") -> tuple[float, float]:
-    """Derive ``(left, right)`` liquid-measured contact angles in degrees."""
+    """Derive ``(left, right)`` dispersed-phase contact angles in degrees.
+
+    Measured through the dispersed phase — the liquid for a droplet, the vapour
+    for a bubble — matching
+    :func:`~src.operators.wetting._contact_angle.compute_contact_angle`, whose
+    values reach the ``.npz`` as the ``ca_*`` keys. The two must agree: this
+    fallback runs only when a snapshot lacks those keys, so a mismatch would
+    silently change the convention depending on which runs were resumed.
+    """
     canon = to_canonical_2d(rho_2d, wall_edge)
-    xl0, xr0, is_bubble = interpolate_interface(canon[:, 1], rho_mean)
+    xl0, xr0, _ = interpolate_interface(canon[:, 1], rho_mean)
     xl1, xr1, _ = interpolate_interface(canon[:, 2], rho_mean)
+    # Mirrored argument order: both sides subtend the region between the two
+    # crossings, which is the dispersed phase for either topology.
     left = float(np.rad2deg(math.pi / 2.0 + np.arctan(xl0 - xl1)))
     right = float(np.rad2deg(math.pi / 2.0 + np.arctan(xr1 - xr0)))
-    # For a bubble the two-row slope gives the angle through the vapour.
-    if is_bubble:
-        return 180.0 - left, 180.0 - right
     return left, right
 
 

@@ -73,11 +73,12 @@ def enabled() -> bool:
     return _flags.DEBUG_FLAG_WETTING
 
 
-def log_optimiser_exit(iterations: jnp.ndarray, max_iterations: int, loss: jnp.ndarray) -> None:
+def log_optimiser_exit(iterations: jnp.ndarray, max_iterations: int | jnp.ndarray, loss: jnp.ndarray) -> None:
     """Log how an inner optimisation loop terminated.
 
     ``iterations == max_iterations`` means the loop hit the cap rather
-    than the loss tolerance.
+    than the loss tolerance.  ``max_iterations`` may be traced — it is
+    selected per side from that side's above-window flag.
     """
     if not enabled():
         return
