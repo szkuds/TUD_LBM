@@ -28,22 +28,21 @@ def _apply_wetting_modification(
     (between the density thresholds). The interface is split into left
     and right contact-line regions, each receiving its own phi/d_rho.
 
-    Args:
-        edge_slice: Edge density slice.
-        rho_l: Liquid density.
-        rho_v: Vapour density.
-        phi_l: Left contact angle parameter.
-        phi_r: Right contact angle parameter.
-        d_rho_l: Left density modification.
-        d_rho_r: Right density modification.
-        width: Ghost-cell width.
+    The split is **positional** — by index relative to the interface-band
+    centroid — so it is identical for a droplet and a bubble. The measurement
+    side (:func:`~src.operators.wetting._contact_angle.compute_contact_angle`)
+    labels left/right positionally for the same reason; keeping the two in
+    lock-step is what guarantees ``phi_l`` addresses the contact line reported
+    as ``cll_left``.
 
     Args:
         edge_slice: Ghost-row densities, shape ``(n,)``.
-        rho_l, rho_v: Liquid and vapour densities.
-        phi_l, phi_r: Wetting potentials for left and right contact lines.
-        d_rho_l, d_rho_r: Density offsets for left and right contact lines.
-        width: Interface width for splitting left/right regions.
+        rho_l: Liquid density.
+        rho_v: Vapour density.
+        phi_l: Wetting potential for the left contact line.
+        phi_r: Wetting potential for the right contact line.
+        d_rho_l: Density offset for the left contact line.
+        d_rho_r: Density offset for the right contact line.
 
     Returns:
         Modified edge slice.

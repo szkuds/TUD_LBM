@@ -20,6 +20,7 @@ from src.operators.wetting.hysteresis.hysteresis import _cost_below
 from src.operators.wetting.hysteresis.hysteresis import _cost_ca
 from src.operators.wetting.hysteresis.hysteresis import _cost_cll
 from src.operators.wetting.hysteresis.hysteresis import _import_optax
+from src.operators.wetting.hysteresis.hysteresis import _liquid_is_advancing
 from src.operators.wetting.hysteresis.hysteresis import _mask_left_d_rho
 from src.operators.wetting.hysteresis.hysteresis import _mask_left_phi
 from src.operators.wetting.hysteresis.hysteresis import _mask_right_d_rho
@@ -68,6 +69,43 @@ def test_phi_is_active_truth_table(in_window, above_window, forward_drift, expec
         )
     )
     assert result == expected
+
+
+# ---------------------------------------------------------------------------
+# _liquid_is_advancing — the droplet/bubble drift inversion
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("side", "cll_now", "cll_stored", "is_bubble", "expected"),
+    [
+        # Droplet: the dispersed phase IS the liquid, so its expansion is the
+        # liquid advancing. Left CL moves -x, right CL moves +x.
+        ("left", 9.0, 10.0, False, True),
+        ("left", 11.0, 10.0, False, False),
+        ("right", 11.0, 10.0, False, True),
+        ("right", 9.0, 10.0, False, False),
+        # Bubble: the dispersed phase is the vapour, so the identical motion
+        # grows the bubble and the liquid recedes — every case inverts.
+        ("left", 9.0, 10.0, True, False),
+        ("left", 11.0, 10.0, True, True),
+        ("right", 11.0, 10.0, True, False),
+        ("right", 9.0, 10.0, True, True),
+    ],
+)
+def test_liquid_is_advancing_truth_table(side, cll_now, cll_stored, is_bubble, expected):
+    result = _liquid_is_advancing(
+        jnp.array(cll_now),
+        jnp.array(cll_stored),
+        jnp.array(is_bubble),
+        side=side,
+    )
+    assert bool(result) == expected
+
+
+def test_liquid_is_advancing_rejects_unknown_side():
+    with pytest.raises(ValueError, match="side must be"):
+        _liquid_is_advancing(jnp.array(1.0), jnp.array(0.0), jnp.array(False), side="middle")
 
 
 # ---------------------------------------------------------------------------

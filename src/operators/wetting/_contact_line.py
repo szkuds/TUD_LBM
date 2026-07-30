@@ -10,6 +10,7 @@ All operations are JAX-compatible and jittable.
 from __future__ import annotations
 import jax.numpy as jnp
 from src.operators.wetting._canonical_view import to_canonical
+from src.operators.wetting._interface_crossings import interface_crossings
 from src.registry import wetting_operator
 
 
@@ -30,9 +31,14 @@ def compute_contact_line_location(
     (``j=0``), interpolates the interface tangential position, and projects
     down to the solid using the measured contact angle.
 
+    ``left``/``right`` are positional along the canonical tangential axis, so
+    ``cll_left < cll_right`` holds for a droplet and a bubble alike.
+
     Args:
         rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
-        ca_left: Left contact angle in degrees (scalar).
+        ca_left: Left contact angle in degrees (scalar), measured through the
+            liquid as returned by
+            :func:`~src.operators.wetting._contact_angle.compute_contact_angle`.
         ca_right: Right contact angle in degrees (scalar).
         rho_mean: Mean density ``(rho_l + rho_v) / 2``.
         edge: Wetting wall — ``"bottom"`` (default), ``"top"``, ``"left"``,
@@ -48,22 +54,14 @@ def compute_contact_line_location(
         raise ValueError(msg)
 
     rho_2d = to_canonical(rho[:, :, 0, 0, 0], edge)  # (tangential, normal)
-    array_j0 = rho_2d[:, 0]
+    x_left_j0, x_right_j0, is_bubble = interface_crossings(rho_2d[:, 0], rho_mean)
 
-    mask_j0 = jnp.array(array_j0 < rho_mean, dtype=jnp.int32)
-    diff_j0 = jnp.diff(mask_j0)
-
-    # Left transition
-    idx_left = jnp.where(diff_j0 == -1, size=1, fill_value=0)[0][0]
-    # Right transition
-    idx_right = jnp.where(diff_j0 == 1, size=1, fill_value=0)[0][0] + 1
-
-    # Sub-cell interpolation
-    x_left_j0 = idx_left + ((rho_mean - array_j0[idx_left]) / (array_j0[idx_left + 1] - array_j0[idx_left]))
-    x_right_j0 = idx_right - ((rho_mean - array_j0[idx_right]) / (array_j0[idx_right - 1] - array_j0[idx_right]))
-
-    # Project to solid surface using measured contact angle
-    cll_left = x_left_j0 - 1.0 / (2.0 * jnp.tan(jnp.deg2rad(ca_left)))
-    cll_right = x_right_j0 + 1.0 / (2.0 * jnp.tan(jnp.deg2rad(ca_right)))
+    # Project the half-cell from the wall row down to the solid along the
+    # interface slope. The slope follows the angle through the phase on the
+    # far side of the interface; for a bubble that is the vapour, and
+    # cot(180 deg - theta) = -cot(theta), so the projection reverses.
+    cot_sign = jnp.where(is_bubble, -1.0, 1.0)
+    cll_left = x_left_j0 - cot_sign / (2.0 * jnp.tan(jnp.deg2rad(ca_left)))
+    cll_right = x_right_j0 + cot_sign / (2.0 * jnp.tan(jnp.deg2rad(ca_right)))
 
     return cll_left, cll_right

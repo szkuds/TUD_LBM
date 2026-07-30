@@ -73,30 +73,42 @@ def to_canonical_2d(rho_2d: np.ndarray, wall_edge: str) -> np.ndarray:
     return arr[:, ::-1] if wall_edge in ("top", "right") else arr
 
 
-def interpolate_interface(row: np.ndarray, rho_mean: float) -> tuple[float, float]:
-    """Sub-cell left/right interface positions along *row* via linear interpolation."""
+def interpolate_interface(row: np.ndarray, rho_mean: float) -> tuple[float, float, bool]:
+    """Numpy twin of :func:`src.operators.wetting._interface_crossings.interface_crossings`.
+
+    Returns ``(x_left, x_right, is_bubble)`` — the two sub-cell threshold
+    crossings in ascending order, and whether the dispersed phase is vapour.
+    Left/right is **positional**, not keyed off the sign of the density step,
+    so it labels a bubble the same way it labels a droplet. Must stay in
+    lock-step with the JAX version.
+    """
     mask = (row < rho_mean).astype(int)
     diff = np.diff(mask)
-    li = int(np.nonzero(diff == -1)[0][0])
-    ri = int(np.nonzero(diff == 1)[0][0]) + 1
+    hits = np.nonzero(np.abs(diff) == 1)[0]
+    li, ri = int(hits[0]), int(hits[1])
+    # One forward interpolation covers both transition signs.
     x_left = li + (rho_mean - row[li]) / (row[li + 1] - row[li])
-    x_right = ri - (rho_mean - row[ri]) / (row[ri - 1] - row[ri])
-    return x_left, x_right
+    x_right = ri + (rho_mean - row[ri]) / (row[ri + 1] - row[ri])
+    return x_left, x_right, bool(diff[li] > 0)
 
 
 def contact_angles_from_rho(rho_2d: np.ndarray, rho_mean: float, wall_edge: str = "bottom") -> tuple[float, float]:
-    """Derive ``(left, right)`` contact angles in degrees from the density field."""
+    """Derive ``(left, right)`` liquid-measured contact angles in degrees."""
     canon = to_canonical_2d(rho_2d, wall_edge)
-    xl0, xr0 = interpolate_interface(canon[:, 1], rho_mean)
-    xl1, xr1 = interpolate_interface(canon[:, 2], rho_mean)
+    xl0, xr0, is_bubble = interpolate_interface(canon[:, 1], rho_mean)
+    xl1, xr1, _ = interpolate_interface(canon[:, 2], rho_mean)
     left = float(np.rad2deg(math.pi / 2.0 + np.arctan(xl0 - xl1)))
     right = float(np.rad2deg(math.pi / 2.0 + np.arctan(xr1 - xr0)))
+    # For a bubble the two-row slope gives the angle through the vapour.
+    if is_bubble:
+        return 180.0 - left, 180.0 - right
     return left, right
 
 
 def contact_lines_from_rho(rho_2d: np.ndarray, rho_mean: float, wall_edge: str = "bottom") -> tuple[float, float]:
     """Derive ``(left, right)`` contact-line positions from the density field."""
-    return interpolate_interface(to_canonical_2d(rho_2d, wall_edge)[:, 1], rho_mean)
+    x_left, x_right, _ = interpolate_interface(to_canonical_2d(rho_2d, wall_edge)[:, 1], rho_mean)
+    return x_left, x_right
 
 
 def center_of_mass(rho_2d: np.ndarray, rho_mean: float) -> tuple[float, float]:

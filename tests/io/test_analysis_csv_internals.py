@@ -178,10 +178,24 @@ def test_analytical_sigma_lg_computation():
 # ---------------------------------------------------------------------------
 
 
-def test_interpolate_interface_returns_pair():
+def test_interpolate_interface_returns_ordered_pair_and_topology():
     rho_2d = _droplet_rho_2d()
-    xl, xr = interpolate_interface(rho_2d[:, 1], _RHO_MEAN)
+    xl, xr, is_bubble = interpolate_interface(rho_2d[:, 1], _RHO_MEAN)
     assert xl < xr
+    assert is_bubble is False
+
+
+def test_interpolate_interface_labels_a_bubble_positionally():
+    """Inverting the phases must keep left/right ordered and flip the topology flag."""
+    rho_2d = _droplet_rho_2d()
+    inverted = _RHO_L + _RHO_V - rho_2d
+    xl_drop, xr_drop, _ = interpolate_interface(rho_2d[:, 1], _RHO_MEAN)
+    xl, xr, is_bubble = interpolate_interface(inverted[:, 1], _RHO_MEAN)
+    assert is_bubble is True
+    assert xl < xr
+    # Same interface positions — only which side is dense has changed.
+    assert xl == pytest.approx(xl_drop)
+    assert xr == pytest.approx(xr_drop)
 
 
 # ---------------------------------------------------------------------------

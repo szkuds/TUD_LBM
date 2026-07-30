@@ -125,6 +125,10 @@ def _get_setup_contact_line_length(config: SimulationConfig) -> float | None:
     return None
 
 
+#: A wall row must cross ``rho_mean`` at least twice to bracket a contact line.
+_MIN_CROSSINGS = 2
+
+
 def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | None:
     """Return setup contact-line spacing from a rho field using wall-row transitions."""
     try:
@@ -132,23 +136,24 @@ def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | N
 
         mask = (row < float(rho_mean)).astype(np.int32)
         diff = np.diff(mask)
-        left_hits = np.nonzero(diff == -1)[0]
-        right_hits = np.nonzero(diff == 1)[0]
-        if left_hits.size == 0 or right_hits.size == 0:
+        # Positional outermost crossings, so a bubble (whose density steps the
+        # other way) yields a positive spacing rather than being discarded.
+        hits = np.nonzero(np.abs(diff) == 1)[0]
+        if hits.size < _MIN_CROSSINGS:
             return None
 
-        idx_left = int(left_hits[0])
-        idx_right = int(right_hits[-1] + 1)
-        if idx_left + 1 >= row.size or idx_right - 1 < 0 or idx_right >= row.size:
+        idx_left = int(hits[0])
+        idx_right = int(hits[-1])
+        if idx_left + 1 >= row.size or idx_right + 1 >= row.size:
             return None
 
         denom_left = row[idx_left + 1] - row[idx_left]
-        denom_right = row[idx_right - 1] - row[idx_right]
+        denom_right = row[idx_right + 1] - row[idx_right]
         if math.isclose(denom_left, 0.0) or math.isclose(denom_right, 0.0):
             return None
 
         x_left = idx_left + ((rho_mean - row[idx_left]) / denom_left)
-        x_right = idx_right - ((rho_mean - row[idx_right]) / denom_right)
+        x_right = idx_right + ((rho_mean - row[idx_right]) / denom_right)
         length = float(x_right - x_left)
         if length > 0.0:
             return length

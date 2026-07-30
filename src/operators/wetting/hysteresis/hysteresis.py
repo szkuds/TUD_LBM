@@ -36,6 +36,7 @@ import jax
 import jax.numpy as jnp
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
+from src.operators.wetting._interface_crossings import detect_bubble
 from src.operators.wetting._params import WettingParams
 from src.registry import wetting_operator
 from src.simulation_io.analysis import wetting_debug
@@ -72,6 +73,40 @@ def _import_optax() -> types.ModuleType:
     return optax
 
 
+def _liquid_is_advancing(
+    cll_now: jnp.ndarray,
+    cll_stored: jnp.ndarray,
+    is_bubble: jnp.ndarray,
+    *,
+    side: str,
+) -> jnp.ndarray:
+    """Return True if the liquid is advancing over dry wall at this contact line.
+
+    Contact-line labels are positional, so the dispersed phase expanding is the
+    left CL moving in ``−tangential`` and the right CL moving in
+    ``+tangential``. For a droplet the dispersed phase *is* the liquid, so that
+    expansion is the liquid advancing. For a bubble it is the vapour, so the
+    same motion is the liquid receding and the test inverts.
+
+    Args:
+        cll_now: Freshly measured contact-line location (scalar).
+        cll_stored: Contact-line location carried in ``WettingState``.
+        is_bubble: Bool scalar — the dispersed phase at the wall is vapour.
+        side: ``"left"`` or ``"right"``.
+
+    Returns:
+        Boolean JAX scalar.
+    """
+    if side == "left":
+        dispersed_expanding = cll_now < cll_stored
+    elif side == "right":
+        dispersed_expanding = cll_now > cll_stored
+    else:
+        msg = f"side must be 'left' or 'right', got {side!r}"
+        raise ValueError(msg)
+    return dispersed_expanding ^ is_bubble
+
+
 def _phi_is_active(
     in_window: jnp.ndarray,
     above_window: jnp.ndarray,
@@ -94,10 +129,11 @@ def _phi_is_active(
     Args:
         in_window: bool scalar — CA is between ca_receding and ca_advancing.
         above_window: bool scalar — CA > ca_advancing.
-        forward_drift: bool scalar — the trial-step CLL has moved in the
-            advancing direction relative to the stored CLL.  Convention:
-            right side → forward means ``cll_trial > cll_stored``;
-            left side → forward means ``cll_trial < cll_stored``.
+        forward_drift: bool scalar — the **liquid** is advancing over dry wall
+            at this contact line. For a droplet that is the dispersed phase
+            expanding: right side ``cll_trial > cll_stored``, left side
+            ``cll_trial < cll_stored``. For a bubble the dispersed phase is the
+            vapour, so both tests invert (see the call site).
 
     Returns:
         Boolean JAX scalar; True means phi is active, False means d_rho is active.
@@ -316,8 +352,9 @@ def _update_wetting_state_impl(
         edge=edge,
     )
 
-    forward_drift_right = cll_right_tplus1 > wetting.cll_right
-    forward_drift_left = cll_left_tplus1 < wetting.cll_left
+    is_bubble = detect_bubble(rho_t_plus1, jnp.array(rho_mean), edge=edge)
+    forward_drift_right = _liquid_is_advancing(cll_right_tplus1, wetting.cll_right, is_bubble, side="right")
+    forward_drift_left = _liquid_is_advancing(cll_left_tplus1, wetting.cll_left, is_bubble, side="left")
 
     in_window_left = (ca_left_tplus1 >= ca_rec_left) & (ca_left_tplus1 <= ca_adv_left)
     in_window_right = (ca_right_tplus1 >= ca_rec_right) & (ca_right_tplus1 <= ca_adv_right)
