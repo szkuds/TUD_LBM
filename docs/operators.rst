@@ -219,11 +219,15 @@ specs with the resolved source term.
     droplet run, the vapour in a bubble run — via a density mask between
     ``rho_l`` and ``rho_v``.  The topology is resolved once at build time:
     ``[gravity_masked_force].dispersed`` wins, then
-    ``[initialisation].dispersed``, then the topology implied by
-    ``init_type``, falling back to ``"liquid"``.  Runtime wall-row detection
-    is deliberately not used, because it collapses to "droplet" as soon as
-    the dispersed phase leaves the wall, silently moving the momentum
-    injection onto the whole continuous phase.
+    ``[initialisation].dispersed``, then — for ``init_type =
+    "init_from_file"`` only — the minority phase measured from the snapshot,
+    falling back to ``"vapour"``.  A droplet run must therefore say
+    ``dispersed = "liquid"``, including with the ``wetting``,
+    ``wetting_drop_top`` and ``wetting_chem_step`` initialisers, which
+    hard-code a liquid droplet and take no ``dispersed`` key of their own.
+    Runtime wall-row detection is deliberately not used, because it collapses
+    to "droplet" as soon as the dispersed phase leaves the wall, silently
+    moving the momentum injection onto the whole continuous phase.
 
 ``source_term_wb``
     The well-balanced forcing source term used by the collision operators.

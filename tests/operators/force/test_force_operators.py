@@ -197,7 +197,7 @@ class TestGravityMaskedDispersedPhase:
     RHO_L = 1.0
     RHO_V = 0.33
 
-    def _build(self, lattice, dispersed=None, *, initialisation=None, init_type=None):
+    def _build(self, lattice, dispersed=None, *, initialisation=None, init_type=None, init_dir=None):
         from src.operators.force._gravity_masked import GravityForceModule
 
         cfg = SimpleNamespace(
@@ -205,6 +205,7 @@ class TestGravityMaskedDispersedPhase:
             rho_v=self.RHO_V,
             initialisation=initialisation,
             init_type=init_type,
+            init_dir=init_dir,
         )
         params = {"force_g": 0.001}
         if dispersed is not None:
@@ -281,17 +282,57 @@ class TestGravityMaskedDispersedPhase:
         )
         assert precomputed.dispersed == "liquid"
 
-    @pytest.mark.parametrize("init_type", ["multiphase_bubbles", "multiphase_bubble_top"])
-    def test_bubble_initialisers_infer_vapour_without_an_explicit_key(self, lattice, init_type):
-        """These initialisers place a vapour inclusion unless told otherwise."""
-        precomputed = self._build(lattice, initialisation={}, init_type=init_type)
+    @pytest.mark.parametrize("init_type", ["multiphase_bubbles", "multiphase_bubble_top", "standard", None])
+    @pytest.mark.parametrize("initialisation", [None, {}])
+    def test_undeclared_topology_falls_back_to_vapour(self, lattice, init_type, initialisation):
+        """A vapour inclusion is the default, as in ``multiphase_bubbles``.
+
+        A droplet run declares itself with ``dispersed = "liquid"``; nothing is
+        inferred from ``init_type``, which would duplicate defaults that live in
+        the initialisers and can drift away from them.
+        """
+        precomputed = self._build(lattice, initialisation=initialisation, init_type=init_type)
         assert precomputed.dispersed == "vapour"
 
-    @pytest.mark.parametrize("init_type", ["standard", "wetting", None])
-    def test_unknown_topology_falls_back_to_liquid(self, lattice, init_type):
-        """Pre-bubble behaviour: droplet and single-phase runs drive the liquid."""
-        precomputed = self._build(lattice, initialisation=None, init_type=init_type)
+    def _write_snapshot(self, tmp_path, *, dispersed):
+        """An .npz holding a small inclusion of *dispersed* in the other phase."""
+        continuous, inclusion = (self.RHO_V, self.RHO_L) if dispersed == "liquid" else (self.RHO_L, self.RHO_V)
+        rho = np.full((NX, NY, NZ, 1, 1), continuous)
+        rho[NX // 2 - 2 : NX // 2 + 2, NY // 2 - 2 : NY // 2 + 2] = inclusion
+        path = tmp_path / f"{dispersed}_inclusion.npz"
+        np.savez(path, rho=rho, u=np.zeros((NX, NY, NZ, 1, 2)))
+        return str(path)
+
+    @pytest.mark.parametrize("dispersed", ["liquid", "vapour"])
+    def test_init_from_file_reads_the_topology_off_the_snapshot(self, lattice, tmp_path, dispersed):
+        """``init_from_file`` carries no topology key, so measure the minority phase."""
+        precomputed = self._build(
+            lattice,
+            initialisation={},
+            init_type="init_from_file",
+            init_dir=self._write_snapshot(tmp_path, dispersed=dispersed),
+        )
+        assert precomputed.dispersed == dispersed
+
+    def test_force_section_key_overrides_the_snapshot(self, lattice, tmp_path):
+        precomputed = self._build(
+            lattice,
+            "liquid",
+            initialisation={},
+            init_type="init_from_file",
+            init_dir=self._write_snapshot(tmp_path, dispersed="vapour"),
+        )
         assert precomputed.dispersed == "liquid"
+
+    def test_missing_snapshot_falls_back_rather_than_raising(self, lattice, tmp_path):
+        """The initialiser reports a bad path far better than the force module can."""
+        precomputed = self._build(
+            lattice,
+            initialisation={},
+            init_type="init_from_file",
+            init_dir=str(tmp_path / "absent.npz"),
+        )
+        assert precomputed.dispersed == "vapour"
 
     def test_invalid_dispersed_raises(self, lattice):
         with pytest.raises(ValueError, match="dispersed"):

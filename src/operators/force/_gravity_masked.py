@@ -14,6 +14,13 @@ moment the dispersed phase leaves that wall. For a wetting knob that is a
 recoverable, local mistake; for a body force it would silently switch the
 momentum injection to the entire continuous phase.
 
+The default topology is a **vapour** inclusion, matching
+:func:`~src.operators.initialise._multiphase_bubbles.init_multiphase_bubbles_2d`;
+a droplet run says so with ``dispersed = "liquid"`` under ``[initialisation]``.
+Initialisers that hard-code a liquid droplet and take no ``dispersed`` key
+(``wetting``, ``wetting_drop_top``, ``wetting_chem_step``) therefore need that
+key set explicitly when combined with this force.
+
 Usage::
 
     # Via registry (preferred)
@@ -31,9 +38,11 @@ Usage::
 """
 
 from __future__ import annotations
+from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 import jax.numpy as jnp
+import numpy as np
 from src.operators.force._gravity import _build_gravity_template
 from src.registry import force_model
 
@@ -44,35 +53,70 @@ if TYPE_CHECKING:
 #: ``[initialisation]`` and the ``multiphase_bubbles`` initialiser.
 _DISPERSED_PHASES = ("liquid", "vapour")
 
-#: Phase driven when nothing in the config declares a topology. Liquid keeps the
-#: single-phase and droplet behaviour this module had before bubbles existed.
-_FALLBACK_DISPERSED = "liquid"
+#: Phase driven when nothing in the config declares a topology, matching the
+#: ``multiphase_bubbles`` initialiser's own default: a vapour inclusion.
+_FALLBACK_DISPERSED = "vapour"
 
-#: Topology implied by initialisers that fix it themselves, used when
-#: ``[initialisation]`` carries no ``dispersed`` key. ``multiphase_bubbles``
-#: takes the key but defaults to vapour, and ``multiphase_bubble_top`` always
-#: places a vapour inclusion — see :mod:`src.operators.initialise`.
-_INIT_TYPE_DISPERSED = {
-    "multiphase_bubbles": "vapour",
-    "multiphase_bubble_top": "vapour",
-}
+#: Liquid volume fraction below which the *liquid* is the inclusion. The
+#: dispersed phase is the minority one, so the split sits at half the domain.
+_MINORITY_FRACTION = 0.5
 
 
-def _resolve_dispersed(params: dict, config: object | None) -> str:
+def _dispersed_from_file(config: object, rho_l: float | None, rho_v: float | None) -> str | None:
+    """Read the dispersed phase out of an ``init_from_file`` snapshot.
+
+    The inclusion is the phase occupying the smaller volume, so the saved
+    density field is reduced to a liquid volume fraction and thresholded at a
+    half. This is setup-time numpy, outside any JIT boundary.
+
+    Args:
+        config: The :class:`~src.config.SimulationConfig`.
+        rho_l: Liquid reference density, or None.
+        rho_v: Vapour reference density, or None.
+
+    Returns:
+        ``"liquid"``, ``"vapour"``, or None when the snapshot cannot be read —
+        an unreadable path is left to raise in the initialiser itself, which
+        reports it far better than a force module can.
+    """
+    if rho_l is None or rho_v is None or rho_l == rho_v:
+        return None
+
+    # getattr is intentional here: config is typed as object from **kwargs.
+    init = getattr(config, "initialisation", None)
+    npz_path = getattr(config, "init_dir", None) or (init.get("npz_path") if isinstance(init, dict) else None)
+    if not npz_path:
+        return None
+    path = Path(str(npz_path)).expanduser()
+    if not path.is_file():
+        return None
+
+    with np.load(path) as data:
+        if "rho" not in data:
+            return None
+        rho = np.asarray(data["rho"], dtype=float)
+
+    liquid_fraction = float(np.clip((rho - rho_v) / (rho_l - rho_v), 0.0, 1.0).mean())
+    return "liquid" if liquid_fraction < _MINORITY_FRACTION else "vapour"
+
+
+def _resolve_dispersed(params: dict, config: object | None, rho_l: float | None, rho_v: float | None) -> str:
     """Resolve which phase the masked body force acts on.
 
     Precedence, first match wins:
 
     1. ``dispersed`` in the ``[gravity_masked_force]`` section — the explicit
-       override, for runs whose initialiser does not declare a topology
-       (``init_from_file``, for instance).
+       override, for runs whose initialiser does not declare a topology.
     2. ``dispersed`` in ``[initialisation]`` — what the initialiser was told.
-    3. The topology fixed by ``init_type`` (:data:`_INIT_TYPE_DISPERSED`).
+    3. For ``init_type = "init_from_file"``, the topology measured from the
+       snapshot itself (:func:`_dispersed_from_file`).
     4. :data:`_FALLBACK_DISPERSED`.
 
     Args:
         params: Config dict from the ``[gravity_masked_force]`` TOML section.
         config: The :class:`~src.config.SimulationConfig`, or None.
+        rho_l: Liquid reference density, or None.
+        rho_v: Vapour reference density, or None.
 
     Returns:
         Either ``"liquid"`` or ``"vapour"``.
@@ -86,9 +130,8 @@ def _resolve_dispersed(params: dict, config: object | None) -> str:
         init = getattr(config, "initialisation", None)
         if isinstance(init, dict):
             declared = init.get("dispersed")
-        init_type = getattr(config, "init_type", None)
-        if declared is None and isinstance(init_type, str):
-            declared = _INIT_TYPE_DISPERSED.get(init_type)
+        if declared is None and getattr(config, "init_type", None) == "init_from_file":
+            declared = _dispersed_from_file(config, rho_l, rho_v)
     if declared is None:
         return _FALLBACK_DISPERSED
 
@@ -161,7 +204,7 @@ class GravityForceModule:
             template=template,
             rho_l=rho_l,
             rho_v=rho_v,
-            dispersed=_resolve_dispersed(params, config),
+            dispersed=_resolve_dispersed(params, config, rho_l, rho_v),
         )
 
     @staticmethod
