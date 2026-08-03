@@ -20,11 +20,13 @@ from src.operators.wetting.hysteresis.hysteresis import _cost_below
 from src.operators.wetting.hysteresis.hysteresis import _cost_ca
 from src.operators.wetting.hysteresis.hysteresis import _cost_cll
 from src.operators.wetting.hysteresis.hysteresis import _import_optax
+from src.operators.wetting.hysteresis.hysteresis import _liquid_is_advancing
 from src.operators.wetting.hysteresis.hysteresis import _mask_left_d_rho
 from src.operators.wetting.hysteresis.hysteresis import _mask_left_phi
 from src.operators.wetting.hysteresis.hysteresis import _mask_right_d_rho
 from src.operators.wetting.hysteresis.hysteresis import _mask_right_phi
 from src.operators.wetting.hysteresis.hysteresis import _phi_is_active
+from src.operators.wetting.hysteresis.hysteresis import _side_hyperparams
 from src.operators.wetting.hysteresis.hysteresis import _update_wetting_state_impl
 from src.operators.wetting.hysteresis.hysteresis import update_wetting_state
 
@@ -45,29 +47,155 @@ def test_import_optax_raises_clear_message(mock_optax_missing):
 
 
 @pytest.mark.parametrize(
-    ("in_window", "above_window", "forward_drift", "expected"),
+    ("in_window", "above_window", "forward_drift", "is_bubble", "expected"),
     [
-        # above_window=True → phi active regardless of others
-        (False, True, False, True),
-        (False, True, True, True),
-        # in_window & ~forward_drift → phi active (CL drifting backward)
-        (True, False, False, True),
-        # in_window & forward_drift → d_rho active (CL advancing)
-        (True, False, True, False),
+        # ── Droplet: dispersed angle == liquid angle, so phi (more wetting)
+        # lowers the reported angle. These rows are the pre-topology behaviour
+        # and must not change.
+        # above_window → phi active regardless of drift
+        (False, True, False, False, True),
+        (False, True, True, False, True),
+        # in_window & ~forward_drift → phi active (liquid receding)
+        (True, False, False, False, True),
+        # in_window & forward_drift → d_rho active (liquid advancing)
+        (True, False, True, False, False),
         # below window → d_rho active
-        (False, False, False, False),
-        (False, False, True, False),
+        (False, False, False, False, False),
+        (False, False, True, False, False),
+        # ── Bubble: dispersed angle == 180 - liquid angle, so phi *raises* the
+        # reported angle. Both contact-angle branches invert.
+        (False, True, False, True, False),
+        (False, True, True, True, False),
+        (False, False, False, True, True),
+        (False, False, True, True, True),
+        # The contact-line pinning branches do NOT invert — forward_drift is
+        # already liquid-frame and phi/d_rho are liquid-frame knobs, so these
+        # two rows match the droplet rows above.
+        (True, False, False, True, True),
+        (True, False, True, True, False),
     ],
 )
-def test_phi_is_active_truth_table(in_window, above_window, forward_drift, expected):
+def test_phi_is_active_truth_table(in_window, above_window, forward_drift, is_bubble, expected):
     result = bool(
         _phi_is_active(
             jnp.array(in_window),
             jnp.array(above_window),
             jnp.array(forward_drift),
+            jnp.array(is_bubble),
         )
     )
     assert result == expected
+
+
+@pytest.mark.parametrize("forward_drift", [True, False])
+def test_phi_is_active_in_window_is_topology_independent(forward_drift):
+    """Pinning resists whichever way the liquid moves, for either topology.
+
+    ``_liquid_is_advancing`` has already converted the drift to the liquid
+    frame, so applying ``is_bubble`` again here would double-invert it.
+    """
+    args = (jnp.array(True), jnp.array(False), jnp.array(forward_drift))
+    droplet = bool(_phi_is_active(*args, jnp.array(False)))
+    bubble = bool(_phi_is_active(*args, jnp.array(True)))
+    assert droplet == bubble
+    assert droplet != forward_drift
+
+
+# ---------------------------------------------------------------------------
+# _side_hyperparams — per-side learning rate and iteration budget
+# ---------------------------------------------------------------------------
+
+
+_HYPER_CFG = {
+    "learning_rate": 0.01,
+    "learning_rate_above": 0.05,
+    "max_iterations": 10,
+    "max_iterations_above": 40,
+}
+
+
+def test_side_hyperparams_uses_defaults_in_window():
+    lr, max_iter = _side_hyperparams(_HYPER_CFG, jnp.array(False))
+    assert float(lr) == pytest.approx(0.01)
+    assert int(max_iter) == 10
+
+
+def test_side_hyperparams_uses_above_overrides_above_window():
+    lr, max_iter = _side_hyperparams(_HYPER_CFG, jnp.array(True))
+    assert float(lr) == pytest.approx(0.05)
+    assert int(max_iter) == 40
+
+
+def test_side_hyperparams_sides_are_independent():
+    """A side in-window keeps the default budget even when the other is above.
+
+    The previous form OR-ed both sides' above-window flags into a single
+    learning rate, so an in-window side inherited the aggressive step.
+    """
+    lr_in, iter_in = _side_hyperparams(_HYPER_CFG, jnp.array(False))
+    lr_above, iter_above = _side_hyperparams(_HYPER_CFG, jnp.array(True))
+    assert float(lr_in) < float(lr_above)
+    assert int(iter_in) < int(iter_above)
+
+
+def test_side_hyperparams_max_iterations_honoured_when_above_also_set():
+    """Regression: the override used to win unconditionally.
+
+    The old expression was a Python truthiness test, so any truthy
+    ``max_iterations_above`` silently discarded ``max_iterations`` for both
+    regimes.
+    """
+    _lr, max_iter = _side_hyperparams(_HYPER_CFG, jnp.array(False))
+    assert int(max_iter) == _HYPER_CFG["max_iterations"]
+
+
+def test_side_hyperparams_above_falls_back_to_max_iterations():
+    cfg = {"max_iterations": 7}
+    _lr, max_iter = _side_hyperparams(cfg, jnp.array(True))
+    assert int(max_iter) == 7
+
+
+def test_side_hyperparams_empty_config_uses_module_defaults():
+    lr, max_iter = _side_hyperparams({}, jnp.array(False))
+    assert float(lr) == pytest.approx(0.01)
+    assert int(max_iter) == 50
+
+
+# ---------------------------------------------------------------------------
+# _liquid_is_advancing — the droplet/bubble drift inversion
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("side", "cll_now", "cll_stored", "is_bubble", "expected"),
+    [
+        # Droplet: the dispersed phase IS the liquid, so its expansion is the
+        # liquid advancing. Left CL moves -x, right CL moves +x.
+        ("left", 9.0, 10.0, False, True),
+        ("left", 11.0, 10.0, False, False),
+        ("right", 11.0, 10.0, False, True),
+        ("right", 9.0, 10.0, False, False),
+        # Bubble: the dispersed phase is the vapour, so the identical motion
+        # grows the bubble and the liquid recedes — every case inverts.
+        ("left", 9.0, 10.0, True, False),
+        ("left", 11.0, 10.0, True, True),
+        ("right", 11.0, 10.0, True, False),
+        ("right", 9.0, 10.0, True, True),
+    ],
+)
+def test_liquid_is_advancing_truth_table(side, cll_now, cll_stored, is_bubble, expected):
+    result = _liquid_is_advancing(
+        jnp.array(cll_now),
+        jnp.array(cll_stored),
+        jnp.array(is_bubble),
+        side=side,
+    )
+    assert bool(result) == expected
+
+
+def test_liquid_is_advancing_rejects_unknown_side():
+    with pytest.raises(ValueError, match="side must be"):
+        _liquid_is_advancing(jnp.array(1.0), jnp.array(0.0), jnp.array(False), side="middle")
 
 
 # ---------------------------------------------------------------------------

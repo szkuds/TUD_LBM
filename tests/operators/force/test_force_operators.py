@@ -1,5 +1,6 @@
 """Tests for force operators — gravity and electric."""
 
+import math
 from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
@@ -160,20 +161,172 @@ class TestGravityForce:
 
 
 class TestGravityMaskedForce:
-    """GravityForceModule with phase mask based on rho_v/rho_l references."""
+    """The weight is the density excess over the vapour, ``(rho - rho_v)``.
 
-    def test_compute_matches_masked_formula(self, lattice):
+    One formula covers both topologies. A liquid droplet is driven at
+    ``drho*g`` with its vapour ambient left force-free; a vapour bubble is
+    itself force-free and the liquid around it carries ``drho*g``, so the
+    bubble is buoyed by the resulting pressure gradient rather than having the
+    net force injected into its own negligible inertia. Referencing ``rho_v``
+    rather than ``rho_l`` is the whole point: the dense phase can sustain a
+    pressure gradient and the light phase cannot.
+    """
+
+    RHO_L = 1.0
+    RHO_V = 0.33
+    DRHO = RHO_L - RHO_V
+    FORCE_G = 0.001
+
+    def _build(self, lattice, *, grid_shape=(NX, NY, NZ), **extra_params):
         from src.operators.force._gravity_masked import GravityForceModule
 
-        cfg = SimpleNamespace(rho_l=1.0, rho_v=0.5)
-        precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=cfg, lattice=lattice)
-        state = make_state(lattice, rho_value=0.75)
-        force = GravityForceModule.compute(state, precomputed)
+        cfg = SimpleNamespace(rho_l=self.RHO_L, rho_v=self.RHO_V)
+        return GravityForceModule.build(
+            {"force_g": self.FORCE_G, **extra_params},
+            grid_shape,
+            config=cfg,
+            lattice=lattice,
+        )
 
-        rho = jnp.sum(state.f, axis=-2, keepdims=True)
-        mask = jnp.clip((rho - cfg.rho_v) / (cfg.rho_l - cfg.rho_v), 0.0, 1.0)
-        expected = -precomputed.template * rho * mask
-        np.testing.assert_allclose(np.array(force), np.array(expected), atol=1e-12)
+    def _state_from_rho_2d(self, lattice, rho_2d, t=0):
+        nx, ny = rho_2d.shape
+        rho = jnp.asarray(rho_2d.reshape(nx, ny, NZ, 1, 1))
+        f = jnp.broadcast_to(rho / lattice.q, (nx, ny, NZ, lattice.q, 1))
+        return State(
+            f=f,
+            rho=rho,
+            u=jnp.zeros((nx, ny, NZ, 1, lattice.d)),
+            t=jnp.array(t),
+        )
+
+    def _two_phase_state(self, lattice, t=0):
+        """Liquid in the left third, vapour in the right third, ``rho_mean`` between."""
+        rho_2d = np.full((NX, NY), self.RHO_V)
+        rho_2d[: NX // 3, :] = self.RHO_L
+        rho_2d[NX // 3 : 2 * NX // 3, :] = 0.5 * (self.RHO_L + self.RHO_V)
+        return self._state_from_rho_2d(lattice, rho_2d, t=t)
+
+    @pytest.mark.parametrize(
+        ("rho_value", "expected_weight"),
+        [
+            (RHO_L, DRHO),
+            (RHO_V, 0.0),
+            (0.5 * (RHO_L + RHO_V), 0.5 * DRHO),
+            (0.2, 0.2 - RHO_V),
+        ],
+    )
+    def test_the_weight_is_the_density_excess_over_the_vapour(self, lattice, rho_value, expected_weight):
+        """Continuous in rho, including below rho_v where it simply changes sign."""
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice)
+        force = GravityForceModule.compute(make_state(lattice, rho_value=rho_value), precomputed)
+
+        np.testing.assert_allclose(
+            np.array(force),
+            np.array(-precomputed.template * expected_weight),
+            atol=1e-12,
+        )
+
+    def test_the_dense_phase_is_driven_and_the_light_phase_is_force_free(self, lattice):
+        """The force sits where a pressure gradient can balance it.
+
+        This is the fix for bubbles: driving the vapour at ``drho*g`` gave it
+        ``drho/rho_v`` times the intended acceleration, and needed a pressure
+        difference across the inclusion far exceeding the vapour's absolute
+        pressure, so no equilibrium existed and the gas evacuated.
+        """
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice)
+        force = np.array(GravityForceModule.compute(self._two_phase_state(lattice), precomputed))
+        template = np.array(precomputed.template)
+
+        np.testing.assert_allclose(force[: NX // 3], -template[: NX // 3] * self.DRHO, atol=1e-12)
+        np.testing.assert_allclose(force[2 * NX // 3 :], 0.0, atol=1e-12)
+        # The interface carries the intermediate weight — no threshold, no tie.
+        np.testing.assert_allclose(
+            force[NX // 3 : 2 * NX // 3],
+            -template[NX // 3 : 2 * NX // 3] * self.DRHO * 0.5,
+            atol=1e-12,
+        )
+
+    def test_the_force_acts_along_gravity(self, lattice):
+        """``_build_gravity_template`` stores ``(-sin, cos)*force_g`` and
+        ``compute`` negates it, so gravity acts along ``(sin, -cos)`` — at the
+        default theta = 0, straight down, pulling the liquid down.
+        """
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        force = np.array(GravityForceModule.compute(self._two_phase_state(lattice), self._build(lattice)))
+        gravity_direction = np.array([0.0, -1.0])
+
+        assert float(force[0, 0, 0, 0] @ gravity_direction) == pytest.approx(self.DRHO * self.FORCE_G)
+        np.testing.assert_allclose(force[-1, 0, 0, 0], 0.0, atol=1e-12)
+
+    def test_the_inclined_force_acts_along_gravity(self, lattice):
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        angle = 50.0
+        precomputed = self._build(lattice, inclination_angle_deg=angle)
+        liquid = np.array(GravityForceModule.compute(self._two_phase_state(lattice), precomputed))[0, 0, 0, 0]
+
+        rad = math.radians(angle)
+        gravity = np.array([math.sin(rad), -math.cos(rad)]) * self.FORCE_G
+        np.testing.assert_allclose(liquid, gravity * self.DRHO, atol=1e-12)
+
+    def test_the_net_force_over_an_interface_matches_the_masked_form(self, lattice):
+        """Smoothing the weight does not change the net force on an inclusion.
+
+        A tanh profile is antisymmetric about ``rho_mean``, so the excess mass
+        it adds on the dense side of the interface is exactly what it removes
+        on the light side. Summing ``(rho - rho_v)`` therefore reproduces the
+        old ``drho * (cells above rho_mean)`` — existing droplet runs keep the
+        same drive.
+        """
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        nx, ny, width, centre = 64, 4, 4.0, 32.0
+        phi = 0.5 * (1.0 - np.tanh(2.0 * (np.arange(nx) + 0.5 - centre) / width))
+        rho_2d = np.repeat((self.RHO_V + self.DRHO * phi)[:, None], ny, axis=1)
+
+        precomputed = self._build(lattice, grid_shape=(nx, ny, NZ))
+        force = np.array(GravityForceModule.compute(self._state_from_rho_2d(lattice, rho_2d), precomputed))
+
+        masked_cells = np.count_nonzero(rho_2d > 0.5 * (self.RHO_L + self.RHO_V))
+        assert force[..., 1].sum() == pytest.approx(-self.FORCE_G * self.DRHO * masked_cells, rel=1e-9)
+
+    @pytest.mark.parametrize(
+        ("t", "expected_fraction"),
+        [(100, 0.0), (600, 0.0), (800, 0.25), (1200, 0.75), (1600, 1.0), (5000, 1.0)],
+    )
+    def test_the_ramp_scales_the_force_between_start_and_finish(self, lattice, t, expected_fraction):
+        """``ramp_start_t`` is absolute because ``state.t`` survives restarts."""
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice, ramp_start_t=600, ramp_steps=800)
+        force = np.array(GravityForceModule.compute(self._two_phase_state(lattice, t=t), precomputed))
+        template = np.array(precomputed.template)
+
+        np.testing.assert_allclose(
+            force[: NX // 3],
+            -template[: NX // 3] * self.DRHO * expected_fraction,
+            atol=1e-12,
+        )
+
+    def test_without_ramp_steps_the_force_is_full_strength_immediately(self, lattice):
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice)
+        assert precomputed.ramp_steps is None
+
+        force = np.array(GravityForceModule.compute(self._two_phase_state(lattice, t=0), precomputed))
+        template = np.array(precomputed.template)
+        np.testing.assert_allclose(force[: NX // 3], -template[: NX // 3] * self.DRHO, atol=1e-12)
+
+    def test_non_positive_ramp_steps_raises(self, lattice):
+        with pytest.raises(ValueError, match="ramp_steps"):
+            self._build(lattice, ramp_steps=0)
 
     def test_compute_without_phase_refs_matches_single_phase(self, lattice):
         from src.operators.force._gravity_masked import GravityForceModule
@@ -183,6 +336,27 @@ class TestGravityMaskedForce:
         force = GravityForceModule.compute(state, precomputed)
         expected = -precomputed.template * 1.2
         np.testing.assert_allclose(np.array(force), np.array(expected), atol=1e-12)
+
+    def test_equal_reference_densities_produce_no_force_in_the_bulk(self, lattice):
+        """A degenerate rho_l == rho_v leaves a bulk cell unforced, and the
+        division-free weight cannot produce a NaN.
+        """
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        cfg = SimpleNamespace(rho_l=1.0, rho_v=1.0)
+        precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=cfg, lattice=lattice)
+        force = np.array(GravityForceModule.compute(make_state(lattice, rho_value=1.0), precomputed))
+
+        assert bool(np.isfinite(force).all())
+        np.testing.assert_allclose(force, 0.0, atol=1e-12)
+
+    def test_jittable(self, lattice):
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice, ramp_start_t=10, ramp_steps=100)
+        state = self._two_phase_state(lattice)
+        force = jax.jit(lambda s: GravityForceModule.compute(s, precomputed))(state)
+        assert force.shape == (NX, NY, NZ, 1, 2)
 
 
 # =====================================================================

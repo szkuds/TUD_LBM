@@ -110,6 +110,7 @@ class MetricScales:
     offset_x: float
     incl_deg: float
     save_interval: int
+    wall_edge: str
 
     @property
     def sigma_primary(self) -> float | None:
@@ -125,6 +126,20 @@ class MetricScales:
     def sigma_source(self) -> str:
         """``"measured"`` or ``"analytical"`` — which value ``sigma_primary`` returned."""
         return "measured" if self.sigma_measured is not None else "analytical"
+
+
+def resolve_wall_edge(config: SimulationConfig) -> str:
+    """The single wall marked ``"wetting"`` in ``bc_config``, else ``"bottom"``.
+
+    Config validation guarantees exactly one wetting wall for wetting runs;
+    non-wetting runs fall back to ``"bottom"`` (the historical default), for
+    which the canonical transform is the identity.
+    """
+    bc = config.bc_config or {}
+    for edge in ("bottom", "top", "left", "right"):
+        if bc.get(edge) == "wetting":
+            return edge
+    return "bottom"
 
 
 def resolve_scales(config: SimulationConfig) -> MetricScales | None:
@@ -154,4 +169,5 @@ def resolve_scales(config: SimulationConfig) -> MetricScales | None:
         offset_x=step_x if step_x is not None else float(config.grid_shape[0] // 2),
         incl_deg=inclination_angle_deg(config),
         save_interval=max(config.save_interval, 1),
+        wall_edge=resolve_wall_edge(config),
     )

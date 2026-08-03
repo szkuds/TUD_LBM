@@ -95,6 +95,12 @@ class SimulationSetup(NamedTuple):
             implementing :class:`~operators.protocols.HysteresisOperator`.
             Built when ``hysteresis_config`` is present;
             ``None`` otherwise.
+        wetting_edge: The wall used to orient contact-angle measurement
+            (``"bottom"`` / ``"top"`` / ``"left"`` / ``"right"``), taken as the
+            first ``"wetting"`` edge in ``bc_config``. Wetting is applied to
+            every ``"wetting"`` edge, but measurement reads only this one, and a
+            single ``WettingState`` parameter pair is shared across them.
+            ``None`` for non-wetting runs.
         extra_state_plugins: Active plugin tuple used to initialise and update
             operation-specific extra state (e.g. electric potential, wetting state).
         collision_fn: Pre-built collision operator, resolved at setup time.
@@ -132,6 +138,7 @@ class SimulationSetup(NamedTuple):
     # ── Step function (unbound: (setup, state) -> State) ──
     step_fn: StepOperator | None = None
     wetting_fn: HysteresisOperator | None = None
+    wetting_edge: str | None = None
     extra_state_plugins: tuple[ExtraStatePlugin, ...] = ()
 
     # ── Pre-built operator closures (resolved at setup time) ──
@@ -165,6 +172,21 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
             f"Wetting configuration present but sim_type is '{config.sim_type}'. "
             "Wetting requires sim_type = 'multiphase'. "
             "Wetting is an addon to multiphase simulations, detected by the presence of [wetting] config."
+        )
+        raise ValueError(
+            msg,
+        )
+
+    # ── Validation: hysteresis config requires a hysteresis sim_type ──
+    # Otherwise build_setup would still build a hysteresis wetting_fn, but the
+    # selected step operator would never supply a trial_step_fn, crashing the
+    # optimiser with a cryptic 'NoneType is not callable' deep inside the trace.
+    if config.hysteresis_config is not None and "hysteresis" not in config.sim_type:
+        msg = (
+            f"Hysteresis configuration present but sim_type is '{config.sim_type}'. "
+            "The hysteresis optimiser only runs under sim_type = 'multiphase_hysteresis' "
+            "(or 'multiphase_hysteresis_chemical_step'). "
+            "Set one of those sim_types, or remove the [hysteresis] config for a static wetting run."
         )
         raise ValueError(
             msg,
@@ -224,6 +246,13 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         )
         wetting_fn = build_wetting_fn(wetting_scheme)
 
+    # Orient measurement from the first wetting wall. Wetting BCs are applied
+    # to every "wetting" edge, but contact angles are read only at this one.
+    from src.operators.wetting._edge_config import _resolve_wetting_edges
+
+    wetting_edges = _resolve_wetting_edges(config.bc_config) if config.bc_config else []
+    wetting_edge = wetting_edges[0][0] if wetting_edges else None
+
     extra_state_plugins = tuple(
         cast("ExtraStatePlugin", entry.target)
         for entry in sorted(get_operators("extra_state").values(), key=lambda e: e.name)
@@ -260,6 +289,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         laplacian_density_wetting=laplacian_density_wetting,
         step_fn=step_fn,
         wetting_fn=wetting_fn,
+        wetting_edge=wetting_edge,
         extra_state_plugins=extra_state_plugins,
         collision_fn=collision_fn,
         equilibrium_fn=equilibrium_fn,

@@ -7,7 +7,7 @@ Implementation modules are internal; use the factory to access.
 Example:
     from operators.differential import build_diff_ops
 
-    gradient_standard, gradient, laplacian = build_diff_ops(config, mp_params, lattice)
+    gradient_standard, gradient, Laplacian = build_diff_ops(config, mp_params, lattice)
 """
 
 from __future__ import annotations
@@ -122,25 +122,29 @@ def build_diff_ops(
 
         _grad_wetting = cast(
             "DifferentialOperator",
-            _gradient_wetting_factory(
-                lattice.w,
-                lattice.c,
-                tuple(determine_pad_modes(config.bc_config)),
-                config.bc_config,
-                rho_l=mp_params.rho_l,
-                rho_v=mp_params.rho_v,
-                width=config.interface_width,
+            cast(
+                "object",
+                _gradient_wetting_factory(
+                    lattice.w,
+                    lattice.c,
+                    tuple(determine_pad_modes(config.bc_config)),
+                    config.bc_config,
+                    rho_l=mp_params.rho_l,
+                    rho_v=mp_params.rho_v,
+                ),
             ),
         )
         _lap_wetting = cast(
             "DifferentialOperator",
-            _laplacian_wetting_factory(
-                lattice.w,
-                tuple(determine_pad_modes(config.bc_config)),
-                config.bc_config,
-                rho_l=mp_params.rho_l,
-                rho_v=mp_params.rho_v,
-                width=config.interface_width,
+            cast(
+                "object",
+                _laplacian_wetting_factory(
+                    lattice.w,
+                    tuple(determine_pad_modes(config.bc_config)),
+                    config.bc_config,
+                    rho_l=mp_params.rho_l,
+                    rho_v=mp_params.rho_v,
+                ),
             ),
         )
 

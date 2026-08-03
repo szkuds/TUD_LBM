@@ -26,6 +26,24 @@ Design
 The inner ``_evaluate_with_params`` closure performs a single LBM
 step with trial wetting parameters so that ``jax.value_and_grad``
 can differentiate through it.
+
+Angle convention
+~~~~~~~~~~~~~~~~
+``compute_contact_angle`` reports the angle through the **dispersed**
+phase — the liquid for a droplet, the vapour for a bubble — so the
+``ca_advancing`` / ``ca_receding`` window is in those terms too. For a
+droplet that is the usual liquid angle and nothing changes. For a bubble
+it is the vapour angle, and because vapour advancing is liquid receding,
+a window meant as liquid ``[rec, adv]`` becomes ``[180 - adv, 180 - rec]``
+here.
+
+``phi`` and ``d_rho``, by contrast, are **liquid-frame** knobs and are
+topology-independent: ``phi`` inflates the ghost-row density so the wall
+looks more liquid, ``d_rho`` deflates it. Mapping a dispersed-frame angle
+error onto them therefore flips with topology, and :func:`_phi_is_active`
+is where that translation happens — the two contact-angle branches invert
+for a bubble, the two contact-line-pinning branches do not (see its
+docstring).
 """
 
 from __future__ import annotations
@@ -36,6 +54,7 @@ import jax
 import jax.numpy as jnp
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
+from src.operators.wetting._interface_crossings import detect_bubble
 from src.operators.wetting._params import WettingParams
 from src.registry import wetting_operator
 from src.simulation_io.analysis import wetting_debug
@@ -43,6 +62,7 @@ from src.simulation_io.analysis import wetting_debug
 if TYPE_CHECKING:
     import types
     from collections.abc import Callable
+    from collections.abc import Mapping
     from src.pipeline.setup import SimulationSetup
     from src.pipeline.state.state import WettingState
 
@@ -61,6 +81,11 @@ class _OptaxLike(Protocol):
 _PHI_NEUTRAL: jnp.ndarray = jnp.array(1.0)
 _D_RHO_NEUTRAL: jnp.ndarray = jnp.array(0.0)
 
+# Tolerance for "phi is still sitting on its clamp floor". `_clamp_params`
+# pins phi at exactly `_PHI_NEUTRAL`, so a strict `<` comparison is
+# unreachable and the d_rho fallback below it would never fire.
+_PHI_FLOOR_EPS: float = 1e-6
+
 
 def _import_optax() -> types.ModuleType:
     """Import optional ``optax`` dependency with a clear install hint."""
@@ -72,37 +97,117 @@ def _import_optax() -> types.ModuleType:
     return optax
 
 
+def _liquid_is_advancing(
+    cll_now: jnp.ndarray,
+    cll_stored: jnp.ndarray,
+    is_bubble: jnp.ndarray,
+    *,
+    side: str,
+) -> jnp.ndarray:
+    """Return True if the liquid is advancing over dry wall at this contact line.
+
+    Contact-line labels are positional, so the dispersed phase expanding is the
+    left CL moving in ``−tangential`` and the right CL moving in
+    ``+tangential``. For a droplet the dispersed phase *is* the liquid, so that
+    expansion is the liquid advancing. For a bubble it is the vapour, so the
+    same motion is the liquid receding and the test inverts.
+
+    Args:
+        cll_now: Freshly measured contact-line location (scalar).
+        cll_stored: Contact-line location carried in ``WettingState``.
+        is_bubble: Bool scalar — the dispersed phase at the wall is vapour.
+        side: ``"left"`` or ``"right"``.
+
+    Returns:
+        Boolean JAX scalar.
+    """
+    if side == "left":
+        dispersed_expanding = cll_now < cll_stored
+    elif side == "right":
+        dispersed_expanding = cll_now > cll_stored
+    else:
+        msg = f"side must be 'left' or 'right', got {side!r}"
+        raise ValueError(msg)
+    return dispersed_expanding ^ is_bubble
+
+
 def _phi_is_active(
     in_window: jnp.ndarray,
     above_window: jnp.ndarray,
     forward_drift: jnp.ndarray,
+    is_bubble: jnp.ndarray,
 ) -> jnp.ndarray:
     """Return True if phi is the active parameter for this side.
 
-    phi is active (wall needs to become *more* wetting, i.e. lower CA) when:
-      - ``above_window`` — CA has exceeded ca_advancing and must be pulled down.
-      - ``in_window & ~forward_drift`` — CL is drifting backward (receding);
-        resist by increasing wettability.
+    ``phi`` makes the wall *more* liquid-wetting and ``d_rho`` makes it *less*
+    — both liquid-frame statements, true for either topology. The selection
+    therefore has to be reasoned in the liquid frame, and the measured angle is
+    dispersed-frame (see the module docstring), so the two contact-angle
+    branches invert for a bubble:
 
-    d_rho is active (wall needs to become *less* wetting, i.e. raise CA) in
-    all other cases:
-      - ``in_window & forward_drift`` — CL is advancing; resist by reducing
-        wettability.
-      - ``~above_window & ~in_window`` (below window) — CA has dropped below
-        ca_receding; must be raised.
+    ==========================  ==================  ==============  ======
+    regime                      theta_liq must      wall becomes    knob
+    ==========================  ==================  ==============  ======
+    above window, droplet       decrease            more wetting    phi
+    above window, bubble        increase            less wetting    d_rho
+    below window, droplet       increase            less wetting    d_rho
+    below window, bubble        decrease            more wetting    phi
+    in window, liquid receding  --                  more wetting    phi
+    in window, liquid advancing --                  less wetting    d_rho
+    ==========================  ==================  ==============  ======
+
+    The two in-window rows are topology-independent: ``forward_drift`` arrives
+    already converted to the liquid frame by :func:`_liquid_is_advancing`, and
+    the knobs are liquid-frame too, so no further flip is needed. Pinning the
+    contact line means resisting whichever way the liquid is moving.
 
     Args:
         in_window: bool scalar — CA is between ca_receding and ca_advancing.
-        above_window: bool scalar — CA > ca_advancing.
-        forward_drift: bool scalar — the trial-step CLL has moved in the
-            advancing direction relative to the stored CLL.  Convention:
-            right side → forward means ``cll_trial > cll_stored``;
-            left side → forward means ``cll_trial < cll_stored``.
+        above_window: bool scalar — CA > ca_advancing. Mutually exclusive with
+            ``in_window``; both False means below the window.
+        forward_drift: bool scalar — the **liquid** is advancing over dry wall
+            at this contact line, as returned by :func:`_liquid_is_advancing`.
+        is_bubble: bool scalar — the phase dispersed at the wall is vapour, so
+            the reported angle is the complement of the liquid angle.
 
     Returns:
         Boolean JAX scalar; True means phi is active, False means d_rho is active.
     """
-    return above_window | (in_window & ~forward_drift)
+    # Out of window: push the reported angle back toward the exceeded bound.
+    # Which knob does that depends on the topology, hence the is_bubble flip.
+    ca_branch = jnp.where(above_window, ~is_bubble, is_bubble)
+    return jnp.where(in_window, ~forward_drift, ca_branch)
+
+
+def _side_hyperparams(
+    hysteresis_config: Mapping[str, object],
+    above_window: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Return ``(learning_rate, max_iterations)`` for one side.
+
+    A side whose contact angle has run above ``ca_advancing`` is the urgent
+    case, and may be given a larger step and a longer budget via
+    ``learning_rate_above`` / ``max_iterations_above``.  Both selections are
+    traced, so each side is keyed on **its own** flag.
+
+    Note that only the above-window excursion is treated as urgent; a side
+    below ``ca_receding`` gets the default budget.
+
+    Args:
+        hysteresis_config: The ``hysteresis_config`` mapping.
+        above_window: bool scalar — this side's CA exceeds ca_advancing.
+
+    Returns:
+        ``(lr, max_iterations)`` as JAX scalars.
+    """
+    lr_default = float(cast("float", hysteresis_config.get("learning_rate", 0.01)))
+    lr_above = float(cast("float", hysteresis_config.get("learning_rate_above", 0.05)))
+    max_iter_default = int(cast("int", hysteresis_config.get("max_iterations", 50)))
+    max_iter_above = int(cast("int", hysteresis_config.get("max_iterations_above", max_iter_default)))
+    return (
+        jnp.where(above_window, lr_above, lr_default),
+        jnp.where(above_window, max_iter_above, max_iter_default),
+    )
 
 
 def _clamp_params(params: WettingParams, w: jnp.ndarray) -> WettingParams:
@@ -202,7 +307,7 @@ def _optimise_single_param(
     initial_params: WettingParams,
     grad_mask_fn: Callable[[WettingParams], WettingParams],
     optimiser: _OptaxLike,
-    max_iterations: int,
+    max_iterations: int | jnp.ndarray,
     w: jnp.ndarray,
     loss_tol: float = 1e-4,
 ) -> tuple[WettingParams, jnp.ndarray]:
@@ -218,7 +323,9 @@ def _optimise_single_param(
         grad_mask_fn: ``grads → grads`` that zeros out all but the
             target parameter(s).
         optimiser: An ``optax`` optimiser instance.
-        max_iterations: Maximum number of inner steps.
+        max_iterations: Maximum number of inner steps.  May be a traced
+            scalar — ``jax.lax.while_loop`` takes its bound from ``cond_fn``,
+            so the trip count does not need to be static.
         w: Interface width used to scale the parameter clamp bounds
             (see :func:`_clamp_params`).
         loss_tol: Convergence tolerance; the loop exits once the loss
@@ -302,30 +409,35 @@ def _update_wetting_state_impl(
     mp = setup.multiphase_params
     rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
     w = jnp.array(float(mp.interface_width))
+    if setup.wetting_edge is None:
+        msg = "wetting_edge is required for hysteresis wetting update"
+        raise TypeError(msg)
+    edge = setup.wetting_edge
 
-    ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean))
+    ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean), edge=edge)
     cll_left_tplus1, cll_right_tplus1 = compute_contact_line_location(
         rho_t_plus1,
         ca_left_tplus1,
         ca_right_tplus1,
         jnp.array(rho_mean),
+        edge=edge,
     )
 
-    forward_drift_right = cll_right_tplus1 > wetting.cll_right
-    forward_drift_left = cll_left_tplus1 < wetting.cll_left
+    is_bubble = detect_bubble(rho_t_plus1, jnp.array(rho_mean), edge=edge)
+    forward_drift_right = _liquid_is_advancing(cll_right_tplus1, wetting.cll_right, is_bubble, side="right")
+    forward_drift_left = _liquid_is_advancing(cll_left_tplus1, wetting.cll_left, is_bubble, side="left")
 
     in_window_left = (ca_left_tplus1 >= ca_rec_left) & (ca_left_tplus1 <= ca_adv_left)
     in_window_right = (ca_right_tplus1 >= ca_rec_right) & (ca_right_tplus1 <= ca_adv_right)
     above_window_left = ca_left_tplus1 > ca_adv_left
     above_window_right = ca_right_tplus1 > ca_adv_right
 
-    phi_active_right = _phi_is_active(in_window_right, above_window_right, forward_drift_right)
-    phi_active_left = _phi_is_active(in_window_left, above_window_left, forward_drift_left)
+    phi_active_right = _phi_is_active(in_window_right, above_window_right, forward_drift_right, is_bubble)
+    phi_active_left = _phi_is_active(in_window_left, above_window_left, forward_drift_left, is_bubble)
 
     hc = setup.config.hysteresis_config
-    lr_default = hc.get("learning_rate", 0.01)
-    lr = jnp.where(above_window_right | above_window_left, hc.get("learning_rate_above", 0.05), lr_default)
-    max_iter = hc.get("max_iterations_above", 50) if hc.get("max_iterations_above") else hc.get("max_iterations", 50)
+    lr_left, max_iter_left = _side_hyperparams(hc, above_window_left)
+    lr_right, max_iter_right = _side_hyperparams(hc, above_window_right)
     loss_tol = hc.get("loss_tol", 1e-4)
 
     params = WettingParams(
@@ -336,12 +448,15 @@ def _update_wetting_state_impl(
     )
 
     optax = _import_optax()
-    optimiser = optax.adam(lr)
+    # One optimiser per side: the learning rate is keyed on that side's own
+    # above-window flag, so an in-window side is not dragged along by the other.
+    optimiser_left = optax.adam(lr_left)
+    optimiser_right = optax.adam(lr_right)
 
     def evaluate_fn(params: WettingParams) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         _, rho_out = trial_step_fn(params)
-        ca_l, ca_r = compute_contact_angle(rho_out, jnp.array(rho_mean))
-        cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, jnp.array(rho_mean))
+        ca_l, ca_r = compute_contact_angle(rho_out, jnp.array(rho_mean), edge=edge)
+        cll_l, cll_r = compute_contact_line_location(rho_out, ca_l, ca_r, jnp.array(rho_mean), edge=edge)
         return ca_l, ca_r, cll_l, cll_r
 
     def left_objective(p: WettingParams) -> jnp.ndarray:
@@ -358,32 +473,37 @@ def _update_wetting_state_impl(
         cost_above = _cost_above(ca_adv_right, ca_r)
         return jnp.where(in_window_right, cost_in, jnp.where(above_window_right, cost_above, cost_below))
 
-    def _opt_left(p: WettingParams) -> WettingParams:
+    def _opt_left(p: WettingParams) -> tuple[WettingParams, jnp.ndarray]:
         return jax.lax.cond(
             phi_active_left,
-            lambda pp: _optimise_single_param(left_objective, pp, _mask_left_phi, optimiser, max_iter, w, loss_tol)[0],
-            lambda pp: _optimise_single_param(left_objective, pp, _mask_left_d_rho, optimiser, max_iter, w, loss_tol)[
-                0
-            ],
+            lambda pp: _optimise_single_param(
+                left_objective, pp, _mask_left_phi, optimiser_left, max_iter_left, w, loss_tol
+            ),
+            lambda pp: _optimise_single_param(
+                left_objective, pp, _mask_left_d_rho, optimiser_left, max_iter_left, w, loss_tol
+            ),
             p,
         )
 
-    def _opt_right(p: WettingParams) -> WettingParams:
+    def _opt_right(p: WettingParams) -> tuple[WettingParams, jnp.ndarray]:
         return jax.lax.cond(
             phi_active_right,
-            lambda pp: _optimise_single_param(right_objective, pp, _mask_right_phi, optimiser, max_iter, w, loss_tol)[
-                0
-            ],
-            lambda pp: _optimise_single_param(right_objective, pp, _mask_right_d_rho, optimiser, max_iter, w, loss_tol)[
-                0
-            ],
+            lambda pp: _optimise_single_param(
+                right_objective, pp, _mask_right_phi, optimiser_right, max_iter_right, w, loss_tol
+            ),
+            lambda pp: _optimise_single_param(
+                right_objective, pp, _mask_right_d_rho, optimiser_right, max_iter_right, w, loss_tol
+            ),
             p,
         )
 
-    new_params = _opt_right(_opt_left(params))
+    params_after_left, loss_left = _opt_left(params)
+    new_params, loss_right = _opt_right(params_after_left)
 
-    # Fallback: if phi path is selected but stays neutral, retry with d_rho
-    # warm-started from the stored accumulated value.
+    # Fallback: if the phi path was selected but phi saturated back at its
+    # clamp floor without converging, phi was the wrong knob for this side —
+    # `jnp.clip` has zero gradient there, so it cannot recover. Retry with
+    # d_rho, warm-started from the stored accumulated value.
     def _fallback_d_rho_left(p: WettingParams) -> WettingParams:
         fallback = WettingParams(
             phi_left=_PHI_NEUTRAL,
@@ -391,7 +511,9 @@ def _update_wetting_state_impl(
             d_rho_left=wetting.d_rho_left,
             d_rho_right=p.d_rho_right,
         )
-        return _optimise_single_param(left_objective, fallback, _mask_left_d_rho, optimiser, max_iter, w, loss_tol)[0]
+        return _optimise_single_param(
+            left_objective, fallback, _mask_left_d_rho, optimiser_left, max_iter_left, w, loss_tol
+        )[0]
 
     def _fallback_d_rho_right(p: WettingParams) -> WettingParams:
         fallback = WettingParams(
@@ -400,16 +522,24 @@ def _update_wetting_state_impl(
             d_rho_left=p.d_rho_left,
             d_rho_right=wetting.d_rho_right,
         )
-        return _optimise_single_param(right_objective, fallback, _mask_right_d_rho, optimiser, max_iter, w, loss_tol)[0]
+        return _optimise_single_param(
+            right_objective, fallback, _mask_right_d_rho, optimiser_right, max_iter_right, w, loss_tol
+        )[0]
 
+    # The `loss > loss_tol` conjunct is what keeps this from firing on a side
+    # whose phi legitimately converged at ~1.0 — without it every such side
+    # would pay a second optimisation. `_optimise_single_param` returns the
+    # while_loop carry loss, which lags one iteration behind the returned
+    # params; that makes the test conservative rather than wrong, since a
+    # parameter pinned at a clamp bound is not moving the loss anyway.
     final_params = jax.lax.cond(
-        phi_active_left & (new_params.phi_left < _PHI_NEUTRAL),
+        phi_active_left & (new_params.phi_left <= _PHI_NEUTRAL + _PHI_FLOOR_EPS) & (loss_left > loss_tol),
         _fallback_d_rho_left,
         lambda p: p,
         new_params,
     )
     final_params = jax.lax.cond(
-        phi_active_right & (new_params.phi_right < _PHI_NEUTRAL),
+        phi_active_right & (new_params.phi_right <= _PHI_NEUTRAL + _PHI_FLOOR_EPS) & (loss_right > loss_tol),
         _fallback_d_rho_right,
         lambda p: p,
         final_params,
@@ -543,14 +673,19 @@ def update_wetting_state_chemical_step(
         raise TypeError(msg)
     mp = setup.multiphase_params
     rho_mean = 0.5 * (mp.rho_l + mp.rho_v)
+    if setup.wetting_edge is None:
+        msg = "wetting_edge is required for chemical step hysteresis"
+        raise TypeError(msg)
+    edge = setup.wetting_edge
 
     # 1. Measure current contact angles and contact-line locations
-    ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean))
+    ca_left_tplus1, ca_right_tplus1 = compute_contact_angle(rho_t_plus1, jnp.array(rho_mean), edge=edge)
     cll_left_tplus1, cll_right_tplus1 = compute_contact_line_location(
         rho_t_plus1,
         ca_left_tplus1,
         ca_right_tplus1,
         jnp.array(rho_mean),
+        edge=edge,
     )
 
     # Use current measured CLL to select the active pre/post hysteresis window.

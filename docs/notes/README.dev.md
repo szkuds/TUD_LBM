@@ -1,10 +1,12 @@
 # `tud_lbm` developer documentation
 
-If you're looking for user documentation, go [here](../../README.md).
+If you're looking for user documentation, start with the
+[Quickstart](../quickstart.rst) or the
+[project README](https://github.com/szkuds/tud_lbm/blob/main/README.md).
 
 ## Development install
 
-TUD-LBM requires Python 3.10 or newer.
+TUD-LBM requires Python 3.11 or newer.
 
 We recommend using **uv** for development because it provides a fast, reproducible, and cross-platform workflow for editable installs and dependency management. For most contributors, uv is the simplest way to create an isolated development environment and install the project with extras.
 
@@ -189,7 +191,9 @@ Consider using a dependency group or environment marker to separate local (CPU) 
 
 ## Operator registry & architecture
 
-All operators (collision schemes, macroscopic solvers, forces, boundary conditions, lattice models, initialisers, …) are registered in a **single global registry** (`OPERATOR_REGISTRY` in `tud_lbm/registry.py`) at import time via the `@register_operator` decorator. The registry supports both **pure functions** and **classes** as targets. Adding a new operator requires only the decorator — no factory, config, or CLI code changes.
+All operators (collision schemes, macroscopic solvers, forces, boundary conditions, lattice models, initialisers, …) are registered in a **single global registry** (`OPERATOR_REGISTRY` in `src/registry.py`) at import time via the `@register_operator` decorator. The registry supports both **pure functions** and **classes** as targets. Adding a new operator requires only the decorator — no factory, config, or CLI code changes.
+
+See [Operators and the Registry](../operators.rst) for the full catalogue of registered operators and the per-kind decorators.
 
 **Pure function example (preferred):**
 
@@ -216,12 +220,13 @@ class MyCollision:
     def __call__(self, f, feq, tau, source=None): ...
 ```
 
-Supported operator kinds: `boundary_condition` · `collision_models` · `differential` · `equilibrium` · `force` · `initialise` · `macroscopic` · `simulation_type` · `stream` · `update_timestep` · `wetting`
+Supported operator kinds: `analysis` · `boundary_condition` · `collision_models` · `differential` · `eos` · `equilibrium` · `extra_state` · `force` · `initialise` · `lattice` · `macroscopic` · `obstacle` · `plotting` · `simulation_type` · `stream` · `update_timestep` · `wetting`
 
 You can list all registered operators from the command line:
 
 ```shell
-tud-lbm run --list-operators
+tud-lbm run --list-simulation-operators
+tud-lbm run --list-simulation-analysis
 ```
 
 ---
@@ -249,11 +254,12 @@ final_state, trajectory = run(setup, state, nt=config.nt)
 For long production runs, use **streaming I/O** to avoid accumulating the full trajectory in device memory:
 
 ```python
-from src.simulation_io import SimulationIO
+from src.simulation_io.save import SimulationIO
 
 io = SimulationIO(base_dir=config.results_dir,
-                  config=config.to_dict(),
-                  simulation_name=config.simulation_name)
+                  config=config,
+                  simulation_name=config.simulation_name,
+                  output_format=config.output_format)
 final_state, _ = run(setup, state, nt=config.nt,
                      save_interval=config.save_interval,
                      io_handler=io)
@@ -277,173 +283,143 @@ results = run_parallel_simulations(configs, max_workers=4, verbose=True)
 
 ## Package reference
 
-The codebase is organised into the following top-level packages under `tud_lbm/`.
+The codebase is organised into the following top-level packages under `src/`.
+The per-operator catalogue is **not** duplicated here — it lives in
+[Operators and the Registry](../operators.rst), which is generated from the
+same names the registry resolves at runtime.
 
 ### `config` — Configuration
 
-| Module              | Public API                                            | Description                                                                                                                                                     |
-| ------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `simulation_config` | `SimulationConfig`                                    | **Primary configuration dataclass.** Frozen, validated, serialisable. Never enters a JIT boundary. Holds all physics, time-stepping, BC, I/O, and multiphase parameters. |
-| `adapter_base`      | `ConfigAdapter`, `get_adapter`                        | Abstract base class for config file adapters. Dispatch by file extension with `get_adapter()`.                                                                  |
-| `adapter_toml`      | `TomlAdapter`                                         | Reads and writes `.toml` configuration files.                                                                                                                   |
-| `adapter_dict`      | `DictAdapter`                                         | Reads configuration from plain Python dicts.                                                                                                                    |
-| `array_expansion`   | `expand_config`, `ArrayParameterSet`                  | Expands list-valued fields into a Cartesian product of `SimulationConfig` objects for parameter sweeps.                                                         |
-| `config_overview`   | `ENABLE_X64`, `DISABLE_JIT`, `DEBUG_FLAG`, `BASE_RESULTS_DIR` | Canonical global configuration flags and constants.                                                                                                    |
-| `jax_config`        | `configure_jax`                                       | Centralised JAX configuration (64-bit precision, JIT toggle).                                                                                                   |
+| Module              | Public API                                                    | Description                                                                                                                    |
+| ------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `simulation_config` | `SimulationConfig`                                            | **Primary configuration dataclass.** Frozen, validated in `__post_init__`, serialisable. Never enters a JIT boundary.          |
+| `adapter_base`      | `ConfigAdapter`, `get_adapter`                                | Abstract base for config adapters; `get_adapter()` dispatches on file extension.                                               |
+| `adapter_toml`      | `TomlAdapter`                                                 | Reads and writes `.toml` configuration files.                                                                                  |
+| `adapter_dict`      | `DictAdapter`                                                 | Reads configuration from plain Python dicts (flat or nested).                                                                  |
+| `array_expansion`   | `expand_config`, `ArrayParameterSet`                          | Expands list-valued fields into a Cartesian product of `SimulationConfig` objects for parameter sweeps.                        |
+| `config_overview`   | `ENABLE_X64`, `DISABLE_JIT`, `DEBUG_FLAG`, `BASE_RESULTS_DIR` | Canonical global flags and constants. `BASE_RESULTS_DIR` honours `TUD_LBM_DATA_DIR`.                                           |
+| `jax_config`        | `configure_jax`                                               | Centralised JAX configuration (64-bit precision, JIT toggle).                                                                  |
 
 #### `SimulationConfig` key fields
 
-| Group                   | Fields                                                                    | Defaults                                    |
-| ----------------------- | ------------------------------------------------------------------------- | ------------------------------------------- |
-| **Identity**            | `sim_type`, `simulation_name`                                             | `"single_phase"`, `None`                    |
-| **Lattice & Grid**      | `lattice_type`, `grid_shape`                                              | `"D2Q9"`, `(64, 64)`                        |
-| **Time Stepping**       | `nt`, `tau`                                                               | `1000`, `1.0`                               |
-| **Collision**           | `collision_scheme`, `k_diag`                                              | `"bgk"`, `None`                             |
-| **Boundary Conditions** | `bc_config`                                                               | Periodic on all edges                       |
-| **Force**               | `force_enabled`, `force_obj`                                              | `False`, `None`                             |
-| **Initialisation**      | `init_type`, `init_dir`                                                   | `"standard"`, `None`                        |
-| **Output / IO**         | `results_dir`, `save_interval`, `skip_interval`, `save_fields`            | `~/TUD_LBM_data/results`, `100`, `0`, `None`|
-| **Multiphase**          | `eos`, `kappa`, `rho_l`, `rho_v`, `interface_width`, `bubble`, `g`, etc. | All `None`/`False`                          |
-| **Extensible**          | `extra`                                                                   | `{}`                                        |
+| Group                   | Fields                                                                                     | Defaults                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| **Identity**            | `sim_type`, `simulation_name`                                                              | `"single_phase"`, `None`                 |
+| **Lattice & grid**      | `lattice_type`, `grid_shape`                                                               | `"D2Q9"`, `(64, 64)` → `(64, 64, 1)`     |
+| **Time stepping**       | `nt`, `tau`                                                                                | `1000`, `1.0`                            |
+| **Collision**           | `collision_scheme`, `k_diag`                                                               | `"bgk"`, `None`                          |
+| **Boundary conditions** | `bc_config`                                                                                | periodic on all six faces                |
+| **Obstacle**            | `obstacle_config`                                                                          | `None`                                   |
+| **Wetting**             | `wetting_config`, `hysteresis_config`, `chemical_step_config`                              | `None`                                   |
+| **Forces**              | `gravity_force`, `gravity_masked_force`, `electric_force`                                  | `None`                                   |
+| **Initialisation**      | `init_type`, `init_dir`, `initialisation`                                                  | `"standard"`, `None`, `{}`               |
+| **Output / IO**         | `results_dir`, `save_interval`, `skip_interval`, `save_fields`, `plot_fields`, `animate_fields`, `output_format` | `~/TUD_LBM_data`, `nt // 10`, `0`, `None`, `None`, `None`, `"numpy"` |
+| **Multiphase**          | `eos`, `kappa`, `rho_l`, `rho_v`, `interface_width`, `g`, `a_eos`, `b_eos`, `r_eos`, `t_eos` | all `None`                             |
+| **Extensible**          | `extra`                                                                                    | `{}`                                     |
+
+Fields declared with `array_field()` are sweep-eligible; `wetting_config`,
+`hysteresis_config`, `chemical_step_config`, and the force sections are also
+sweepable one level deep. See [Adapters](../adapters.rst).
 
 ---
 
-### `pipeline` — Simulation Execution
+### `pipeline` — Simulation execution
 
-| Module            | Public API                                    | Description                                                                                                                                                          |
-| ----------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setup`           | `SimulationSetup`, `build_setup`              | **Immutable `NamedTuple` operator container** (JAX pytree). Built from `SimulationConfig` via `build_setup`. Holds operators, masks, and physics scalars for JIT.   |
-| `runner`          | `run`, `init_state`                           | `lax.scan`-based time-stepping loop. Supports in-memory trajectory and streaming I/O modes. Call `init_state(setup)` first, then `run(setup, state, nt=...)`.       |
-| `parallel_runner` | `run_parallel_simulations`, `SimulationResult`| Executes multiple `SimulationConfig` objects in parallel via `ProcessPoolExecutor`. Returns a list of `SimulationResult` objects with status and metadata.           |
-| `state/`          | `State`, `WettingState`                       | Dataclasses representing simulation state (distribution function, density, velocity, wetting fields).                                                                |
+| Module            | Public API                                     | Description                                                                                                                     |
+| ----------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `setup`           | `SimulationSetup`, `build_setup`               | **Immutable `NamedTuple` operator container.** Built from `SimulationConfig`; holds pre-built operators, masks, and JIT scalars. |
+| `runner`          | `run`, `init_state`                            | `lax.scan` time-stepping loop, in-memory or streaming-I/O mode.                                                                 |
+| `parallel_runner` | `run_parallel_simulations`, `SimulationResult` | Runs multiple configs via `ProcessPoolExecutor`; returns per-run status, output dir, parameters, error, and duration.           |
+| `state/`          | `State`, `WettingState`                        | `NamedTuple` pytrees carrying `f`, `rho`, `u`, `t`, forces, `h`, and wetting parameters.                                        |
 
 ---
 
-### `operators` — LBM Operators
+### `operators` — LBM operators
 
-All operators register themselves at import time via `@register_operator(kind)`.
+Every operator registers itself at import time; each subpackage calls
+`auto_load_operators()` so that dropping in a `_*.py` file is all that is
+needed. `factory.build_operator(kind, name)` is the single lookup path, and
+`protocols.py` holds the structural contracts.
 
-#### Collision (`collision_models`)
+Subpackages: `collision/` · `equilibrium/` · `macroscopic/` (with `eos/`) ·
+`boundary/` · `streaming/` · `differential/` · `force/` · `initialise/` ·
+`obstacle/` · `wetting/` (with `hysteresis/`) · `step/`.
 
-| Module   | Registry Name | Description                                                          |
-| -------- | ------------- | -------------------------------------------------------------------- |
-| `_bgk`   | `"bgk"`       | Bhatnagar–Gross–Krook single-relaxation-time collision operator.     |
-| `_mrt`   | `"mrt"`       | Multiple-Relaxation-Time (MRT) collision operator for D2Q9.          |
-
-#### Equilibrium (`equilibrium`)
-
-| Registry Name | Description                                                                                      |
-| ------------- | ------------------------------------------------------------------------------------------------ |
-| `"wb"`        | Weight-based equilibrium distribution function from density and velocity using lattice weights.  |
-
-#### Streaming (`stream`)
-
-| Registry Name | Description                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------------- |
-| `"standard"`  | Standard streaming operator. Propagates populations via array rolls.                              |
-
-#### Macroscopic (`macroscopic`)
-
-| Registry Name         | Description                                                                                       |
-| --------------------- | ------------------------------------------------------------------------------------------------- |
-| `"standard"`          | Calculates macroscopic density and velocity from population distributions.                        |
-| `"double-well"`       | Multiphase macroscopic operator using the double-well equation of state.                          |
-| `"carnahan-starling"` | Multiphase macroscopic operator using the Carnahan–Starling equation of state.                    |
-
-#### Boundary Conditions (`boundary_condition`)
-
-| Registry Name   | Description                                                                                                    |
-| --------------- | -------------------------------------------------------------------------------------------------------------- |
-| `"bounce-back"` | Half-way bounce-back boundary condition.                                                                       |
-| `"periodic"`    | No-op operator (periodicity is handled by streaming).                                                          |
-| `"symmetry"`    | Mirror-symmetry boundary condition.                                                                            |
-
-#### Force (`force`)
-
-| Registry Name          | Description                                                                                   |
-| ---------------------- | --------------------------------------------------------------------------------------------- |
-| `"composite"`          | Combines multiple force fields by superposition.                                              |
-| `"gravity_multiphase"` | Constant gravitational force, supporting inclined domains via `inclination_angle_deg`.        |
-| `"electric"`           | Electrical force with electric potential distribution.                                        |
-| `"source_term"`        | Forcing source term for incorporating body forces into the collision step.                    |
-
-#### Initialisation (`initialise`)
-
-| Registry Name                          | Description                                                                 |
-| -------------------------------------- | ----------------------------------------------------------------------------- |
-| `"standard"`                           | Uniform density and velocity; equilibrium distribution.                     |
-| `"multiphase_bubble"`                  | Low-density bubble at domain centre (smooth `tanh` profile).                |
-| `"multiphase_bubble_bot"`              | Low-density bubble near the bottom of the domain.                           |
-| `"multiphase_bubbles"`                 | Two low-density bubbles side-by-side.                                       |
-| `"multiphase_droplet_top"`             | High-density droplet near the top of the domain.                            |
-| `"multiphase_droplet_variable_radius"` | High-density droplet with user-specified radius.                            |
-| `"wetting"`                            | Droplet at the bottom wall for wetting simulations.                         |
-| `"wetting_chemical_step"`              | Droplet at the bottom wall with a chemical step.                            |
-| `"init_from_file"`                     | Loads `rho` and `u` from a saved `.npz` file and reconstructs equilibrium. |
-
-#### Differential (`differential`)
-
-| Registry Name | Description                                                                              |
-| ------------- | ---------------------------------------------------------------------------------------- |
-| `"gradient"`  | Spatial gradient of a scalar field via central finite differences.                       |
-| `"laplacian"` | Laplacian using the 9-point isotropic stencil.                                           |
-
-#### Wetting (`wetting`)
-
-| Registry Name             | Description                                                              |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `"contact_angle"`         | Calculates contact angles (left and right) from a density field.         |
-| `"contact_line_location"` | Calculates contact line locations from density and angle data.           |
-
-#### Step operators (`update_timestep`)
-
-| Registry Name             | Description                                                                                   |
-| ------------------------- | --------------------------------------------------------------------------------------------- |
-| `"single_phase"`          | Full single-phase LBM timestep: equilibrium → collision → streaming → BC → macroscopic.      |
-| `"multiphase"`            | Full multiphase timestep; adds interparticle-force computation via the EOS macroscopic op.   |
-| `"multiphase_hysteresis"` | Multiphase timestep with advancing/receding contact angle hysteresis.                         |
-| `"multiphase_wetting"`    | Multiphase timestep variant for wetting simulations.                                          |
-
-#### Operator protocols (`protocols.py`)
-
-Structural `Protocol` types (`CollisionOperator`, `StreamingOperator`, `MacroscopicOperator`, `BoundaryOperator`, `EquilibriumOperator`, `StepOperator`, `InitialPopulationOperator`, `ExtraStatePlugin`, `HysteresisOperator`, `DifferentialOperator`) define the contract for each operator category. Use them for static type checking and loose coupling.
+The registered names for each kind, their parameters, and how to add one are
+documented in [Operators and the Registry](../operators.rst).
 
 ---
 
 ### `lattice` — Lattice velocity models
 
-| Module    | Class     | Description                                                                                                   |
-| --------- | --------- | ------------------------------------------------------------------------------------------------------------- |
-| `lattice` | `Lattice`, `build_lattice` | Lattice velocity model. Constructs velocities (`c`), weights (`w`), opposite indices, and directional index sets for `D2Q9`, `D3Q19`, etc. |
+`Lattice` (a `NamedTuple` pytree) and `build_lattice(name)` for `D2Q9` and
+`D3Q19`. Array shapes and the 5-D layout convention are covered in
+[Lattice and Array Conventions](../lattice.rst).
 
 ---
 
-### `io` — I/O utilities
+### `simulation_io` — I/O utilities
 
-| Module               | Description                                                                                                           |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `save`               | `SimulationIO` — saves timestep data (`.npz`), configuration snapshots (`.toml`), and manages directory structure.  |
-| `callbacks`          | `jax.debug.callback` wrappers for streaming I/O during `lax.scan`; called from `pipeline.runner.run()`.               |
-| `output_data/`       | Output data formatting helpers.                                                                                       |
-| `plotting/`          | Post-processing plotting utilities. Loads results and config from run directories.                                    |
-| `readers/`           | Readers for loading saved simulation data.                                                                            |
-| `analysis/`          | `stability` (NaN/checkerboard diagnostics), `physical_parameters/` (Bond/Ohnesorge overview), `accelerations/` (acceleration fitting + regime classification), `surface_tension/` (Young-Laplace calibration). |
+Note the package is `src.simulation_io`, **not** `src.io` — the latter
+shadowed the stdlib `io` module once `src` became the import root.
+
+| Module         | Description                                                                                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `save`         | `SimulationIO` — creates the timestamped run directory, writes `config.toml`, `physical_parameters.txt`, and the log; binds the configured output writer.           |
+| `callbacks`    | `jax.debug.callback` wrappers for streaming I/O inside `lax.scan`; used by `pipeline.runner.run()` when an `io_handler` is supplied.                                |
+| `output_data/` | `output_writers` registry — `Numpy` (`.npz`) and `Vtk`. Subclassing `OutputWriter` registers a new format under its lower-cased class name.                         |
+| `plotting/`    | `FigureBuilder`, `PlotOperator` (per-timestep panels), `AnalysisPlot` (snapshot-history figures), `Animator`, and `run_comparison` for cross-run plots.             |
+| `readers/`     | Re-exports `DictAdapter` and `TomlAdapter`.                                                                                                                        |
+| `analysis/`    | `droplet_metrics/` (the shared per-run metric layer), `stability`, `physical_parameters/`, `accelerations/`, `surface_tension/`, `wetting_debug`.                   |
+
+Two invariants in the analysis layer are worth knowing before adding to it:
+`compute_droplet_series` is the only code that reads `.npz` snapshots for
+droplet metrics, and `build_simulation_csv` is the only code that decides
+whether a run gets a `simulation_data.csv`. Details in
+[Adapters](../adapters.rst).
+
+**Plot-type rule:** any x–y or time-series data plot must be rendered with
+`ax.scatter(...)`, never `ax.plot(...)`. Spatial field maps (`imshow`),
+vector overlays (`quiver`), analytic fit lines drawn over scatter data, and
+reference lines such as `axvline` are out of scope for this rule.
 
 ---
 
-### `cli` — Command-Line Interface
+### `cli` — Command-line interface
 
-```console
-tud-lbm [CONFIG_PATH] [OPTIONS]
-```
+The entry point is `tud-lbm = "src.cli.commands:cli"`. Importing
+`src.cli.commands` registers the commands onto the group in `cli/app.py`;
+importing `cli.app` alone yields an empty group.
 
-| Option / Argument  | Description                                                                            |
-| ------------------ | -------------------------------------------------------------------------------------- |
-| `CONFIG_PATH`      | Optional path to a `.toml` configuration file. If omitted, launches interactive mode. |
-| `--no-prompt`      | Skip interactive prompts and use defaults for missing values.                          |
-| `--dry-run`        | Parse configuration and display summary without running the simulation.                |
-| `--list-operators` | List all registered operators and exit.                                                |
-| `--override`       | Override a config key at runtime, e.g. `--override tau=0.7`.                          |
+| Command      | Description                                                                     |
+| ------------ | --------------------------------------------------------------------------------- |
+| `run`        | Run a simulation from `CONFIG_PATH`, or interactively when it is omitted.       |
+| `visualise`  | Build static figures for a run directory. A group: `fields`, `analysis`, or both. |
+| `animate`    | Encode saved snapshots to mp4/gif (needs the `animation` extra).                |
+| `compare`    | Build CSV metrics and comparison plots for every run under a parent directory.  |
+| `analyse`    | Standalone analyses for a config, e.g. `--surface-tension`.                     |
+| `regime-map` | Classify the runs listed in a text file and plot Bo∥ against Oh.                |
+
+Frequently used `run` options:
+
+| Option                        | Description                                                             |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| `--dry-run`                   | Parse and display the configuration without running.                    |
+| `--override KEY=VALUE`        | Override a config key; values are parsed as TOML literals.              |
+| `--no-prompt`                 | Skip interactive prompts.                                               |
+| `--max-workers N`             | Parallel workers for a sweep.                                           |
+| `--compare`                   | Build cross-run comparison plots after a sweep.                         |
+| `--continue`                  | Resume from a previous run directory.                                   |
+| `--init-dir` / `--init-wetting` | Seed initialisation from saved data / wetting initialisation.         |
+| `--debug-stability`           | Enable NaN and checkerboard diagnostics.                                |
+| `--debug-wetting`             | Enable wetting-optimiser diagnostics.                                   |
+| `--list-simulation-operators` | List registered physics operators and exit.                             |
+| `--list-simulation-analysis`  | List registered analysis operators and exit.                            |
+
+All commands share one error contract via the `cli_command` decorator in
+`cli/_console.py`: `KeyboardInterrupt` exits 130, `click.UsageError` exits 2,
+`SystemExit` passes through, and anything else prints a red `Error:` line and
+exits 1 — or re-raises when `TUD_LBM_DEBUG` is set.
 
 ---
 

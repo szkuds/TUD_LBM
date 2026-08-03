@@ -15,13 +15,12 @@ _LOW_FRAC = 0.05
 
 def _apply_wetting_modification(
     edge_slice: jnp.ndarray,
-    rho_l: float | jnp.ndarray,
-    rho_v: float | jnp.ndarray,
-    phi_l: float | jnp.ndarray,
-    phi_r: float | jnp.ndarray,
-    d_rho_l: float | jnp.ndarray,
-    d_rho_r: float | jnp.ndarray,
-    width: int,
+    rho_l: jnp.ndarray,
+    rho_v: jnp.ndarray,
+    phi_l: jnp.ndarray,
+    phi_r: jnp.ndarray,
+    d_rho_l: jnp.ndarray,
+    d_rho_r: jnp.ndarray,
 ) -> jnp.ndarray:
     """Apply wetting density modification at the liquid-vapour interface.
 
@@ -29,22 +28,21 @@ def _apply_wetting_modification(
     (between the density thresholds). The interface is split into left
     and right contact-line regions, each receiving its own phi/d_rho.
 
-    Args:
-        edge_slice: Edge density slice.
-        rho_l: Liquid density.
-        rho_v: Vapour density.
-        phi_l: Left contact angle parameter.
-        phi_r: Right contact angle parameter.
-        d_rho_l: Left density modification.
-        d_rho_r: Right density modification.
-        width: Ghost-cell width.
+    The split is **positional** — by index relative to the interface-band
+    centroid — so it is identical for a droplet and a bubble. The measurement
+    side (:func:`~src.operators.wetting._contact_angle.compute_contact_angle`)
+    labels left/right positionally for the same reason; keeping the two in
+    lock-step is what guarantees ``phi_l`` addresses the contact line reported
+    as ``cll_left``.
 
     Args:
         edge_slice: Ghost-row densities, shape ``(n,)``.
-        rho_l, rho_v: Liquid and vapour densities.
-        phi_l, phi_r: Wetting potentials for left and right contact lines.
-        d_rho_l, d_rho_r: Density offsets for left and right contact lines.
-        width: Interface width for splitting left/right regions.
+        rho_l: Liquid density.
+        rho_v: Vapour density.
+        phi_l: Wetting potential for the left contact line.
+        phi_r: Wetting potential for the right contact line.
+        d_rho_l: Density offset for the left contact line.
+        d_rho_r: Density offset for the right contact line.
 
     Returns:
         Modified edge slice.
@@ -52,21 +50,15 @@ def _apply_wetting_modification(
     rho_upper = _HIGH_FRAC * rho_l + _LOW_FRAC * rho_v
     rho_lower = _LOW_FRAC * rho_l + _HIGH_FRAC * rho_v
 
-    # Interface mask: points between the density thresholds
-    in_interface = (edge_slice < rho_upper) & (edge_slice > rho_lower)
-
-    # Find transition indices to split left/right contact-line regions
-    mask_int = jnp.array(edge_slice < rho_upper, dtype=jnp.int32)
-    diff = jnp.diff(mask_int)
-
-    # Left transition: where density drops below upper threshold (diff == -1)
-    left_idx = jnp.where(diff == -1, size=1, fill_value=0)[0] + width
-    # Right transition: where density rises above upper threshold (diff == 1)
-    right_idx = jnp.where(diff == 1, size=1, fill_value=0)[0] - width
-
+    mask_int_outer: jnp.ndarray = jnp.array(edge_slice < rho_upper, dtype=jnp.int64)
+    mask_int_inter: jnp.ndarray = jnp.array(edge_slice < rho_lower, dtype=jnp.int64)
+    mask_int: jnp.ndarray = mask_int_outer - mask_int_inter
     indices = jnp.arange(edge_slice.shape[0])
-    is_left_region = in_interface & (indices < right_idx[0])
-    is_right_region = in_interface & (indices > left_idx[0])
+    mask_centre: jnp.ndarray = jnp.sum(mask_int * indices) / jnp.count_nonzero(mask_int * indices)
+
+    is_left_region = jnp.bool(mask_int) & (indices < mask_centre)
+    # Right region: interface points right of (left contact line + width buffer).
+    is_right_region = jnp.bool(mask_int) & (indices > mask_centre)
 
     # Wetting modification: phi * rho - d_rho, clamped to density bounds
     modified_left = jnp.clip(phi_l * edge_slice - d_rho_l, rho_lower, rho_upper)

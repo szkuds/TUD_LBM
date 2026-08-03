@@ -60,29 +60,62 @@ def extract_velocity_components_2d(u: np.ndarray) -> tuple[np.ndarray, np.ndarra
     raise ValueError(msg)
 
 
-def interpolate_interface(row: np.ndarray, rho_mean: float) -> tuple[float, float]:
-    """Sub-cell left/right interface positions along *row* via linear interpolation."""
+def to_canonical_2d(rho_2d: np.ndarray, wall_edge: str) -> np.ndarray:
+    """Numpy twin of :func:`src.operators.wetting._canonical_view.to_canonical`.
+
+    Maps ``rho_2d`` (shape ``(nx, ny)``) into the wall-aligned frame where the
+    wetting wall is at column 0 with liquid at increasing column index, so the
+    bottom-wall formulas below apply unchanged for all four edges. Must stay in
+    lock-step with the JAX version — the live simulation path uses that one and
+    this fallback runs only when a snapshot lacks ``ca_*``/``cll_*`` keys.
+    """
+    arr = rho_2d.T if wall_edge in ("left", "right") else rho_2d
+    return arr[:, ::-1] if wall_edge in ("top", "right") else arr
+
+
+def interpolate_interface(row: np.ndarray, rho_mean: float) -> tuple[float, float, bool]:
+    """Numpy twin of :func:`src.operators.wetting._interface_crossings.interface_crossings`.
+
+    Returns ``(x_left, x_right, is_bubble)`` — the two sub-cell threshold
+    crossings in ascending order, and whether the dispersed phase is vapour.
+    Left/right is **positional**, not keyed off the sign of the density step,
+    so it labels a bubble the same way it labels a droplet. Must stay in
+    lock-step with the JAX version.
+    """
     mask = (row < rho_mean).astype(int)
     diff = np.diff(mask)
-    li = int(np.nonzero(diff == -1)[0][0])
-    ri = int(np.nonzero(diff == 1)[0][0]) + 1
+    hits = np.nonzero(np.abs(diff) == 1)[0]
+    li, ri = int(hits[0]), int(hits[1])
+    # One forward interpolation covers both transition signs.
     x_left = li + (rho_mean - row[li]) / (row[li + 1] - row[li])
-    x_right = ri - (rho_mean - row[ri]) / (row[ri - 1] - row[ri])
-    return x_left, x_right
+    x_right = ri + (rho_mean - row[ri]) / (row[ri + 1] - row[ri])
+    return x_left, x_right, bool(diff[li] > 0)
 
 
-def contact_angles_from_rho(rho_2d: np.ndarray, rho_mean: float) -> tuple[float, float]:
-    """Derive ``(left, right)`` contact angles in degrees from the density field."""
-    xl0, xr0 = interpolate_interface(rho_2d[:, 1], rho_mean)
-    xl1, xr1 = interpolate_interface(rho_2d[:, 2], rho_mean)
+def contact_angles_from_rho(rho_2d: np.ndarray, rho_mean: float, wall_edge: str = "bottom") -> tuple[float, float]:
+    """Derive ``(left, right)`` dispersed-phase contact angles in degrees.
+
+    Measured through the dispersed phase — the liquid for a droplet, the vapour
+    for a bubble — matching
+    :func:`~src.operators.wetting._contact_angle.compute_contact_angle`, whose
+    values reach the ``.npz`` as the ``ca_*`` keys. The two must agree: this
+    fallback runs only when a snapshot lacks those keys, so a mismatch would
+    silently change the convention depending on which runs were resumed.
+    """
+    canon = to_canonical_2d(rho_2d, wall_edge)
+    xl0, xr0, _ = interpolate_interface(canon[:, 1], rho_mean)
+    xl1, xr1, _ = interpolate_interface(canon[:, 2], rho_mean)
+    # Mirrored argument order: both sides subtend the region between the two
+    # crossings, which is the dispersed phase for either topology.
     left = float(np.rad2deg(math.pi / 2.0 + np.arctan(xl0 - xl1)))
     right = float(np.rad2deg(math.pi / 2.0 + np.arctan(xr1 - xr0)))
     return left, right
 
 
-def contact_lines_from_rho(rho_2d: np.ndarray, rho_mean: float) -> tuple[float, float]:
+def contact_lines_from_rho(rho_2d: np.ndarray, rho_mean: float, wall_edge: str = "bottom") -> tuple[float, float]:
     """Derive ``(left, right)`` contact-line positions from the density field."""
-    return interpolate_interface(rho_2d[:, 1], rho_mean)
+    x_left, x_right, _ = interpolate_interface(to_canonical_2d(rho_2d, wall_edge)[:, 1], rho_mean)
+    return x_left, x_right
 
 
 def center_of_mass(rho_2d: np.ndarray, rho_mean: float) -> tuple[float, float]:

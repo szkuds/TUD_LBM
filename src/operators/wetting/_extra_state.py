@@ -51,13 +51,18 @@ class WettingExtraStatePlugin:
 
         mp = setup.multiphase_params
         rho_mean = 0.5 * (mp.rho_l + mp.rho_v) if mp is not None else 1.0
+        if setup.wetting_edge is None:
+            msg = "wetting_edge is required for wetting initial state"
+            raise TypeError(msg)
+        edge = setup.wetting_edge
 
-        ca_left, ca_right = compute_contact_angle(rho_init, jnp.array(rho_mean))
+        ca_left, ca_right = compute_contact_angle(rho_init, jnp.array(rho_mean), edge=edge)
         cll_left, cll_right = compute_contact_line_location(
             rho_init,
             ca_left,
             ca_right,
             jnp.array(rho_mean),
+            edge=edge,
         )
 
         return {

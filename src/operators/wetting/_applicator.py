@@ -21,7 +21,6 @@ if TYPE_CHECKING:
 def build_wetting_applicator(
     rho_l: float,
     rho_v: float,
-    width: int,
     bc_config: dict[str, Any] | None = None,
 ) -> Callable[..., jnp.ndarray]:
     """Build a wetting ghost-cell applicator with baked-in static parameters.
@@ -39,7 +38,6 @@ def build_wetting_applicator(
     """
     _rho_l = jnp.array(float(rho_l))
     _rho_v = jnp.array(float(rho_v))
-    _width = int(width)
     _bc_config = bc_config if bc_config is not None else {}
 
     # Pre-compute which edges need wetting and their perpendicular BC types.
@@ -76,7 +74,6 @@ def build_wetting_applicator(
                 phi_r,
                 d_rho_l,
                 d_rho_r,
-                _width,
             )
         return gp
 

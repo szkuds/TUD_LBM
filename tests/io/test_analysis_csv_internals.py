@@ -178,10 +178,24 @@ def test_analytical_sigma_lg_computation():
 # ---------------------------------------------------------------------------
 
 
-def test_interpolate_interface_returns_pair():
+def test_interpolate_interface_returns_ordered_pair_and_topology():
     rho_2d = _droplet_rho_2d()
-    xl, xr = interpolate_interface(rho_2d[:, 1], _RHO_MEAN)
+    xl, xr, is_bubble = interpolate_interface(rho_2d[:, 1], _RHO_MEAN)
     assert xl < xr
+    assert is_bubble is False
+
+
+def test_interpolate_interface_labels_a_bubble_positionally():
+    """Inverting the phases must keep left/right ordered and flip the topology flag."""
+    rho_2d = _droplet_rho_2d()
+    inverted = _RHO_L + _RHO_V - rho_2d
+    xl_drop, xr_drop, _ = interpolate_interface(rho_2d[:, 1], _RHO_MEAN)
+    xl, xr, is_bubble = interpolate_interface(inverted[:, 1], _RHO_MEAN)
+    assert is_bubble is True
+    assert xl < xr
+    # Same interface positions — only which side is dense has changed.
+    assert xl == pytest.approx(xl_drop)
+    assert xr == pytest.approx(xr_drop)
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +217,51 @@ def test_contact_lines_from_rho_returns_left_right():
     rho_2d = _droplet_rho_2d()
     xl, xr = contact_lines_from_rho(rho_2d, _RHO_MEAN)
     assert xl < xr
+
+
+def _offset_circle_rho_2d(nx: int = 64, ny: int = 32, cx: float = 32.0, cy: float = 10.0, r: float = 18.0):
+    """A ``(nx, ny)`` circular droplet whose centre may sit off-grid."""
+    x = np.arange(nx, dtype=float)[:, None]
+    y = np.arange(ny, dtype=float)[None, :]
+    return np.where(np.sqrt((x - cx) ** 2 + (y - cy) ** 2) < r, _RHO_L, _RHO_V)
+
+
+@pytest.mark.parametrize("wall_edge", ["bottom", "top", "left", "right"])
+def test_fallback_matches_live_measurement(wall_edge: str):
+    """The numpy fallback must agree with the JAX live path on every wall.
+
+    The live simulation writes ``ca_*`` from ``compute_contact_angle``; the
+    numpy ``contact_angles_from_rho`` runs only when those keys are absent. If
+    the two disagreed, a top-wall run would report different angles depending
+    on whether the snapshot happened to carry the scalars.
+    """
+    import jax.numpy as jnp
+    from src.operators.wetting._contact_angle import compute_contact_angle
+    from src.operators.wetting._contact_line import compute_contact_line_location
+
+    # Orient the base droplet so it sits on the requested wall.
+    base = _offset_circle_rho_2d()
+    if wall_edge == "top":
+        rho_2d = base[:, ::-1]
+    elif wall_edge == "left":
+        rho_2d = base.T
+    elif wall_edge == "right":
+        rho_2d = base.T[::-1, :]
+    else:
+        rho_2d = base
+
+    rho_5d = jnp.asarray(rho_2d)[:, :, None, None, None].astype(jnp.float64)
+
+    ca_l_np, ca_r_np = contact_angles_from_rho(rho_2d, _RHO_MEAN, wall_edge)
+    ca_l_jx, ca_r_jx = compute_contact_angle(rho_5d, jnp.array(_RHO_MEAN), edge=wall_edge)
+    np.testing.assert_allclose([ca_l_np, ca_r_np], [float(ca_l_jx), float(ca_r_jx)], atol=1e-9)
+
+    cll_l_np, cll_r_np = contact_lines_from_rho(rho_2d, _RHO_MEAN, wall_edge)
+    cll_l_jx, cll_r_jx = compute_contact_line_location(rho_5d, ca_l_jx, ca_r_jx, jnp.array(_RHO_MEAN), edge=wall_edge)
+    # The numpy CLL reads row 1 while the JAX CLL reads row 0 and projects by
+    # the contact angle — so compare only their ordering, which both must share.
+    assert cll_l_np < cll_r_np
+    assert float(cll_l_jx) < float(cll_r_jx)
 
 
 # ---------------------------------------------------------------------------

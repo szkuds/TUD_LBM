@@ -125,6 +125,10 @@ def _get_setup_contact_line_length(config: SimulationConfig) -> float | None:
     return None
 
 
+#: A wall row must cross ``rho_mean`` at least twice to bracket a contact line.
+_MIN_CROSSINGS = 2
+
+
 def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | None:
     """Return setup contact-line spacing from a rho field using wall-row transitions."""
     try:
@@ -132,23 +136,24 @@ def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | N
 
         mask = (row < float(rho_mean)).astype(np.int32)
         diff = np.diff(mask)
-        left_hits = np.nonzero(diff == -1)[0]
-        right_hits = np.nonzero(diff == 1)[0]
-        if left_hits.size == 0 or right_hits.size == 0:
+        # Positional outermost crossings, so a bubble (whose density steps the
+        # other way) yields a positive spacing rather than being discarded.
+        hits = np.nonzero(np.abs(diff) == 1)[0]
+        if hits.size < _MIN_CROSSINGS:
             return None
 
-        idx_left = int(left_hits[0])
-        idx_right = int(right_hits[-1] + 1)
-        if idx_left + 1 >= row.size or idx_right - 1 < 0 or idx_right >= row.size:
+        idx_left = int(hits[0])
+        idx_right = int(hits[-1])
+        if idx_left + 1 >= row.size or idx_right + 1 >= row.size:
             return None
 
         denom_left = row[idx_left + 1] - row[idx_left]
-        denom_right = row[idx_right - 1] - row[idx_right]
+        denom_right = row[idx_right + 1] - row[idx_right]
         if math.isclose(denom_left, 0.0) or math.isclose(denom_right, 0.0):
             return None
 
         x_left = idx_left + ((rho_mean - row[idx_left]) / denom_left)
-        x_right = idx_right - ((rho_mean - row[idx_right]) / denom_right)
+        x_right = idx_right + ((rho_mean - row[idx_right]) / denom_right)
         length = float(x_right - x_left)
         if length > 0.0:
             return length
@@ -218,13 +223,22 @@ def _get_setup_droplet_area(config: SimulationConfig) -> float | None:
     return None
 
 
-def _droplet_area_from_rho(rho: np.ndarray, rho_mean: float) -> float | None:
-    """Droplet area as the liquid-cell count (rho > rho_mean) in the z=0 plane."""
+def _inclusion_area_from_rho(rho: np.ndarray, rho_mean: float) -> float | None:
+    """Inclusion area in the z=0 plane, as the minority phase's cell count.
+
+    Both topologies put the inclusion in the minority phase, so thresholding at
+    ``rho_mean`` and keeping the smaller side measures a droplet or a bubble
+    without being told which it is. Counting ``rho > rho_mean`` unconditionally
+    measured the *continuous* phase of a bubble run — nearly the whole domain —
+    which inflated ``L_eff`` and every dimensionless number built on it.
+    """
     try:
         plane = np.asarray(rho[:, :, 0, 0, 0], dtype=float)
-        area = float(np.count_nonzero(plane > rho_mean))
+        liquid = float(np.count_nonzero(plane > rho_mean))
+        vapour = float(np.count_nonzero(plane < rho_mean))
     except (IndexError, TypeError, ValueError):
         return None
+    area = min(liquid, vapour)
     return area if area > 0.0 else None
 
 
@@ -232,7 +246,7 @@ def _get_droplet_area(config: SimulationConfig) -> tuple[float, str] | None:
     """Return ``(area, source)`` for the setup droplet, or None when unavailable."""
     if config.init_type == "init_from_file":
         loaded = _load_init_rho(config)
-        area = _droplet_area_from_rho(*loaded) if loaded is not None else None
+        area = _inclusion_area_from_rho(*loaded) if loaded is not None else None
         return (area, "init_from_file") if area is not None else None
 
     area = _get_setup_droplet_area(config)
@@ -452,24 +466,37 @@ def _format_reynolds_number_row(
 
 
 def _format_critical_inclination_angle_row(config: SimulationConfig, gamma: float) -> str:
-    if config.chemical_step_config is None or config.gravity_masked_force is None or config.rho_l is None:
-        msg = "chemical_step_config, gravity_masked_force, and rho_l must be set"
+    if (
+        config.chemical_step_config is None
+        or config.gravity_masked_force is None
+        or config.rho_l is None
+        or config.rho_v is None
+    ):
+        msg = "chemical_step_config, gravity_masked_force, rho_l, and rho_v must be set"
         raise RuntimeError(msg)
     ca_adv = math.radians(float(config.chemical_step_config["ca_advancing_pre_step"]))
     ca_rec = math.radians(float(config.chemical_step_config["ca_receding_pre_step"]))
     g = float(config.gravity_masked_force["force_g"])
     radius = float(config.initialisation["radii"][0])
     nx = int(config.grid_shape[0])
-    rho_l = float(config.rho_l)
+    # The drive per unit area is the *net* buoyancy of the inclusion, so it
+    # scales with the density contrast, not with rho_l — identical for a bubble
+    # and a droplet. The body force itself now sits on the liquid rather than
+    # being injected into the inclusion, but the reaction it produces is the
+    # same drho*g*a, so this balance is unchanged.
+    drho = abs(float(config.rho_l) - float(config.rho_v))
 
     a = (np.pi * (radius * nx) ** 2) / 2  # Assuming perfectly spherical cap
     hysteresis_force = (np.cos(ca_rec) - np.cos(ca_adv)) * gamma
-    sina = hysteresis_force / (g * a * rho_l)
+    sina = hysteresis_force / (g * a * drho)
     a_rad = np.arcsin(sina)
     a_deg = math.degrees(a_rad)
 
     if -1 <= sina <= 1:
-        return _row("Critical Inclination Angle", f"{a_deg:.6g}  [arcsin((cos(ca_rec)-cos(ca_adv)) / g*a*rho_l)]")
+        return _row(
+            "Critical Inclination Angle",
+            f"{a_deg:.6g}  [arcsin((cos(ca_rec)-cos(ca_adv))*gamma / (g*a*drho))]",
+        )
 
     return _row("Critical Inclination Angle", "This droplet will remain pinned")
 

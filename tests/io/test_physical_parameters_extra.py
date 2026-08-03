@@ -253,6 +253,7 @@ _CRITICAL_ANGLE_BASE = {
     "chemical_step_config": {"ca_advancing_pre_step": 110.0, "ca_receding_pre_step": 80.0},
     "gravity_masked_force": {"force_g": 1e-3},
     "rho_l": 1.0,
+    "rho_v": 0.5,
     "initialisation": {"radii": [0.1]},
     "grid_shape": (100, 100, 1),
 }
@@ -280,8 +281,14 @@ def test_critical_inclination_raises_without_rho_l():
         _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
 
 
+def test_critical_inclination_raises_without_rho_v():
+    ns = _critical_angle_ns(rho_v=None)
+    with pytest.raises(RuntimeError, match="rho_v"):
+        _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
+
+
 def test_critical_inclination_returns_angle_row_when_sina_in_range():
-    # g=1e-3 makes sina≈0.033, well within [-1, 1]
+    # g=1e-3 and drho=0.5 make sina≈0.066, well within [-1, 1]
     ns = _critical_angle_ns()
     result = _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
     assert "Critical Inclination Angle" in result
@@ -305,17 +312,19 @@ def test_critical_inclination_formula_matches_manual_calculation():
     radius_frac = 0.1
     nx = 100
     g = 1e-3
-    rho_l = 2.0
+    rho_l, rho_v = 2.0, 0.5
 
     a = (np.pi * (radius_frac * nx) ** 2) / 2
     hysteresis_force = (math.cos(math.radians(ca_rec_deg)) - math.cos(math.radians(ca_adv_deg))) * gamma
-    expected_sina = hysteresis_force / (g * a * rho_l)
+    # The drive scales with the density contrast, not with rho_l.
+    expected_sina = hysteresis_force / (g * a * (rho_l - rho_v))
     expected_deg = math.degrees(math.asin(expected_sina))
 
     ns = _critical_angle_ns(
         chemical_step_config={"ca_advancing_pre_step": ca_adv_deg, "ca_receding_pre_step": ca_rec_deg},
         gravity_masked_force={"force_g": g},
         rho_l=rho_l,
+        rho_v=rho_v,
         initialisation={"radii": [radius_frac]},
         grid_shape=(nx, nx, 1),
     )

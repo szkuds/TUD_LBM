@@ -25,7 +25,6 @@ def _apply_wetting_edge(
     phi_r: jnp.ndarray,
     d_rho_l: jnp.ndarray,
     d_rho_r: jnp.ndarray,
-    width: int,
 ) -> jnp.ndarray:
     """Apply wetting to a single edge of the padded array.
 
@@ -52,7 +51,6 @@ def _apply_wetting_edge(
         phi_r,
         d_rho_l,
         d_rho_r,
-        width,
     )
 
     return arr.T if transposed else arr
@@ -70,7 +68,6 @@ def _reconstruct_and_modify(
     phi_r: jnp.ndarray,
     d_rho_l: jnp.ndarray,
     d_rho_r: jnp.ndarray,
-    width: int,
 ) -> jnp.ndarray:
     """Reconstruct ghost row from interior, then apply wetting modification."""
     arr = _reconstruct_ghost_row(
@@ -92,7 +89,6 @@ def _reconstruct_and_modify(
         phi_r,
         d_rho_l,
         d_rho_r,
-        width,
     )
 
     return arr.at[1:-1, ghost_idx].set(modified)

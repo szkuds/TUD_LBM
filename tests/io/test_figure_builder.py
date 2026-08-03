@@ -138,7 +138,7 @@ class TestFigureBuilderGuardFor3D:
             assert plot_dir.exists()
 
 
-def test_build_all_calls_build_analysis_once(tmp_path):
+def test_build_all_calls_build_analysis_once(tmp_path, monkeypatch):
     run_dir = tmp_path / "run"
     data_dir = run_dir / "data"
     data_dir.mkdir(parents=True)
@@ -147,10 +147,11 @@ def test_build_all_calls_build_analysis_once(tmp_path):
 
     config = SimulationConfig(plot_fields=["density", "max_velocity"])
     builder = FigureBuilder(config, run_dir=run_dir)
-    builder.build_analysis = MagicMock(return_value=[])  # ty: ignore[invalid-assignment]
+    mock_build_analysis = MagicMock(return_value=[])
+    monkeypatch.setattr(builder, "build_analysis", mock_build_analysis)
 
     builder.build_all()
-    builder.build_analysis.assert_called_once()  # ty: ignore[unresolved-attribute]
+    mock_build_analysis.assert_called_once()
 
 
 def test_build_field_only_does_not_create_analysis_dir(tmp_path):

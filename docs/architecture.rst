@@ -1,608 +1,319 @@
 Architecture Overview
 =====================
 
-The tud_lbm package follows a **physics-first** folder structure combined with **hexagonal architecture** principles to create a maintainable, testable, and scalable lattice Boltzmann method library.
+TUD-LBM combines a **physics-first** folder structure with **ports and
+adapters** boundaries.  Directories are named after lattice-Boltzmann
+concepts, and everything that touches the outside world — file formats,
+plotting, the CLI — is kept at the edge, so the simulation core stays a set
+of pure functions over JAX arrays.
 
-Core Design Principles
+Core design principles
 ----------------------
 
-1. **Physics First**: Folders are organized by lattice physics concepts such as "lattice", "collision operators", "streaming operators".
-2. **Separation of Concerns**: Input adapters, simulation logic, and output handling are separated.
-3. **Immutability**: State is immutable (JAX NamedTuples), enabling transparent JAX compilation
-4. **Registry Pattern**: Operators self-register to avoid hardcoded factory dependencies
-5. **Protocol Contracts**: Operators satisfy protocols, not inheritance hierarchies
+1. **Physics first.**  Folders are named after concepts (``lattice``,
+   ``collision``, ``streaming``), not layers.
+2. **Separation of concerns.**  Input adapters, simulation logic, and output
+   handling never import each other.
+3. **Immutability.**  Configuration is a frozen dataclass; state is a
+   ``NamedTuple``.  Nothing mutates in place.
+4. **Registry over factories.**  Operators self-register at import time, so
+   no module has to import every implementation.
+5. **Protocols, not inheritance.**  Operators satisfy structural contracts
+   from :mod:`src.operators.protocols`.
+6. **scipy/numpy at setup time, JAX inside the loop.**  One-time computation
+   happens before the JIT boundary; everything inside ``lax.scan`` is
+   traceable.
 
-Folder Structure Rationale
---------------------------
+Repository layout
+-----------------
+
+The import root is ``src``.  The distribution is still named ``tud_lbm``;
+only the import package was renamed.
+
+.. note::
+
+   The I/O subpackage is ``src.simulation_io``, **not** ``src.io`` — the
+   latter shadowed the stdlib ``io`` module once ``src`` became the import
+   root.
 
 ::
 
-    tud_lbm/
-    ├── lattice/           ← Velocity model (d, q, c, w)
-    ├── operators/         ← Physics transformations (collision, streaming, etc)
-    │   └── 9 subcategories
-    ├── pipeline/          ← Execution harness (setup, runner, state)
-    ├── config/            ← Pure immutable configuration
-    ├── readers/           ← Input adapters (TOML, dict)
-    ├── io/                ← Output adapters (plotting, saving)
-    ├── cli/               ← Command-line interface
-    └── registry.py        ← Global operator registry
+    src/
+    ├── registry.py          ← central operator registry
+    ├── config/              ← frozen SimulationConfig + input adapters
+    ├── lattice/             ← velocity models (D2Q9, D3Q19)
+    ├── operators/           ← physics transformations
+    │   ├── collision/  equilibrium/  macroscopic/  eos/
+    │   ├── boundary/   streaming/    differential/
+    │   ├── force/      initialise/   obstacle/
+    │   ├── wetting/    step/
+    │   ├── protocols.py     ← structural contracts
+    │   ├── factory.py       ← generic build_operator()
+    │   └── _loader.py       ← auto_load_operators()
+    ├── pipeline/            ← setup, runner, state
+    ├── simulation_io/       ← writers, plotting, analysis, callbacks
+    └── cli/                 ← click command-line interface
 
+Where the boundaries fall
+-------------------------
 
-Brief Intro to Hexagonal Architecture
+::
+
+    ┌──────────────────────────────────────────────────────────────┐
+    │  EXTERNAL WORLD                                              │
+    │   TOML file    Python dict    .npz / VTK    PNG / MP4        │
+    └──────┬─────────────┬───────────────▲────────────▲────────────┘
+           │             │               │            │
+    ┌──────▼─────────────▼───────────────┴────────────┴────────────┐
+    │  ADAPTER LAYER                                               │
+    │   config/adapter_toml.py     simulation_io/output_data/      │
+    │   config/adapter_dict.py     simulation_io/plotting/         │
+    │   cli/                       simulation_io/callbacks.py      │
+    └──────┬───────────────────────────────────▲──────────────────-┘
+           │  SimulationConfig                 │  State
+    ┌──────▼───────────────────────────────────┴──────────────────-┐
+    │  CORE (pure physics, JIT-compatible)                         │
+    │                                                              │
+    │   build_setup(config)      → SimulationSetup                 │
+    │   init_state(setup)        → State                           │
+    │   run(setup, state, nt)    → (State, State | None)           │
+    │                                                              │
+    │   Dependencies: Lattice · registry · operators               │
+    └──────────────────────────────────────────────────────────────┘
+
+The core never learns where its configuration came from or where its results
+go.  That is what lets the same three calls back the CLI, a Jupyter session,
+and a parallel sweep worker without changing.
+
+The execution pipeline
 ----------------------
 
-What is Hexagonal Architecture?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Three stages, each with a single entry point.
 
-Hexagonal Architecture (also called "Ports and Adapters") is a design pattern that isolates your core business logic from external dependencies like file formats, databases, user interfaces, and configuration sources. The core physics simulation sits at the center, surrounded by ports (abstract contracts) and adapters (concrete implementations). This separation makes the code highly flexible and extensible: you can add new input formats (JSON, YAML, HDF5), new output formats (HDF5, Parquet, NetCDF), or new execution contexts (CLI, Jupyter, API, batch processing) without modifying a single line of core simulation code. The hexagon represents your irreplaceable business logic, and the ports/adapters represent the interchangeable interfaces to the outside world.
+1. ``build_setup(config)`` — composition root
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Terminology: Core, Ports, and Adapters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+:func:`~src.pipeline.setup.build_setup` resolves every operator the run will
+need and returns an immutable
+:class:`~src.pipeline.setup.SimulationSetup`.  All registry lookups, mask
+construction, and closure building happen here — once, outside the JIT
+boundary.
 
-**1. The Core (Center of the Hexagon)**
+``SimulationSetup`` holds *built callables*, not raw configuration:
+``step_fn``, ``collision_fn``, ``equilibrium_fn``, ``macroscopic_fn``,
+``streaming_fn``, ``bc_fn``, ``initial_f_fn``, the differential-operator
+closures, ``bc_masks``, ``forces``, ``multiphase_params``,
+``extra_state_plugins``, and a reference back to ``config`` for anything that
+must not enter the trace.
 
-The core is your pure business logic — the irreplaceable physics simulation:
+Many fields are typed ``| None`` because they do not apply to every
+``sim_type``.  For a given simulation type the relevant ones are always
+populated, and step code narrows them with ``assert x is not None``.
 
-.. code-block:: python
+2. ``init_state(setup)`` — initialisation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    # Core: pure physics, no I/O
-    def build_setup(config: SimulationConfig) -> SimulationSetup:
-        """Build simulation from config - doesn't care where config came from."""
-        operators = registry.lookup_operators(config)
-        return SimulationSetup(operators=operators, lattice=lattice)
-    
-    def run(state: State, setup: SimulationSetup, n_steps: int) -> State:
-        """Run simulation - doesn't know or care where output goes."""
-        for _ in range(n_steps):
-            state = apply_collision(state, setup)
-            state = apply_streaming(state, setup)
-            state = apply_boundary(state, setup)
-        return state
+:func:`~src.pipeline.runner.init_state` builds the starting
+:class:`~src.pipeline.state.state.State`.  Populations come from
+``setup.initial_f_fn`` (or a caller-supplied ``f``); density follows from the
+moments; velocity starts at zero.
 
-Core characteristics:
-- **Format-agnostic**: Doesn't know about TOML, JSON, YAML.
-- **Pure**: No side effects, no I/O, no database calls
-- **Immutable**: Works with frozen dataclasses and JAX arrays
-- **Testable**: No mocking needed, just pass data in, check data out
+.. important::
 
-**2. Ports (Abstract Interfaces)**
+   Every optional field that will *ever* be written must be initialised to
+   zeros rather than left as ``None``.  ``lax.scan`` requires the carry
+   pytree to have identical structure on every iteration, so a field that
+   appears mid-run would change the structure and fail the trace.
 
-Ports are the contracts your core logic depends on. They define WHAT your core needs without defining HOW it gets it:
+3. ``run(setup, state, nt)`` — the scanned loop
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: python
+:func:`~src.pipeline.runner.run` drives ``jax.lax.scan`` over a JIT-compiled
+step body, in one of two modes:
 
-    # Port 1: Configuration Input
-    # "I need some kind of SimulationConfig"
-    def build_setup(config: SimulationConfig) -> SimulationSetup:
-        pass  # Don't care if config came from TOML, JSON, dict, API, etc.
-    
-    # Port 2: Operator Registry
-    # "I need to lookup operators somehow"
-    collision_fn = registry.get_operator("collision_models", "bgk")
-    # Don't care if registry is in-memory, database, or REST API
-    
-    # Port 3: State Output
-    # "I return computed state, someone else handles it"
-    final_state = run(state, setup, n_steps=1000)
-    # Don't care if it goes to file, console, database, or memory
-
-Three Input Ports:
-
-1. **Configuration Input Port** — Accepts ``SimulationConfig`` dataclass
-2. **Operator Lookup Port** — Uses ``registry`` to find operator implementations
-3. **Dependency Port** — Receives ``Lattice`` and other dependencies
-
-Three Output Ports:
-
-1. **State Output Port** — Returns final ``State`` and ``diagnostics``
-2. **Side Effects Port** — Invokes optional callbacks during execution
-3. **Extensibility Port** — Supports custom operator additions via registry
-
-**3. Adapters (Concrete Implementations)**
-
-Adapters are the concrete implementations that translate between external formats and the abstract port interfaces. They're the "drivers" that connect external tools to your core:
-
-**Input Adapters** (in ``readers/`` directory):
-
-Currently implemented adapters:
+**In-memory** — the full trajectory is returned as a stacked ``State``
+pytree:
 
 .. code-block:: python
 
-    # TOML Adapter: Converts TOML file → SimulationConfig
-    class TOMLAdapter:
-        def load_simulation_config(self, path: str) -> SimulationConfig:
-            data = toml.parse(path)  # External tool
-            return SimulationConfig(**data)  # Internal format
-    
-    # Dictionary Adapter: Converts dict → SimulationConfig
-    class DictAdapter:
-        def load_simulation_config(self, data: dict) -> SimulationConfig:
-            # Already compatible, just validate
-            return SimulationConfig(**data)
+    final_state, trajectory = run(setup, state, nt=1000)
 
-All adapters implement the same interface, so core doesn't care which one is used:
+**Streaming I/O** — snapshots are written from inside the loop through
+``jax.debug.callback`` and ``trajectory`` is ``None``:
 
 .. code-block:: python
 
-    from tud_lbm.readers import toml, dict as dict_reader
-    
-    # Load from TOML file
-    config = toml.load_simulation_config("config.toml")
-    
-    # Or load from Python dict
-    config = dict_reader.load_simulation_config({"lattice_type": "D2Q9", ...})
-    
-    # Both return SimulationConfig - core is identical
-    setup = build_setup(config)  # ← No changes needed
+    final_state, _ = run(setup, state, nt=1000, io_handler=io, save_interval=100)
 
-**Output Adapters** (in ``io/`` directory):
-
-Currently implemented adapters handle data export and visualization:
-
-.. code-block:: python
-
-    # VTK Adapter: Converts State → VTK file (for ParaView visualization)
-    class VTKAdapter:
-        def write(self, state: State, path: str) -> None:
-            vtk_data = convert_state_to_vtk(state)  # Internal → External
-            write_vtk_file(vtk_data, path)
-    
-    # NumPy Adapter: Exports State → NumPy arrays for post-processing
-    class NumpyAdapter:
-        def write(self, state: State, path: str) -> None:
-            arrays = {
-                'f': numpy.array(state.f),
-                'u': numpy.array(state.u),
-                'rho': numpy.array(state.rho)
-            }
-            numpy.savez_compressed(path, **arrays)
-
-Future adapters could provide additional analysis and documentation capabilities:
-
-.. code-block:: python
-
-    # Future: Plotting Adapter (visualization in Jupyter/matplotlib)
-    # generate_plots(state, config) → matplotlib figures
-    
-    # Future: Jupyter Notebook Generator (auto-generate reproducible notebooks)
-    # generate_notebook(config, final_state) → .ipynb file with:
-    #   - Simulation parameters
-    #   - Plots of velocity/density/pressure fields
-    #   - Physics analysis (kinetic energy, momentum conservation, etc.)
-    #   - Executable code cells for reproducibility
-    
-    # Future: HDF5 Adapter (large-scale data storage with metadata)
-    # write_hdf5(state_trajectory, "results.h5")
-
-Core doesn't care which adapter is used. Here's how to save results in different formats:
-
-.. code-block:: python
-
-    final_state = run(state, setup, n_steps=1000)
-    
-    # Currently implemented output formats
-    from tud_lbm.io.output_data import write_vtk, write_numpy
-    write_vtk(final_state, "output.vtk")
-    write_numpy(final_state, "output.npz")
-    
-    # Future: Visualization and reproducible notebooks
-    # from tud_lbm.io import generate_plots, generate_notebook
-    # generate_plots(final_state, config)
-    # generate_notebook(config, final_state, "report.ipynb")
-
-Design Illustration
-~~~~~~~~~~~~~~~~~~~
-
-The diagram shows how data flows through the architecture:
-
-::
-
-    ┌──────────────────────────────────────────────────────────┐
-    │  EXTERNAL WORLD                                           │
-    │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
-    │  │   TOML   │  │  Dict    │  │  Jupyter │  │   VTK    │  │
-    │  │(currently)│  │(currently)│  │  input   │  │(currently)│ │
-    │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  │
-    │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
-    │  │   JSON   │  │   YAML   │  │  NumPy   │  │ Plots &  │  │
-    │  │ (future) │  │ (future) │  │(currently)│ │ Notebooks│  │
-    │  │          │  │          │  │          │  │ (future) │  │
-    │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  │
-    └───────┼─────────────┼─────────────┼─────────────┼─────────┘
-            │             │             │             │
-    ┌───────▼─────────────▼─────────────▼─────────────▼─────────┐
-    │  ADAPTER LAYER                                            │
-    │  ┌────────────────┐  ┌────────────────┐  ┌─────────────┐  │
-    │  │ Input Adapters │  │Output Adapters │  │ CLI/Jupyter │  │
-    │  │ (readers/)     │  │ (io/)          │  │ (cli/)      │  │
-    │  └────────────────┘  └────────────────┘  └─────────────┘  │
-    └───────┬─────────────────────────────┬──────────────────────┘
-            │                             │
-            │  SimulationConfig           │  State
-            │  (port interface)           │  (port interface)
-            │                             │
-    ┌───────▼─────────────────────────────▼──────────────────────┐
-    │  CORE LOGIC (Pure Physics)                                │
-    │                                                             │
-    │  ┌──────────────────────────────────────────────────────┐  │
-    │  │ build_setup(config) → SimulationSetup               │  │
-    │  │ run(state, setup, n_steps) → final_state            │  │
-    │  │ Operators: collision, streaming, boundary, etc.     │  │
-    │  └──────────────────────────────────────────────────────┘  │
-    │                                                             │
-    │  Dependencies (Immutable):                                │
-    │  • Lattice (D2Q9, D3Q19, ...)                             │
-    │  • Configuration                                           │
-    │  • Registry (operator lookup)                              │
-    │  • State & WettingState (JAX pytrees)                      │
-    └─────────────────────────────────────────────────────────────┘
-
-Data Flow Through Hexagon
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Scenario: Run simulation from Jupyter, output to NumPy arrays**
-
-::
-
-    Step 1: Input Adapter (Dict → Config)
-    ─────────────────────────────────
-    config_dict = {
-        "lattice_type": "D2Q9",
-        "tau": 0.8,
-        "grid_shape": [64, 64]
-    }
-    ↓
-    [Dict Adapter converts to SimulationConfig]
-    ↓
-    config = SimulationConfig(
-        lattice_type="D2Q9",
-        tau=0.8,
-        grid_shape=(64, 64)
-    )
-    
-    
-    Step 2: Core Logic (Setup)
-    ─────────────────────────
-    setup = build_setup(config)
-    ↓
-    [Core looks up operators from registry]
-    [Core builds immutable SimulationSetup]
-    [No knowledge of where config came from!]
-    
-    
-    Step 3: Core Logic (Simulation)
-    ───────────────────────────────
-    state = init_state(config, setup)
-    final_state = run(state, setup, n_steps=1000)
-    ↓
-    [Pure functional computation]
-    [No I/O, no formatting, no file writing]
-    [No knowledge of where output will go!]
-    
-    
-    Step 4: Output Adapter (State → NumPy)
-    ────────────────────────────────────
-    [NumPy Adapter converts JAX arrays to NumPy]
-    ↓
-    write_numpy(final_state, "results.npz")
-    ↓
-    File written, simulation code unchanged
-
-Why This Architecture is Powerful
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Flexibility Example 1: Change Input Format**
-
-.. code-block:: python
-
-    from tud_lbm.readers import toml, dict as dict_reader
-    from tud_lbm.pipeline import build_setup
-    
-    # Load from TOML
-    config = toml.load_simulation_config("config.toml")
-    
-    # Or load from dict (Jupyter notebook)
-    config = dict_reader.load_simulation_config({
-        "lattice_type": "D2Q9",
-        "tau": 0.8
-    })
-    
-    # Rest of code is identical!
-    setup = build_setup(config)
-    final_state = run(state, setup, n_steps=1000)
-
-**Flexibility Example 2: Change Output Format**
-
-.. code-block:: python
-
-    final_state = run(state, setup, n_steps=1000)
-    
-    # Multiple outputs simultaneously, no core changes needed!
-    from tud_lbm.io.output_data import write_vtk, write_numpy
-    write_vtk(final_state, "results.vtk")
-    write_numpy(final_state, "arrays.npz")
-    
-    # Future: Simulation data handling and visualization
-    # from tud_lbm.io import generate_plots, generate_notebook
-    # generate_plots(final_state, config, "plots/")
-    # generate_notebook(config, final_state, "report.ipynb")
-    # 
-    # The generated notebook would automatically include:
-    # - Simulation parameters and configuration
-    # - Velocity/density/pressure field visualizations
-    # - Physics diagnostics (conservation laws, stability checks)
-    # - Executable code cells for reproducibility
-
-**Flexibility Example 3: Add New Context**
-
-.. code-block:: python
-
-    # Core is reusable everywhere with same code:
-    
-    # 1. CLI (click framework)
-    @click.command()
-    def run_cli(config_path):
-        config = toml_adapter.load_simulation_config(config_path)
-        setup = build_setup(config)
-        # ... same core code ...
-    
-    # 2. Jupyter notebook
-    config = dict_adapter.load_simulation_config({...})
-    setup = build_setup(config)
-    # ... same core code ...
-    
-    # 3. Batch processing with parameter sweep
-    for params in sweep_parameters():
-        config = dict_adapter.load_simulation_config(params)
-        setup = build_setup(config)
-        # ... same core code ...
-
-**Testability Benefit**:
-
-.. code-block:: python
-
-    def test_poiseuille_flow():
-        """Test physics without any I/O"""
-        # Create config in memory
-        config = dict_adapter.load_simulation_config({
-            "lattice_type": "D2Q9",
-            "tau": 0.8,
-            "grid_shape": [64, 64]
-        })
-        
-        # Run core logic
-        setup = build_setup(config)
-        state = init_state(config, setup)
-        final_state = run(state, setup, n_steps=1000)
-        
-        # Assert physics properties
-        assert velocity_profile_is_parabolic(final_state.u)
-        
-        # No file system, no mocking, no adapter complexity!
-
-Summary Table
-~~~~~~~~~~~~~
-
-+---------------------+------------------------------------------+-----------------------------------------+
-| Core (Hexagon)      | ``pipeline/``, ``operators/``            | Pure physics simulation                  |
-+=====================+==========================================+=========================================+
-| Configuration Port  | Accepts ``SimulationConfig`` type        | Abstract input interface                |
-+---------------------+------------------------------------------+-----------------------------------------+
-| Input Adapters      | ``readers/toml.py``, ``readers/dict.py`` | Convert external formats to Config      |
-| (currently)         |                                          |                                         |
-+---------------------+------------------------------------------+-----------------------------------------+
-| Input Adapters      | (Future) JSON, YAML, HDF5                | Extensible for new formats              |
-| (planned)           |                                          |                                         |
-+---------------------+------------------------------------------+-----------------------------------------+
-| Operator Port       | Uses ``registry`` lookup                 | Abstract operator interface             |
-+---------------------+------------------------------------------+-----------------------------------------+
-| State Port          | Returns ``State`` from ``run()``         | Abstract output interface               |
-+---------------------+------------------------------------------+-----------------------------------------+
-| Output Adapters     | ``io/output_data/write_vtk.py``          | Visualization for ParaView               |
-| (currently)         | ``io/output_data/write_numpy.py``        | Data export for post-processing          |
-+---------------------+------------------------------------------+-----------------------------------------+
-| Output Adapters     | (Future) Plotting, Jupyter notebook      | Simulation data handling and             |
-| (planned)           | generation, HDF5, Parquet, NetCDF        | reproducible science notebooks           |
-+---------------------+------------------------------------------+-----------------------------------------+
-| Extensibility       | ``readers/`` and ``io/`` are open-ended | Easy to add new adapters without        |
-|                     |                                          | modifying core code                     |
-+---------------------+------------------------------------------+-----------------------------------------+
-
-Operator Registration System
------------------------------
-
-Operators self-register via decorators:
-
-.. code-block:: python
-
-    from tud_lbm import registry
-
-    @registry.collision_operator(name="bgk")
-    def bgk_collision(f, feq, tau):
-        return f - (f - feq) / tau
-
-This avoids the **factory anti-pattern** where a single factory file must import everything. Instead:
-
-1. Operators register themselves on import
-2. Registry is a lookup table (key → implementation)
-3. Factory simply does: ``registry.get_operators(kind)[name]``
-
-Benefits:
-- New operators added without modifying factory
-- Circular imports prevented (registry is independent)
-- Operator location reflects physics category
-
-Configuration as Pure Data
+Configuration as pure data
 --------------------------
 
-Configuration uses immutable dataclasses:
+:class:`~src.config.simulation_config.SimulationConfig` is a frozen
+dataclass and the sole configuration container.  It never enters a JIT
+boundary.  Validation runs in ``__post_init__``, so an invalid configuration
+cannot exist as an object.
 
 .. code-block:: python
 
     @dataclass(frozen=True)
     class SimulationConfig:
-        grid_shape: tuple[int, ...]
-        lattice_type: str
-        tau: float
-        run_type: str
-        # ... other physics parameters
+        sim_type: Literal["single_phase", "multiphase", ...] = "single_phase"
+        grid_shape: tuple[int, ...] = (64, 64)
+        tau: float = 1.0
+        ...
 
-**NOT** (❌):
+What it deliberately is **not** is a container of live objects:
 
 .. code-block:: python
 
+    # ✗ not this
     class Simulation:
         def __init__(self, ...):
             self.collision_fn = load_collision_operator(...)
-            self.streaming_fn = load_streaming_operator(...)
-            # Live objects embedded in config
 
-**Why immutable**:
-- JAX pytree-compatible
-- No hidden state mutations
-- Thread-safe
-- Testable: same config → reproducible results
-- Config can be serialized/deserialized easily
+Keeping resolved callables out of the config is what makes it serialisable,
+hashable across processes for sweeps, and safe to write back out as the
+``config.toml`` in a run directory.
 
-State Management
+See :doc:`adapters` for the section mapping, the defaults applied on
+construction, and parameter-sweep expansion.
+
+State management
 ----------------
 
-Simulation state flows through JAX's functional paradigm:
+:class:`~src.pipeline.state.state.State` is the ``lax.scan`` carry:
 
 .. code-block:: python
 
     class State(NamedTuple):
-        f: jax.Array           # Populations (d×q array)
-        u: jax.Array           # Velocity field
-        rho: jax.Array         # Density field
+        f: jnp.ndarray                 # (nx, ny, nz, q, 1)
+        rho: jnp.ndarray               # (nx, ny, nz, 1, 1)
+        u: jnp.ndarray                 # (nx, ny, nz, 1, d)
+        t: jnp.ndarray                 # scalar — current timestep
+        force: jnp.ndarray | None      # multiphase interaction force
+        force_ext: jnp.ndarray | None  # external force
+        h: jnp.ndarray | None          # electric potential distributions
+        wetting: WettingState | None
 
-    # Pure function: same state → same output
-    def step(state: State, setup: SimulationSetup) -> State:
-        return apply_operators(state, setup.operators)
+:class:`~src.pipeline.state.state.WettingState` is a nested ``NamedTuple``
+carrying the hysteresis parameters — ``phi_left``/``phi_right``,
+``d_rho_left``/``d_rho_right``, the measured angles ``ca_left``/``ca_right``,
+and the contact-line locations ``cll_left``/``cll_right``.  Being part of the
+carry is what lets the optimiser's result persist from step to step.
 
-    # Jitted timestep loop
-    final_state, diagnostics = jax.lax.scan(step, initial_state, n_steps)
+Because ``NamedTuple`` is a pytree, the whole state maps cleanly through
+``jit``, ``scan``, and ``vmap`` with no registration boilerplate.
 
-Benefits:
-- Transparent JAX compilation (no side effects)
-- Reproducible results
-- Easy checkpointing/restart
-- Functional composition
-
-Pipeline Execution
+Multiphase physics
 ------------------
 
-Three layers:
+The multiphase step (``src/operators/step/_multiphase.py``) runs:
 
-1. **build_setup()** (composition root)
-   - Loads config
-   - Instantiates operators from registry
-   - Creates SimulationSetup (immutable, jittable)
+1. ``ρ`` and ``u`` from the moments of ``f``
+2. bulk chemical potential ``μ₀(ρ)`` from the configured EOS
+3. total chemical potential ``μ = μ₀ − κ∇²ρ``
+4. interparticle force ``F_int = −ρ∇μ``
+5. force-corrected velocity ``u_eq = u + F_total/(2ρ)``
 
-2. **init_state()** (initialization)
-   - Uses selected initializer operator
-   - Returns initial State (NamedTuple)
+then equilibrium → collision → streaming → boundary conditions through the
+shared ``_multiphase_pipeline`` helper in ``_common.py``.
 
-3. **run()** (jitted timestep loop)
-   - Uses JAX scan for efficient compilation
-   - Applies collision, streaming, boundary operators
-   - Returns final state + diagnostics
+.. warning::
 
-Input/Output Adapters
----------------------
+   Lattice symmetry is load-bearing.  In a periodic domain there is no
+   viscous sink for a systematic net force, so it accumulates.  Droplet
+   centres must be integer-aligned to preserve the D4 discrete symmetry.
 
-**Readers** (input adapters in ``readers/``)
+The wetting and hysteresis layers build on top: fixed wetting applies a
+contact-angle condition at the wall, while the hysteresis operators solve for
+the wetting parameters each step with a ``lax.while_loop`` around Adam,
+targeting an advancing/receding angle window.  See :doc:`operators` for the
+per-operator detail.
 
-Convert external formats to SimulationConfig:
+Why the split
+-------------
 
-::
+``operators/`` is stable — the physics does not change.  ``pipeline/``
+evolves as execution strategies change.  ``simulation_io/`` is volatile;
+every new output request lands there.  ``config/`` absorbs new input sources.
+Separating them means a new output format cannot break a collision operator,
+and operators can be tested with no file system at all:
 
-    TOML file
-      ↓
-    toml.py (parser)
-      ↓
-    SimulationConfig (pure dataclass)
+.. code-block:: python
 
-Benefits:
-- Decouples file format from core logic
-- Multiple input formats supported
-- Easy to add CSV, HDF5, JSON, etc.
+    config = DictAdapter().load({"grid_shape": (32, 32), "tau": 0.8, "nt": 10})
+    setup = build_setup(config)
+    state = init_state(setup)
+    final_state, _ = run(setup, state, nt=10)
 
-**IO Handlers** (output adapters in ``io/``)
+    assert jnp.isfinite(final_state.rho).all()
 
-Convert State to external formats:
+Extension points
+----------------
 
-::
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
 
-    State (JAX arrays)
-      ↓
-    output_data.py (handler)
-      ↓
-    VTK, NumPy, matplotlib plots
+   * - To add …
+     - Do this
+   * - a physics operator
+     - drop a ``_*.py`` file in the right ``operators/`` subpackage,
+       decorated with that kind's decorator
+   * - a velocity model
+     - register a ``Lattice`` builder with ``@lattice_operator``
+   * - an input format
+     - subclass ``ConfigAdapter``, add the extension to ``_ADAPTER_MAP``
+   * - an output format
+     - subclass ``OutputWriter`` in ``simulation_io/output_data/``
+   * - a per-timestep figure
+     - subclass ``PlotOperator``, register with ``@plotting_operator``
+   * - a run-history figure
+     - subclass ``AnalysisPlot``, register with ``@analysis_operator``
+   * - a CLI command
+     - add a module under ``cli/commands/``, decorated with ``cli_command``
 
-Benefits:
-- Core logic doesn't know about file formats
-- Post-processing loosely coupled
-- Multiple simultaneous outputs
-- Testable independently
+None of these require editing a dispatch table or an import list.
 
-Why Not Everything in Operators?
---------------------------------
+Command-line interface
+----------------------
 
-Some libraries put everything (collision, streaming, boundaries, output) in a monolithic "operators" directory.
+The entry point is ``tud-lbm = "src.cli.commands:cli"``.  Importing
+``src.cli.commands`` is what registers the commands onto the group defined in
+``cli/app.py``; importing ``cli.app`` alone yields an empty group.
 
-Our approach separates:
+Every command carries the ``cli_command`` decorator from ``cli/_console.py``,
+which fixes the error contract: ``KeyboardInterrupt`` exits 130,
+``click.UsageError`` uses click's own 2, ``SystemExit`` passes through, and
+anything else prints a red ``Error:`` line and exits 1 — or re-raises when
+``TUD_LBM_DEBUG`` is set.
 
-- ``operators/`` — Physics transformations (pure functions)
-- ``pipeline/`` — Execution (composition, timing, callbacks)
-- ``io/`` — Output formatting (presentation layer)
-- ``readers/`` — Input parsing (presentation layer)
+``visualise`` is a click *group* with ``invoke_without_command=True`` and a
+required ``RUN_DIR`` on the group itself.  Two details there are load-bearing:
+the group sets ``allow_interspersed_args`` (groups disable it by default,
+which would reject ``visualise DIR --no-prompt``), and ``cli_command`` must
+**not** decorate the group callback, since click invokes subcommands only
+after that callback returns — an exception raised in a subcommand would
+escape uncaught.
 
-**Rationale**:
-
-- **Operators** are stable (physics doesn't change)
-- **Pipeline** evolves (new execution strategies)
-- **I/O** is volatile (new format requests)
-- **Readers** are configurable (many input sources)
-
-Separation enables:
-
-- Changing output format without touching collision code
-- Adding new input format without recompiling operators
-- Testing operators independently of file I/O
-- Reusing operators in different execution contexts (JAX, NumPy, GPU)
-
-Test Organization
------------------
-
-Tests mirror module structure:
-
-::
-
-    tests/
-    ├── test_tud_lbm_imports.py        ← Package structure
-    ├── integration/
-    │   └── test_poiseuille.py         ← Physics validation
-    ├── operators/
-    │   ├── test_collision.py          ← Unit tests
-    │   ├── test_streaming.py
-    │   └── ...
-    ├── test_registry.py               ← Registry behavior
-    └── test_config.py                 ← Configuration
-
-This structure:
-- Easy to find relevant tests
-- Enables parallel test execution
-- Clear separation of unit vs integration
-
-Summary
+Testing
 -------
 
-The tud_lbm architecture achieves:
+Tests mirror the module structure under ``tests/`` and validate public
+behaviour and invariants of the final design, not internal structure.
+Markers declared in ``pyproject.toml``:
 
-✓ **Clarity** — Physics-first naming, clear responsibilities
-✓ **Testability** — Operators decoupled from I/O and config
-✓ **Extensibility** — New operators/readers/writers without modifying core
-✓ **Performance** — JAX jit-compatible immutable state
-✓ **Maintainability** — Separation of concerns, minimal duplication
+=================  =========================================================
+Marker             Scope
+=================  =========================================================
+``unit``           individual operators
+``integration``    end-to-end physics pipelines
+``conformance``    operators satisfy their protocol contracts
+``slow``           full-pipeline smoke tests, excluded from fast CI
+=================  =========================================================
+
+.. code-block:: console
+
+    pytest                          # fast unit tests
+    pytest -m slow                  # includes end-to-end example runs
+    uv run pytest --cov --cov-report xml   # refresh coverage.xml for SonarCloud
