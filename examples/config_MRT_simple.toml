@@ -10,7 +10,8 @@ nt              = 10000
 save_interval   = 1000
 init_type       = "standard"
 collision_scheme = "mrt"
-w
+# k_diag: [k0, kb, k2, k0, k4, k0, k4, kv, kv]
+k_diag          = [0.0, 0.5, 0.6, 0.0, 1.2, 0.0, 1.2, 1.1, 1.1]
 
 [output]
 results_dir  = "~/TUD_LBM_data/example_results"
