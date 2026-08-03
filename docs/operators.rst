@@ -215,19 +215,45 @@ specs with the resolved source term.
     Uniform body force over the whole domain.
 
 ``gravity_masked_force``
-    Body force restricted to the **dispersed** phase — the liquid in a
-    droplet run, the vapour in a bubble run — via a density mask between
-    ``rho_l`` and ``rho_v``.  The topology is resolved once at build time:
-    ``[gravity_masked_force].dispersed`` wins, then
-    ``[initialisation].dispersed``, then — for ``init_type =
-    "init_from_file"`` only — the minority phase measured from the snapshot,
-    falling back to ``"vapour"``.  A droplet run must therefore say
-    ``dispersed = "liquid"``, including with the ``wetting``,
-    ``wetting_drop_top`` and ``wetting_chem_step`` initialisers, which
-    hard-code a liquid droplet and take no ``dispersed`` key of their own.
-    Runtime wall-row detection is deliberately not used, because it collapses
-    to "droplet" as soon as the dispersed phase leaves the wall, silently
-    moving the momentum injection onto the whole continuous phase.
+    Body force weighted by the density *excess over the vapour*,
+    ``(ρ − ρ_v)·g``, rather than by the local ``ρ``.  Subtracting the vapour
+    reference leaves the ambient of a droplet run force-free, so the whole
+    ambient body is not accelerated along with the inclusion.
+
+    There is no topology branch.  A liquid droplet is driven at ``Δρ·g`` with
+    its vapour ambient at zero; a vapour bubble is itself force-free and the
+    *liquid* around it carries ``Δρ·g``, so the bubble rises on the resulting
+    pressure gradient with no sign flag anywhere.  Referencing ``ρ_v`` rather
+    than ``ρ_l`` is the point: a body force enters as ``Δu = F/ρ``, so masking
+    the net buoyancy onto the vapour instead accelerates it by a factor
+    ``Δρ/ρ_v`` — around 800 at a realistic density ratio — and balancing it
+    hydrostatically would need a pressure difference across the inclusion many
+    times the vapour's absolute pressure, so no equilibrium exists and the gas
+    evacuates.  The dense phase has no such limit.  Buoyancy on the inclusion
+    is then not injected at all: it is the reaction to the liquid's
+    hydrostatic gradient, which is also what supplies the added mass bounding
+    the rise speed.  The net force over an inclusion is still ``Δρ·g·A``, the
+    same ``Δρ`` the Bond, Archimedes and Reynolds numbers in
+    ``physical_parameters.txt`` are built from, because a tanh interface is
+    antisymmetric about ``rho_mean``.
+
+    **Boundary conditions are load-bearing.**  The liquid can only stay at
+    rest if it can hold a hydrostatic ramp along every direction carrying a
+    gravity component, and a periodic axis cannot support a linear pressure
+    ramp.  Under an inclined gravity the tangential component is then balanced
+    by wall shear instead and the domain fills with Poiseuille flow, easily
+    orders of magnitude above the inclusion's own drift.  Close that axis with
+    ``left = right = "bounce-back"`` — not ``"symmetry"``, whose correction
+    assumes a periodic x.
+
+    Optional ``ramp_steps`` and ``ramp_start_t`` bring the force up linearly
+    instead of instantaneously.  Switching gravity on abruptly leaves the fluid
+    one acoustic crossing behind the force and rings for tens of thousands of
+    steps; a ramp long compared to that crossing keeps the fluid
+    quasi-statically balanced and excites no wave.  ``ramp_start_t`` is an
+    *absolute* timestep, because ``state.t`` survives restarts — a resumed run
+    must name the step at which gravity was first applied so every chunk agrees
+    on the same ramp.
 
 ``source_term_wb``
     The well-balanced forcing source term used by the collision operators.

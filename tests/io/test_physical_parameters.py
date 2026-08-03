@@ -9,9 +9,9 @@ from src.config import SimulationConfig
 from src.simulation_io.analysis.physical_parameters import build_overview
 from src.simulation_io.analysis.physical_parameters import write_physical_parameters
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _contact_line_length_from_rho
-from src.simulation_io.analysis.physical_parameters.physical_parameters import _droplet_area_from_rho
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _get_contact_line_length_from_file
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _get_setup_droplet_area
+from src.simulation_io.analysis.physical_parameters.physical_parameters import _inclusion_area_from_rho
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_inclination
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_value
 
@@ -143,15 +143,26 @@ def test_setup_droplet_area_returns_none_without_droplet():
     assert _get_setup_droplet_area(cfg) is None
 
 
-def test_droplet_area_from_rho_counts_liquid_cells():
+def test_inclusion_area_from_rho_counts_a_droplet():
     rho = np.full((40, 20, 1, 1, 1), 0.5)
     rho[10:30, 3:8, 0, 0, 0] = 1.0
-    assert _droplet_area_from_rho(rho, rho_mean=0.75) == pytest.approx(20.0 * 5.0)
+    assert _inclusion_area_from_rho(rho, rho_mean=0.75) == pytest.approx(20.0 * 5.0)
 
 
-def test_droplet_area_from_rho_returns_none_for_all_vapour_field():
+def test_inclusion_area_from_rho_counts_a_bubble_not_its_ambient():
+    """The inclusion is the minority phase, whichever phase that is.
+
+    Counting the dense side unconditionally measured the liquid ambient of a
+    bubble run — here 700 cells rather than the bubble's 100.
+    """
+    rho = np.full((40, 20, 1, 1, 1), 1.0)
+    rho[10:30, 3:8, 0, 0, 0] = 0.5
+    assert _inclusion_area_from_rho(rho, rho_mean=0.75) == pytest.approx(20.0 * 5.0)
+
+
+def test_inclusion_area_from_rho_returns_none_for_a_single_phase_field():
     rho = np.full((40, 20, 1, 1, 1), 0.5)
-    assert _droplet_area_from_rho(rho, rho_mean=0.75) is None
+    assert _inclusion_area_from_rho(rho, rho_mean=0.75) is None
 
 
 def test_contact_line_length_from_rho_returns_none_for_degenerate_profile():

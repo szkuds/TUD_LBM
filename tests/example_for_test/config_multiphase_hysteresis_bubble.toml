@@ -24,9 +24,14 @@ rho_v = 0.33
 interface_width = 4
 eos = "double-well"
 
+# x is closed, not periodic. The body force acts on the liquid, and a periodic
+# axis cannot support the linear pressure ramp that balances the tangential
+# component of gravity — the liquid would shear against the walls into a
+# Poiseuille flow instead of standing still. Bounce-back, not symmetry: the
+# symmetry operator's roll correction assumes a periodic x.
 [boundary_conditions]
-left = "periodic"
-right = "periodic"
+left = "bounce-back"
+right = "bounce-back"
 top = "bounce-back"
 bottom = "wetting"
 
@@ -43,6 +48,11 @@ ca_receding = 110.0
 learning_rate = 0.01
 max_iterations = 10
 
+# The force is weighted by (rho - rho_v), so it acts on the liquid — drho*force_g
+# = 0.67*5e-6 = 3.35e-6 per cell — and vanishes inside the vapour inclusion. The
+# bubble rises on the liquid's hydrostatic gradient rather than having the net
+# buoyancy injected into its own negligible inertia, which is the same formula
+# the droplet twin uses at the same angle.
 [gravity_masked_force]
 force_g = 5e-06
 inclination_angle_deg = 60
