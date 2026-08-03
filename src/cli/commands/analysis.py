@@ -116,12 +116,12 @@ def _analyse_surface_tension(config: SimulationConfig, out_dir: Path) -> None:
     configure_jax()
 
     from src.simulation_io.analysis.surface_tension import calibrate_surface_tension
-    from src.simulation_io.analysis.surface_tension.surface_tension import _PLOT_FILENAME
+    from src.simulation_io.analysis.surface_tension import surface_tension_dir
 
     sigma = calibrate_surface_tension(config, out_dir)
 
     success(f"Surface tension: σ = {sigma:.6g}")
-    console.print(f"[bold green]Calibration figure saved to:[/bold green] {out_dir / _PLOT_FILENAME}")
+    console.print(f"[bold green]Calibration outputs saved to:[/bold green] {surface_tension_dir(out_dir)}")
 
 
 @cli.command()

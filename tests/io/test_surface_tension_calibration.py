@@ -155,14 +155,40 @@ def test_calibrate_uses_cache_and_writes_plot(tmp_path, monkeypatch):
     assert sigma_a == pytest.approx(0.02, rel=1e-9)
     assert sigma_b == pytest.approx(sigma_a)
     assert calls["n"] == 1  # second call served from cache
-    assert seen_states_dirs == [run_dir_a / st._STATES_DIRNAME]
-    assert (run_dir_a / st._PLOT_FILENAME).exists()
-    assert (run_dir_b / st._PLOT_FILENAME).exists()  # plot written on cache hit too
-    data_a = json.loads((run_dir_a / st._DATA_FILENAME).read_text())
-    data_b = json.loads((run_dir_b / st._DATA_FILENAME).read_text())  # data written on cache hit too
+    out_a = st.surface_tension_dir(run_dir_a)
+    out_b = st.surface_tension_dir(run_dir_b)
+    assert seen_states_dirs == [out_a / st._STATES_DIRNAME]
+    assert (out_a / st._PLOT_FILENAME).exists()
+    assert (out_b / st._PLOT_FILENAME).exists()  # plot written on cache hit too
+    data_a = json.loads((out_a / st._DATA_FILENAME).read_text())
+    data_b = json.loads((out_b / st._DATA_FILENAME).read_text())  # data written on cache hit too
     assert data_a["sigma"] == pytest.approx(0.02, rel=1e-9)
     assert data_a["radii"] == [10.0, 20.0, 30.0]
     assert data_b == data_a
+
+
+def test_calibrate_nests_all_outputs_in_subdirectory(tmp_path, monkeypatch):
+    """No artefact is dumped flat into the run directory."""
+    config = _stub_config()
+
+    def fake_measure(_config, states_dir=None):
+        if states_dir is not None:
+            states_dir.mkdir(parents=True, exist_ok=True)
+            (states_dir / "radius_10.00_final.npz").touch()
+        radii = np.array([10.0, 20.0, 30.0])
+        return radii, 0.02 / radii
+
+    monkeypatch.setattr(st, "_measure_pressure_jumps", fake_measure)
+    monkeypatch.setattr(st, "_SHARED_CACHE_PATH", tmp_path / st._CACHE_FILENAME)
+
+    run_dir = tmp_path / "run"
+    st.calibrate_surface_tension(config, run_dir)
+
+    assert [p.name for p in run_dir.iterdir()] == [st._OUTPUT_DIRNAME]
+    out_dir = st.surface_tension_dir(run_dir)
+    assert sorted(p.name for p in out_dir.iterdir()) == sorted(
+        [st._PLOT_FILENAME, st._DATA_FILENAME, st._STATES_DIRNAME]
+    )
 
 
 def test_calibrate_cache_is_grid_specific(tmp_path, monkeypatch):

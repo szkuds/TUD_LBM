@@ -16,12 +16,13 @@ thermodynamic parameters and calibration grid size that determine sigma. The
 cache file lives at
 ``src/simulation_io/analysis/surface_tension/data/surface_tension_cache.json`` — inside the repo, so
 it's shared with the team via the normal git workflow rather than re-measured
-by everyone individually (commit it after adding a new entry). The
-calibration figure and the fitted ``(radii, delta_p, sigma)`` data file are
-written into the active run directory on every run, whether measured or
-served from cache, so each run keeps its own copy. When the sweep actually
-runs, the initial and equilibrated droplet state for every radius is also
-saved under ``<run_dir>/plots/surface_tension_states/`` for inspection.
+by everyone individually (commit it after adding a new entry). Every artefact
+of a calibration is grouped under ``<run_dir>/surface_tension/`` rather than
+dropped flat into the run directory. The calibration figure and the fitted
+``(radii, delta_p, sigma)`` data file are written there on every run, whether
+measured or served from cache, so each run keeps its own copy. When the sweep
+actually runs, the initial and equilibrated droplet state for every radius is
+also saved under ``<run_dir>/surface_tension/states/`` for inspection.
 """
 
 from __future__ import annotations
@@ -51,9 +52,12 @@ _N_ITERATIONS = 200_000
 _PERIODIC_BC = {"top": "periodic", "bottom": "periodic", "left": "periodic", "right": "periodic"}
 
 _CACHE_FILENAME = "surface_tension_cache.json"
-_PLOT_FILENAME = "surface_tension_calibration.png"
-_DATA_FILENAME = "surface_tension_data.json"
-_STATES_DIRNAME = "surface_tension_states"
+# Every per-run artefact is grouped under this subdirectory of the run
+# directory, so the names below need no further "surface_tension" prefix.
+_OUTPUT_DIRNAME = "surface_tension"
+_PLOT_FILENAME = "calibration.png"
+_DATA_FILENAME = "data.json"
+_STATES_DIRNAME = "states"
 
 # Git-tracked, shared across the team: a measured sigma committed here is
 # picked up by everyone on the next `git pull`, instead of each person
@@ -77,6 +81,11 @@ _CACHE_KEYS = (
 )
 
 console = Console()
+
+
+def surface_tension_dir(run_dir: str | Path) -> Path:
+    """Return the subdirectory of *run_dir* holding the surface-tension artefacts."""
+    return Path(run_dir) / _OUTPUT_DIRNAME
 
 
 def record_surface_tension(config: SimulationConfig, run_dir: str | Path) -> SimulationConfig:
@@ -104,12 +113,12 @@ def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> 
     Looks up a cached value keyed by the EOS thermodynamic parameters; on a
     miss, runs the droplet sweep and caches the result. The figure and the
     fitted ``(radii, delta_p, sigma)`` data file are always written into
-    *run_dir*. On a fresh measurement the initial and equilibrated state of
-    every droplet is additionally saved under
-    ``run_dir/surface_tension_states/`` (a cache hit runs no droplets, so no
+    ``run_dir/surface_tension/``. On a fresh measurement the initial and
+    equilibrated state of every droplet is additionally saved under
+    ``run_dir/surface_tension/states/`` (a cache hit runs no droplets, so no
     states are written).
     """
-    run_dir = Path(run_dir)
+    out_dir = surface_tension_dir(run_dir)
     cache_path = _cache_path()
     key = _cache_key(config)
 
@@ -127,13 +136,13 @@ def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> 
             f"[dim]No cached σ for these EOS parameters — running "
             f"Young–Laplace calibration ({_N_RADII} droplets)...[/dim]"
         )
-        radii, delta_p = _measure_pressure_jumps(config, states_dir=run_dir / _STATES_DIRNAME)
+        radii, delta_p = _measure_pressure_jumps(config, states_dir=out_dir / _STATES_DIRNAME)
         sigma = _fit_sigma(radii, delta_p)
         _store_cache(key, radii, delta_p, sigma, config.grid_shape)
         console.print(f"[bold green]Surface tension calibrated: σ = {sigma:.6g}[/bold green]")
 
-    _save_plot(run_dir / _PLOT_FILENAME, radii, delta_p, sigma)
-    _save_data(run_dir / _DATA_FILENAME, radii, delta_p, sigma)
+    _save_plot(out_dir / _PLOT_FILENAME, radii, delta_p, sigma)
+    _save_data(out_dir / _DATA_FILENAME, radii, delta_p, sigma)
     return sigma
 
 
