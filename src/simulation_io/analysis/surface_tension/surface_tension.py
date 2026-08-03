@@ -55,8 +55,8 @@ _CACHE_FILENAME = "surface_tension_cache.json"
 # Every per-run artefact is grouped under this subdirectory of the run
 # directory, so the names below need no further "surface_tension" prefix.
 _OUTPUT_DIRNAME = "surface_tension"
-_PLOT_FILENAME = "calibration.png"
-_DATA_FILENAME = "data.json"
+_PLOT_FILENAME = "calibration_surface_tension.png"
+_DATA_FILENAME = "data_surface_tension.json"
 _STATES_DIRNAME = "states"
 
 # Git-tracked, shared across the team: a measured sigma committed here is
