@@ -36,6 +36,8 @@ class FigureStyle:
     colormap_density: str = "viridis"
     colormap_velocity: str = "plasma"
     colormap_force: str = "cividis"
+    # Diverging: the bulk pressure straddles zero across a diffuse interface.
+    colormap_pressure: str = "coolwarm"
 
     quiver_color: str = "white"
     quiver_alpha: float = 0.7

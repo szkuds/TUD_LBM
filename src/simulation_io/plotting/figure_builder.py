@@ -103,8 +103,13 @@ class FigureBuilder:
                 # Wetting default: density field for droplet visibility + dual-axis Ca/θ vs position.
                 requested = ["density", "ca_theta_vs_x"]
             else:
-                # Non-wetting default: all registered field plot operators.
-                requested = list(get_operators("plotting").keys())
+                # Non-wetting default: every registered field plot operator
+                # except those marked opt-in, which must be named explicitly.
+                requested = [
+                    name
+                    for name, entry in get_operators("plotting").items()
+                    if not getattr(entry.target, "opt_in", False)
+                ]
 
         self._resolve_operators(requested)
 

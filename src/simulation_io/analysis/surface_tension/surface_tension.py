@@ -33,18 +33,16 @@ from typing import TYPE_CHECKING
 from typing import cast
 import numpy as np
 from rich.console import Console
+from src.operators.macroscopic.eos import PRESSURE_EOS as _KNOWN_EOS
+from src.operators.macroscopic.eos import build_pressure_fn
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from src.config import SimulationConfig
-    from src.operators.macroscopic import MultiphaseParams
     from src.pipeline.setup import SimulationSetup
     from src.pipeline.state.state import State
 
 # EOS whose surface tension must be measured rather than derived analytically.
 _EOS_REQUIRING_CALIBRATION = frozenset({"carnahan-starling"})
-
-_KNOWN_EOS = frozenset({"double-well", "carnahan-starling"})
 
 _MIN_GRID_SHAPE_DIMS = 2
 _N_RADII = 5
@@ -149,32 +147,6 @@ def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> 
 # ── Measurement ───────────────────────────────────────────────────────
 
 
-def _bulk_pressure_fn(mp: MultiphaseParams) -> Callable[[np.ndarray], np.ndarray]:
-    """Return ``pressure(rho) -> p_0`` for the EOS bound in *mp*.
-
-    Only the bulk pressure differs between EOS in the Young-Laplace
-    measurement; everything else in the droplet sweep is EOS-agnostic.
-    """
-    if mp.eos == "carnahan-starling":
-        from src.operators.macroscopic.eos import carnahan_starling_pressure
-
-        if mp.a_eos is None or mp.b_eos is None or mp.r_eos is None or mp.t_eos is None:
-            msg = "a_eos, b_eos, r_eos, t_eos are required for Carnahan-Starling calibration"
-            raise ValueError(msg)
-        a_eos, b_eos, r_eos, t_eos = mp.a_eos, mp.b_eos, mp.r_eos, mp.t_eos
-        return lambda rho: np.asarray(carnahan_starling_pressure(rho, a_eos, b_eos, r_eos, t_eos))
-
-    if mp.eos == "double-well":
-        from src.operators.macroscopic.eos import double_well_pressure
-
-        beta = 8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
-        return lambda rho: np.asarray(double_well_pressure(rho, beta, mp.rho_l, mp.rho_v))
-
-    supported = ", ".join(sorted(_KNOWN_EOS))
-    msg = f"surface-tension calibration supports EOS {supported}; got '{mp.eos}'"
-    raise ValueError(msg)
-
-
 def _measure_pressure_jumps(config: SimulationConfig, states_dir: Path | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Equilibrate one droplet per radius and return ``(radii, delta_p)``.
 
@@ -199,7 +171,7 @@ def _measure_pressure_jumps(config: SimulationConfig, states_dir: Path | None = 
 
     calib_config = _calibration_config(config)
     mp = build_multiphase_params(calib_config)
-    pressure_fn = _bulk_pressure_fn(mp)
+    pressure_fn = build_pressure_fn(mp)
 
     setup = build_setup(calib_config)
     grid_shape = cast("tuple[int, int, int]", setup.grid_shape)

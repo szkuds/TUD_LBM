@@ -18,6 +18,12 @@ class PlotOperator(ABC):
 
     name: str
 
+    #: Excluded from the "every registered plotting operator" default that
+    #: :class:`~src.simulation_io.plotting.figure_builder.FigureBuilder` falls
+    #: back on when ``plot_fields`` is unset. An opt-in operator only renders
+    #: when it is named explicitly.
+    opt_in: bool = False
+
     def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:
         """Initialize the plot operator with config and optional data directory.
 

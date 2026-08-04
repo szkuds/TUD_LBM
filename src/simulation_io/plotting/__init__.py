@@ -24,6 +24,7 @@ from . import contact_line_speed_plot as _contact_line_speed_plot_mod  # noqa: F
 from . import density as _density_mod  # noqa: F401
 from . import force as _force_mod  # noqa: F401
 from . import overview_simulation_inc_snapshots as _overview_mod  # noqa: F401
+from . import pressure as _pressure_mod  # noqa: F401
 from . import run_comparison as _run_comparison_mod  # noqa: F401
 from . import scalar_history_plot as _scalar_history_plot_mod  # noqa: F401
 from . import simulation_csv as _simulation_csv_mod  # noqa: F401
