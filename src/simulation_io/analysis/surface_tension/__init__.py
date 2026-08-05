@@ -10,6 +10,14 @@ Public API::
 
 from src.simulation_io.analysis.surface_tension.surface_tension import calibrate_surface_tension
 from src.simulation_io.analysis.surface_tension.surface_tension import record_surface_tension
+from src.simulation_io.analysis.surface_tension.surface_tension import surface_tension_data_dir
 from src.simulation_io.analysis.surface_tension.surface_tension import surface_tension_dir
+from src.simulation_io.analysis.surface_tension.surface_tension import surface_tension_plots_dir
 
-__all__ = ["calibrate_surface_tension", "record_surface_tension", "surface_tension_dir"]
+__all__ = [
+    "calibrate_surface_tension",
+    "record_surface_tension",
+    "surface_tension_data_dir",
+    "surface_tension_dir",
+    "surface_tension_plots_dir",
+]

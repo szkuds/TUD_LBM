@@ -28,6 +28,7 @@ _MIN_GRID_DIMENSIONS = 2
 _SINGLE_SNAPSHOT_USAGE = "--single requires PATH to point to an existing .npz snapshot file."
 _SINGLE_SNAPSHOT_FIELD_USAGE = "--single requires a snapshot containing a two-dimensional 'rho' or 'u' field."
 _RUN_DIRECTORY_USAGE = "PATH must point to an existing run directory unless --single is provided."
+_DATA_DIR_NAME = "data"
 
 
 def _load_run_config(run_dir: str | Path) -> SimulationConfig:
@@ -53,6 +54,19 @@ def _resolve_single_snapshot(path_arg: str | Path) -> tuple[Path, SimulationConf
 
     plot_fields = [name for name, key in (("density", "rho"), ("velocity", "u")) if key in fields]
     return snapshot_path, SimulationConfig(grid_shape=(nx, ny), plot_fields=plot_fields)
+
+
+def _run_dir_for_snapshot(snapshot_path: Path) -> Path:
+    """Return the directory whose ``plots/`` tree a standalone snapshot writes into.
+
+    Snapshots saved by a run live in ``<run_dir>/data/``, so the figure belongs
+    in ``<run_dir>/plots/`` — not in a second ``plots/`` tree nested under
+    ``data/``. A snapshot sitting anywhere else is its own run directory.
+    """
+    parent = snapshot_path.parent
+    if parent.name == _DATA_DIR_NAME:
+        return parent.parent
+    return parent
 
 
 def _validate_single_snapshot_path(snapshot_path: Path) -> None:
@@ -279,7 +293,7 @@ def animate(run_dir: str, output: str | None, fps: int, fields: str | None, no_p
 @click.option(
     "--single",
     is_flag=True,
-    help="Treat PATH as one .npz snapshot and render it beside the source file.",
+    help="Treat PATH as one .npz snapshot and render it into the run's plots/ tree.",
 )
 @click.pass_context
 def visualise(
@@ -295,7 +309,9 @@ def visualise(
 
     With no subcommand this builds both per-timestep field snapshots and
     snapshot-history analysis figures. ``--single`` instead renders exactly one
-    figure beside the given ``.npz`` snapshot, without requiring ``config.toml``.
+    figure for the given ``.npz`` snapshot, without requiring ``config.toml``.
+    The figure is written under the owning run's ``plots/`` tree; a snapshot
+    outside a run's ``data/`` directory grows that tree beside itself.
     """
     ctx.obj = _visualise_context(
         path_arg=path_arg,
@@ -320,7 +336,7 @@ def _visualise_context(
     """Build the shared context for the ``visualise`` group and subcommands."""
     if single:
         snapshot_path, config = _resolve_single_snapshot(path_arg)
-        run_dir = snapshot_path.parent
+        run_dir = _run_dir_for_snapshot(snapshot_path)
     else:
         run_dir = Path(path_arg)
         if not run_dir.is_dir():

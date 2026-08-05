@@ -16,16 +16,34 @@ thermodynamic parameters and calibration grid size that determine sigma. The
 cache file lives at
 ``src/simulation_io/analysis/surface_tension/data/surface_tension_cache.json`` — inside the repo, so
 it's shared with the team via the normal git workflow rather than re-measured
-by everyone individually (commit it after adding a new entry). Every artefact
-of a calibration is grouped under ``<run_dir>/surface_tension/`` rather than
-dropped flat into the run directory. The calibration figure and the fitted
-``(radii, delta_p, sigma)`` data file are written there on every run, whether
-measured or served from cache, so each run keeps its own copy. When the sweep
-actually runs, the initial and equilibrated droplet state for every radius is
-also saved under ``<run_dir>/surface_tension/states/`` for inspection.
+by everyone individually (commit it after adding a new entry). The equilibrated
+density field of every droplet is cached beside it under ``data/fields/`` and
+must be committed together with the JSON: it is what lets a cache hit still
+draw the snapshot figures below without re-running the sweep.
+
+Every artefact of a calibration is grouped under ``<run_dir>/surface_tension/``
+rather than dropped flat into the run directory, in the same ``data/`` +
+``plots/`` shape a run directory itself has:
+
+``plots/calibration.png``
+    The Young-Laplace fit. Written on every run, whether measured or served
+    from cache.
+``data/data.json``
+    The fitted ``(radii, delta_p, sigma)``. Written alongside the figure.
+``plots/snapshots/R_<R>.png``
+    One figure per droplet showing its equilibrated density, bulk pressure and
+    total pressure, with markers on the pixels entering the Laplace jump.
+    Written whenever the density fields are available — from the sweep, or
+    from the field cache.
+``data/radius_<R>_{init,final}.npz``
+    The full initial and equilibrated ``State`` of every droplet, saved only
+    when the sweep actually runs. Living in ``data/`` is what lets
+    ``tud-lbm visualise <that file> --single`` write its figure into
+    ``plots/snapshots/`` beside the calibration output.
 """
 
 from __future__ import annotations
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -53,9 +71,21 @@ _CACHE_FILENAME = "surface_tension_cache.json"
 # Every per-run artefact is grouped under this subdirectory of the run
 # directory, so the names below need no further "surface_tension" prefix.
 _OUTPUT_DIRNAME = "surface_tension"
+# The tree mirrors a run directory — data/ for saved arrays and the fitted
+# numbers, plots/ for figures — so the same tooling (notably
+# ``visualise <snapshot>.npz --single``) resolves it the same way.
+_OUTPUT_DATA_DIRNAME = "data"
+_OUTPUT_PLOTS_DIRNAME = "plots"
 _PLOT_FILENAME = "calibration.png"
 _DATA_FILENAME = "data.json"
-_STATES_DIRNAME = "states"
+_SNAPSHOTS_DIRNAME = "snapshots"
+
+# Equilibrated density fields, cached beside the JSON so a cache hit can still
+# draw the snapshot figures. One file per cache key, named by its digest
+# because the key itself is a JSON blob.
+_FIELDS_DIRNAME = "fields"
+_FIELDS_KEY_DIGEST_LEN = 16
+_FIELD_STACK_DIMS = 3  # (n_radii, nx, ny)
 
 # Git-tracked, shared across the team: a measured sigma committed here is
 # picked up by everyone on the next `git pull`, instead of each person
@@ -86,6 +116,16 @@ def surface_tension_dir(run_dir: str | Path) -> Path:
     return Path(run_dir) / _OUTPUT_DIRNAME
 
 
+def surface_tension_data_dir(run_dir: str | Path) -> Path:
+    """Return the directory holding the saved droplet states and ``data.json``."""
+    return surface_tension_dir(run_dir) / _OUTPUT_DATA_DIRNAME
+
+
+def surface_tension_plots_dir(run_dir: str | Path) -> Path:
+    """Return the directory holding the calibration and per-droplet figures."""
+    return surface_tension_dir(run_dir) / _OUTPUT_PLOTS_DIRNAME
+
+
 def record_surface_tension(config: SimulationConfig, run_dir: str | Path) -> SimulationConfig:
     """Measure sigma when the EOS needs it, refresh the parameter file, return updated config.
 
@@ -109,14 +149,17 @@ def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> 
     """Return the measured lattice surface tension and write the calibration figure.
 
     Looks up a cached value keyed by the EOS thermodynamic parameters; on a
-    miss, runs the droplet sweep and caches the result. The figure and the
-    fitted ``(radii, delta_p, sigma)`` data file are always written into
-    ``run_dir/surface_tension/``. On a fresh measurement the initial and
+    miss, runs the droplet sweep and caches the result. The calibration figure
+    and the fitted ``(radii, delta_p, sigma)`` data file are always written
+    into ``run_dir/surface_tension/``, as are the per-droplet snapshot figures
+    whenever the equilibrated density fields are available — freshly measured
+    or restored from the field cache. On a fresh measurement the initial and
     equilibrated state of every droplet is additionally saved under
-    ``run_dir/surface_tension/states/`` (a cache hit runs no droplets, so no
+    ``run_dir/surface_tension/data/`` (a cache hit runs no droplets, so no
     states are written).
     """
-    out_dir = surface_tension_dir(run_dir)
+    data_dir = surface_tension_data_dir(run_dir)
+    plots_dir = surface_tension_plots_dir(run_dir)
     cache_path = _cache_path()
     key = _cache_key(config)
 
@@ -125,6 +168,7 @@ def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> 
         radii = np.asarray(cached["radii"], dtype=float)
         delta_p = np.asarray(cached["delta_p"], dtype=float)
         sigma = float(cached["sigma"])
+        densities = _load_fields(key, radii.size)
         console.print(
             f"[dim]Using cached σ = {sigma:.6g} — droplet states are only "
             f"saved when the calibration sweep actually runs.[/dim]"
@@ -134,21 +178,29 @@ def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> 
             f"[dim]No cached σ for these EOS parameters — running "
             f"Young–Laplace calibration ({_N_RADII} droplets)...[/dim]"
         )
-        radii, delta_p = _measure_pressure_jumps(config, states_dir=out_dir / _STATES_DIRNAME)
+        radii, delta_p, densities = _measure_pressure_jumps(config, states_dir=data_dir)
         sigma = _fit_sigma(radii, delta_p)
         _store_cache(key, radii, delta_p, sigma, config.grid_shape)
+        _store_fields(key, densities)
         console.print(f"[bold green]Surface tension calibrated: σ = {sigma:.6g}[/bold green]")
 
-    _save_plot(out_dir / _PLOT_FILENAME, radii, delta_p, sigma)
-    _save_data(out_dir / _DATA_FILENAME, radii, delta_p, sigma)
+    _save_plot(plots_dir / _PLOT_FILENAME, radii, delta_p, sigma)
+    _save_data(data_dir / _DATA_FILENAME, radii, delta_p, sigma)
+    _save_snapshots(config, plots_dir / _SNAPSHOTS_DIRNAME, radii, delta_p, densities)
     return sigma
 
 
 # ── Measurement ───────────────────────────────────────────────────────
 
 
-def _measure_pressure_jumps(config: SimulationConfig, states_dir: Path | None = None) -> tuple[np.ndarray, np.ndarray]:
-    """Equilibrate one droplet per radius and return ``(radii, delta_p)``.
+def _measure_pressure_jumps(
+    config: SimulationConfig, states_dir: Path | None = None
+) -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
+    """Equilibrate one droplet per radius and return ``(radii, delta_p, densities)``.
+
+    *densities* holds the equilibrated 2-D density field of each droplet — the
+    very field the pressure jump was read from, handed back so the snapshot
+    figures and the field cache need no second pass over the states.
 
     When *states_dir* is given, the initial and final :class:`State` of each
     droplet is saved there as ``radius_<R>_init.npz`` / ``radius_<R>_final.npz``
@@ -181,6 +233,7 @@ def _measure_pressure_jumps(config: SimulationConfig, states_dir: Path | None = 
         states_dir.mkdir(parents=True, exist_ok=True)
 
     delta_p = np.empty(_N_RADII)
+    densities: list[np.ndarray] = []
     for i, radius in enumerate(radii):
         console.print(f"[dim]Calibration running ({i + 1}/{_N_RADII})...[/dim]")
         f0 = init_fn(
@@ -200,9 +253,10 @@ def _measure_pressure_jumps(config: SimulationConfig, states_dir: Path | None = 
         if states_dir is not None:
             _save_state(states_dir / f"radius_{radius:.2f}_final.npz", final_state)
         rho_2d = _density_2d(final_state)
+        densities.append(rho_2d)
         delta_p[i] = _pressure_jump(pressure_fn(rho_2d), width)
 
-    return radii, delta_p
+    return radii, delta_p, densities
 
 
 def _save_state(path: Path, state: State) -> None:
@@ -268,19 +322,34 @@ def _density_2d(state: State) -> np.ndarray:
     return np.asarray(rho)[:, :, 0, 0, 0]
 
 
+def sample_points(nx: int, ny: int, width: int) -> tuple[tuple[int, int], list[tuple[int, int]]]:
+    """Return the ``(inside, outside)`` array indices the Laplace jump reads.
+
+    *inside* is the domain centre, where the droplet sits; *outside* are four
+    corner pixels inset by three interface widths, far enough from both the
+    droplet and the periodic wrap to be bulk vapour.
+
+    This is the single definition of the sample geometry: the measurement in
+    :func:`_pressure_jump` and the markers the snapshot figures draw both read
+    it, so the plot cannot drift from what was actually measured.
+    """
+    margin = 3 * width
+    inside = (nx // 2, ny // 2)
+    outside = [
+        (margin, margin),
+        (margin, ny - margin - 1),
+        (nx - margin - 1, margin),
+        (nx - margin - 1, ny - margin - 1),
+    ]
+    return inside, outside
+
+
 def _pressure_jump(pressure: np.ndarray, width: int) -> float:
     """Laplace jump: centre (liquid) minus the mean of four vapour corners."""
     nx, ny = pressure.shape
-    p_inside = pressure[nx // 2, ny // 2]
-    margin = 3 * width
-    p_outside = np.mean(
-        [
-            pressure[margin, margin],
-            pressure[margin, ny - margin - 1],
-            pressure[nx - margin - 1, margin],
-            pressure[nx - margin - 1, ny - margin - 1],
-        ]
-    )
+    inside, outside = sample_points(nx, ny, width)
+    p_inside = pressure[inside]
+    p_outside = np.mean([pressure[point] for point in outside])
     return float(p_inside - p_outside)
 
 
@@ -415,6 +484,46 @@ def _store_cache(
     tmp.replace(path)  # atomic; concurrent sweep workers never see a partial file
 
 
+def _fields_path(key: str) -> Path:
+    """Path of the cached density fields for *key*."""
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:_FIELDS_KEY_DIGEST_LEN]
+    return _cache_path().parent / _FIELDS_DIRNAME / f"{digest}.npz"
+
+
+def _store_fields(key: str, densities: list[np.ndarray]) -> None:
+    """Cache the equilibrated density fields beside the shared JSON cache.
+
+    Stored as one stacked ``(n_radii, nx, ny)`` array so a later cache hit can
+    redraw the snapshot figures without re-running the sweep. Like the JSON
+    cache this is git-tracked: commit it alongside the new cache entry.
+    """
+    if not densities:
+        return
+    path = _fields_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp.npz")
+    np.savez_compressed(tmp, rho=np.stack([np.asarray(rho) for rho in densities]))
+    tmp.replace(path)  # atomic; a reader never sees a half-written archive
+
+
+def _load_fields(key: str, n_radii: int) -> list[np.ndarray] | None:
+    """Return the cached density fields for *key*, or ``None`` if unusable.
+
+    A missing, corrupt or stale file is simply a miss — the snapshot figures
+    are then skipped, never an error, since the measurement itself does not
+    depend on them.
+    """
+    path = _fields_path(key)
+    try:
+        with np.load(path) as raw:
+            stacked = np.asarray(raw["rho"], dtype=float)
+    except (OSError, ValueError, KeyError):
+        return None
+    if stacked.ndim != _FIELD_STACK_DIMS or stacked.shape[0] != n_radii:
+        return None
+    return list(stacked)
+
+
 # ── Per-run output ────────────────────────────────────────────────────
 
 
@@ -427,6 +536,29 @@ def _save_data(path: Path, radii: np.ndarray, delta_p: np.ndarray, sigma: float)
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _save_snapshots(
+    config: SimulationConfig,
+    out_dir: Path,
+    radii: np.ndarray,
+    delta_p: np.ndarray,
+    densities: list[np.ndarray] | None,
+) -> None:
+    """Write one snapshot figure per droplet, when the density fields are known.
+
+    A cache hit whose fields predate the field cache has nothing to draw; that
+    is reported rather than raised, since sigma itself is already measured.
+    """
+    if densities is None:
+        console.print(
+            "[dim]No cached droplet fields for these parameters — snapshot "
+            "figures need a re-measurement (delete the cache entry to force one).[/dim]"
+        )
+        return
+    from src.simulation_io.analysis.surface_tension.snapshot_figures import save_snapshot_figures
+
+    save_snapshot_figures(_calibration_config(config), out_dir, radii, delta_p, densities, timestep=_N_ITERATIONS)
 
 
 def _save_plot(path: Path, radii: np.ndarray, delta_p: np.ndarray, sigma: float) -> None:

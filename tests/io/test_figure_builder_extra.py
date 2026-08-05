@@ -90,6 +90,7 @@ def test_build_single_renders_only_requested_snapshot(tmp_path):
     saved = builder.build_single(run_dir / "data" / "timestep_2.npz")
 
     assert saved is not None
-    assert saved == run_dir / "data" / "timestep_2.png"
+    assert saved == run_dir / "plots" / "snapshots" / "timestep_2.png"
     assert saved.exists()
-    assert len(list((run_dir / "data").glob("*.png"))) == 1
+    assert list((run_dir / "data").glob("*.png")) == []
+    assert len(list((run_dir / "plots" / "snapshots").glob("*.png"))) == 1
