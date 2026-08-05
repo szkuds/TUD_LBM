@@ -20,7 +20,8 @@ Both are opt-in: they only render when named in ``plot_fields`` /
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
-from src.operators.macroscopic.eos import PRESSURE_EOS
+from src.operators.macroscopic import eos as _eos  # noqa: F401  registers the pressure operators
+from src.registry import get_operator_names
 from src.registry import plotting_operator
 from src.simulation_io.plotting.base import PlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
@@ -46,9 +47,11 @@ class _BasePressureOperator(PlotOperator):
 
         Guards single-phase runs and any EOS without a bulk-pressure
         implementation, so an unsupported run silently drops the panel rather
-        than rendering an error into it.
+        than rendering an error into it. The registry is the source of truth
+        for which EOS have one, so a newly added pressure operator becomes
+        available here with no edit to this file.
         """
-        return "rho" in data and self.config.is_multiphase and self.config.eos in PRESSURE_EOS
+        return "rho" in data and self.config.is_multiphase and self.config.eos in get_operator_names("pressure")
 
     def _params(self) -> tuple[MultiphaseParams, Callable[[np.ndarray], np.ndarray]]:
         """Return the cached ``(mp, pressure_fn)`` pair, building it on first use.

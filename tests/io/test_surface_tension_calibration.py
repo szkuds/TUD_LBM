@@ -381,26 +381,26 @@ def _multiphase_params(**overrides):
 
 def test_bulk_pressure_fn_carnahan_starling_matches_reference():
     from src.operators.macroscopic.eos import build_pressure_fn
-    from src.operators.macroscopic.eos import carnahan_starling_pressure
+    from src.operators.macroscopic.eos._carnahan_starling import _pressure_carnahan_starling
 
     mp = _multiphase_params()
     pressure_fn = build_pressure_fn(mp)
     rho = np.linspace(mp.rho_v, mp.rho_l, 20)
 
-    expected = carnahan_starling_pressure(rho, mp.a_eos, mp.b_eos, mp.r_eos, mp.t_eos)
+    expected = _pressure_carnahan_starling(rho, mp.a_eos, mp.b_eos, mp.r_eos, mp.t_eos)
     np.testing.assert_allclose(pressure_fn(rho), np.asarray(expected))
 
 
 def test_bulk_pressure_fn_double_well_matches_reference():
     from src.operators.macroscopic.eos import build_pressure_fn
-    from src.operators.macroscopic.eos import double_well_pressure
+    from src.operators.macroscopic.eos._double_well import _pressure_double_well
 
     mp = _multiphase_params(eos="double-well", a_eos=None, b_eos=None, r_eos=None, t_eos=None)
     pressure_fn = build_pressure_fn(mp)
     rho = np.linspace(mp.rho_v, mp.rho_l, 20)
 
     beta = 8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
-    expected = double_well_pressure(rho, beta, mp.rho_l, mp.rho_v)
+    expected = _pressure_double_well(rho, beta, mp.rho_l, mp.rho_v)
     np.testing.assert_allclose(pressure_fn(rho), np.asarray(expected))
 
 
@@ -416,7 +416,7 @@ def test_bulk_pressure_fn_unknown_eos_raises():
     from src.operators.macroscopic.eos import build_pressure_fn
 
     mp = _multiphase_params(eos="not-an-eos")
-    with pytest.raises(ValueError, match="pressure is implemented for EOS"):
+    with pytest.raises(ValueError, match="Unknown pressure scheme 'not-an-eos'"):
         build_pressure_fn(mp)
 
 

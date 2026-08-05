@@ -51,8 +51,8 @@ from typing import TYPE_CHECKING
 from typing import cast
 import numpy as np
 from rich.console import Console
-from src.operators.macroscopic.eos import PRESSURE_EOS as _KNOWN_EOS
-from src.operators.macroscopic.eos import build_pressure_fn
+from src.operators.macroscopic.eos import build_pressure_fn  # also registers the pressure operators
+from src.registry import get_operator_names
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
@@ -381,7 +381,7 @@ def _sanitize_key(raw_key: str) -> str | None:
 
     Valid keys are the canonical JSON produced by :func:`_cache_key`: exactly
     the ``_CACHE_KEYS`` fields, with numeric or ``None`` values, a validated
-    ``grid_shape``, and an EOS name from ``_KNOWN_EOS``. The returned key is
+    ``grid_shape``, and an EOS registered under the ``"pressure"`` kind. The returned key is
     re-serialized from coerced primitives so nothing read from the cache file
     is echoed back verbatim.
     """
@@ -403,7 +403,7 @@ def _sanitize_key(raw_key: str) -> str | None:
 def _sanitize_key_field(field: str, value: object) -> str | int | float | list[int] | None:
     clean: str | int | float | list[int] | None
     if field == "eos":
-        known = next((eos for eos in _KNOWN_EOS if eos == value), None)
+        known = next((eos for eos in get_operator_names("pressure") if eos == value), None)
         if value is not None and known is None:
             return None
         clean = known
