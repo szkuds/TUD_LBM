@@ -46,40 +46,53 @@ uv pip install -e .[docs]
 
 ## Running the tests
 
-There are two ways to run tests.
-
-The first way requires an activated virtual environment with the development tools installed:
+Run the test suite with:
 
 ```shell
-pytest -v
+uv run pytest -v
 ```
 
-The second is to use `tox`, which can be installed separately and can build the necessary virtual environments itself by simply running:
+Slow, full-pipeline tests are excluded from the default run. Include them with:
 
 ```shell
-tox
+uv run pytest -m slow
 ```
+
+The available markers (`unit`, `integration`, `conformance`, `slow`) are declared under
+`[tool.pytest.ini_options]` in `pyproject.toml`.
 
 ### Test coverage
 
-In an activated virtual environment with the development tools installed, inside the package directory, run:
-
 ```shell
-coverage run
-coverage report
+uv run pytest --cov --cov-report term --cov-report xml
 ```
 
-`coverage` can also generate output in HTML and other formats; see `coverage help` for more information.
+The XML report must land at `coverage.xml` in the repository root — that is the path
+`sonar.python.coverage.reportPaths` in `sonar-project.properties` points at, and it is what the
+CI workflow produces. Use `--cov-report html` for a browsable report.
 
 ---
 
 ## Running linters locally
 
-For linting and import sorting we use [ruff](https://beta.ruff.rs/docs/):
+For linting and import sorting we use [ruff](https://docs.astral.sh/ruff/), and for type checking
+[ty](https://github.com/astral-sh/ty). The full local quality gate is:
 
 ```shell
-ruff check .
-ruff check . --fix
+uv run ruff format
+uv run ruff check          # add --fix to apply autofixes
+uv run ty check
+uv run pytest --cov --cov-report xml
+```
+
+`ruff` is configured with `select = ["ALL"]`; suppressions are narrowed per file under
+`[tool.ruff.lint.per-file-ignores]` in `pyproject.toml`. For `ty`, suppress with
+`# ty: ignore[rule-code]` — **not** `# type: ignore` — and prefer fixing the underlying type error.
+
+`ruff` and `ty` also run as [pre-commit](https://pre-commit.com/) hooks:
+
+```shell
+uv run pre-commit install
 ```
 
 ---
@@ -425,13 +438,22 @@ exits 1 — or re-raises when `TUD_LBM_DEBUG` is set.
 
 ## Versioning
 
-Bumping the version across all files is done with [bump-my-version](https://github.com/callowayproject/bump-my-version), e.g.
+The project uses [calendar versioning](https://calver.org/) in the form `YYYY.MINOR.PATCH` — the
+current version is `2026.0.1`.
+
+Bumping the version across all files is done with
+[bump-my-version](https://github.com/callowayproject/bump-my-version), e.g.
 
 ```shell
-bump-my-version bump major  # bumps from e.g. 0.3.2 to 1.0.0
-bump-my-version bump minor  # bumps from e.g. 0.3.2 to 0.4.0
-bump-my-version bump patch  # bumps from e.g. 0.3.2 to 0.3.3
+uv run bump-my-version bump minor  # bumps from e.g. 2026.0.1 to 2026.1.0
+uv run bump-my-version bump patch  # bumps from e.g. 2026.0.1 to 2026.0.2
 ```
+
+The version string is duplicated in four files — `src/__init__.py`, `pyproject.toml`,
+`CITATION.cff` and `docs/conf.py` — listed under `[[tool.bumpversion.files]]` in `pyproject.toml`.
+**Always bump with the tool rather than editing by hand.** Editing one file leaves the others
+reporting a stale version, and the next `bump-my-version` run then fails to find the expected
+string in them.
 
 ---
 
