@@ -46,26 +46,40 @@ def test_fit_sigma_recovers_slope():
 def test_pressure_jump_centre_minus_corners():
     # Constant-pressure field => zero jump, independent of margin.
     pressure = np.full((40, 40), 3.0)
-    assert st._pressure_jump(pressure, width=4) == pytest.approx(0.0)
+    assert st._pressure_jump(pressure) == pytest.approx(0.0)
 
 
 def test_pressure_jump_reads_the_shared_sample_points():
     """The measurement and the markers must always read the same pixels."""
-    nx, ny, width = 40, 44, 4
-    inside, outside = st.sample_points(nx, ny, width)
+    nx, ny = 40, 44
+    inside, outside = st.sample_points(nx, ny)
     pressure = np.zeros((nx, ny))
     pressure[inside] = 5.0
     for i, point in enumerate(outside):
         pressure[point] = float(i)  # mean of 0, 1, 2, 3
 
-    assert st._pressure_jump(pressure, width) == pytest.approx(5.0 - 1.5)
+    assert st._pressure_jump(pressure) == pytest.approx(5.0 - 1.5)
 
 
 def test_sample_points_geometry():
-    inside, outside = st.sample_points(40, 44, width=4)
+    # margin = round(min(40, 44) / 8) = 5
+    inside, outside = st.sample_points(40, 44)
 
     assert inside == (20, 22)
-    assert outside == [(12, 12), (12, 31), (27, 12), (27, 31)]
+    assert outside == [(5, 5), (5, 38), (34, 5), (34, 38)]
+
+
+def test_sample_points_stay_outside_the_largest_droplet():
+    """The vapour corners must be bulk vapour at every resolution.
+
+    This is what an inset measured in interface widths could not guarantee: on
+    a 32x32 grid ``3 * W`` put the corners inside the largest droplet.
+    """
+    for n in (32, 64, 101, 401):
+        inside, outside = st.sample_points(n, n)
+        r_max = n * st._RADIUS_MAX_FRACTION
+        distances = [np.hypot(px - inside[0], py - inside[1]) for px, py in outside]
+        assert min(distances) > r_max, (n, min(distances), r_max)
 
 
 def test_cache_round_trip(tmp_path, monkeypatch):
@@ -323,14 +337,6 @@ def test_save_snapshot_figures_writes_one_per_radius(tmp_path):
 
     assert sorted(p.name for p in tmp_path.iterdir()) == ["R_6.00.png", "R_9.00.png"]
     assert all(p.stat().st_size > 0 for p in tmp_path.iterdir())
-
-
-def test_save_snapshot_figures_requires_interface_width(tmp_path):
-    from src.simulation_io.analysis.surface_tension.snapshot_figures import save_snapshot_figures
-
-    config = _stub_config(interface_width=None)
-    with pytest.raises(ValueError, match="interface_width is required"):
-        save_snapshot_figures(config, tmp_path, np.array([]), np.array([]), [], timestep=0)
 
 
 def test_save_state_writes_array_fields_and_skips_none(tmp_path):
