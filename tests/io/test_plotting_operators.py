@@ -151,7 +151,7 @@ def test_external_force_plot_operator_availability_and_render():
 
 def test_bulk_pressure_operator_matches_eos_reference():
     """Bulk pressure panel should render p_0(rho) straight from the EOS function."""
-    from src.operators.macroscopic.eos import double_well_pressure
+    from src.operators.macroscopic.eos._double_well import _pressure_double_well
 
     config = _multiphase_config()
     op = BulkPressurePlotOperator(config)
@@ -161,7 +161,7 @@ def test_bulk_pressure_operator_matches_eos_reference():
     assert op.is_available(data)
 
     beta = 8.0 * _KAPPA / (float(_WIDTH) ** 2 * (_RHO_L - _RHO_V) ** 2)
-    expected = np.asarray(double_well_pressure(rho[:, :, 0, 0, 0], beta, _RHO_L, _RHO_V)).T
+    expected = np.asarray(_pressure_double_well(rho[:, :, 0, 0, 0], beta, _RHO_L, _RHO_V)).T
     np.testing.assert_allclose(op._pressure_2d(data), expected)
 
     fig, ax = plt.subplots()

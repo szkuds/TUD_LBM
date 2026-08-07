@@ -51,8 +51,8 @@ from typing import TYPE_CHECKING
 from typing import cast
 import numpy as np
 from rich.console import Console
-from src.operators.macroscopic.eos import PRESSURE_EOS as _KNOWN_EOS
-from src.operators.macroscopic.eos import build_pressure_fn
+from src.operators.macroscopic.eos import build_pressure_fn  # also registers the pressure operators
+from src.registry import get_operator_names
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
@@ -65,6 +65,19 @@ _EOS_REQUIRING_CALIBRATION = frozenset({"carnahan-starling"})
 _MIN_GRID_SHAPE_DIMS = 2
 _N_RADII = 5
 _N_ITERATIONS = 200_000
+
+# The sweep's droplet radii, as fractions of the smaller grid dimension.
+_RADIUS_MIN_FRACTION = 1.0 / 5.0
+_RADIUS_MAX_FRACTION = 1.0 / 3.0
+# The vapour corner samples are inset by this fraction of the smaller grid
+# dimension. Tying the inset to the grid rather than to the interface width is
+# what keeps the sample geometry valid at every resolution: the radii above are
+# themselves fractions of ``min(nx, ny)``, so a fixed fraction leaves the same
+# clearance between the corners and the largest droplet's interface on any
+# grid. An inset measured in interface widths does not — on a 32² grid the old
+# ``3 * W = 12`` put the corners 5.7 lattice units from the centre, i.e. deep
+# inside the largest (R = 10.7) droplet, silently measuring liquid as vapour.
+_SAMPLE_MARGIN_FRACTION = 1.0 / 8.0
 _PERIODIC_BC = {"top": "periodic", "bottom": "periodic", "left": "periodic", "right": "periodic"}
 
 _CACHE_FILENAME = "surface_tension_cache.json"
@@ -217,7 +230,7 @@ def _measure_pressure_jumps(
 
     nx, ny = int(config.grid_shape[0]), int(config.grid_shape[1])
     min_dim = min(nx, ny)
-    radii = np.linspace(min_dim / 5.0, min_dim / 3.0, _N_RADII)
+    radii = np.linspace(min_dim * _RADIUS_MIN_FRACTION, min_dim * _RADIUS_MAX_FRACTION, _N_RADII)
     width = int(config.interface_width)
     rho_l, rho_v = float(config.rho_l), float(config.rho_v)
 
@@ -254,7 +267,7 @@ def _measure_pressure_jumps(
             _save_state(states_dir / f"radius_{radius:.2f}_final.npz", final_state)
         rho_2d = _density_2d(final_state)
         densities.append(rho_2d)
-        delta_p[i] = _pressure_jump(pressure_fn(rho_2d), width)
+        delta_p[i] = _pressure_jump(pressure_fn(rho_2d))
 
     return radii, delta_p, densities
 
@@ -322,18 +335,24 @@ def _density_2d(state: State) -> np.ndarray:
     return np.asarray(rho)[:, :, 0, 0, 0]
 
 
-def sample_points(nx: int, ny: int, width: int) -> tuple[tuple[int, int], list[tuple[int, int]]]:
+def sample_points(nx: int, ny: int) -> tuple[tuple[int, int], list[tuple[int, int]]]:
     """Return the ``(inside, outside)`` array indices the Laplace jump reads.
 
     *inside* is the domain centre, where the droplet sits; *outside* are four
-    corner pixels inset by three interface widths, far enough from both the
-    droplet and the periodic wrap to be bulk vapour.
+    corner pixels inset by :data:`_SAMPLE_MARGIN_FRACTION` of the smaller grid
+    dimension, far enough from both the droplet and the periodic wrap to be
+    bulk vapour.
+
+    The geometry is tied to the grid, not to the interface width. Because the
+    sweep's radii are themselves grid fractions, the clearance between a corner
+    pixel and the largest droplet's interface is then the same at every
+    resolution — which an inset measured in interface widths cannot guarantee.
 
     This is the single definition of the sample geometry: the measurement in
     :func:`_pressure_jump` and the markers the snapshot figures draw both read
     it, so the plot cannot drift from what was actually measured.
     """
-    margin = 3 * width
+    margin = max(1, round(min(nx, ny) * _SAMPLE_MARGIN_FRACTION))
     inside = (nx // 2, ny // 2)
     outside = [
         (margin, margin),
@@ -344,10 +363,10 @@ def sample_points(nx: int, ny: int, width: int) -> tuple[tuple[int, int], list[t
     return inside, outside
 
 
-def _pressure_jump(pressure: np.ndarray, width: int) -> float:
+def _pressure_jump(pressure: np.ndarray) -> float:
     """Laplace jump: centre (liquid) minus the mean of four vapour corners."""
     nx, ny = pressure.shape
-    inside, outside = sample_points(nx, ny, width)
+    inside, outside = sample_points(nx, ny)
     p_inside = pressure[inside]
     p_outside = np.mean([pressure[point] for point in outside])
     return float(p_inside - p_outside)
@@ -381,7 +400,7 @@ def _sanitize_key(raw_key: str) -> str | None:
 
     Valid keys are the canonical JSON produced by :func:`_cache_key`: exactly
     the ``_CACHE_KEYS`` fields, with numeric or ``None`` values, a validated
-    ``grid_shape``, and an EOS name from ``_KNOWN_EOS``. The returned key is
+    ``grid_shape``, and an EOS registered under the ``"pressure"`` kind. The returned key is
     re-serialized from coerced primitives so nothing read from the cache file
     is echoed back verbatim.
     """
@@ -403,7 +422,7 @@ def _sanitize_key(raw_key: str) -> str | None:
 def _sanitize_key_field(field: str, value: object) -> str | int | float | list[int] | None:
     clean: str | int | float | list[int] | None
     if field == "eos":
-        known = next((eos for eos in _KNOWN_EOS if eos == value), None)
+        known = next((eos for eos in get_operator_names("pressure") if eos == value), None)
         if value is not None and known is None:
             return None
         clean = known

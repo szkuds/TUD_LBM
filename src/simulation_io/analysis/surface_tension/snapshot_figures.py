@@ -57,20 +57,11 @@ def save_snapshot_figures(
         densities: Equilibrated 2-D ``(nx, ny)`` density field per radius.
         timestep: Iteration count the droplets were equilibrated for; shown in
             the panel titles.
-
-    Raises:
-        ValueError: If *config* carries no ``interface_width``, which sets the
-            margin of the vapour sample points.
     """
     import matplotlib as mpl
 
     mpl.use("Agg")
     import matplotlib.pyplot as plt
-
-    if config.interface_width is None:
-        msg = "interface_width is required to mark the surface-tension sample points"
-        raise ValueError(msg)
-    width = int(config.interface_width)
 
     # Built once for the whole sweep: each operator caches its EOS parameters
     # and differential closures on first use, so the lattice and diff-op
@@ -92,7 +83,7 @@ def save_snapshot_figures(
         fig, axes = plt.subplots(1, len(panels), figsize=(_PANEL_FIGSIZE[0] * len(panels), _PANEL_FIGSIZE[1]))
         for ax, op in zip(np.atleast_1d(axes), panels, strict=True):
             op(ax, data, timestep)
-            _mark_sample_points(ax, nx, ny, width, float(radius))
+            _mark_sample_points(ax, nx, ny, float(radius))
 
         fig.suptitle(
             f"Calibration droplet R = {float(radius):.2f}   dP = {float(jump):.6g}",
@@ -107,7 +98,6 @@ def _mark_sample_points(
     ax: matplotlib.axes.Axes,
     nx: int,
     ny: int,
-    width: int,
     radius: float,
 ) -> None:
     """Overlay the pixels entering the Laplace jump on an already-rendered panel.
@@ -116,7 +106,7 @@ def _mark_sample_points(
     ``origin="lower"``, so array index ``(i, j)`` lands at data coordinates
     ``x=i, y=j`` and the sample indices can be plotted unchanged.
     """
-    inside, outside = sample_points(nx, ny, width)
+    inside, outside = sample_points(nx, ny)
 
     # The prescribed radius, not one re-measured from the field: that is the R
     # the Young-Laplace fit uses.

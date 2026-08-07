@@ -499,6 +499,41 @@ class EOSFunction(Protocol):
         ...
 
 
+@runtime_checkable
+class PressureFunction(Protocol):
+    """Bound bulk-pressure callable — evaluates ``p_0(rho)`` for a density field.
+
+    The thermodynamic partner of :class:`EOSFunction`: both are derivatives of
+    the same bulk free-energy density, so an EOS and its pressure must be
+    registered together to stay consistent. All parameters are captured in the
+    closure by :func:`~src.operators.macroscopic.eos.build_pressure_fn`.
+
+    This is the *bulk* pressure only — the interfacial ``-kappa`` terms are not
+    included, so ``p_0`` swings across a diffuse interface. Consumers needing
+    the full normal pressure add ``-kappa * (rho * lap(rho) + |grad rho|^2 / 2)``
+    themselves.
+
+    Accepts NumPy or JAX input; returns NumPy. Unlike :class:`EOSFunction`
+    this never runs inside a JIT trace — its consumers are the calibration and
+    the plotting layer, which both work in NumPy.
+
+    Signature::
+
+        def pressure_fn(rho) -> p_0
+    """
+
+    def __call__(self, rho: np.ndarray) -> np.ndarray:
+        """Evaluate the bulk thermodynamic pressure ``p_0(rho)``.
+
+        Args:
+            rho: Density field, any shape.
+
+        Returns:
+            Bulk pressure ``p_0``, same shape and array type as *rho*.
+        """
+        ...
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # IO / Persistence Ports
 # ══════════════════════════════════════════════════════════════════════════════
@@ -654,6 +689,7 @@ __all__ = [
     "MacroscopicOperator",
     "MultiphaseStepOperator",
     "PlotOperator",
+    "PressureFunction",
     "SimulationRepository",
     "StepOperator",
     "StreamingOperator",
