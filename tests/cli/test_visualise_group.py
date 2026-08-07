@@ -103,7 +103,7 @@ def test_fields_flag_bypasses_the_prompt(runner, run_dir):
     assert "Select fields" not in result.output
 
 
-def test_single_snapshot_builds_visual_beside_standalone_npz(runner, tmp_path):
+def test_single_snapshot_builds_visual_in_plots_tree(runner, tmp_path):
     snapshot = tmp_path / "radius_100.25_init.npz"
     np.savez(
         snapshot,
@@ -114,8 +114,27 @@ def test_single_snapshot_builds_visual_beside_standalone_npz(runner, tmp_path):
     result = runner.invoke(cli, ["visualise", str(snapshot), "--single", "--no-prompt"])
 
     assert result.exit_code == 0, result.output
-    assert (tmp_path / "radius_100.25_init.png").exists()
-    assert len(list(tmp_path.glob("*.png"))) == 1
+    assert (tmp_path / "plots" / "snapshots" / "radius_100.25_init.png").exists()
+    assert list(tmp_path.glob("*.png")) == []
+
+
+def test_single_snapshot_in_data_dir_writes_to_run_plots(runner, tmp_path):
+    """A snapshot under ``<run>/data/`` belongs to that run's plots tree."""
+    data_dir = tmp_path / "run" / "data"
+    data_dir.mkdir(parents=True)
+    snapshot = data_dir / "timestep_10.npz"
+    np.savez(
+        snapshot,
+        rho=np.ones((8, 8, 1, 1, 1)),
+        u=np.zeros((8, 8, 1, 1, 2)),
+    )
+
+    result = runner.invoke(cli, ["visualise", str(snapshot), "--single", "--no-prompt"])
+
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "run" / "plots" / "snapshots" / "timestep_10.png").exists()
+    assert list(data_dir.glob("*.png")) == []
+    assert not (data_dir / "plots").exists()
 
 
 def test_single_snapshot_rejects_non_npz_path(runner, run_dir):

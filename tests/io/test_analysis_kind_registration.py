@@ -32,7 +32,11 @@ _EXPECTED_ANALYSIS_OPERATORS = frozenset(
     }
 )
 
-_EXPECTED_PLOTTING_OPERATORS = frozenset({"density", "velocity", "force", "force_ext"})
+_EXPECTED_PLOTTING_OPERATORS = frozenset({"density", "velocity", "force", "force_ext", "pressure", "pressure_total"})
+
+#: Registered, but excluded from the default figure — they only render when
+#: named in ``plot_fields``. See ``PlotOperator.opt_in``.
+_EXPECTED_OPT_IN_OPERATORS = frozenset({"pressure", "pressure_total"})
 
 
 def test_analysis_kind_holds_every_expected_operator() -> None:
@@ -43,6 +47,14 @@ def test_analysis_kind_holds_every_expected_operator() -> None:
 def test_plotting_kind_holds_every_expected_operator() -> None:
     """Field-plot operators stay under the ``plotting`` kind."""
     assert set(get_operator_names("plotting")) == _EXPECTED_PLOTTING_OPERATORS
+
+
+def test_opt_in_flag_matches_the_expected_plotting_operators() -> None:
+    """Exactly the pressure panels are opt-in; every other field plot is default-on."""
+    from src.registry import get_operators
+
+    opt_in = {name for name, entry in get_operators("plotting").items() if getattr(entry.target, "opt_in", False)}
+    assert opt_in == _EXPECTED_OPT_IN_OPERATORS
 
 
 def test_comparison_kind_no_longer_exists() -> None:

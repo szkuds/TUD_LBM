@@ -404,24 +404,24 @@ class TestCsEosPipeline:
 
 
 class TestDoubleWellPressure:
-    """``double_well_pressure`` is thermodynamically consistent with ``_eos_double_well``."""
+    """``_pressure_double_well`` is thermodynamically consistent with ``_eos_double_well``."""
 
     _BETA = 8.0 * _KAPPA / (_INTERFACE_WIDTH**2 * (_RHO_L - _RHO_V) ** 2)
 
     def test_zero_at_both_coexistence_densities(self):
         """Flat-interface coexistence: mu_0 = 0 and psi = 0 at rho_l and rho_v, so p_0 = 0."""
-        from src.operators.macroscopic.eos import double_well_pressure
+        from src.operators.macroscopic.eos._double_well import _pressure_double_well
 
-        p = double_well_pressure(np.array([_RHO_V, _RHO_L]), self._BETA, _RHO_L, _RHO_V)
+        p = _pressure_double_well(np.array([_RHO_V, _RHO_L]), self._BETA, _RHO_L, _RHO_V)
         np.testing.assert_allclose(np.asarray(p), 0.0, atol=1e-12)
 
     def test_gibbs_duhem_consistency(self):
         """dp/drho = rho * dmu_0/drho across the physical density range."""
-        from src.operators.macroscopic.eos import double_well_pressure
         from src.operators.macroscopic.eos._double_well import _eos_double_well
+        from src.operators.macroscopic.eos._double_well import _pressure_double_well
 
         rho = np.linspace(_RHO_V, _RHO_L, 2001)
-        p = np.asarray(double_well_pressure(rho, self._BETA, _RHO_L, _RHO_V))
+        p = np.asarray(_pressure_double_well(rho, self._BETA, _RHO_L, _RHO_V))
         mu_0 = np.asarray(_eos_double_well(jnp.asarray(rho), self._BETA, _RHO_L, _RHO_V))
 
         dp = np.gradient(p, rho)
@@ -431,11 +431,46 @@ class TestDoubleWellPressure:
         np.testing.assert_allclose(dp, rho_dmu, atol=1e-3 * scale)
 
     def test_accepts_jax_arrays(self):
-        from src.operators.macroscopic.eos import double_well_pressure
+        from src.operators.macroscopic.eos._double_well import _pressure_double_well
 
         rho = jnp.ones((NX, NY, NZ, 1, 1)) * _RHO_L
-        p = double_well_pressure(rho, self._BETA, _RHO_L, _RHO_V)
+        p = _pressure_double_well(rho, self._BETA, _RHO_L, _RHO_V)
         assert p.shape == rho.shape
+
+
+class TestPressureRegistry:
+    """A new EOS gains a bulk pressure by registering, with no list to edit."""
+
+    def test_registered_pressure_operator_is_resolved_by_build_pressure_fn(self):
+        """``build_pressure_fn`` dispatches on the registry, not a hardcoded EOS branch."""
+        from src.operators.macroscopic import MultiphaseParams
+        from src.operators.macroscopic.eos import build_pressure_fn
+        from src.registry import pressure_operator
+        from src.registry import unregister_operator
+
+        @pressure_operator(name="_test_eos")
+        def _build_test_pressure(mp):
+            return lambda rho: np.asarray(rho) * mp.kappa
+
+        try:
+            mp = MultiphaseParams(
+                eos="_test_eos",
+                kappa=2.0,
+                rho_l=_RHO_L,
+                rho_v=_RHO_V,
+                interface_width=_INTERFACE_WIDTH,
+            )
+            pressure_fn = build_pressure_fn(mp)
+            np.testing.assert_allclose(pressure_fn(np.array([1.0, 3.0])), [2.0, 6.0])
+        finally:
+            unregister_operator("pressure", "_test_eos")
+
+    def test_pressure_kind_names_match_the_eos_that_implement_one(self):
+        """The ``pressure`` kind is the capability set consumers query for availability."""
+        from src.registry import get_operator_names
+
+        assert get_operator_names("pressure") == {"double-well", "carnahan-starling"}
+        assert get_operator_names("pressure") <= get_operator_names("eos")
 
 
 # ---------------------------------------------------------------------------

@@ -377,7 +377,16 @@ Plotting and analysis
 ~~~~~~~~~~~~~~~~~~~~~
 
 ``plotting`` operators draw one panel per saved timestep: ``density``,
-``velocity``, ``force``, ``force_ext``.
+``velocity``, ``force``, ``force_ext``, ``pressure``, ``pressure_total``.
+
+The two pressure operators are **opt-in** (``PlotOperator.opt_in = True``):
+they are skipped by the "every registered operator" default and only render
+when named explicitly in ``plot_fields`` / ``animate_fields``.  ``pressure``
+shows the bulk EOS pressure ``p_0(rho)`` — the same function the Young-Laplace
+surface-tension calibration uses — while ``pressure_total`` adds the
+interfacial terms, ``p = p_0 - kappa (rho grad^2 rho + |grad rho|^2 / 2)``.
+Both require a multiphase run whose EOS has a pressure implementation
+(``double-well`` or ``carnahan-starling``); otherwise the panel is dropped.
 
 ``analysis`` operators plot a whole run's snapshot history: ``avg_density``,
 ``total_mass``, ``max_velocity``, ``density_ratio``, ``contact_angle_left``,

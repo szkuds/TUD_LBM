@@ -221,6 +221,21 @@ def eos_operator(
     return register_operator("eos", name=name, **meta)
 
 
+def pressure_operator(
+    *,
+    name: str | None = None,
+    **meta: object,
+) -> Callable[[_OT], _OT]:
+    """Register a bulk-pressure operator (kind ``"pressure"``).
+
+    Names match the ``"eos"`` kind: an EOS gains a bulk pressure ``p_0(rho)``
+    by registering here under the same name. The two kinds are deliberately
+    separate rather than one entry, so an EOS may exist without a pressure —
+    membership of this kind *is* the capability check consumers query.
+    """
+    return register_operator("pressure", name=name, **meta)
+
+
 def initialise_operator(
     *,
     name: str | None = None,

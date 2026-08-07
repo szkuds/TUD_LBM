@@ -103,8 +103,13 @@ class FigureBuilder:
                 # Wetting default: density field for droplet visibility + dual-axis Ca/θ vs position.
                 requested = ["density", "ca_theta_vs_x"]
             else:
-                # Non-wetting default: all registered field plot operators.
-                requested = list(get_operators("plotting").keys())
+                # Non-wetting default: every registered field plot operator
+                # except those marked opt-in, which must be named explicitly.
+                requested = [
+                    name
+                    for name, entry in get_operators("plotting").items()
+                    if not getattr(entry.target, "opt_in", False)
+                ]
 
         self._resolve_operators(requested)
 
@@ -298,7 +303,12 @@ class FigureBuilder:
         return out_path
 
     def build_single(self, snapshot_path: str | os.PathLike, filename: str | None = None) -> Path | None:
-        """Build one figure beside a specific ``.npz`` snapshot."""
+        """Build one figure for a specific ``.npz`` snapshot.
+
+        The figure lands in the same place the equivalent full-run figure would:
+        ``plots/snapshots/`` normally, ``plots/analysis/`` when the selection
+        holds analysis operators only.
+        """
         fp = Path(snapshot_path)
         timestep = parse_timestep(fp.stem) or 0
 
@@ -324,10 +334,18 @@ class FigureBuilder:
             )
             return None
 
-        out_path = fp.parent / out_name
+        out_dir = self._single_output_dir()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / out_name
         fig.savefig(out_path, dpi=self.dpi)
         plt.close(fig)
         return out_path
+
+    def _single_output_dir(self) -> Path:
+        """Pick the plot subdirectory a single-snapshot figure belongs in."""
+        if not self._field_operators and self._analysis_operators:
+            return self._analysis_dir
+        return self._snapshots_dir
 
     def build_all(self, skip: int = 0) -> list[Path]:
         """Build figures for every saved timestep file under data/."""

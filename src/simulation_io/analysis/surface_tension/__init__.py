@@ -12,4 +12,8 @@ from src.simulation_io.analysis.surface_tension.surface_tension import calibrate
 from src.simulation_io.analysis.surface_tension.surface_tension import record_surface_tension
 from src.simulation_io.analysis.surface_tension.surface_tension import surface_tension_dir
 
-__all__ = ["calibrate_surface_tension", "record_surface_tension", "surface_tension_dir"]
+__all__ = [
+    "calibrate_surface_tension",
+    "record_surface_tension",
+    "surface_tension_dir",
+]
