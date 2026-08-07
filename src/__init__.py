@@ -47,7 +47,7 @@ Full API Reference
 See https://github.com/tudelft-ceg/tud-lbm for documentation.
 """
 
-__version__ = "0.3.0"
+__version__ = "2026.0.1"
 
 # Apply JAX settings (x64 precision) before any submodule creates arrays;
 # module-level constants bake in the dtype active at import time.

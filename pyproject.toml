@@ -49,6 +49,9 @@ dev = [
   "ruff",
   "python-dotenv",
   "ty",
+  # Used by .pre-commit-config.yaml and the release procedure in CONTRIBUTING.md.
+  "pre-commit",
+  "bump-my-version",
 ]
 docs = [
   "sphinx",
@@ -63,9 +66,10 @@ animation = ["moviepy"]
 publishing = ["build", "twine"]
 
 [project.urls]
-Repository = "https://github.com/szkuds/tud_lbm"
-Issues     = "https://github.com/szkuds/tud_lbm/issues"
-ReadTheDocs = "https://tud_lbm.readthedocs.io"
+Repository = "https://github.com/szkuds/TUD_LBM"
+Issues     = "https://github.com/szkuds/TUD_LBM/issues"
+Documentation = "https://tud-lbm.readthedocs.io"
+Changelog = "https://github.com/szkuds/TUD_LBM/blob/main/CHANGELOG.md"
 
 [project.scripts]
 tud-lbm = "src.cli.commands:cli"
@@ -159,11 +163,8 @@ extend-immutable-calls = ["array_field"]
 "examples/**.py"                                  = ["INP001","ANN201","ERA001","T201","D103"]
 "examples/minimal_example.py"                     = ["RUF002"]
 "src/config/simulation_config.py"             = ["RUF009"]
-"src/util/plotting/__init__.py"               = ["I001"]
-"src/util/plotting/base.py"                   = ["ARG002"]
 "src/pipeline/setup.py"                       = ["PLC0415","RUF002"]
 "src/pipeline/__init__.py"                    = ["PLC0415"]
-"src/runner/parallel_runner.py"               = ["PLC0415","ARG001","LOG015","G004"]
 "src/operators/protocols.py"                  = ["ANN401","RUF002"]
 "src/operators/macroscopic/_multiphase.py"    = ["RUF002","RUF003"]
 "src/operators/collision/_bgk.py"             = ["RUF002"]

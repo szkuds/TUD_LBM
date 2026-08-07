@@ -31,22 +31,62 @@ The sections below outline the steps in each case.
 1. (**important**) announce your plan to the rest of the community *before you start working*. This announcement should be in the form of a (new) issue;
 1. (**important**) wait until some kind of consensus is reached about your idea being a good idea;
 1. if needed, fork the repository to your own Github profile and create your own feature branch off of the latest main commit. While working on your feature branch, make sure to stay up to date with the main branch by pulling in changes, possibly from the 'upstream' repository (follow the instructions [here](https://help.github.com/articles/configuring-a-remote-for-a-fork/) and [here](https://help.github.com/articles/syncing-a-fork/));
-1. install dependencies (see the [development documentation](docs/notes/README.dev.md#development_install));
+1. install dependencies (see the [development documentation](docs/notes/README.dev.md#development-install));
 1. make sure the existing tests still work by running ``pytest``;
-1. add your own tests (if necessary);
+1. **add tests for your change** (see [Testing policy](#testing-policy) below);
 1. update or expand the documentation;
-
+1. run the full local quality gate before pushing (see [Quality gate](#quality-gate) below);
 1. [push](http://rogerdudler.github.io/git-guide/) your feature branch to (your fork of) the tud_lbm repository on GitHub;
 1. create the pull request, e.g. following the instructions [here](https://help.github.com/articles/creating-a-pull-request/).
 
 In case you feel like you've made a valuable contribution, but you don't know how to write or run tests for it, or how to generate the documentation: don't let this discourage you from making the pull request; we can help you! Just go ahead and submit the pull request, but keep in mind that you might be asked to append additional commits to your pull request.
+
+### Testing policy
+
+New functionality must come with tests.
+
+- A change that adds a new operator, CLI command, configuration field, or analysis routine is
+  expected to add tests covering it. Operators should also satisfy the protocol conformance tests.
+- A bug fix is expected to add a regression test that fails before the fix and passes after it.
+- New code must not decrease overall project coverage. This is enforced by the SonarCloud quality
+  gate, which runs on every pull request.
+
+Tests live in `tests/` and are run with `pytest`. Mark slow, full-pipeline tests with
+`@pytest.mark.slow` so they stay out of the fast CI path; the available markers are listed under
+`[tool.pytest.ini_options]` in `pyproject.toml`.
+
+Tests should validate public behaviour and invariants, not internal structure — a refactor that
+preserves behaviour should not require rewriting the test suite.
+
+### Quality gate
+
+Run these locally before pushing; CI runs the same checks and will fail the pull request otherwise:
+
+```console
+uv run ruff format
+uv run ruff check
+uv run ty check
+uv run pytest --cov --cov-report xml
+```
+
+Type checking uses [ty](https://github.com/astral-sh/ty). Suppress a finding with
+`# ty: ignore[rule-code]` — not `# type: ignore` — and only as a last resort.
+
+`ruff` and `ty` also run as [pre-commit](https://pre-commit.com/) hooks; install them once with
+`uv run pre-commit install`.
+
+## Reporting a security vulnerability
+
+Do **not** open a public issue for a security vulnerability. Follow the private reporting process
+in [SECURITY.md](SECURITY.md) instead.
 
 ## You want to make a new release of the code base
 
 To create a release you need write permission on the repository.
 
 1. Check the author list in [`CITATION.cff`](CITATION.cff)
-1. Bump the version using `bump-my-version bump <major|minor|patch>`. For example, `bump-my-version bump major` will increase major version numbers everywhere it's needed (code, meta, etc.) in the repo. Alternatively the version can be manually changed in tud_lbm/__init__.py, pyproject.toml, CITATION.cffand docs/conf.py (and other places it was possibly added).
+1. Bump the version using `bump-my-version bump <major|minor|patch>`. For example, `bump-my-version bump major` will increase major version numbers everywhere it's needed (code, meta, etc.) in the repo. **Use the tool rather than editing by hand** — the version string appears in `src/__init__.py`, `pyproject.toml`, `CITATION.cff` and `docs/conf.py`, and editing only one of them leaves the others stale and breaks the next bump.
+1. Move the `[Unreleased]` entries in [`CHANGELOG.md`](CHANGELOG.md) under the new version heading, and record any fixed vulnerabilities there explicitly (including CVE identifiers where one was assigned).
 
 1. Go to the [GitHub release page](https://github.com/szkuds/tud_lbm/releases)
 1. Press draft a new release button

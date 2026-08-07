@@ -5,7 +5,7 @@
 [![RSD](https://img.shields.io/badge/rsd-tud_lbm-00a3e3.svg)](https://research-software-directory.org/software/tudlbm)
 [![workflow pypi badge](https://img.shields.io/pypi/v/tud_lbm.svg?colorB=blue)](https://pypi.python.org/project/tud_lbm/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19204133.svg)](https://doi.org/10.5281/zenodo.19204133)
-[![workflow cii badge](https://bestpractices.coreinfrastructure.org/projects/11832/badge)](https://bestpractices.coreinfrastructure.org/projects/11832)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/11832/badge)](https://www.bestpractices.dev/projects/11832)
 [![fair-software badge](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8B-yellow)](https://fair-software.eu)
 
 [![workflow scq badge](https://sonarcloud.io/api/project_badges/measure?project=szkuds_TUD_LBM&metric=alert_status)](https://sonarcloud.io/dashboard?id=szkuds_TUD_LBM)
@@ -95,10 +95,20 @@ tud-lbm compare /path/to/sweep-results --no-prompt
 
 See the [examples](examples/) for single-phase, multiphase, parallel, and von Karman configurations.
 
+## Reporting bugs and vulnerabilities
+
+- **Bugs, questions, and feature requests** — search the
+  [issue tracker](https://github.com/szkuds/TUD_LBM/issues) first, then
+  [open a new issue](https://github.com/szkuds/TUD_LBM/issues/new/choose). All issues and
+  responses are publicly archived there.
+- **Security vulnerabilities** — do not open a public issue. Follow the private reporting process
+  in [SECURITY.md](SECURITY.md); we acknowledge reports within 14 days.
+
 ## Contributing
 
 If you want to contribute to the development of tud_lbm,
-have a look at the [contribution guidelines](CONTRIBUTING.md).
+have a look at the [contribution guidelines](CONTRIBUTING.md). Notable changes are recorded in the
+[changelog](CHANGELOG.md).
 
 ## Credits
 
