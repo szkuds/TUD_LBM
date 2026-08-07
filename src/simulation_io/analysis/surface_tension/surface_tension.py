@@ -13,13 +13,22 @@ e.g. to verify the closed-form double-well sigma numerically.
 
 The measurement is expensive, so results are cached on disk keyed by the
 thermodynamic parameters and calibration grid size that determine sigma. The
-cache file lives at
-``src/simulation_io/analysis/surface_tension/data/surface_tension_cache.json`` — inside the repo, so
-it's shared with the team via the normal git workflow rather than re-measured
-by everyone individually (commit it after adding a new entry). The equilibrated
-density field of every droplet is cached beside it under ``data/fields/`` and
-must be committed together with the JSON: it is what lets a cache hit still
-draw the snapshot figures below without re-running the sweep.
+cache is split in two by size, and only the small half lives in the repo:
+
+``src/simulation_io/analysis/surface_tension/data/surface_tension_cache.json``
+    The fitted numbers — a few hundred bytes per entry. Git-tracked on
+    purpose, so a measured sigma is shared with the team via the normal git
+    workflow rather than re-measured by everyone individually (commit it after
+    adding a new entry).
+``$TUD_LBM_DATA_DIR/surface_tension_cache/fields/<digest>.npz``
+    The equilibrated density field of every droplet, ~4 MB per entry. This is
+    simulation output, so it is written under the user data root
+    (:data:`~src.config.config_overview.BASE_RESULTS_DIR`) and never inside
+    the repository — a run must not dirty the working tree. It is what lets a
+    cache hit still draw the snapshot figures below without re-running the
+    sweep; a machine that has the JSON entry but not the fields simply skips
+    those figures. :func:`_store_fields` refuses to write inside the package
+    tree, so the split cannot silently regress.
 
 Every artefact of a calibration is grouped under ``<run_dir>/surface_tension/``
 rather than dropped flat into the run directory, in the same ``data/`` +
@@ -51,6 +60,7 @@ from typing import TYPE_CHECKING
 from typing import cast
 import numpy as np
 from rich.console import Console
+from src.config.config_overview import BASE_RESULTS_DIR
 from src.operators.macroscopic.eos import build_pressure_fn  # also registers the pressure operators
 from src.registry import get_operator_names
 
@@ -93,10 +103,9 @@ _PLOT_FILENAME = "calibration.png"
 _DATA_FILENAME = "data.json"
 _SNAPSHOTS_DIRNAME = "snapshots"
 
-# Equilibrated density fields, cached beside the JSON so a cache hit can still
-# draw the snapshot figures. One file per cache key, named by its digest
-# because the key itself is a JSON blob.
-_FIELDS_DIRNAME = "fields"
+# Equilibrated density fields, cached so a cache hit can still draw the
+# snapshot figures. One file per cache key, named by its digest because the key
+# itself is a JSON blob.
 _FIELDS_KEY_DIGEST_LEN = 16
 _FIELD_STACK_DIMS = 3  # (n_radii, nx, ny)
 
@@ -104,8 +113,19 @@ _FIELD_STACK_DIMS = 3  # (n_radii, nx, ny)
 # picked up by everyone on the next `git pull`, instead of each person
 # re-running the ~40-minute droplet sweep. Sharing a new entry still requires
 # an explicit `git add/commit/push` — writing to this file only updates your
-# local working tree.
+# local working tree. Only the JSON qualifies: it is small, diffable and
+# reviewable, which the multi-megabyte density fields are not.
 _SHARED_CACHE_PATH = Path(__file__).resolve().parent / "data" / _CACHE_FILENAME
+
+# The density fields are simulation output, so they go under the user data root
+# — the same ``$TUD_LBM_DATA_DIR`` (default ``~/TUD_LBM_data``) that run
+# directories default to — and never into the checkout. Machine-local by
+# design: an absent field cache costs snapshot figures, never sigma.
+_FIELDS_CACHE_DIR = Path(BASE_RESULTS_DIR) / "surface_tension_cache" / "fields"
+
+# Anything at or below the import root is the checkout; a calibration writing
+# there would dirty the working tree. Guards :func:`_store_fields`.
+_PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
 # Parameters that uniquely determine the measured surface tension.
 _CACHE_KEYS = (
@@ -504,21 +524,26 @@ def _store_cache(
 
 
 def _fields_path(key: str) -> Path:
-    """Path of the cached density fields for *key*."""
+    """Path of the cached density fields for *key*, under the user data root."""
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:_FIELDS_KEY_DIGEST_LEN]
-    return _cache_path().parent / _FIELDS_DIRNAME / f"{digest}.npz"
+    return _FIELDS_CACHE_DIR / f"{digest}.npz"
 
 
 def _store_fields(key: str, densities: list[np.ndarray]) -> None:
-    """Cache the equilibrated density fields beside the shared JSON cache.
+    """Cache the equilibrated density fields under the user data root.
 
     Stored as one stacked ``(n_radii, nx, ny)`` array so a later cache hit can
-    redraw the snapshot figures without re-running the sweep. Like the JSON
-    cache this is git-tracked: commit it alongside the new cache entry.
+    redraw the snapshot figures without re-running the sweep. Unlike the JSON
+    cache these are machine-local and never committed: multi-megabyte binaries
+    do not belong in the checkout, and a peer missing them loses only the
+    snapshot figures.
     """
     if not densities:
         return
-    path = _fields_path(key)
+    path = _fields_path(key).resolve()
+    if path.is_relative_to(_PACKAGE_ROOT):
+        msg = f"refusing to write the density-field cache inside the repository: {path}"
+        raise RuntimeError(msg)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp.npz")
     np.savez_compressed(tmp, rho=np.stack([np.asarray(rho) for rho in densities]))

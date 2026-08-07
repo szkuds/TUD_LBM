@@ -7,15 +7,28 @@ physics integration tests, not here).
 
 from __future__ import annotations
 import json
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 from typing import NamedTuple
 import numpy as np
 import pytest
+from src.config.config_overview import BASE_RESULTS_DIR
 from src.simulation_io.analysis.surface_tension import surface_tension as st
 
-if TYPE_CHECKING:
-    from pathlib import Path
+# Captured before the autouse fixture below redirects it, so the "never inside
+# the checkout" invariant can be asserted against the value a real run uses.
+_REAL_FIELDS_CACHE_DIR = st._FIELDS_CACHE_DIR
+
+
+@pytest.fixture(autouse=True)
+def _isolate_field_cache(tmp_path, monkeypatch):
+    """Keep the density-field cache out of the developer's real data root.
+
+    ``_FIELDS_CACHE_DIR`` resolves to ``$TUD_LBM_DATA_DIR`` at import time, so
+    without this every test that measures would leave multi-megabyte archives
+    in the user's actual results directory.
+    """
+    monkeypatch.setattr(st, "_FIELDS_CACHE_DIR", tmp_path / "field_cache")
 
 
 def _stub_config(**overrides):
@@ -292,8 +305,33 @@ def test_calibrate_cache_is_grid_specific(tmp_path, monkeypatch):
     assert seen_grid_shapes == [(32, 32, 1), (48, 48, 1)]
 
 
-def test_fields_cache_round_trip(tmp_path, monkeypatch):
-    monkeypatch.setattr(st, "_SHARED_CACHE_PATH", tmp_path / st._CACHE_FILENAME)
+def test_field_cache_never_lands_in_the_checkout():
+    """The density fields are simulation output; the repo must stay clean.
+
+    They were once written into ``src/.../surface_tension/data/fields/``, which
+    dirtied the working tree with a multi-megabyte archive on every fresh
+    calibration.
+    """
+    fields_dir = _REAL_FIELDS_CACHE_DIR.resolve()
+
+    assert not fields_dir.is_relative_to(st._PACKAGE_ROOT)
+    assert fields_dir.is_relative_to(Path(BASE_RESULTS_DIR).resolve())
+
+
+def test_store_fields_refuses_to_write_into_the_checkout(monkeypatch):
+    """The guard fires even if the cache directory is pointed back at the repo."""
+    in_repo = st._PACKAGE_ROOT / "simulation_io" / "analysis" / "surface_tension" / "data" / "fields"
+    monkeypatch.setattr(st, "_FIELDS_CACHE_DIR", in_repo)
+
+    with pytest.raises(RuntimeError, match="inside the repository"):
+        st._store_fields(st._cache_key(_stub_config()), [np.zeros((4, 4))])
+
+    # Not `not in_repo.exists()`: the directory may survive from an old
+    # checkout. What must hold is that nothing was written into it.
+    assert not list(in_repo.glob("*"))
+
+
+def test_fields_cache_round_trip():
     key = st._cache_key(_stub_config())
     densities = [np.full((8, 6), 0.4), np.full((8, 6), 0.02)]
 
@@ -305,8 +343,7 @@ def test_fields_cache_round_trip(tmp_path, monkeypatch):
     assert st._load_fields(key, n_radii=3) is None  # stale entry: wrong count
 
 
-def test_load_fields_missing_or_corrupt_is_a_miss(tmp_path, monkeypatch):
-    monkeypatch.setattr(st, "_SHARED_CACHE_PATH", tmp_path / st._CACHE_FILENAME)
+def test_load_fields_missing_or_corrupt_is_a_miss():
     key = st._cache_key(_stub_config())
 
     assert st._load_fields(key, n_radii=2) is None  # nothing stored yet
@@ -317,8 +354,7 @@ def test_load_fields_missing_or_corrupt_is_a_miss(tmp_path, monkeypatch):
     assert st._load_fields(key, n_radii=2) is None
 
 
-def test_store_fields_ignores_empty_sweep(tmp_path, monkeypatch):
-    monkeypatch.setattr(st, "_SHARED_CACHE_PATH", tmp_path / st._CACHE_FILENAME)
+def test_store_fields_ignores_empty_sweep():
     key = st._cache_key(_stub_config())
 
     st._store_fields(key, [])
