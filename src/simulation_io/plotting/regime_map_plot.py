@@ -14,6 +14,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 from src.config.config_overview import BASE_RESULTS_DIR
+from src.config.run_config import ACCELERATION_PLOT_FILENAME
+from src.config.run_config import ANALYSIS_DIRNAME
+from src.config.run_config import CONFIG_FILENAME
+from src.config.run_config import PLOTS_DIRNAME
+from src.config.run_config import REGIME_MAP_DIRNAME
+from src.config.run_config import REGIME_MAP_FILENAME
 from src.simulation_io.analysis.accelerations import Smoothing
 from src.simulation_io.analysis.accelerations import classify_regime
 from src.simulation_io.analysis.accelerations import compute_acceleration
@@ -21,7 +27,8 @@ from src.simulation_io.analysis.accelerations import save_diagnostic_plot
 from src.simulation_io.analysis.droplet_metrics import droplet_series_for_run
 from src.simulation_io.analysis.physical_parameters import compute_dimensionless_numbers
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
-from src.simulation_io.plotting.run_comparison import _CONFIG_TOML
+from src.simulation_io.plotting.figure_config import REGIME_COLORS
+from src.simulation_io.plotting.figure_config import REGIME_MARKERS
 from src.simulation_io.plotting.run_comparison import _clean_dir_label
 from src.simulation_io.plotting.run_comparison import _safe_load_config
 from src.simulation_io.plotting.simulation_csv import build_simulation_csv
@@ -31,21 +38,12 @@ if TYPE_CHECKING:
     import pandas as pd
     from src.config import SimulationConfig
 
-_REGIME_MAP_DIR = "regime_map_analysis"
-_REGIME_MAP_FILENAME = "regime_map.png"
-_DIAGNOSTIC_FILENAME = "acceleration_analysis.png"
-_PLOTS_DIR = "plots"
-_ANALYSIS_DIR = "analysis"
+# Output names come from src.config.run_config and regime styling from
+# plotting.figure_config; the two below are local parsing invariants, not
+# configuration: a run needs two rows before a difference can be taken, and a
+# quoted line needs its two quote characters.
 _MIN_CSV_ROWS = 2
 _MIN_QUOTED_LINE_LEN = 2
-
-_REGIME_MARKERS: dict[str, str] = {"Pinning": "o", "Dissipative": "s", "Inertial": "^", "unknown": "x"}
-_REGIME_COLORS: dict[str, str] = {
-    "Pinning": "tab:blue",
-    "Dissipative": "tab:green",
-    "Inertial": "tab:red",
-    "unknown": "tab:gray",
-}
 
 
 @dataclass(frozen=True)
@@ -185,7 +183,7 @@ def _load_or_build_csv(run_dir: Path, config: SimulationConfig) -> tuple[pd.Data
 
 def process_run_dir(run_dir: Path, *, smoothing: Smoothing = "raw") -> RunRegimeEntry | None:
     """Classify one run directory, or return ``None`` (with a warning) when unusable."""
-    config = _safe_load_config(run_dir / _CONFIG_TOML)
+    config = _safe_load_config(run_dir / CONFIG_FILENAME)
     if config is None:
         return None
 
@@ -206,7 +204,7 @@ def process_run_dir(run_dir: Path, *, smoothing: Smoothing = "raw") -> RunRegime
     accel_result = compute_acceleration(df, smoothing=smoothing)
     regime_result = classify_regime(df["cm_x"].to_numpy(dtype=float), r_zero, accel_result)
     save_diagnostic_plot(
-        accel_result, regime_result.window, run_dir / _PLOTS_DIR / _ANALYSIS_DIR / _DIAGNOSTIC_FILENAME
+        accel_result, regime_result.window, run_dir / PLOTS_DIRNAME / ANALYSIS_DIRNAME / ACCELERATION_PLOT_FILENAME
     )
 
     label = config.simulation_name or _clean_dir_label(run_dir.name)
@@ -231,8 +229,8 @@ def plot_regime_map(entries: list[RunRegimeEntry], out_path: str | Path) -> Path
         ax.scatter(
             xs,
             ys,
-            color=_REGIME_COLORS[regime],
-            marker=_REGIME_MARKERS[regime],
+            color=REGIME_COLORS[regime],
+            marker=REGIME_MARKERS[regime],
             label=regime,
             s=DEFAULT_STYLE.scatter_marker_size * 4,
             alpha=DEFAULT_STYLE.scatter_alpha,
@@ -284,8 +282,8 @@ def build_regime_map(
     if not entries:
         return None
 
-    out_dir = Path(out_dir) if out_dir is not None else txt_path.parent / _REGIME_MAP_DIR
-    out_path = out_dir / _REGIME_MAP_FILENAME
+    out_dir = Path(out_dir) if out_dir is not None else txt_path.parent / REGIME_MAP_DIRNAME
+    out_path = out_dir / REGIME_MAP_FILENAME
     plot_regime_map(entries, out_path)
     print(f"Saved {out_path}")
     return out_path

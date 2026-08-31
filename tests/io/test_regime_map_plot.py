@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 from src.config import SimulationConfig
-from src.simulation_io.plotting.regime_map_plot import _REGIME_COLORS
-from src.simulation_io.plotting.regime_map_plot import _REGIME_MARKERS
+from src.simulation_io.analysis.accelerations import Regime
+from src.simulation_io.plotting.figure_config import REGIME_COLORS
+from src.simulation_io.plotting.figure_config import REGIME_MARKERS
 from src.simulation_io.plotting.regime_map_plot import RunRegimeEntry
 from src.simulation_io.plotting.regime_map_plot import build_regime_map
 from src.simulation_io.plotting.regime_map_plot import parse_run_dir_list
@@ -217,6 +218,12 @@ def test_process_run_dir_none_for_calibration_only_eos_without_surface_tension(t
     assert process_run_dir(run_dir) is None
 
 
+def test_regime_style_tables_cover_every_regime():
+    """figure_config's style tables are keyed by the Regime enum's own values."""
+    assert set(REGIME_MARKERS) == {regime.value for regime in Regime}
+    assert set(REGIME_COLORS) == {regime.value for regime in Regime}
+
+
 def test_plot_regime_map_writes_file_with_all_regime_markers(tmp_path: Path):
     entries = [
         RunRegimeEntry(run_dir=tmp_path / "a", label="a", bo_parallel=1.0, oh=0.1, regime="Pinning"),
@@ -224,8 +231,8 @@ def test_plot_regime_map_writes_file_with_all_regime_markers(tmp_path: Path):
         RunRegimeEntry(run_dir=tmp_path / "c", label="c", bo_parallel=3.0, oh=0.3, regime="Inertial"),
         RunRegimeEntry(run_dir=tmp_path / "d", label="d", bo_parallel=4.0, oh=0.4, regime="unknown"),
     ]
-    assert set(_REGIME_MARKERS) == {e.regime for e in entries}
-    assert set(_REGIME_COLORS) == {e.regime for e in entries}
+    assert set(REGIME_MARKERS) == {e.regime for e in entries}
+    assert set(REGIME_COLORS) == {e.regime for e in entries}
 
     out_path = plot_regime_map(entries, tmp_path / "regime_map.png")
 

@@ -41,8 +41,8 @@ if TYPE_CHECKING:
     from src.operators.boundary import BCMasks
     from src.operators.macroscopic import MultiphaseParams
     from src.operators.protocols import BoundaryOperator
+    from src.operators.protocols import BoundDifferentialOperator
     from src.operators.protocols import CollisionOperator
-    from src.operators.protocols import DifferentialOperator
     from src.operators.protocols import EquilibriumOperator
     from src.operators.protocols import ExtraStatePlugin
     from src.operators.protocols import HysteresisOperator
@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from src.operators.protocols import ObstacleOperator
     from src.operators.protocols import StepOperator
     from src.operators.protocols import StreamingOperator
+    from src.operators.protocols import WettingDifferentialOperator
 
 
 class SimulationSetup(NamedTuple):
@@ -129,11 +130,11 @@ class SimulationSetup(NamedTuple):
     obstacle_fn: ObstacleOperator | None = None
 
     # ── Differential operator closures (pre-built) ──
-    gradient_standard: DifferentialOperator | None = None
-    gradient_density: DifferentialOperator | None = None
-    laplacian_density: DifferentialOperator | None = None
-    gradient_density_wetting: DifferentialOperator | None = None
-    laplacian_density_wetting: DifferentialOperator | None = None
+    gradient_standard: BoundDifferentialOperator | None = None
+    gradient_density: BoundDifferentialOperator | None = None
+    laplacian_density: BoundDifferentialOperator | None = None
+    gradient_density_wetting: WettingDifferentialOperator | None = None
+    laplacian_density_wetting: WettingDifferentialOperator | None = None
 
     # ── Step function (unbound: (setup, state) -> State) ──
     step_fn: StepOperator | None = None

@@ -13,6 +13,8 @@ from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
+from src.config.run_config import DATA_DIRNAME
+from src.config.run_config import SNAPSHOT_GLOB
 from src.simulation_io.analysis.droplet_metrics._scales import MetricScales
 from src.simulation_io.analysis.droplet_metrics._scales import resolve_scales
 from src.simulation_io.analysis.droplet_metrics._snapshot import avg_x_location
@@ -378,10 +380,10 @@ def series_for_files(files: Sequence[Path], config: SimulationConfig) -> Droplet
 
 def droplet_series_for_run(run_dir: str | Path, config: SimulationConfig) -> DropletSeries | None:
     """Cached droplet series for every ``data/timestep_*.npz`` under *run_dir*."""
-    data_dir = Path(run_dir) / "data"
+    data_dir = Path(run_dir) / DATA_DIRNAME
     if not data_dir.exists():
         return None
-    files = sorted(data_dir.glob("timestep_*.npz"), key=parse_timestep_from_path)
+    files = sorted(data_dir.glob(SNAPSHOT_GLOB), key=parse_timestep_from_path)
     if not files:
         return None
     return series_for_files(files, config)

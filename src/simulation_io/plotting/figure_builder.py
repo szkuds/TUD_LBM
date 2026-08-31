@@ -10,6 +10,11 @@ mpl.use("Agg")
 
 from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
+from src.config.run_config import ANALYSIS_DIRNAME
+from src.config.run_config import DATA_DIRNAME
+from src.config.run_config import PLOTS_DIRNAME
+from src.config.run_config import SNAPSHOT_PREFIX
+from src.config.run_config import SNAPSHOTS_DIRNAME
 from src.registry import get_operators
 from src.simulation_io.analysis.droplet_metrics import parse_timestep
 from src.simulation_io.plotting._analysis_common import load_snapshot
@@ -76,10 +81,10 @@ class FigureBuilder:
         self.run_dir = Path(run_dir)
         self.dpi = dpi
 
-        self._data_dir = self.run_dir / "data"
-        self._plot_dir = self.run_dir / "plots"
-        self._snapshots_dir = self._plot_dir / "snapshots"
-        self._analysis_dir = self._plot_dir / "analysis"
+        self._data_dir = self.run_dir / DATA_DIRNAME
+        self._plot_dir = self.run_dir / PLOTS_DIRNAME
+        self._snapshots_dir = self._plot_dir / SNAPSHOTS_DIRNAME
+        self._analysis_dir = self._plot_dir / ANALYSIS_DIRNAME
         self._field_operators: list = []
         self._analysis_operators: list = []
         self._analysis_export_operators: list = []
@@ -296,7 +301,7 @@ class FigureBuilder:
             )
             return None
 
-        out_name = filename or f"timestep_{timestep}.png"
+        out_name = filename or f"{SNAPSHOT_PREFIX}{timestep}.png"
         out_path = self._snapshots_dir / out_name
         fig.savefig(out_path, dpi=self.dpi)
         plt.close(fig)

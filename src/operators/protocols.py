@@ -30,10 +30,12 @@ from typing import Protocol
 from typing import runtime_checkable
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
     import jax.numpy as jnp
     import matplotlib.axes
     import numpy as np
+    from jax.typing import ArrayLike
     from src.config.simulation_config import SimulationConfig
     from src.lattice.lattice import Lattice
     from src.pipeline.state import State
@@ -474,6 +476,163 @@ class DifferentialOperator(Protocol):
         ...
 
 
+class BoundDifferentialOperator(Protocol):
+    """Bound differential operator — a built closure over a single field.
+
+    This is what :func:`~src.operators.differential.build_diff_ops` returns and
+    what ``SimulationSetup.gradient_standard`` / ``gradient_density`` /
+    ``laplacian_density`` hold: the lattice weights, velocities and pad modes
+    are already captured, so the only runtime argument is the field.
+
+    Distinct from :class:`DifferentialOperator`, which describes the *raw*
+    registry targets — those still take ``(grid, w, [c,] pad_mode)`` and so keep
+    a permissive signature. Annotating a built closure as the raw protocol makes
+    a one-argument function stand in for a four-argument one.
+
+    Signature::
+
+        def bound_op(grid) -> derivative_field
+    """
+
+    def __call__(self, grid: jnp.ndarray) -> jnp.ndarray:
+        """Compute a spatial derivative of *grid*.
+
+        Args:
+            grid: Scalar field, shape ``(nx, ny, nz, 1, 1)``.
+
+        Returns:
+            Derivative field, shape ``(nx, ny, nz, 1, 2)`` for a gradient or
+            ``(nx, ny, nz, 1, 1)`` for a Laplacian.
+        """
+        ...
+
+
+class WettingDifferentialOperator(Protocol):
+    """Parametric wetting differential operator — an already-built closure.
+
+    Returned by the ``gradient_wetting`` / ``laplacian_wetting`` registry
+    builders — :class:`WettingGradientBuilder` and
+    :class:`WettingLaplacianBuilder` — which bake the static configuration
+    (lattice weights, pad modes, ``bc_config``, ``rho_l``, ``rho_v``) into the
+    closure.
+
+    Unlike :class:`DifferentialOperator`, the dynamic wetting parameters are
+    explicit rather than absorbed by ``*args``/``**kwargs``, so the arity is
+    fixed and a mismatched call is a type error.
+
+    Signature::
+
+        def wetting_op(grid, phi_l, phi_r, d_rho_l, d_rho_r) -> derivative_field
+    """
+
+    def __call__(
+        self,
+        grid: jnp.ndarray,
+        phi_l: ArrayLike,
+        phi_r: ArrayLike,
+        d_rho_l: ArrayLike,
+        d_rho_r: ArrayLike,
+    ) -> jnp.ndarray:
+        """Compute a wetting-corrected spatial derivative.
+
+        Args:
+            grid: Scalar field, shape ``(nx, ny, nz, 1, 1)``.
+            phi_l: Wetting potential for the left contact line. Any array-like
+                scalar — a Python float, a 0-d array, or a traced array (the
+                hysteresis optimiser passes tracers).
+            phi_r: Wetting potential for the right contact line.
+            d_rho_l: Density offset for the left contact line.
+            d_rho_r: Density offset for the right contact line.
+
+        Returns:
+            Derivative field, shape ``(nx, ny, nz, 1, 2)`` for a gradient or
+            ``(nx, ny, nz, 1, 1)`` for a Laplacian.
+        """
+        ...
+
+
+class WettingGradientBuilder(Protocol):
+    """Builder for the parametric wetting gradient — returns the operator.
+
+    Registered under ``("differential", "gradient_wetting")``. Unlike the plain
+    ``gradient`` entry, the registry target here is a *factory*: it takes the
+    static configuration and returns the closure that does the work.
+
+    Distinct from :class:`WettingLaplacianBuilder` because the gradient needs
+    the lattice velocities ``c`` and the Laplacian does not — the two arities
+    are why this cannot be one shared builder type.
+
+    Signature::
+
+        def build(w, c, pad_mode, bc_config=None, *, rho_l, rho_v) -> wetting_op
+    """
+
+    def __call__(
+        self,
+        w: jnp.ndarray,
+        c: jnp.ndarray,
+        pad_mode: Sequence[str],
+        bc_config: dict[str, Any] | None = None,
+        *,
+        rho_l: float,
+        rho_v: float,
+    ) -> WettingDifferentialOperator:
+        """Build a wetting-corrected gradient closure.
+
+        Args:
+            w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
+            c: Lattice velocity vectors, shape ``(1, 1, 1, q, 2)``.
+            pad_mode: Four padding modes ``(right_y, left_y, bottom_x, top_x)``.
+            bc_config: Boundary-condition edge map. ``None`` defaults to
+                bottom-only wetting.
+            rho_l: Liquid density, baked into the closure.
+            rho_v: Vapour density, baked into the closure.
+
+        Returns:
+            A :class:`WettingDifferentialOperator` producing shape
+            ``(nx, ny, nz, 1, 2)``.
+        """
+        ...
+
+
+class WettingLaplacianBuilder(Protocol):
+    """Builder for the parametric wetting Laplacian — returns the operator.
+
+    Registered under ``("differential", "laplacian_wetting")``. The Laplacian
+    stencil is isotropic and needs only the weights, so — unlike
+    :class:`WettingGradientBuilder` — it takes no lattice velocities.
+
+    Signature::
+
+        def build(w, pad_mode, bc_config=None, *, rho_l, rho_v) -> wetting_op
+    """
+
+    def __call__(
+        self,
+        w: jnp.ndarray,
+        pad_mode: Sequence[str],
+        bc_config: dict[str, Any] | None = None,
+        *,
+        rho_l: float,
+        rho_v: float,
+    ) -> WettingDifferentialOperator:
+        """Build a wetting-corrected Laplacian closure.
+
+        Args:
+            w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
+            pad_mode: Four padding modes ``(right_y, left_y, bottom_x, top_x)``.
+            bc_config: Boundary-condition edge map. ``None`` defaults to
+                bottom-only wetting.
+            rho_l: Liquid density, baked into the closure.
+            rho_v: Vapour density, baked into the closure.
+
+        Returns:
+            A :class:`WettingDifferentialOperator` producing shape
+            ``(nx, ny, nz, 1, 1)``.
+        """
+        ...
+
+
 @runtime_checkable
 class EOSFunction(Protocol):
     """Bound EOS callable — evaluates bulk chemical potential for a density field.
@@ -674,6 +833,7 @@ class PlotOperator(Protocol):
 
 __all__ = [
     # Core operators
+    "BoundDifferentialOperator",
     "BoundaryOperator",
     "CollisionOperator",
     "ConfigReader",
@@ -693,4 +853,7 @@ __all__ = [
     "SimulationRepository",
     "StepOperator",
     "StreamingOperator",
+    "WettingDifferentialOperator",
+    "WettingGradientBuilder",
+    "WettingLaplacianBuilder",
 ]

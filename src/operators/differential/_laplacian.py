@@ -13,17 +13,21 @@ lattice (``c_s^2 = 1/3``).
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from src.operators.differential._pad_utils import _apply_stencil_padding
 from src.operators.differential._pad_utils import to_2d
 from src.registry import register_operator
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @register_operator("differential", name="laplacian")
 def compute_laplacian(
     grid: jnp.ndarray,
     w: jnp.ndarray,
-    pad_mode: list | tuple,
+    pad_mode: Sequence[str],
 ) -> jnp.ndarray:
     """LBM-stencil Laplacian of a scalar field.
 

@@ -13,6 +13,9 @@ from typing import NamedTuple
 import numpy as np
 import pytest
 from src.config.config_overview import BASE_RESULTS_DIR
+from src.config.run_config import DATA_DIRNAME
+from src.config.run_config import PLOTS_DIRNAME
+from src.config.run_config import SNAPSHOTS_DIRNAME
 from src.simulation_io.analysis.surface_tension import surface_tension as st
 
 # Captured before the autouse fixture below redirects it, so the "never inside
@@ -225,7 +228,7 @@ def test_calibrate_uses_cache_and_writes_plot(tmp_path, monkeypatch):
     # which ran no droplets at all.
     expected_figures = ["R_10.00.png", "R_20.00.png", "R_30.00.png"]
     for run_dir in (run_dir_a, run_dir_b):
-        snapshots = st.surface_tension_plots_dir(run_dir) / st._SNAPSHOTS_DIRNAME
+        snapshots = st.surface_tension_plots_dir(run_dir) / SNAPSHOTS_DIRNAME
         assert sorted(p.name for p in snapshots.iterdir()) == expected_figures
 
 
@@ -242,7 +245,7 @@ def test_calibrate_skips_snapshots_without_cached_fields(tmp_path, monkeypatch):
     assert sigma == pytest.approx(0.02, rel=1e-9)
     plots_dir = st.surface_tension_plots_dir(run_dir)
     assert (plots_dir / st._PLOT_FILENAME).exists()
-    assert not (plots_dir / st._SNAPSHOTS_DIRNAME).exists()
+    assert not (plots_dir / SNAPSHOTS_DIRNAME).exists()
 
 
 def test_calibrate_nests_all_outputs_in_subdirectory(tmp_path, monkeypatch):
@@ -266,16 +269,16 @@ def test_calibrate_nests_all_outputs_in_subdirectory(tmp_path, monkeypatch):
     run_dir = tmp_path / "run"
     st.calibrate_surface_tension(config, run_dir)
 
-    assert [p.name for p in run_dir.iterdir()] == [st._OUTPUT_DIRNAME]
+    assert sorted(p.name for p in run_dir.iterdir()) == [st._OUTPUT_DIRNAME]
     out_dir = st.surface_tension_dir(run_dir)
-    assert sorted(p.name for p in out_dir.iterdir()) == [st._OUTPUT_DATA_DIRNAME, st._OUTPUT_PLOTS_DIRNAME]
+    assert sorted(p.name for p in out_dir.iterdir()) == [DATA_DIRNAME, PLOTS_DIRNAME]
     assert sorted(p.name for p in st.surface_tension_data_dir(run_dir).iterdir()) == [
         st._DATA_FILENAME,
         "radius_10.00_final.npz",
     ]
     assert sorted(p.name for p in st.surface_tension_plots_dir(run_dir).iterdir()) == [
         st._PLOT_FILENAME,
-        st._SNAPSHOTS_DIRNAME,
+        SNAPSHOTS_DIRNAME,
     ]
 
 

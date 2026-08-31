@@ -8,6 +8,7 @@ from src.cli._console import success
 from src.cli.app import cli
 from src.cli.execution import RunFlags
 from src.cli.execution import _run_impl
+from src.cli.wetting_init import _WETTING_INIT_NT
 
 
 @cli.command()
@@ -86,9 +87,18 @@ from src.cli.execution import _run_impl
     "--init-wetting",
     is_flag=True,
     help=(
-        "Two-phase wetting initialisation: run nt=50000 without gravity to equilibrate "
-        "the droplet, then run the full config using that snapshot as the initial condition"
+        "Two-phase wetting initialisation: run without gravity to equilibrate the droplet "
+        "(length set by --init-wetting-nt), then run the full config using the final "
+        "snapshot as the initial condition. Phase 1 saves a max|u| convergence plot"
     ),
+)
+@click.option(
+    "--init-wetting-nt",
+    "init_wetting_nt",
+    default=_WETTING_INIT_NT,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Number of timesteps for the --init-wetting equilibration phase.",
 )
 @click.option(
     "--init-dir",
@@ -170,6 +180,9 @@ def run(**cli_kwargs: object) -> None:
         # Two-phase wetting init: equilibrate without gravity then run with gravity
         tud-lbm run config.toml --init-wetting
 
+        # Same, but equilibrate for 20000 steps instead of the default
+        tud-lbm run config.toml --init-wetting --init-wetting-nt 20000
+
         # Resume from a saved snapshot
         tud-lbm run config.toml --init-dir /path/to/timestep_1000.npz
 
@@ -192,6 +205,7 @@ def run(**cli_kwargs: object) -> None:
         debug_wetting_interval=cast("int", cli_kwargs["debug_wetting_interval"]),
         debug_stability=cast("bool", cli_kwargs["debug_stability"]),
         init_wetting=cast("bool", cli_kwargs["init_wetting"]),
+        init_wetting_nt=cast("int", cli_kwargs["init_wetting_nt"]),
         run_compare=cast("bool", cli_kwargs["run_compare"]),
         continue_run=continue_run,
     )

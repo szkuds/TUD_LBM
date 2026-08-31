@@ -6,7 +6,11 @@ gradient "sees" the desired wetting boundary condition.
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
+
+if TYPE_CHECKING:
+    from jax.typing import ArrayLike
 
 # Density thresholds for detecting the interface region
 _HIGH_FRAC = 0.95
@@ -15,12 +19,12 @@ _LOW_FRAC = 0.05
 
 def _apply_wetting_modification(
     edge_slice: jnp.ndarray,
-    rho_l: jnp.ndarray,
-    rho_v: jnp.ndarray,
-    phi_l: jnp.ndarray,
-    phi_r: jnp.ndarray,
-    d_rho_l: jnp.ndarray,
-    d_rho_r: jnp.ndarray,
+    rho_l: ArrayLike,
+    rho_v: ArrayLike,
+    phi_l: ArrayLike,
+    phi_r: ArrayLike,
+    d_rho_l: ArrayLike,
+    d_rho_r: ArrayLike,
 ) -> jnp.ndarray:
     """Apply wetting density modification at the liquid-vapour interface.
 

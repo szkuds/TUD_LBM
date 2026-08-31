@@ -19,13 +19,13 @@ from src.operators.wetting import build_wetting_fn
 NX, NY, NZ = 16, 16, 1
 
 # Liquid/vapour reference densities shared across the differential tests.
-RHO_L: jnp.ndarray = jnp.array(1.0)
-RHO_V: jnp.ndarray = jnp.array(0.1)
+RHO_L: float = 1.0
+RHO_V: float = 0.1
 
 # Baseline wetting parameters shared across the differential tests. Deliberately
 # varied values (e.g. an asymmetric phi_r, extreme clamp-forcing phi) stay inline.
-PHI: jnp.ndarray = jnp.array(1.0)
-D_RHO: jnp.ndarray = jnp.array(0.0)
+PHI: float = 1.0
+D_RHO: float = 0.0
 
 
 @pytest.fixture(scope="module")
@@ -434,7 +434,7 @@ class TestWettingUtil:
             assert float(np.min(result_np[modified_mask])) >= lower - 1e-6
 
     @staticmethod
-    def _wall_edge_profile(n: int, rho_l: jnp.ndarray, rho_v: jnp.ndarray, *, phase_center: str) -> jnp.ndarray:
+    def _wall_edge_profile(n: int, rho_l: float, rho_v: float, *, phase_center: str) -> jnp.ndarray:
         """Build a 1-D wall density slice with two contact-line transitions.
 
         ``phase_center="liquid"`` → droplet (liquid centre, vapour flanks).
