@@ -42,6 +42,7 @@ New here?  Start with the :doc:`quickstart`.
   notes/README.dev
   notes/project_setup
   notes/delftblue_setup
+  notes/performance
 
 Indices and tables
 ==================

@@ -1,13 +1,5 @@
 """Wetting hysteresis optimisation — pure functions.
 
-Ported from :class:`update_timestep.UpdateMultiphaseHysteresis`.
-
-The legacy class stores mutable wetting parameters on ``self`` and
-uses ``@partial(jit, static_argnums=(0,))`` which causes JIT cache
-bloat.  This module replaces it with pure functions that operate on
-the :class:`~state.state.WettingState` NamedTuple carried through
-``jax.lax.scan``.
-
 All inner optimisation loops use ``optax`` + ``jax.lax.while_loop``
 with early convergence exit and are fully jittable.
 

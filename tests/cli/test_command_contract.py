@@ -12,6 +12,7 @@ from src.cli.commands import cli as loaded_cli
 #: Where each command's work happens — the seam an injected failure must cross.
 _SEAM = {
     "run": "src.cli.commands.run._run_impl",
+    "benchmark": "src.cli.commands.benchmark.run_benchmark",
     "animate": "src.cli.commands.visualise._validate_run_dir_has_config",
     "visualise": "src.cli.commands.visualise._validate_run_dir_has_config",
     "compare": "src.cli.analysis_routing.analyse_tree",
@@ -33,6 +34,10 @@ def _args(name: str, tmp_path) -> list[str]:
         txt = tmp_path / "dirs.txt"
         txt.write_text("", encoding="utf-8")
         return [name, str(txt)]
+    if name == "benchmark":
+        cfg = tmp_path / "config.toml"
+        cfg.write_text("", encoding="utf-8")
+        return [name, str(cfg)]
     if name == "analyse":
         cfg = tmp_path / "config.toml"
         cfg.write_text("", encoding="utf-8")

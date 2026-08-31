@@ -43,6 +43,7 @@ Usage::
 """
 
 from __future__ import annotations
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 import jax
@@ -51,6 +52,7 @@ import src.config.config_overview as _flags
 from src.pipeline.state.state import State
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from src.config import SimulationConfig
     from src.pipeline.setup import SimulationSetup
     from src.simulation_io import SimulationIO
@@ -136,6 +138,46 @@ def init_state(
     )
 
 
+# ── Scan body ────────────────────────────────────────────────────────
+
+
+def _make_scan_body(
+    step_fn: Callable[[State], State],
+    do_stab: Callable[[State, jnp.ndarray], None] | None = None,
+    do_save: Callable[[State, jnp.ndarray], None] | None = None,
+    *,
+    collect: bool,
+) -> Callable[[State, int], tuple[State, State | None]]:
+    """Build the ``lax.scan`` body that advances the simulation one step.
+
+    Extracted from :func:`run` so that callers which need the body on its own
+    — ``tud-lbm benchmark`` compiles it to time compilation separately from
+    execution — get the identical wiring rather than a divergent copy.
+
+    Args:
+        step_fn: Unary ``state -> state`` time-step function.  :func:`run`
+            passes ``partial(setup.step_fn, setup)``.
+        do_stab: Optional stability-diagnostics callback.
+        do_save: Optional snapshot callback (streaming I/O mode).
+        collect: Whether to emit the new state as the scan's per-step output.
+            ``True`` stacks a full trajectory; ``False`` yields ``None`` and
+            keeps device memory constant.
+
+    Returns:
+        A ``(state, _t) -> (state, ys)`` callable suitable for ``lax.scan``.
+    """
+
+    def scan_body(state: State, _t: int) -> tuple[State, State | None]:
+        new_state = step_fn(state)
+        if do_stab is not None:
+            do_stab(new_state, new_state.t)
+        if do_save is not None:
+            do_save(new_state, new_state.t)
+        return new_state, (new_state if collect else None)
+
+    return scan_body
+
+
 # ── Functional run ───────────────────────────────────────────────────
 
 
@@ -217,13 +259,9 @@ def run(
             save_fields=save_fields,
         )
 
-        @jax.jit
-        def scan_body_io(state: State, _t: int) -> tuple[State, None]:
-            new_state = _step_fn(setup, state)
-            if do_stab is not None:
-                do_stab(new_state, new_state.t)
-            do_save(new_state, new_state.t)
-            return new_state, None
+        scan_body_io = jax.jit(
+            _make_scan_body(partial(_step_fn, setup), do_stab=do_stab, do_save=do_save, collect=False)
+        )
 
         final_state, _ = jax.lax.scan(
             scan_body_io,
@@ -239,12 +277,7 @@ def run(
         return final_state, None
 
     # ── In-memory trajectory mode ────────────────────────────────
-    @jax.jit
-    def scan_body(state: State, _t: int) -> tuple[State, State]:
-        new_state = _step_fn(setup, state)
-        if do_stab is not None:
-            do_stab(new_state, new_state.t)
-        return new_state, new_state
+    scan_body = jax.jit(_make_scan_body(partial(_step_fn, setup), do_stab=do_stab, collect=True))
 
     final_state, trajectory = jax.lax.scan(
         scan_body,
