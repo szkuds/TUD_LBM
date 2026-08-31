@@ -601,10 +601,11 @@ class TestRunImplFlags:
         assert called["n"] == 1
         assert result is False
 
-    def test_debug_wetting_sets_flag(self, tmp_path):
+    def test_debug_wetting_sets_flag_and_interval(self, tmp_path):
         import src.config.config_overview as _flags
 
         original = _flags.DEBUG_FLAG_WETTING
+        original_interval = _flags.DEBUG_WETTING_INTERVAL
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         try:
@@ -617,11 +618,13 @@ class TestRunImplFlags:
                     overrides=(),
                     max_workers=None,
                     init_dir=None,
-                    flags=RunFlags(no_prompt=True, dry_run=True, debug_wetting=True),
+                    flags=RunFlags(no_prompt=True, dry_run=True, debug_wetting=True, debug_wetting_interval=25),
                 )
             assert _flags.DEBUG_FLAG_WETTING is True
+            assert _flags.DEBUG_WETTING_INTERVAL == 25
         finally:
             _flags.DEBUG_FLAG_WETTING = original
+            _flags.DEBUG_WETTING_INTERVAL = original_interval
 
     def test_debug_stability_sets_flag(self, tmp_path):
         import src.config.config_overview as _flags

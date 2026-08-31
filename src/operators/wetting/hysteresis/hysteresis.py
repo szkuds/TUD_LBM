@@ -302,7 +302,7 @@ def _optimise_single_param(
     max_iterations: int | jnp.ndarray,
     w: jnp.ndarray,
     loss_tol: float = 1e-4,
-) -> tuple[WettingParams, jnp.ndarray]:
+) -> tuple[WettingParams, jnp.ndarray, jnp.ndarray]:
     """Run an ``optax`` optimisation loop with masked gradients.
 
     Uses ``jax.lax.while_loop`` with early exit: the loop terminates
@@ -326,7 +326,9 @@ def _optimise_single_param(
             of the Huber objectives.
 
     Returns:
-        ``(final_params, final_loss)``.
+        ``(final_params, final_loss, iterations)``.  ``iterations`` is what
+        the ``--debug-wetting`` trace reports against ``max_iterations``:
+        equality there means the loop hit the cap rather than the tolerance.
     """
     import optax  # lazy import — optional dependency
 
@@ -353,8 +355,7 @@ def _optimise_single_param(
         body_fn,
         init_carry,
     )
-    wetting_debug.log_optimiser_exit(iters, max_iterations, final_loss)
-    return final_params, final_loss
+    return final_params, final_loss, iters
 
 
 # ── Top-level entry point ────────────────────────────────────────────
@@ -390,8 +391,14 @@ def _update_wetting_state_impl(
     ca_rec_left: jnp.ndarray,
     ca_adv_right: jnp.ndarray,
     ca_rec_right: jnp.ndarray,
+    t: jnp.ndarray | None = None,
 ) -> WettingState:
-    """Shared implementation for hysteresis wetting updates."""
+    """Shared implementation for hysteresis wetting updates.
+
+    ``t`` is the current timestep.  It is used only by the
+    ``--debug-wetting`` trace, to stamp each row and to rate-limit it; the
+    optimisation itself is timestep-independent.
+    """
     if setup.multiphase_params is None:
         msg = "multiphase_params is required for hysteresis wetting update"
         raise TypeError(msg)
@@ -465,7 +472,7 @@ def _update_wetting_state_impl(
         cost_above = _cost_above(ca_adv_right, ca_r)
         return jnp.where(in_window_right, cost_in, jnp.where(above_window_right, cost_above, cost_below))
 
-    def _opt_left(p: WettingParams) -> tuple[WettingParams, jnp.ndarray]:
+    def _opt_left(p: WettingParams) -> tuple[WettingParams, jnp.ndarray, jnp.ndarray]:
         return jax.lax.cond(
             phi_active_left,
             lambda pp: _optimise_single_param(
@@ -477,7 +484,7 @@ def _update_wetting_state_impl(
             p,
         )
 
-    def _opt_right(p: WettingParams) -> tuple[WettingParams, jnp.ndarray]:
+    def _opt_right(p: WettingParams) -> tuple[WettingParams, jnp.ndarray, jnp.ndarray]:
         return jax.lax.cond(
             phi_active_right,
             lambda pp: _optimise_single_param(
@@ -489,34 +496,42 @@ def _update_wetting_state_impl(
             p,
         )
 
-    params_after_left, loss_left = _opt_left(params)
-    new_params, loss_right = _opt_right(params_after_left)
+    params_after_left, loss_left, iters_left = _opt_left(params)
+    new_params, loss_right, iters_right = _opt_right(params_after_left)
 
     # Fallback: if the phi path was selected but phi saturated back at its
     # clamp floor without converging, phi was the wrong knob for this side —
     # `jnp.clip` has zero gradient there, so it cannot recover. Retry with
     # d_rho, warm-started from the stored accumulated value.
-    def _fallback_d_rho_left(p: WettingParams) -> WettingParams:
+    # Both branches of the fallback `lax.cond` carry the iteration count so the
+    # `--debug-wetting` row can report it; the identity branch reports zero,
+    # which is what the trace renders as "no fallback ran".
+    def _no_fallback(p: WettingParams) -> tuple[WettingParams, jnp.ndarray]:
+        return p, jnp.zeros_like(iters_left)
+
+    def _fallback_d_rho_left(p: WettingParams) -> tuple[WettingParams, jnp.ndarray]:
         fallback = WettingParams(
             phi_left=_PHI_NEUTRAL,
             phi_right=p.phi_right,
             d_rho_left=wetting.d_rho_left,
             d_rho_right=p.d_rho_right,
         )
-        return _optimise_single_param(
+        params_fb, _loss_fb, iters_fb = _optimise_single_param(
             left_objective, fallback, _mask_left_d_rho, optimiser_left, max_iter_left, w, loss_tol
-        )[0]
+        )
+        return params_fb, iters_fb
 
-    def _fallback_d_rho_right(p: WettingParams) -> WettingParams:
+    def _fallback_d_rho_right(p: WettingParams) -> tuple[WettingParams, jnp.ndarray]:
         fallback = WettingParams(
             phi_left=p.phi_left,
             phi_right=_PHI_NEUTRAL,
             d_rho_left=p.d_rho_left,
             d_rho_right=wetting.d_rho_right,
         )
-        return _optimise_single_param(
+        params_fb, _loss_fb, iters_fb = _optimise_single_param(
             right_objective, fallback, _mask_right_d_rho, optimiser_right, max_iter_right, w, loss_tol
-        )[0]
+        )
+        return params_fb, iters_fb
 
     # The `loss > loss_tol` conjunct is what keeps this from firing on a side
     # whose phi legitimately converged at ~1.0 — without it every such side
@@ -524,23 +539,24 @@ def _update_wetting_state_impl(
     # while_loop carry loss, which lags one iteration behind the returned
     # params; that makes the test conservative rather than wrong, since a
     # parameter pinned at a clamp bound is not moving the loss anyway.
-    final_params = jax.lax.cond(
+    final_params, iters_fb_left = jax.lax.cond(
         phi_active_left & (new_params.phi_left <= _PHI_NEUTRAL + _PHI_FLOOR_EPS) & (loss_left > loss_tol),
         _fallback_d_rho_left,
-        lambda p: p,
+        _no_fallback,
         new_params,
     )
-    final_params = jax.lax.cond(
+    final_params, iters_fb_right = jax.lax.cond(
         phi_active_right & (new_params.phi_right <= _PHI_NEUTRAL + _PHI_FLOOR_EPS) & (loss_right > loss_tol),
         _fallback_d_rho_right,
-        lambda p: p,
+        _no_fallback,
         final_params,
     )
 
-    # Guarded at the call site because the loss terms below each cost a
-    # full trial step — `log_sides` re-checks the flag itself.
-    if wetting_debug.enabled():
-        wetting_debug.log_sides(
+    # Guarded at the call site because building the samples is not free — each
+    # objective call below costs a full trial step. `log_sides` re-checks the
+    # flag itself, and only calls this thunk on a logged timestep.
+    def _debug_sides() -> tuple[wetting_debug.SideDebugSample, wetting_debug.SideDebugSample]:
+        return (
             wetting_debug.SideDebugSample(
                 ca=ca_left_tplus1,
                 ca_adv=ca_adv_left,
@@ -550,6 +566,9 @@ def _update_wetting_state_impl(
                 d_rho=final_params.d_rho_left,
                 phi_active=phi_active_left,
                 loss=left_objective(final_params),
+                iters=iters_left,
+                iters_cap=jnp.asarray(max_iter_left),
+                iters_fallback=iters_fb_left,
             ),
             wetting_debug.SideDebugSample(
                 ca=ca_right_tplus1,
@@ -560,9 +579,14 @@ def _update_wetting_state_impl(
                 d_rho=final_params.d_rho_right,
                 phi_active=phi_active_right,
                 loss=right_objective(final_params),
+                iters=iters_right,
+                iters_cap=jnp.asarray(max_iter_right),
+                iters_fallback=iters_fb_right,
             ),
-            phi_neutral=_PHI_NEUTRAL,
         )
+
+    if wetting_debug.enabled():
+        wetting_debug.log_sides(_debug_sides, phi_neutral=_PHI_NEUTRAL, t=t)
 
     return wetting._replace(
         phi_left=final_params.phi_left,
@@ -583,6 +607,7 @@ def update_wetting_state(
     setup: SimulationSetup,
     *,
     trial_step_fn: Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray]],
+    t: jnp.ndarray | None = None,
 ) -> WettingState:
     """Pure JAX update of wetting / hysteresis parameters.
 
@@ -611,6 +636,8 @@ def update_wetting_state(
         trial_step_fn: Callable ``(WettingParams) → (f_out, rho_out)``
             that evaluates a single multiphase physics pass with trial
             wetting parameters. Required; no default is provided.
+        t: Current timestep, forwarded to the ``--debug-wetting`` trace
+            for its ``t`` column and interval gate.  Physics-inert.
 
     Returns:
         Updated :class:`WettingState`.
@@ -630,6 +657,7 @@ def update_wetting_state(
         ca_rec_left=ca_rec,
         ca_adv_right=ca_adv,
         ca_rec_right=ca_rec,
+        t=t,
     )
 
 
@@ -640,6 +668,7 @@ def update_wetting_state_chemical_step(
     setup: SimulationSetup,
     *,
     trial_step_fn: Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray]],
+    t: jnp.ndarray | None = None,
 ) -> WettingState:
     """Hysteresis update where CA targets are determined per-side by chemical step position.
 
@@ -656,6 +685,8 @@ def update_wetting_state_chemical_step(
                ca_advancing_post_step, ca_receding_post_step.
         trial_step_fn: Callable (WettingParams) -> (f_out, rho_out).
                        Provided by the step function via partial application.
+        t: Current timestep, forwarded to the ``--debug-wetting`` trace
+           for its ``t`` column and interval gate. Physics-inert.
 
     Returns:
         Updated WettingState with optimised wetting parameters and measured CA/CLL.
@@ -693,4 +724,5 @@ def update_wetting_state_chemical_step(
         ca_rec_left=ca_rec_left,
         ca_adv_right=ca_adv_right,
         ca_rec_right=ca_rec_right,
+        t=t,
     )

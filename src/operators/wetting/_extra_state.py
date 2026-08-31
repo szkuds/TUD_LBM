@@ -93,5 +93,6 @@ class WettingExtraStatePlugin:
             new_state.rho,
             setup,
             trial_step_fn=context.get("trial_step_fn"),
+            t=new_state.t,
         )
         return new_state._replace(wetting=updated_wetting)

@@ -340,7 +340,7 @@ class TestOptimiseSingleParam:
             phi_right=jnp.array(1.2),
         )
         opt = optax.adam(0.01)
-        _p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50, jnp.array(5.0))  # ty: ignore[invalid-argument-type]
+        _p_final, loss_final, _iters = _optimise_single_param(objective, p0, mask_fn, opt, 50, jnp.array(5.0))  # ty: ignore[invalid-argument-type]
         initial_loss = float(objective(p0))
         assert float(loss_final) < initial_loss
 
@@ -372,8 +372,9 @@ class TestOptimiseSingleParam:
         def run_opt(initial_params):
             return _optimise_single_param(objective, initial_params, mask_fn, opt, 10, jnp.array(5.0))  # ty: ignore[invalid-argument-type]
 
-        _p_final, loss = run_opt(p0)
+        _p_final, loss, iters = run_opt(p0)
         assert not jnp.isnan(loss)
+        assert 0 <= int(iters) <= 10
 
     def test_early_exit_when_already_converged(self):
         import optax
@@ -401,8 +402,9 @@ class TestOptimiseSingleParam:
             phi_right=jnp.array(1.2),
         )
         opt = optax.adam(0.01)
-        p_final, loss_final = _optimise_single_param(objective, p0, mask_fn, opt, 50, jnp.array(5.0))  # ty: ignore[invalid-argument-type]
+        p_final, loss_final, iters = _optimise_single_param(objective, p0, mask_fn, opt, 50, jnp.array(5.0))  # ty: ignore[invalid-argument-type]
         assert float(loss_final) == 0.0
+        assert int(iters) == 0  # loop body never ran
         for field_final, field_initial in zip(p_final, p0, strict=True):
             assert float(field_final) == float(field_initial)
 
@@ -432,7 +434,7 @@ class TestOptimiseSingleParam:
             phi_right=jnp.array(1.2),
         )
         opt = optax.adam(0.01)
-        _p_final, loss_final = _optimise_single_param(
+        _p_final, loss_final, iters = _optimise_single_param(
             objective,
             p0,
             mask_fn,
@@ -442,6 +444,7 @@ class TestOptimiseSingleParam:
             loss_tol=loss_tol,
         )
         assert float(loss_final) <= loss_tol
+        assert int(iters) < 500  # exited on tolerance, not on the cap
 
     def test_loss_tol_zero_runs_full_budget(self):
         import optax
@@ -470,7 +473,7 @@ class TestOptimiseSingleParam:
         )
         max_iterations = 5
         opt = optax.adam(0.01)
-        p_final, _loss = _optimise_single_param(
+        p_final, _loss, iters = _optimise_single_param(
             objective,
             p0,
             mask_fn,
@@ -489,6 +492,7 @@ class TestOptimiseSingleParam:
             params = _clamp_params(optax.apply_updates(params, updates), jnp.array(5.0))  # ty: ignore[invalid-argument-type]
 
         assert jnp.allclose(p_final.d_rho_left, params.d_rho_left)
+        assert int(iters) == max_iterations  # ran the full budget
 
 
 # =====================================================================

@@ -453,6 +453,7 @@ Frequently used `run` options:
 | `--init-dir` / `--init-wetting` | Seed initialisation from saved data / wetting initialisation.         |
 | `--debug-stability`           | Enable NaN and checkerboard diagnostics.                                |
 | `--debug-wetting`             | Enable wetting-optimiser diagnostics.                                   |
+| `--debug-wetting-interval N`  | Timesteps between logged wetting rows (default 100; 1 logs every step).  |
 | `--list-simulation-operators` | List registered physics operators and exit.                             |
 | `--list-simulation-analysis`  | List registered analysis operators and exit.                            |
 
