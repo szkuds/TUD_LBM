@@ -98,6 +98,33 @@ uv sync                        # no-op if uv.lock hasn't changed
 
 ## JAX CPU/GPU note
 
-Login nodes have no GPU. DelftBlue GPU nodes use CUDA. JAX's CPU and GPU builds are separate, so verify your `pyproject.toml` pins the correct variant for the cluster environment before syncing.
+Login nodes have no GPU. DelftBlue GPU nodes use CUDA, and JAX's CPU and CUDA
+builds are separate packages, so the variant is chosen at install time:
 
-Consider using a dependency group or environment marker to separate local (CPU) and cluster (CUDA) JAX installs if you run on both.
+```bash
+# CPU (compute-p1 and friends) — the default
+scripts/setup_on_delftblue.sh
+
+# CUDA (GPU nodes)
+scripts/setup_on_delftblue.sh --cuda
+```
+
+`--cuda` runs `uv sync --extra cluster`, which pulls the `jax[cuda12]` wheels
+declared in `pyproject.toml`. That extra carries a `sys_platform == 'linux'`
+marker, so a plain `uv sync` on macOS resolves to CPU JAX and never sees the
+CUDA packages.
+
+Verify from a **GPU node**, not the login node — `jax.devices()` reports
+`CpuDevice` on a login node no matter which build is installed:
+
+```bash
+srun --partition=<gpu-partition> --gpus-per-task=1 --time=00:05:00 \
+     --account=<account> --pty \
+     .venv/bin/python -c 'import jax; print(jax.devices())'
+```
+
+To submit a GPU job, set `SBATCH_GPUS_PER_TASK` in `scripts/db_defaults.env`
+(or answer the `gpus-per-task` prompt in `scripts/db_new_job.sh`) together with
+a GPU partition. The partition name and whether your account carries a GPU
+entitlement are cluster facts, not repo facts — read them off `sinfo -o "%20P
+%10G"` and `sacctmgr show assoc user=$USER format=account,partition,qos`.

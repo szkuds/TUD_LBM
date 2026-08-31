@@ -9,7 +9,8 @@ from src.cli.app import cli
 
 # Imported for their side effect: each module registers commands on ``cli``.
 from src.cli.commands import analysis as analysis
+from src.cli.commands import benchmark as benchmark
 from src.cli.commands import run as run
 from src.cli.commands import visualise as visualise
 
-__all__ = ["analysis", "cli", "run", "visualise"]
+__all__ = ["analysis", "benchmark", "cli", "run", "visualise"]

@@ -17,8 +17,9 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  # Core runtime — previously managed via environment.yml
-  "jax[cpu]",
+  # Core runtime — previously managed via environment.yml.
+  # Plain "jax" is CPU-capable on its own; the CUDA plugin packages come from
+  # the "cluster" extra so a GPU install is opt-in rather than a pin here.
   "jax",
   "numpy",
   "scipy",
@@ -59,11 +60,16 @@ docs = [
   "myst-parser",
   "sphinx-autoapi",
   "pandoc",
-  # jax[cpu] is already a core dep — listed here for clarity/standalone doc installs
-  "jax[cpu]",
+  # jax is already a core dep — listed here for clarity/standalone doc installs
+  "jax",
 ]
 animation = ["moviepy"]
 publishing = ["build", "twine"]
+# GPU install for DelftBlue GPU nodes: uv sync --extra cluster.
+# The marker is load-bearing — jax[cuda12] publishes linux-x86_64 wheels only,
+# and without it resolution fails on macOS. See scripts/setup_on_delftblue.sh
+# (--cuda) and docs/notes/delftblue_setup.md.
+cluster = ["jax[cuda12]; sys_platform == 'linux'"]
 
 [project.urls]
 Repository = "https://github.com/szkuds/TUD_LBM"
@@ -79,8 +85,8 @@ tud-lbm = "src.cli.commands:cli"
 # ---------------------------------------------------------------------------
 [tool.uv]
 # Use the lockfile for reproducible installs; uv will create uv.lock on first run.
-# Override jax to CPU-only in CI — GPU builds are only needed locally.
-# If you need GPU support locally, run:  uv sync --extra dev --override jax[cuda12]
+# `uv sync` installs CPU JAX. For a CUDA build (DelftBlue GPU nodes) use the
+# "cluster" extra:  uv sync --extra cluster
 package = true
 
 # ---------------------------------------------------------------------------
