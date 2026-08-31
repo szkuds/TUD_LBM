@@ -1,13 +1,26 @@
 """Differential operators — composite builder and primitives.
 
-Public API: build_diff_ops()
+Public API: build_diff_ops(), build_differential_fn(), build_wetting_differential_fn()
 
-Implementation modules are internal; use the factory to access.
+Implementation modules are internal; use the factories to access.
+
+The ``differential`` registry kind holds two structurally different target
+shapes, so it has two accessors. ``gradient`` / ``laplacian`` register the
+operator itself and are resolved with :func:`build_differential_fn`;
+``gradient_wetting`` / ``laplacian_wetting`` register a *builder* whose return
+value is the operator, and are resolved with
+:func:`build_wetting_differential_fn`.
 
 Example:
     from operators.differential import build_diff_ops
 
-    gradient_standard, gradient, Laplacian = build_diff_ops(config, mp_params, lattice)
+    (
+        gradient_standard,
+        gradient_density,
+        laplacian_density,
+        gradient_density_wetting,
+        laplacian_density_wetting,
+    ) = build_diff_ops(config, mp_params, lattice)
 """
 
 from __future__ import annotations
@@ -17,11 +30,13 @@ from src.operators._loader import auto_load_operators
 from src.operators.factory import build_operator
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     import jax.numpy as jnp
     from src.config.simulation_config import SimulationConfig
     from src.lattice.lattice import Lattice
     from src.operators.macroscopic import MultiphaseParams
     from src.operators.protocols import DifferentialOperator
+    from src.operators.protocols import WettingDifferentialOperator
 
 # Auto-discover and import private operator modules for registry registration.
 auto_load_operators("src.operators.differential")
@@ -29,6 +44,10 @@ auto_load_operators("src.operators.differential")
 
 def build_differential_fn(scheme: str) -> DifferentialOperator:
     """Return a differential operator satisfying DifferentialOperator protocol.
+
+    For the plain operators only (``"gradient"``, ``"laplacian"``). The wetting
+    schemes register a builder rather than an operator — resolve those with
+    :func:`build_wetting_differential_fn`.
 
     Args:
         scheme: Differential operator name.
@@ -42,6 +61,30 @@ def build_differential_fn(scheme: str) -> DifferentialOperator:
     return cast("DifferentialOperator", build_operator("differential", scheme))
 
 
+def build_wetting_differential_fn(scheme: str) -> Callable[..., WettingDifferentialOperator]:
+    """Return a *builder* for a parametric wetting differential operator.
+
+    Unlike :func:`build_differential_fn`, the registry target here is a factory:
+    calling it with the static configuration (weights, pad modes, ``bc_config``,
+    ``rho_l``, ``rho_v``) returns the operator itself.
+
+    The cast sits at the registry boundary, which is where the type is actually
+    erased — :func:`~src.operators.factory.build_operator` returns
+    ``Callable[..., object] | type``.
+
+    Args:
+        scheme: Wetting differential builder name (``"gradient_wetting"`` or
+            ``"laplacian_wetting"``).
+
+    Returns:
+        A callable returning a :class:`WettingDifferentialOperator`.
+
+    Raises:
+        ValueError: If scheme is not registered.
+    """
+    return cast("Callable[..., WettingDifferentialOperator]", build_operator("differential", scheme))
+
+
 def build_diff_ops(
     config: SimulationConfig,
     mp_params: MultiphaseParams | None,
@@ -50,8 +93,8 @@ def build_diff_ops(
     DifferentialOperator,
     DifferentialOperator,
     DifferentialOperator,
-    DifferentialOperator | None,
-    DifferentialOperator | None,
+    WettingDifferentialOperator | None,
+    WettingDifferentialOperator | None,
 ]:
     """Build gradient/laplacian closures, wetting-aware if applicable.
 
@@ -115,37 +158,25 @@ def build_diff_ops(
         }
 
     if effective_wetting is not None and mp_params is not None:
-        # Wetting: build parametric closures with rho_l, rho_v, width baked in.
+        # Wetting: build parametric closures with rho_l, rho_v baked in.
         # Signature: (grid, phi_l, phi_r, d_rho_l, d_rho_r) → result.
-        _gradient_wetting_factory = build_differential_fn("gradient_wetting")
-        _laplacian_wetting_factory = build_differential_fn("laplacian_wetting")
+        _gradient_wetting_factory = build_wetting_differential_fn("gradient_wetting")
+        _laplacian_wetting_factory = build_wetting_differential_fn("laplacian_wetting")
 
-        _grad_wetting = cast(
-            "DifferentialOperator",
-            cast(
-                "object",
-                _gradient_wetting_factory(
-                    lattice.w,
-                    lattice.c,
-                    tuple(determine_pad_modes(config.bc_config)),
-                    config.bc_config,
-                    rho_l=mp_params.rho_l,
-                    rho_v=mp_params.rho_v,
-                ),
-            ),
+        _grad_wetting = _gradient_wetting_factory(
+            lattice.w,
+            lattice.c,
+            tuple(determine_pad_modes(config.bc_config)),
+            config.bc_config,
+            rho_l=mp_params.rho_l,
+            rho_v=mp_params.rho_v,
         )
-        _lap_wetting = cast(
-            "DifferentialOperator",
-            cast(
-                "object",
-                _laplacian_wetting_factory(
-                    lattice.w,
-                    tuple(determine_pad_modes(config.bc_config)),
-                    config.bc_config,
-                    rho_l=mp_params.rho_l,
-                    rho_v=mp_params.rho_v,
-                ),
-            ),
+        _lap_wetting = _laplacian_wetting_factory(
+            lattice.w,
+            tuple(determine_pad_modes(config.bc_config)),
+            config.bc_config,
+            rho_l=mp_params.rho_l,
+            rho_v=mp_params.rho_v,
         )
 
         # Extract wetting params once, used in both branches below.
@@ -188,4 +219,5 @@ def build_diff_ops(
 __all__ = [
     "build_diff_ops",
     "build_differential_fn",
+    "build_wetting_differential_fn",
 ]

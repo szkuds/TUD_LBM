@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     import jax.numpy as jnp
     import matplotlib.axes
     import numpy as np
+    from jax.typing import ArrayLike
     from src.config.simulation_config import SimulationConfig
     from src.lattice.lattice import Lattice
     from src.pipeline.state import State
@@ -474,6 +475,50 @@ class DifferentialOperator(Protocol):
         ...
 
 
+class WettingDifferentialOperator(Protocol):
+    """Parametric wetting differential operator — an already-built closure.
+
+    Returned by the ``gradient_wetting`` / ``laplacian_wetting`` registry
+    *builders* (see
+    :func:`~src.operators.differential.build_wetting_differential_fn`), which
+    bake the static configuration — lattice weights, pad modes, ``bc_config``,
+    ``rho_l``, ``rho_v`` — into the closure.
+
+    Unlike :class:`DifferentialOperator`, the dynamic wetting parameters are
+    explicit rather than absorbed by ``*args``/``**kwargs``, so the arity is
+    fixed and a mismatched call is a type error.
+
+    Signature::
+
+        def wetting_op(grid, phi_l, phi_r, d_rho_l, d_rho_r) -> derivative_field
+    """
+
+    def __call__(
+        self,
+        grid: jnp.ndarray,
+        phi_l: ArrayLike,
+        phi_r: ArrayLike,
+        d_rho_l: ArrayLike,
+        d_rho_r: ArrayLike,
+    ) -> jnp.ndarray:
+        """Compute a wetting-corrected spatial derivative.
+
+        Args:
+            grid: Scalar field, shape ``(nx, ny, nz, 1, 1)``.
+            phi_l: Wetting potential for the left contact line. Any array-like
+                scalar — a Python float, a 0-d array, or a traced array (the
+                hysteresis optimiser passes tracers).
+            phi_r: Wetting potential for the right contact line.
+            d_rho_l: Density offset for the left contact line.
+            d_rho_r: Density offset for the right contact line.
+
+        Returns:
+            Derivative field, shape ``(nx, ny, nz, 1, 2)`` for a gradient or
+            ``(nx, ny, nz, 1, 1)`` for a Laplacian.
+        """
+        ...
+
+
 @runtime_checkable
 class EOSFunction(Protocol):
     """Bound EOS callable — evaluates bulk chemical potential for a density field.
@@ -693,4 +738,5 @@ __all__ = [
     "SimulationRepository",
     "StepOperator",
     "StreamingOperator",
+    "WettingDifferentialOperator",
 ]

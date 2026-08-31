@@ -145,7 +145,9 @@ def test_returned_sigma_is_the_fit_of_the_points_that_were_written(calibration):
 
 def test_every_artefact_lands_under_the_run_directory(calibration):
     """One init/final state and one figure per droplet, all nested, nothing flat."""
-    assert [p.name for p in calibration.run_dir.iterdir()] == sorted([st._OUTPUT_DIRNAME, "physical_parameters.txt"])
+    assert sorted(p.name for p in calibration.run_dir.iterdir()) == sorted(
+        [st._OUTPUT_DIRNAME, "physical_parameters.txt"]
+    )
     assert sorted(p.name for p in st.surface_tension_dir(calibration.run_dir).iterdir()) == [
         DATA_DIRNAME,
         PLOTS_DIRNAME,

@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from src.operators.protocols import ObstacleOperator
     from src.operators.protocols import StepOperator
     from src.operators.protocols import StreamingOperator
+    from src.operators.protocols import WettingDifferentialOperator
 
 
 class SimulationSetup(NamedTuple):
@@ -132,8 +133,8 @@ class SimulationSetup(NamedTuple):
     gradient_standard: DifferentialOperator | None = None
     gradient_density: DifferentialOperator | None = None
     laplacian_density: DifferentialOperator | None = None
-    gradient_density_wetting: DifferentialOperator | None = None
-    laplacian_density_wetting: DifferentialOperator | None = None
+    gradient_density_wetting: WettingDifferentialOperator | None = None
+    laplacian_density_wetting: WettingDifferentialOperator | None = None
 
     # ── Step function (unbound: (setup, state) -> State) ──
     step_fn: StepOperator | None = None

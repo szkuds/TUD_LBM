@@ -269,7 +269,7 @@ def test_calibrate_nests_all_outputs_in_subdirectory(tmp_path, monkeypatch):
     run_dir = tmp_path / "run"
     st.calibrate_surface_tension(config, run_dir)
 
-    assert [p.name for p in run_dir.iterdir()] == [st._OUTPUT_DIRNAME]
+    assert sorted(p.name for p in run_dir.iterdir()) == [st._OUTPUT_DIRNAME]
     out_dir = st.surface_tension_dir(run_dir)
     assert sorted(p.name for p in out_dir.iterdir()) == [DATA_DIRNAME, PLOTS_DIRNAME]
     assert sorted(p.name for p in st.surface_tension_data_dir(run_dir).iterdir()) == [
