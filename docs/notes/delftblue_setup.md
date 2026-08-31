@@ -123,8 +123,27 @@ srun --partition=<gpu-partition> --gpus-per-task=1 --time=00:05:00 \
      .venv/bin/python -c 'import jax; print(jax.devices())'
 ```
 
-To submit a GPU job, set `SBATCH_GPUS_PER_TASK` in `scripts/db_defaults.env`
-(or answer the `gpus-per-task` prompt in `scripts/db_new_job.sh`) together with
-a GPU partition. The partition name and whether your account carries a GPU
-entitlement are cluster facts, not repo facts — read them off `sinfo -o "%20P
-%10G"` and `sacctmgr show assoc user=$USER format=account,partition,qos`.
+To submit a GPU job, pass `--gpu` to `scripts/db_new_job.sh`. That overlays
+`scripts/db_defaults.gpu.env` on the CPU defaults — partition `gpu-a100`,
+`gpus-per-task=1`, and one GPU's proportional share of the node
+(`cpus-per-task=16`, `mem-per-cpu=8GB`) — with the interactive prompts still
+available on top for a per-job change such as `gpu-a100-small`. The partition
+names and whether your account carries a GPU entitlement are cluster facts, not
+repo facts; the values in that file were read off `sinfo -o "%20P %10G"` and
+`sacctmgr show assoc user=$USER format=account,partition,qos` on 2026-08-31.
+
+Two properties of the rendered job matter for the CUDA build specifically:
+
+- **The job runs out of this venv, and only this venv.** The template prepends
+  `${UV_PROJECT_ENVIRONMENT}/bin` to `PATH`; `UV_PROJECT_ENVIRONMENT` on its own
+  is read by `uv` and puts nothing on `PATH`, so without that line `tud-lbm`
+  resolves to some other interpreter and the `--cuda` install above is never
+  used. No conda environment is activated and `MODULE_LOAD_LIST` is empty — uv
+  ships its own Python.
+- **A GPU job asserts its backend before doing any work.** The rendered script
+  exits non-zero unless `jax.default_backend()` is `gpu`, because a CPU fallback
+  otherwise completes normally and produces a plausible-looking result.
+
+Do not add a CUDA module to `MODULE_LOAD_LIST`: the `jax[cuda12]` wheels bring
+their own CUDA runtime via the `nvidia-*` packages and need only the node's
+driver, and a system CUDA on `LD_LIBRARY_PATH` can shadow them.
