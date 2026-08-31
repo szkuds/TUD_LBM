@@ -61,6 +61,9 @@ from typing import cast
 import numpy as np
 from rich.console import Console
 from src.config.config_overview import BASE_RESULTS_DIR
+from src.config.run_config import DATA_DIRNAME
+from src.config.run_config import PLOTS_DIRNAME
+from src.config.run_config import SNAPSHOTS_DIRNAME
 from src.operators.macroscopic.eos import build_pressure_fn  # also registers the pressure operators
 from src.registry import get_operator_names
 
@@ -97,11 +100,8 @@ _OUTPUT_DIRNAME = "surface_tension"
 # The tree mirrors a run directory — data/ for saved arrays and the fitted
 # numbers, plots/ for figures — so the same tooling (notably
 # ``visualise <snapshot>.npz --single``) resolves it the same way.
-_OUTPUT_DATA_DIRNAME = "data"
-_OUTPUT_PLOTS_DIRNAME = "plots"
 _PLOT_FILENAME = "calibration.png"
 _DATA_FILENAME = "data.json"
-_SNAPSHOTS_DIRNAME = "snapshots"
 
 # Equilibrated density fields, cached so a cache hit can still draw the
 # snapshot figures. One file per cache key, named by its digest because the key
@@ -151,12 +151,12 @@ def surface_tension_dir(run_dir: str | Path) -> Path:
 
 def surface_tension_data_dir(run_dir: str | Path) -> Path:
     """Return the directory holding the saved droplet states and ``data.json``."""
-    return surface_tension_dir(run_dir) / _OUTPUT_DATA_DIRNAME
+    return surface_tension_dir(run_dir) / DATA_DIRNAME
 
 
 def surface_tension_plots_dir(run_dir: str | Path) -> Path:
     """Return the directory holding the calibration and per-droplet figures."""
-    return surface_tension_dir(run_dir) / _OUTPUT_PLOTS_DIRNAME
+    return surface_tension_dir(run_dir) / PLOTS_DIRNAME
 
 
 def record_surface_tension(config: SimulationConfig, run_dir: str | Path) -> SimulationConfig:
@@ -219,7 +219,7 @@ def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> 
 
     _save_plot(plots_dir / _PLOT_FILENAME, radii, delta_p, sigma)
     _save_data(data_dir / _DATA_FILENAME, radii, delta_p, sigma)
-    _save_snapshots(config, plots_dir / _SNAPSHOTS_DIRNAME, radii, delta_p, densities)
+    _save_snapshots(config, plots_dir / SNAPSHOTS_DIRNAME, radii, delta_p, densities)
     return sigma
 
 

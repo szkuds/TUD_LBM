@@ -12,6 +12,7 @@ from src.cli._console import success
 from src.cli.app import cli
 from src.cli.config_loading import _load_single_config
 from src.cli.field_select import prompt_fields_marked
+from src.config.run_config import COMPARISON_DIRNAME
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
@@ -31,7 +32,6 @@ def compare(parent_dir: str, no_prompt: bool) -> None:
     """Build CSV metrics and comparison plots for all runs in PARENT_DIR."""
     from src.cli.analysis_routing import analyse_tree
     from src.registry import get_operators
-    from src.simulation_io.plotting.run_comparison import _COMPARISON_DIR
 
     console.print(f"[dim]Parent directory : {parent_dir}[/dim]")
 
@@ -58,7 +58,7 @@ def compare(parent_dir: str, no_prompt: bool) -> None:
         console.print("[yellow]No runs produced CSV data. Check sim_type and snapshot files.[/yellow]")
         return
 
-    out_dir = Path(parent_dir) / _COMPARISON_DIR
+    out_dir = Path(parent_dir) / COMPARISON_DIRNAME
     success(f"Comparison analysis complete!  {n_ok}/{n_runs} run(s) processed")
     console.print(f"[bold green]Plots saved to:[/bold green] {out_dir}")
 

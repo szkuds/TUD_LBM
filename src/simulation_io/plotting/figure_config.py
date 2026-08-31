@@ -64,3 +64,20 @@ LABEL_CA = r"$\mathrm{Ca}$"
 LABEL_RE = r"$\mathrm{Re}$"
 LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
 LABEL_X_AVG_NORM = r"$X_{\mathrm{avg}}/R_0$"
+
+#: Marker and colour per regime label on the regime map.
+#:
+#: Keys are the values of
+#: :class:`src.simulation_io.analysis.accelerations.Regime`, spelled as plain
+#: strings rather than imported: ``regime_classification`` reaches this module
+#: through ``acceleration_analysis``, so importing the enum here would close an
+#: import cycle. ``Regime`` is a :class:`~enum.StrEnum`, so its members index
+#: these dicts directly. ``tests/io/test_regime_map_plot.py`` pins the keys to
+#: the enum.
+REGIME_MARKERS: dict[str, str] = {"Pinning": "o", "Dissipative": "s", "Inertial": "^", "unknown": "x"}
+REGIME_COLORS: dict[str, str] = {
+    "Pinning": "tab:blue",
+    "Dissipative": "tab:green",
+    "Inertial": "tab:red",
+    "unknown": "tab:gray",
+}

@@ -10,8 +10,8 @@ figures are requested.
 from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
-from src.simulation_io.plotting.run_comparison import _COMPARISON_DIR
-from src.simulation_io.plotting.run_comparison import _CONFIG_TOML
+from src.config.run_config import COMPARISON_DIRNAME
+from src.config.run_config import CONFIG_FILENAME
 from src.simulation_io.plotting.run_comparison import _safe_load_config
 from src.simulation_io.plotting.run_comparison import compare_runs
 from src.simulation_io.plotting.simulation_csv import build_simulation_csv
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from src.config import SimulationConfig
 
 #: Path fragments marking directories that are not simulation runs.
-_SKIP_DIRS = ("init", _COMPARISON_DIR)
+_SKIP_DIRS = ("init", COMPARISON_DIRNAME)
 
 
 def analyse_run(
@@ -59,7 +59,7 @@ def find_run_dirs(parent_dir: str | Path) -> list[Path]:
     parent = Path(parent_dir)
     run_dirs: list[Path] = []
     seen: set[Path] = set()
-    for toml in sorted(parent.rglob(_CONFIG_TOML)):
+    for toml in sorted(parent.rglob(CONFIG_FILENAME)):
         candidate = toml.parent
         if candidate in seen or any(skip in str(candidate).lower() for skip in _SKIP_DIRS):
             continue
@@ -94,7 +94,7 @@ def analyse_tree(
 
     n_ok = 0
     for run_dir in run_dirs:
-        config = _safe_load_config(run_dir / _CONFIG_TOML)
+        config = _safe_load_config(run_dir / CONFIG_FILENAME)
         if config is None:
             continue
         if analyse_run(run_dir, config, fields=fields) is not None:
@@ -103,6 +103,6 @@ def analyse_tree(
     if n_ok > 0:
         print("\nGenerating comparison plots...")
         compare_runs(parent)
-        print(f"Done. Comparison plots in {parent / _COMPARISON_DIR}")
+        print(f"Done. Comparison plots in {parent / COMPARISON_DIRNAME}")
 
     return len(run_dirs), n_ok

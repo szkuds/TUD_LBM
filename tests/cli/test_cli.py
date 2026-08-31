@@ -919,6 +919,28 @@ class TestBuildWettingInitRaw:
         result = _build_wetting_init_raw(self._base_raw(), {})
         assert result["nt"] == _WETTING_INIT_NT
 
+    def test_nt_override_is_honoured(self):
+        result = _build_wetting_init_raw(self._base_raw(), {}, 20_000)
+        assert result["nt"] == 20_000
+
+    def test_save_interval_yields_multiple_snapshots(self):
+        from src.cli.wetting_init import _WETTING_INIT_NT
+        from src.cli.wetting_init import _WETTING_INIT_SNAPSHOTS
+
+        result = _build_wetting_init_raw(self._base_raw(), {})
+        assert result["save_interval"] == _WETTING_INIT_NT // _WETTING_INIT_SNAPSHOTS
+        assert result["nt"] // result["save_interval"] == _WETTING_INIT_SNAPSHOTS
+
+    def test_save_interval_never_zero_for_short_runs(self):
+        result = _build_wetting_init_raw(self._base_raw(), {}, 5)
+        assert result["save_interval"] == 1
+
+    def test_skip_interval_cleared(self):
+        base = self._base_raw()
+        base["skip_interval"] = 1000
+        result = _build_wetting_init_raw(base, {})
+        assert result["skip_interval"] == 0
+
     def test_wetting_params_injected(self):
         params = {"phi_left": 1.1, "phi_right": 1.2, "d_rho_left": 0.0, "d_rho_right": 0.0}
         result = _build_wetting_init_raw(self._base_raw(), params)
@@ -1936,12 +1958,23 @@ class TestRunTwoPhaseWettingInit:
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=False, overview=False)
 
+    def _data_dir_with_snapshots(self, tmp_path, steps=(1000, 2000)):
+        """A run data directory holding one ``u`` field per timestep in *steps*."""
+        import numpy as np
+
+        data_dir = tmp_path / "run" / "data"
+        data_dir.mkdir(parents=True)
+        for i, step in enumerate(steps):
+            u = np.zeros((8, 8, 1, 1, 2))
+            u[0, 0, 0, 0, 0] = 1e-3 / (i + 1)
+            np.savez(data_dir / f"timestep_{step}.npz", u=u)
+        return data_dir
+
     def test_no_prompt_runs_both_phases(self, tmp_path):
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        data_dir = tmp_path / "data"
-        data_dir.mkdir()
+        data_dir = self._data_dir_with_snapshots(tmp_path)
 
         run_calls = []
 
@@ -1961,8 +1994,7 @@ class TestRunTwoPhaseWettingInit:
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        data_dir = tmp_path / "data"
-        data_dir.mkdir()
+        data_dir = self._data_dir_with_snapshots(tmp_path)
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
             _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
@@ -1970,6 +2002,73 @@ class TestRunTwoPhaseWettingInit:
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=True)
         assert "PHYSICAL PARAMETER OVERVIEW" in capsys.readouterr().out
+
+    def test_phase2_seeds_from_last_snapshot_on_disk(self, tmp_path):
+        """Phase 2 resumes from the highest saved timestep, not from ``nt`` itself."""
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = self._data_dir_with_snapshots(tmp_path, steps=(1000, 2000, 3000))
+        gravity_raws = []
+
+        def _record(base_raw, params, snapshot):
+            gravity_raws.append(snapshot)
+            return {"nt": 10}
+
+        with (
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
+            _patch("src.cli.wetting_init._build_wetting_gravity_raw", _record),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False)
+        assert gravity_raws == [str(data_dir / "timestep_3000.npz")]
+
+    def test_phase1_writes_max_velocity_convergence_plot(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = self._data_dir_with_snapshots(tmp_path)
+        with (
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False)
+        assert (data_dir.parent / "plots" / "analysis" / "max_velocity.png").exists()
+
+    def test_init_nt_reaches_phase1_config(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = self._data_dir_with_snapshots(tmp_path)
+        seen = []
+
+        def _expand(raw, phase_name):
+            seen.append((phase_name, raw.get("nt")))
+            return cfg
+
+        with (
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", _expand),
+            _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False, init_nt=20_000)
+        assert seen[0] == ("Phase 1", 20_000)
+
+    def test_missing_snapshot_raises(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = tmp_path / "run" / "data"
+        data_dir.mkdir(parents=True)
+        with (
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
+            pytest.raises(FileNotFoundError, match="No saved snapshots"),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False)
 
 
 # =========================================================================
@@ -2028,8 +2127,9 @@ class TestRunImplAdditional:
         cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
         called = {"n": 0}
 
-        def _fake_wetting(path, overrides, *, no_prompt, overview):
+        def _fake_wetting(path, overrides, *, no_prompt, overview, init_nt):
             called["n"] += 1
+            called["init_nt"] = init_nt
 
         with _patch("src.cli.execution._run_two_phase_wetting_init", _fake_wetting):
             result = _run_impl(
@@ -2037,9 +2137,10 @@ class TestRunImplAdditional:
                 overrides=(),
                 max_workers=None,
                 init_dir=None,
-                flags=RunFlags(no_prompt=True, init_wetting=True),
+                flags=RunFlags(no_prompt=True, init_wetting=True, init_wetting_nt=1234),
             )
         assert called["n"] == 1
+        assert called["init_nt"] == 1234
         assert result is False
 
 

@@ -9,12 +9,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import TypedDict
 from matplotlib.colors import TABLEAU_COLORS
+from src.config.run_config import COMPARISON_DIRNAME
+from src.config.run_config import CONFIG_FILENAME
+from src.config.run_config import SIMULATION_CSV_FILENAME
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 from src.simulation_io.plotting.figure_config import LABEL_CA
 from src.simulation_io.plotting.figure_config import LABEL_IT_NORM
 from src.simulation_io.plotting.figure_config import LABEL_RE
 from src.simulation_io.plotting.figure_config import LABEL_X_AVG_NORM
-from src.simulation_io.plotting.simulation_csv import _CSV_FILENAME
 
 if TYPE_CHECKING:
     import matplotlib.axes
@@ -22,8 +24,6 @@ if TYPE_CHECKING:
     from src.config import SimulationConfig
 
 _DIR_SPLIT_PARTS = 2
-_CONFIG_TOML = "config.toml"
-_COMPARISON_DIR = "comparison_analysis"
 
 
 class _PlotConfig(TypedDict, total=False):
@@ -143,11 +143,11 @@ def _load_comparison_entries(parent_dir: Path) -> list[dict]:
         return []
 
     entries = []
-    for csv_path in sorted(parent_dir.rglob(_CSV_FILENAME)):
+    for csv_path in sorted(parent_dir.rglob(SIMULATION_CSV_FILENAME)):
         run_dir = csv_path.parent
-        if _COMPARISON_DIR in run_dir.parts:
+        if COMPARISON_DIRNAME in run_dir.parts:
             continue
-        toml_path = run_dir / _CONFIG_TOML
+        toml_path = run_dir / CONFIG_FILENAME
         if not toml_path.exists():
             continue
         config = _safe_load_config(toml_path)
@@ -236,7 +236,7 @@ def compare_runs(parent_dir: str | Path) -> None:
         print("No processed simulation data found for comparison.")
         return
 
-    out_dir = (parent_dir / _COMPARISON_DIR).resolve()
+    out_dir = (parent_dir / COMPARISON_DIRNAME).resolve()
     if out_dir.parent != parent_dir:
         msg = f"Comparison output directory escapes {parent_dir}: {out_dir}"
         raise ValueError(msg)

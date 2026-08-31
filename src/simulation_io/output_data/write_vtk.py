@@ -9,6 +9,7 @@ except ModuleNotFoundError:  # pragma: no cover
     pyevtk = None  # ty: ignore[invalid-assignment]  # VTK writer unavailable; will raise at call time
 
 
+from src.config.run_config import SNAPSHOT_PREFIX
 from .base import OutputWriter
 
 # VTK requires 3D vector fields
@@ -39,7 +40,7 @@ class Vtk(OutputWriter):
             raise RuntimeError(
                 msg,
             )
-        filename = str(Path(self.data_dir) / f"timestep_{iteration}")
+        filename = str(Path(self.data_dir) / f"{SNAPSHOT_PREFIX}{iteration}")
 
         def vtk_ready(a: np.ndarray) -> np.ndarray:
             """Ensure data is in the right shape and memory layout for VTK.
