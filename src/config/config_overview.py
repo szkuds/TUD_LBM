@@ -14,7 +14,7 @@ DEBUG_FLAG_WETTING: bool = False  # Set to True to enable debug output (jax.debu
 DEBUG_FLAG_STABILITY: bool = False  # Set via --debug-stability; enables stability diagnostics
 
 # Wetting-debug tunables (only read when DEBUG_FLAG_WETTING is True)
-DEBUG_WETTING_INTERVAL: int = 100  # Timesteps between logged wetting rows; --debug-wetting-interval
+DEBUG_WETTING_INTERVAL: int = 50  # Timesteps between logged wetting rows; --debug-wetting-interval
 
 # Stability-diagnostics tunables (only read when DEBUG_FLAG_STABILITY is True)
 STABILITY_VAPOR_FRACTION: float = 0.2  # wake mask: rho < rho_v + frac * (rho_l - rho_v)
