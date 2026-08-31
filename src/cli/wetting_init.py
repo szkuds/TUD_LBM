@@ -5,6 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+import numpy as np
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.prompt import Prompt
@@ -16,7 +17,6 @@ from src.cli.display import _display_full_overview
 from src.cli.overrides import _apply_overrides
 
 if TYPE_CHECKING:
-    import numpy as np
     from src.config import SimulationConfig
 
 #: Default length of the Phase 1 equilibration run (``--init-wetting-nt``).
@@ -118,7 +118,7 @@ def _report_equilibrium(iters: np.ndarray, values: np.ndarray) -> None:
     if len(values) < 2:  # noqa: PLR2004
         return
     previous = float(values[-2])
-    if previous == 0.0:
+    if np.isclose(previous, 0.0, rtol=1e-09, atol=1e-09):
         return
     change = (final - previous) / previous
     console.print(f"    last interval   : {change:+.1%}")

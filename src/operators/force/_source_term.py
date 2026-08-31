@@ -13,7 +13,7 @@ from src.registry import force_model
 
 if TYPE_CHECKING:
     from src.lattice.lattice import Lattice
-    from src.operators.protocols import DifferentialOperator
+    from src.operators.protocols import BoundDifferentialOperator
 
 
 @force_model(name="source_term_wb")
@@ -23,7 +23,7 @@ def source(
     force: jnp.ndarray,
     lattice: Lattice,
     *,
-    gradient: DifferentialOperator,
+    gradient: BoundDifferentialOperator,
 ) -> jnp.ndarray:
     """Compute the well-balanced forcing source term.
 

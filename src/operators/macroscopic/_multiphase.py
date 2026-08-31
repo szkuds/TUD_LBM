@@ -16,7 +16,7 @@ from src.registry import macroscopic_operator
 if TYPE_CHECKING:
     from src.lattice.lattice import Lattice
     from src.operators.macroscopic import MultiphaseParams
-    from src.operators.protocols import DifferentialOperator
+    from src.operators.protocols import BoundDifferentialOperator
     from src.operators.protocols import EOSFunction
 
 
@@ -27,8 +27,8 @@ def _compute_macroscopic_multiphase_impl(
     eos_fn: EOSFunction,
     force_ext: jnp.ndarray | None = None,
     *,
-    gradient_standard: DifferentialOperator,
-    laplacian_density: DifferentialOperator,
+    gradient_standard: BoundDifferentialOperator,
+    laplacian_density: BoundDifferentialOperator,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Generic multiphase macroscopic computation shared between EOS models."""
     # Density - zeroth moment
@@ -63,8 +63,8 @@ def compute_macroscopic_multiphase(
     mp: MultiphaseParams,
     force_ext: jnp.ndarray | None = None,
     *,
-    gradient_standard: DifferentialOperator,
-    laplacian_density: DifferentialOperator,
+    gradient_standard: BoundDifferentialOperator,
+    laplacian_density: BoundDifferentialOperator,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Compute multiphase macroscopic fields using EOS selected from ``mp.eos``."""
     eos_fn = build_eos_fn(mp.eos, mp)

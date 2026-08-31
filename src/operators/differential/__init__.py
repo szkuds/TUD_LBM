@@ -1,15 +1,18 @@
 """Differential operators — composite builder and primitives.
 
-Public API: build_diff_ops(), build_differential_fn(), build_wetting_differential_fn()
+Public API: build_diff_ops(), build_differential_fn(),
+build_wetting_gradient_fn(), build_wetting_laplacian_fn()
 
 Implementation modules are internal; use the factories to access.
 
 The ``differential`` registry kind holds two structurally different target
-shapes, so it has two accessors. ``gradient`` / ``laplacian`` register the
-operator itself and are resolved with :func:`build_differential_fn`;
-``gradient_wetting`` / ``laplacian_wetting`` register a *builder* whose return
-value is the operator, and are resolved with
-:func:`build_wetting_differential_fn`.
+shapes. ``gradient`` / ``laplacian`` register the operator itself and are
+resolved by name with :func:`build_differential_fn`. ``gradient_wetting`` /
+``laplacian_wetting`` register a *builder* whose return value is the operator,
+and each gets its own accessor — :func:`build_wetting_gradient_fn` and
+:func:`build_wetting_laplacian_fn` — because their signatures differ: the
+gradient builder takes the lattice velocities ``c`` and the Laplacian builder
+does not.
 
 Example:
     from operators.differential import build_diff_ops
@@ -30,13 +33,16 @@ from src.operators._loader import auto_load_operators
 from src.operators.factory import build_operator
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from typing import Any
     import jax.numpy as jnp
     from src.config.simulation_config import SimulationConfig
     from src.lattice.lattice import Lattice
     from src.operators.macroscopic import MultiphaseParams
+    from src.operators.protocols import BoundDifferentialOperator
     from src.operators.protocols import DifferentialOperator
     from src.operators.protocols import WettingDifferentialOperator
+    from src.operators.protocols import WettingGradientBuilder
+    from src.operators.protocols import WettingLaplacianBuilder
 
 # Auto-discover and import private operator modules for registry registration.
 auto_load_operators("src.operators.differential")
@@ -47,7 +53,7 @@ def build_differential_fn(scheme: str) -> DifferentialOperator:
 
     For the plain operators only (``"gradient"``, ``"laplacian"``). The wetting
     schemes register a builder rather than an operator — resolve those with
-    :func:`build_wetting_differential_fn`.
+    :func:`build_wetting_gradient_fn` / :func:`build_wetting_laplacian_fn`.
 
     Args:
         scheme: Differential operator name.
@@ -61,28 +67,73 @@ def build_differential_fn(scheme: str) -> DifferentialOperator:
     return cast("DifferentialOperator", build_operator("differential", scheme))
 
 
-def build_wetting_differential_fn(scheme: str) -> Callable[..., WettingDifferentialOperator]:
-    """Return a *builder* for a parametric wetting differential operator.
+def build_wetting_gradient_fn() -> WettingGradientBuilder:
+    """Return the builder for the parametric wetting gradient.
 
     Unlike :func:`build_differential_fn`, the registry target here is a factory:
-    calling it with the static configuration (weights, pad modes, ``bc_config``,
-    ``rho_l``, ``rho_v``) returns the operator itself.
+    calling it with the static configuration returns the operator itself. The
+    registry name is this function's identity, so there is no *scheme* argument.
 
-    The cast sits at the registry boundary, which is where the type is actually
-    erased — :func:`~src.operators.factory.build_operator` returns
-    ``Callable[..., object] | type``.
-
-    Args:
-        scheme: Wetting differential builder name (``"gradient_wetting"`` or
-            ``"laplacian_wetting"``).
+    The cast sits at the registry boundary, which is where the target type is
+    genuinely erased — see :func:`~src.operators.factory.build_operator`.
 
     Returns:
-        A callable returning a :class:`WettingDifferentialOperator`.
+        The ``gradient_wetting`` builder, satisfying
+        :class:`WettingGradientBuilder`.
 
     Raises:
-        ValueError: If scheme is not registered.
+        ValueError: If ``gradient_wetting`` is not registered.
     """
-    return cast("Callable[..., WettingDifferentialOperator]", build_operator("differential", scheme))
+    return cast("WettingGradientBuilder", build_operator("differential", "gradient_wetting"))
+
+
+def build_wetting_laplacian_fn() -> WettingLaplacianBuilder:
+    """Return the builder for the parametric wetting Laplacian.
+
+    The counterpart of :func:`build_wetting_gradient_fn`. Kept separate because
+    the two builders take different arguments — the Laplacian stencil needs no
+    lattice velocities — so no single type describes both.
+
+    Returns:
+        The ``laplacian_wetting`` builder, satisfying
+        :class:`WettingLaplacianBuilder`.
+
+    Raises:
+        ValueError: If ``laplacian_wetting`` is not registered.
+    """
+    return cast("WettingLaplacianBuilder", build_operator("differential", "laplacian_wetting"))
+
+
+def _wetting_scalar(
+    wetting: dict[str, Any],
+    name: str,
+    legacy_name: str,
+    *,
+    default: float,
+) -> jnp.ndarray:
+    """Read one wetting scalar as a 0-d array, accepting the legacy short key.
+
+    ``wetting_config`` is a free-form ``dict[str, Any]`` straight off the TOML,
+    so a lookup is ``Any`` and a missing key is ``None`` — neither of which
+    ``float()`` accepts. Resolving the two spellings here keeps that narrowing
+    in one place instead of a nested ``.get`` chain per parameter.
+
+    Args:
+        wetting: The effective wetting configuration.
+        name: Canonical key, e.g. ``"phi_left"``.
+        legacy_name: Older short spelling, e.g. ``"phi_l"``.
+        default: Value used when neither key carries a number.
+
+    Returns:
+        The value as a 0-d :mod:`jax.numpy` array.
+    """
+    import jax.numpy as jnp
+
+    for key in (name, legacy_name):
+        value = wetting.get(key)
+        if value is not None:
+            return jnp.array(float(value))
+    return jnp.array(default)
 
 
 def build_diff_ops(
@@ -90,9 +141,9 @@ def build_diff_ops(
     mp_params: MultiphaseParams | None,
     lattice: Lattice,
 ) -> tuple[
-    DifferentialOperator,
-    DifferentialOperator,
-    DifferentialOperator,
+    BoundDifferentialOperator,
+    BoundDifferentialOperator,
+    BoundDifferentialOperator,
     WettingDifferentialOperator | None,
     WettingDifferentialOperator | None,
 ]:
@@ -134,7 +185,6 @@ def build_diff_ops(
         gradient_density, laplacian_density,
         gradient_density_wetting, laplacian_density_wetting)``
     """
-    import jax.numpy as jnp
     from src.operators.boundary import _bounce_back as _bb  # noqa: F401
     from src.operators.boundary import _periodic as _per  # noqa: F401
     from src.operators.boundary import _symmetry as _sym  # noqa: F401
@@ -160,8 +210,8 @@ def build_diff_ops(
     if effective_wetting is not None and mp_params is not None:
         # Wetting: build parametric closures with rho_l, rho_v baked in.
         # Signature: (grid, phi_l, phi_r, d_rho_l, d_rho_r) → result.
-        _gradient_wetting_factory = build_wetting_differential_fn("gradient_wetting")
-        _laplacian_wetting_factory = build_wetting_differential_fn("laplacian_wetting")
+        _gradient_wetting_factory = build_wetting_gradient_fn()
+        _laplacian_wetting_factory = build_wetting_laplacian_fn()
 
         _grad_wetting = _gradient_wetting_factory(
             lattice.w,
@@ -180,10 +230,10 @@ def build_diff_ops(
         )
 
         # Extract wetting params once, used in both branches below.
-        _phi_l = jnp.array(float(effective_wetting.get("phi_left", effective_wetting.get("phi_l", 1.0))))
-        _phi_r = jnp.array(float(effective_wetting.get("phi_right", effective_wetting.get("phi_r", 1.0))))
-        _d_rho_l = jnp.array(float(effective_wetting.get("d_rho_left", effective_wetting.get("d_rho_l", 0.0))))
-        _d_rho_r = jnp.array(float(effective_wetting.get("d_rho_right", effective_wetting.get("d_rho_r", 0.0))))
+        _phi_l = _wetting_scalar(effective_wetting, "phi_left", "phi_l", default=1.0)
+        _phi_r = _wetting_scalar(effective_wetting, "phi_right", "phi_r", default=1.0)
+        _d_rho_l = _wetting_scalar(effective_wetting, "d_rho_left", "d_rho_l", default=0.0)
+        _d_rho_r = _wetting_scalar(effective_wetting, "d_rho_right", "d_rho_r", default=0.0)
 
         def gradient_density(grid: jnp.ndarray) -> jnp.ndarray:
             return _grad_wetting(grid, _phi_l, _phi_r, _d_rho_l, _d_rho_r)
@@ -219,5 +269,6 @@ def build_diff_ops(
 __all__ = [
     "build_diff_ops",
     "build_differential_fn",
-    "build_wetting_differential_fn",
+    "build_wetting_gradient_fn",
+    "build_wetting_laplacian_fn",
 ]
