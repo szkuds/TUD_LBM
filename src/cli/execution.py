@@ -276,7 +276,7 @@ class RunFlags:
     fail_fast: bool = False
     overview: bool = False
     debug_wetting: bool = False
-    debug_wetting_interval: int = 100
+    debug_wetting_interval: int = 50
     debug_stability: bool = False
     init_wetting: bool = False
     run_compare: bool = False
