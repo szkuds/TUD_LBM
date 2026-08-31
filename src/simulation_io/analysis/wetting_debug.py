@@ -2,39 +2,98 @@
 
 Enabled via the ``--debug-wetting`` CLI flag, which sets
 ``DEBUG_FLAG_WETTING`` in :mod:`src.config.config_overview`.  When on,
-:mod:`src.operators.wetting.hysteresis.hysteresis` emits two kinds of
-trace through this module:
+:mod:`src.operators.wetting.hysteresis.hysteresis` emits one fixed-width
+row per contact line per logged timestep: the measured CA against its
+hysteresis window, the CLL, which parameter ended up driving the wall
+(``mode``), the wetting parameters themselves, the residual loss, and how
+many inner optimiser iterations were spent against the cap — which is how
+you tell a converged solve from one that ran out of iterations.
 
-* an inner-loop line per ``_optimise_single_param`` exit — iteration
-  count against the cap and the final loss, which is how you tell a
-  converged solve from one that ran out of iterations;
-* a per-side summary after the fallback branches have resolved — the
-  measured CA against its hysteresis window, the CLL, which parameter
-  ended up driving the wall (``mode``), and the residual loss.
+Both rows are emitted through a single ordered host callback, so the two
+sides of one timestep always appear together, and through
+:class:`~src.simulation_io.analysis._debug_table.DebugTable`, so each row
+is exactly one terminal line with columns that line up vertically across
+timesteps.
 
-All output goes through ``jax.debug.print`` so it survives the
-``lax.scan`` trace.  The flag is read at call time, not import time, so
-the CLI can flip it after the operator modules are already loaded.
+``DEBUG_WETTING_INTERVAL`` (``--debug-wetting-interval``) rate-limits the
+trace: the optimiser runs every timestep, but printing every timestep
+scrolls faster than it can be read.  The gate is a ``lax.cond`` on the
+timestep, and the sample values — two full trial steps' worth of loss
+evaluation — are built *inside* it, so skipped steps cost nothing.
+
+Both flags are read at call time, not import time, so the CLI can flip
+them after the operator modules are already loaded.
 """
 
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+from typing import Any
 import jax
 import jax.numpy as jnp
+import numpy as np
 import src.config.config_overview as _flags
+from src.simulation_io.analysis._debug_table import Column
+from src.simulation_io.analysis._debug_table import DebugTable
+from src.simulation_io.analysis._debug_table import fmt
 
-# mode codes used in the per-side summary line
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+# mode codes used in the per-side row
 _MODE_D_RHO = 0
 _MODE_PHI = 1
 _MODE_FALLBACK = 2
+_MODE_NAMES = {_MODE_D_RHO: "d_rho", _MODE_PHI: "phi", _MODE_FALLBACK: "fb"}
 
-_SIDE_LINE = (
-    "[{side}] CA={ca:.3f}° (adv={ca_adv:.1f}° rec={ca_rec:.1f}°) | CLL={cll:.3f} | "
-    "mode={mode}(0=d_rho,1=phi,2=fb) | "
-    "phi: {phi:.6f} | "
-    "d_rho: {d_rho:.6f} | "
-    "loss={loss:.3e}"
+#: Order in which a side's scalars are packed into the callback vector.
+_FIELDS = (
+    "ca",
+    "ca_adv",
+    "ca_rec",
+    "cll",
+    "phi",
+    "d_rho",
+    "loss",
+    "mode",
+    "iters",
+    "iters_cap",
+    "iters_fallback",
 )
+
+
+def _render_window(bounds: tuple[float, float]) -> str:
+    rec, adv = bounds
+    return f"[{rec:5.1f},{adv:5.1f}]"
+
+
+def _render_iters(counts: tuple[int, int]) -> str:
+    used, cap = counts
+    return f"{used}/{cap}"
+
+
+def _render_fallback(count: int) -> str:
+    return "-" if count == 0 else str(count)
+
+
+_T = Column("t", "t", 7, fmt("d"))
+_SIDE = Column("side", "side", 4)
+_CA = Column("ca", "CA", 7, fmt(".2f"))
+_WINDOW = Column("window", "rec,adv", 13, _render_window)
+_CLL = Column("cll", "CLL", 8, fmt(".3f"))
+_MODE = Column("mode", "mode", 5)
+_PHI = Column("phi", "phi", 8, fmt(".6f"))
+_D_RHO = Column("d_rho", "d_rho", 9, fmt(".6f"))
+_LOSS = Column("loss", "loss", 8, fmt(".2e"))
+_ITERS = Column("iters", "iters", 6, _render_iters)
+_FALLBACK = Column("fallback", "fb", 3, _render_fallback)
+
+#: 88 characters.
+_FULL = (_T, _SIDE, _CA, _WINDOW, _CLL, _MODE, _PHI, _D_RHO, _LOSS, _ITERS, _FALLBACK)
+#: 70 characters — drops the (constant-per-region) window and the fallback count.
+_COMPACT = (_T, _SIDE, _CA, _CLL, _MODE, _PHI, _D_RHO, _LOSS, _ITERS)
+
+_TABLE = DebugTable(_FULL, _COMPACT)
 
 
 @dataclass(frozen=True)
@@ -50,6 +109,10 @@ class SideDebugSample:
         d_rho: Final ``d_rho`` wetting parameter.
         phi_active: Whether ``phi`` was the parameter selected for this side.
         loss: Objective value at the final parameters.
+        iters: Inner optimiser iterations spent on this side.
+        iters_cap: Iteration cap that applied to this side.
+        iters_fallback: Iterations spent in the ``d_rho`` fallback solve,
+            zero when the fallback did not run.
     """
 
     ca: jnp.ndarray
@@ -60,6 +123,9 @@ class SideDebugSample:
     d_rho: jnp.ndarray
     phi_active: jnp.ndarray
     loss: jnp.ndarray
+    iters: jnp.ndarray
+    iters_cap: jnp.ndarray
+    iters_fallback: jnp.ndarray
 
 
 def enabled() -> bool:
@@ -73,21 +139,9 @@ def enabled() -> bool:
     return _flags.DEBUG_FLAG_WETTING
 
 
-def log_optimiser_exit(iterations: jnp.ndarray, max_iterations: int | jnp.ndarray, loss: jnp.ndarray) -> None:
-    """Log how an inner optimisation loop terminated.
-
-    ``iterations == max_iterations`` means the loop hit the cap rather
-    than the loss tolerance.  ``max_iterations`` may be traced — it is
-    selected per side from that side's above-window flag.
-    """
-    if not enabled():
-        return
-    jax.debug.print(
-        "opt exit: iters={i}/{m} loss={l:.3e}",
-        i=iterations,
-        m=max_iterations,
-        l=loss,
-    )
+def interval() -> int:
+    """Return the number of timesteps between logged samples (at least 1)."""
+    return max(1, int(_flags.DEBUG_WETTING_INTERVAL))
 
 
 def _mode(sample: SideDebugSample, phi_neutral: jnp.ndarray) -> jnp.ndarray:
@@ -106,41 +160,81 @@ def _mode(sample: SideDebugSample, phi_neutral: jnp.ndarray) -> jnp.ndarray:
     )
 
 
-def _log_side(side: str, sample: SideDebugSample, phi_neutral: jnp.ndarray, prefix: str = "") -> None:
-    jax.debug.print(
-        prefix + _SIDE_LINE,
-        side=side,
-        ca=sample.ca,
-        ca_adv=sample.ca_adv,
-        ca_rec=sample.ca_rec,
-        cll=sample.cll,
-        mode=_mode(sample, phi_neutral),
-        phi=sample.phi,
-        d_rho=sample.d_rho,
-        loss=sample.loss,
-    )
+def _pack(sample: SideDebugSample, phi_neutral: jnp.ndarray) -> jnp.ndarray:
+    """Pack one side into a single float vector for the host callback.
+
+    One array per side keeps the callback to three arguments; the host
+    unpacks it by :data:`_FIELDS`.  Integer-valued entries (mode, iteration
+    counts) ride along as floats and are cast back host-side.
+    """
+    dtype = jnp.result_type(float)
+    values = {
+        "mode": _mode(sample, phi_neutral),
+        **{name: getattr(sample, name) for name in _FIELDS if name != "mode"},
+    }
+    return jnp.stack([jnp.asarray(values[name], dtype=dtype) for name in _FIELDS])
+
+
+def _row(side: str, t: np.ndarray, packed: np.ndarray) -> dict[str, Any]:
+    """Build the table row for one side from the callback's arrays."""
+    values = dict(zip(_FIELDS, np.asarray(packed, dtype=np.float64), strict=True))
+    return {
+        "t": int(t),
+        "side": side,
+        "ca": values["ca"],
+        "window": (values["ca_rec"], values["ca_adv"]),
+        "cll": values["cll"],
+        "mode": _MODE_NAMES.get(int(values["mode"]), "?"),
+        "phi": values["phi"],
+        "d_rho": values["d_rho"],
+        "loss": values["loss"],
+        "iters": (int(values["iters"]), int(values["iters_cap"])),
+        "fallback": int(values["iters_fallback"]),
+    }
+
+
+def _host_block(t: np.ndarray, left: np.ndarray, right: np.ndarray) -> None:
+    """Emit both sides of one timestep as an unsplittable two-row block."""
+    _TABLE.emit_block([_row("L", t, left), _row("R", t, right)])
 
 
 def log_sides(
-    left: SideDebugSample,
-    right: SideDebugSample,
+    build_sides: Callable[[], tuple[SideDebugSample, SideDebugSample]],
     *,
     phi_neutral: jnp.ndarray,
+    t: jnp.ndarray | None = None,
 ) -> None:
-    """Log both contact lines as a blank-line-separated two-line block.
-
-    Right is printed first to match the existing trace format.
+    """Log both contact lines as one aligned two-row block.
 
     Args:
-        left: Left contact line's post-optimisation state.
-        right: Right contact line's post-optimisation state.
+        build_sides: Thunk returning ``(left, right)`` samples.  It is a
+            thunk rather than two values because building the samples costs
+            two trial-step evaluations, and on a rate-limited step those
+            must not run: the call happens inside the interval gate.
         phi_neutral: The neutral ``phi`` value, used to decide whether
             ``phi`` actually engaged (see :func:`_mode`).
+        t: Current timestep, used for the interval gate and the ``t``
+            column.  ``None`` logs unconditionally and prints ``t=0``.
     """
     if not enabled():
         return
-    _log_side("R", right, phi_neutral, prefix="\n")
-    _log_side("L", left, phi_neutral)
+
+    def _fire() -> None:
+        left, right = build_sides()
+        step = jnp.zeros((), dtype=int) if t is None else t
+        jax.debug.callback(
+            _host_block,
+            step,
+            _pack(left, phi_neutral),
+            _pack(right, phi_neutral),
+            ordered=True,
+        )
+
+    if t is None:
+        _fire()
+        return
+
+    jax.lax.cond(t % interval() == 0, _fire, lambda: None)
 
 
-__all__: list[str] = ["SideDebugSample", "enabled", "log_optimiser_exit", "log_sides"]
+__all__: list[str] = ["SideDebugSample", "enabled", "interval", "log_sides"]

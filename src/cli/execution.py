@@ -242,7 +242,7 @@ def _run_with_optional_overrides(
         _display_summary(config, sweep_metadata, configs, overview=overview)
 
 
-def _enable_debug_flags(*, debug_wetting: bool, debug_stability: bool) -> None:
+def _enable_debug_flags(*, debug_wetting: bool, debug_wetting_interval: int, debug_stability: bool) -> None:
     """Set the module-global debug flags in config_overview before setup/run traces."""
     if not (debug_wetting or debug_stability):
         return
@@ -251,7 +251,8 @@ def _enable_debug_flags(*, debug_wetting: bool, debug_stability: bool) -> None:
 
     if debug_wetting:
         _flags.DEBUG_FLAG_WETTING = True
-        console.print("[dim]Wetting debug logging enabled.[/dim]")
+        _flags.DEBUG_WETTING_INTERVAL = debug_wetting_interval
+        console.print(f"[dim]Wetting debug logging enabled (every {debug_wetting_interval} steps).[/dim]")
         console.print()
 
     if debug_stability:
@@ -262,7 +263,11 @@ def _enable_debug_flags(*, debug_wetting: bool, debug_stability: bool) -> None:
 
 @dataclass(frozen=True)
 class RunFlags:
-    """Boolean flags for `run`, bundled to keep `_run_impl`'s signature within S107's limit."""
+    """Option values for `run`, bundled to keep `_run_impl`'s signature within S107's limit.
+
+    All boolean but `debug_wetting_interval`, which carries the
+    `--debug-wetting-interval` value through to `_enable_debug_flags`.
+    """
 
     no_prompt: bool = False
     dry_run: bool = False
@@ -271,6 +276,7 @@ class RunFlags:
     fail_fast: bool = False
     overview: bool = False
     debug_wetting: bool = False
+    debug_wetting_interval: int = 50
     debug_stability: bool = False
     init_wetting: bool = False
     run_compare: bool = False
@@ -292,7 +298,11 @@ def _run_impl(
         _display_analysis_operators()
         return False
 
-    _enable_debug_flags(debug_wetting=flags.debug_wetting, debug_stability=flags.debug_stability)
+    _enable_debug_flags(
+        debug_wetting=flags.debug_wetting,
+        debug_wetting_interval=flags.debug_wetting_interval,
+        debug_stability=flags.debug_stability,
+    )
 
     _validate_cli_args(
         overrides,

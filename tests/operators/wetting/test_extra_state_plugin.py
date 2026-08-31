@@ -72,8 +72,9 @@ def test_update_state_early_return_and_update_path():
 
     calls = {}
 
-    def _fake_wetting_fn(wetting, rho, setup_obj, trial_step_fn=None):
+    def _fake_wetting_fn(wetting, rho, setup_obj, trial_step_fn=None, t=None):
         calls["trial"] = trial_step_fn
+        calls["t"] = t
         return wetting._replace(phi_left=jnp.array(1.5))
 
     marker = object()
@@ -83,6 +84,9 @@ def test_update_state_early_return_and_update_path():
     assert updated.wetting is not None
     assert float(updated.wetting.phi_left) == 1.5
     assert calls["trial"] is marker
+    # The timestep is forwarded so the wetting debug trace can stamp and
+    # rate-limit its rows.
+    assert int(calls["t"]) == int(new_state.t)
 
 
 def test_init_state_raises_when_initial_f_fn_none():

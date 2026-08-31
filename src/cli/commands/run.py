@@ -63,6 +63,17 @@ from src.cli.execution import _run_impl
     help="Enable wetting debug output (sets DEBUG_FLAG_WETTING in config_overview)",
 )
 @click.option(
+    "--debug-wetting-interval",
+    "debug_wetting_interval",
+    default=100,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help=(
+        "Timesteps between logged wetting debug rows (sets DEBUG_WETTING_INTERVAL); "
+        "1 logs every step. Only has an effect with --debug-wetting"
+    ),
+)
+@click.option(
     "--debug-stability",
     is_flag=True,
     help=(
@@ -178,6 +189,7 @@ def run(**cli_kwargs: object) -> None:
         fail_fast=cast("bool", cli_kwargs["fail_fast"]),
         overview=cast("bool", cli_kwargs["overview"]),
         debug_wetting=cast("bool", cli_kwargs["debug_wetting"]),
+        debug_wetting_interval=cast("int", cli_kwargs["debug_wetting_interval"]),
         debug_stability=cast("bool", cli_kwargs["debug_stability"]),
         init_wetting=cast("bool", cli_kwargs["init_wetting"]),
         run_compare=cast("bool", cli_kwargs["run_compare"]),

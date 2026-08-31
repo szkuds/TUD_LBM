@@ -66,9 +66,10 @@ contact angle, where the loss is already small and the loop exits after roughly
 one iteration. On a real trajectory, with the contact line moving under gravity,
 the loss is larger and the iteration count climbs toward the cap. Treat 4.4× as a
 floor, 274× as a ceiling, and measure the middle by instrumenting a real run
-(`--debug-wetting` reports the actual `iters` via `log_optimiser_exit`; note it
-also enables `log_sides`, which evaluates two extra objectives, so use it for
-iteration counts and never for timing).
+(`--debug-wetting` reports the actual `iters` against the cap in its per-side
+row; note each logged step evaluates two extra objectives, so use it for
+iteration counts and never for timing — and rate-limit it with
+`--debug-wetting-interval` to keep even that cost off most steps).
 
 Either way the conclusion for GPU work is the same: **the LBM kernel is not the
 workload.** Even in the cheapest regime, collision, streaming and the

@@ -13,8 +13,11 @@ on-device metrics and ships it to a host callback:
   restricted to the droplet wake (vapor phase, interface excluded)
 
 The host callback appends one row per sample to ``stability_log.csv``
-(flushed per write, so the curve survives a crash), prints a status
-line, and raises :class:`StabilityAbortError` when any metric is NaN.
+(flushed per write, so the curve survives a crash), prints a fixed-width
+status row via
+:class:`~src.simulation_io.analysis._debug_table.DebugTable` — one
+terminal line, columns aligned across samples — and raises
+:class:`StabilityAbortError` when any metric is NaN.
 """
 
 from __future__ import annotations
@@ -24,6 +27,9 @@ from typing import TYPE_CHECKING
 import jax
 import jax.numpy as jnp
 import numpy as np
+from src.simulation_io.analysis._debug_table import Column
+from src.simulation_io.analysis._debug_table import DebugTable
+from src.simulation_io.analysis._debug_table import fmt
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -36,6 +42,20 @@ logger = logging.getLogger(__name__)
 _CSV_NAME = "stability_log.csv"
 _CSV_HEADER = "t,max_u,max_grad_mu,rho_min,rho_max,checkerboard_amp,n_wake_cells\n"
 _METRIC_NAMES = ("max_u", "max_grad_mu", "rho_min", "rho_max", "checkerboard_amp")
+
+#: 60 characters — one line on any terminal, so consecutive samples stay
+#: column-aligned and a drifting metric is visible in place.
+_TABLE = DebugTable(
+    (
+        Column("t", "t", 8, fmt("d")),
+        Column("max_u", "max|u|", 8, fmt(".2e")),
+        Column("max_grad_mu", "max|dmu|", 8, fmt(".2e")),
+        Column("rho_min", "rho_min", 8, fmt(".5f")),
+        Column("rho_max", "rho_max", 8, fmt(".5f")),
+        Column("checkerboard_amp", "cb", 8, fmt(".2e")),
+        Column("n_wake_cells", "n_wake", 8, fmt("d")),
+    )
+)
 
 
 class StabilityAbortError(FloatingPointError):
@@ -162,15 +182,16 @@ def _host_check(out_dir: Path, metrics: np.ndarray, t: int) -> None:
             fh.write(_CSV_HEADER)
         fh.write(f"{it},{m[0]:.8e},{m[1]:.8e},{m[2]:.8e},{m[3]:.8e},{m[4]:.8e},{int(m[5])}\n")
 
-    logger.info(
-        "[stability] t=%d max|u|=%.3e max|grad_mu|=%.3e rho=[%.6g, %.6g] cb=%.3e (n_wake=%d)",
-        it,
-        m[0],
-        m[1],
-        m[2],
-        m[3],
-        m[4],
-        int(m[5]),
+    _TABLE.emit(
+        {
+            "t": it,
+            "max_u": m[0],
+            "max_grad_mu": m[1],
+            "rho_min": m[2],
+            "rho_max": m[3],
+            "checkerboard_amp": m[4],
+            "n_wake_cells": int(m[5]),
+        }
     )
 
     nan_names = [name for name, value in zip(_METRIC_NAMES, m[:5], strict=True) if np.isnan(value)]
@@ -209,6 +230,9 @@ def make_stability_callback(
         and aborts the scan on NaN.
     """
     out_path = Path(out_dir)
+    # A fresh run reprints the column header rather than continuing the
+    # cadence of the previous run in the same interpreter (sweeps, tests).
+    _TABLE.reset()
 
     def _host(metrics: np.ndarray, t: int) -> None:
         _host_check(out_path, metrics, t)
