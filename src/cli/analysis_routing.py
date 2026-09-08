@@ -17,6 +17,7 @@ from src.simulation_io.plotting.run_comparison import compare_runs
 from src.simulation_io.plotting.simulation_csv import build_simulation_csv
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from src.config import SimulationConfig
 
 #: Path fragments marking directories that are not simulation runs.
@@ -72,6 +73,7 @@ def analyse_tree(
     parent_dir: str | Path,
     *,
     fields: list[str] | None = None,
+    label_keys: Sequence[str] | None = None,
 ) -> tuple[int, int]:
     """Analyse every run under *parent_dir*, then build cross-run plots.
 
@@ -81,6 +83,8 @@ def analyse_tree(
     Args:
         parent_dir: Directory containing run directories, at any nesting depth.
         fields: Analysis operator names to render per run.
+        label_keys: Legend-label keys for the comparison plots; ``None`` labels
+            each run with whichever dimensionless numbers differ across the tree.
 
     Returns:
         ``(n_runs_found, n_runs_with_csv)``.
@@ -102,7 +106,7 @@ def analyse_tree(
 
     if n_ok > 0:
         print("\nGenerating comparison plots...")
-        compare_runs(parent)
+        compare_runs(parent, label_keys)
         print(f"Done. Comparison plots in {parent / COMPARISON_DIRNAME}")
 
     return len(run_dirs), n_ok

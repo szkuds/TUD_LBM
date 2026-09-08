@@ -11,10 +11,10 @@ class FigureStyle:
 
     dpi: int = 150
     panel_figsize: tuple[float, float] = (5.0, 4.0)
-    analysis_figsize: tuple[float, float] = (7.0, 4.5)
-    comparison_figsize: tuple[float, float] = (10.0, 6.0)
-    dual_axis_figsize: tuple[float, float] = (10.0, 6.0)
-    ca_theta_figsize: tuple[float, float] = (10.0, 6.0)
+    analysis_figsize: tuple[float, float] = (9.0, 4.5)
+    comparison_figsize: tuple[float, float] = (12.0, 8.0)
+    dual_axis_figsize: tuple[float, float] = (12.0, 8.0)
+    ca_theta_figsize: tuple[float, float] = (12.0, 8.0)
 
     suptitle_fontsize: int = 12
     title_fontsize: int = 14
@@ -63,7 +63,12 @@ DEFAULT_STYLE = FigureStyle()
 LABEL_CA = r"$\mathrm{Ca}$"
 LABEL_RE = r"$\mathrm{Re}$"
 LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
-LABEL_X_AVG_NORM = r"$X_{\mathrm{avg}}/R_0$"
+LABEL_X_AVG_NORM = r"$X_{\mathrm{CM}}/R_0$"
+LABEL_OH = r"$\mathrm{Oh}$"
+LABEL_BO = r"$\mathrm{Bo}$"
+LABEL_BO_PERP = r"$\mathrm{Bo}_{\perp}$"
+LABEL_BO_PAR = r"$\mathrm{Bo}_{\parallel}$"
+LABEL_AR = r"$\mathrm{Ar}$"
 
 #: Marker and colour per regime label on the regime map.
 #:

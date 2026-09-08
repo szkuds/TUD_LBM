@@ -224,6 +224,52 @@ class TestLoadComparisonEntries:
         # Label derived from dir name (digit prefix stripped)
         assert "test" in result[0]["label"].lower()
 
+    def _two_runs(self, tmp_path) -> None:
+        """Two runs whose only difference is the gravity driving them."""
+        for name in ("001_weak", "002_strong"):
+            run_dir = tmp_path / name
+            run_dir.mkdir()
+            (run_dir / "simulation_data.csv").write_text("iteration,Ca\n10,0.002\n", encoding="utf-8")
+            (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+
+    def test_labels_carry_the_differing_bond_number(self, tmp_path):
+        pytest.importorskip("pandas")
+        self._two_runs(tmp_path)
+
+        configs = {
+            "001_weak": _wetting_cfg(
+                initialisation={"radii": [0.2], "centres": [[0.5, 0.5]]},
+                gravity_force={"force_g": 1e-6, "inclination_angle_deg": 30.0},
+            ),
+            "002_strong": _wetting_cfg(
+                initialisation={"radii": [0.2], "centres": [[0.5, 0.5]]},
+                gravity_force={"force_g": 4e-6, "inclination_angle_deg": 30.0},
+            ),
+        }
+        with patch(
+            "src.simulation_io.plotting.run_comparison._safe_load_config",
+            side_effect=lambda toml: configs[toml.parent.name],
+        ):
+            result = _load_comparison_entries(tmp_path)
+
+        labels = [entry["label"] for entry in result]
+        assert all("Bo" in label for label in labels)
+        # Ordered by the labelled quantity, so the weaker drive comes first.
+        assert result[0]["numbers"].bo_parallel < result[1]["numbers"].bo_parallel
+
+    def test_label_keys_override_the_automatic_selection(self, tmp_path):
+        pytest.importorskip("pandas")
+        self._two_runs(tmp_path)
+
+        cfg = _wetting_cfg(
+            initialisation={"radii": [0.2], "centres": [[0.5, 0.5]]},
+            gravity_force={"force_g": 1e-6},
+        )
+        with patch("src.simulation_io.plotting.run_comparison._safe_load_config", return_value=cfg):
+            result = _load_comparison_entries(tmp_path, ["oh"])
+
+        assert all("Oh" in entry["label"] for entry in result)
+
     def test_skips_run_when_config_fails_to_load(self, tmp_path):
         pytest.importorskip("pandas")
 
@@ -256,7 +302,7 @@ def test_analyse_tree_calls_compare_runs_when_csv_produced(tmp_path):
     cfg = _wetting_cfg()
     compare_called = {"n": 0}
 
-    def _fake_compare(_parent_dir):
+    def _fake_compare(_parent_dir, _label_keys=None):
         compare_called["n"] += 1
 
     with (

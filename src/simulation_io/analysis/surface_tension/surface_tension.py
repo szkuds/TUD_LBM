@@ -80,7 +80,7 @@ _N_RADII = 5
 _N_ITERATIONS = 200_000
 
 # The sweep's droplet radii, as fractions of the smaller grid dimension.
-_RADIUS_MIN_FRACTION = 1.0 / 5.0
+_RADIUS_MIN_FRACTION = 1.0 / 4.0
 _RADIUS_MAX_FRACTION = 1.0 / 3.0
 # The vapour corner samples are inset by this fraction of the smaller grid
 # dimension. Tying the inset to the grid rather than to the interface width is

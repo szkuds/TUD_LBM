@@ -72,6 +72,10 @@ def test_compute_dimensionless_numbers_resolves_all_fields_when_inputs_available
     assert dn.bo_perp is not None
     assert dn.bo_parallel is not None
     assert dn.bo_parallel > 0.0
+    assert dn.ar is not None
+    assert dn.re is not None
+    assert math.isclose(dn.re, math.sqrt(dn.ar), rel_tol=1e-12)
+    assert dn.inclination_deg == 30.0
 
 
 def test_compute_dimensionless_numbers_all_none_without_gravity():
@@ -83,6 +87,9 @@ def test_compute_dimensionless_numbers_all_none_without_gravity():
     assert dn.bo is None
     assert dn.bo_perp is None
     assert dn.bo_parallel is None
+    assert dn.ar is None
+    assert dn.re is None
+    assert dn.inclination_deg is None
 
 
 _CS_EOS_PARAMS = {"a_eos": 1.0, "b_eos": 4.0, "r_eos": 1.0, "t_eos": 0.07}
@@ -93,7 +100,7 @@ def test_compute_dimensionless_numbers_all_none_for_calibration_only_eos_without
 
     dn = compute_dimensionless_numbers(cfg)
 
-    assert dn == (None, None, None, None)
+    assert dn == (None, None, None, None, None, None, None)
 
 
 def test_compute_dimensionless_numbers_uses_measured_surface_tension():

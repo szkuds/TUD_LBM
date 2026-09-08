@@ -157,7 +157,7 @@ def test_analyse_tree_skips_special_folders(monkeypatch, tmp_path: Path):
 
     called = {"n": 0}
 
-    def _fake_compare(_parent):
+    def _fake_compare(_parent, _label_keys=None):
         called["n"] += 1
 
     monkeypatch.setattr("src.cli.analysis_routing.compare_runs", _fake_compare)

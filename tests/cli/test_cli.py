@@ -738,6 +738,25 @@ class TestClickCommandPaths:
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 0
 
+    def test_compare_accepts_label_param(self, tmp_path):
+        runner = CliRunner()
+        with patch("src.cli.analysis_routing.analyse_tree", return_value=(2, 2)) as mock_tree:
+            result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt", "--label-param", "oh"])
+        assert result.exit_code == 0
+        assert mock_tree.call_args.kwargs["label_keys"] == ["oh"]
+
+    def test_compare_without_label_param_selects_automatically(self, tmp_path):
+        runner = CliRunner()
+        with patch("src.cli.analysis_routing.analyse_tree", return_value=(2, 2)) as mock_tree:
+            result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt"])
+        assert result.exit_code == 0
+        assert mock_tree.call_args.kwargs["label_keys"] is None
+
+    def test_compare_rejects_unknown_label_param(self, tmp_path):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt", "--label-param", "nonsense"])
+        assert result.exit_code == 2
+
     def test_compare_keyboard_interrupt_exits_130(self, tmp_path):
         runner = CliRunner()
         with patch("src.cli.analysis_routing.analyse_tree", side_effect=KeyboardInterrupt):
@@ -2450,3 +2469,35 @@ class TestAnalyseCommand:
             result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
         assert result.exit_code == 0
         assert "0.0123" in result.output
+
+    def test_length_scale_writes_figure_and_refreshes_overview(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+
+        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--length-scale"])
+
+        assert result.exit_code == 0
+        assert (tmp_path / "plots" / "analysis" / "length_scale.png").exists()
+        assert (tmp_path / "physical_parameters.txt").exists()
+
+    def test_length_scale_honours_out_dir(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        out_dir = tmp_path / "analysis_out"
+
+        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--length-scale", "--out-dir", str(out_dir)])
+
+        assert result.exit_code == 0
+        assert (out_dir / "plots" / "analysis" / "length_scale.png").exists()
+        assert not (tmp_path / "physical_parameters.txt").exists()
+
+    def test_length_scale_reports_when_no_region_resolves(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        content = (tmp_path / "config.toml").read_text(encoding="utf-8")
+        (tmp_path / "config.toml").write_text(
+            content.replace("radii = [0.2]", "radii = []").replace("centres = [[0.5, 0.5]]", "centres = []"),
+            encoding="utf-8",
+        )
+
+        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--length-scale"])
+
+        assert result.exit_code == 0
+        assert "no figure written" in result.output.lower()
