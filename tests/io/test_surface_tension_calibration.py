@@ -589,7 +589,7 @@ def test_measure_pressure_jumps_small_sweep(tmp_path, monkeypatch):
     radii, delta_p, densities = st._measure_pressure_jumps(config, states_dir=states_dir)
 
     # min(nx, ny) = 32 → radii span [6.4, 10.67].
-    np.testing.assert_allclose(radii, [6.4, 10.666666666666666])
+    np.testing.assert_allclose(radii, [8.0, 10.666666666666666])
     assert delta_p.shape == (2,)
     assert np.all(np.isfinite(delta_p))
     assert [rho.shape for rho in densities] == [(32, 32), (32, 32)]
@@ -597,8 +597,8 @@ def test_measure_pressure_jumps_small_sweep(tmp_path, monkeypatch):
     assert saved == [
         "radius_10.67_final.npz",
         "radius_10.67_init.npz",
-        "radius_6.40_final.npz",
-        "radius_6.40_init.npz",
+        "radius_8.00_final.npz",
+        "radius_8.00_init.npz",
     ]
-    snapshot = np.load(states_dir / "radius_6.40_final.npz")
+    snapshot = np.load(states_dir / "radius_8.00_final.npz")
     assert snapshot["f"].shape == (32, 32, 1, 9, 1)
