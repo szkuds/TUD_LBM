@@ -8,18 +8,18 @@ from src.simulation_io.plotting.run_labels import label_sort_key
 from src.simulation_io.plotting.run_labels import resolve_label_keys
 
 
-def _dn(**kwargs) -> DimensionlessNumbers:
-    base = {
+def _dn(*, inclination_deg: float | None = 0.0, **kwargs) -> DimensionlessNumbers:
+    values: dict[str, float | None] = {
         "oh": 0.3,
+        "la": 1.0 / 0.3**2,
         "bo": 1.0,
         "bo_perp": 0.87,
         "bo_parallel": 0.5,
         "ar": 4.0,
         "re": 2.0,
-        "inclination_deg": 0.0,
     }
-    base.update(kwargs)
-    return DimensionlessNumbers(**base)
+    values.update(kwargs)
+    return DimensionlessNumbers(values=values, inclination_deg=inclination_deg)
 
 
 def _labels(numbers, names=None, requested=None) -> list[str]:
@@ -135,7 +135,7 @@ def test_every_choice_is_resolvable():
 
 
 def test_all_none_numbers_fall_back_to_names():
-    numbers = [DimensionlessNumbers(oh=None, bo=None, bo_perp=None, bo_parallel=None)] * 2
+    numbers = [DimensionlessNumbers()] * 2
 
     assert resolve_label_keys(numbers) == []
     assert _labels(numbers, names=["a", "b"]) == ["a", "b"]
@@ -163,7 +163,7 @@ def test_label_sort_key_orders_by_the_labelled_quantities():
 
     ordered = sorted(numbers, key=lambda dn: label_sort_key(dn, ["bo"]))
 
-    assert [dn.bo for dn in ordered] == [1.0, 2.0]
+    assert [dn.get("bo") for dn in ordered] == [1.0, 2.0]
 
 
 def test_label_sort_key_sorts_unresolvable_runs_last():
@@ -171,8 +171,17 @@ def test_label_sort_key_sorts_unresolvable_runs_last():
 
     ordered = sorted(numbers, key=lambda dn: label_sort_key(dn, ["bo"]))
 
-    assert [dn.bo for dn in ordered] == [1.0, None]
+    assert [dn.get("bo") for dn in ordered] == [1.0, None]
 
 
 def test_label_sort_key_ignores_the_name_key():
     assert label_sort_key(_dn(bo=1.0), ["name", "bo"]) == (1.0,)
+
+
+def test_laplace_is_never_selected_automatically_but_stays_requestable():
+    """La is an exact reparametrisation of Oh, so it must not double up on it."""
+    numbers = [_dn(oh=0.10, la=100.0), _dn(oh=0.30, la=1.0 / 0.09)]
+
+    assert "la" not in resolve_label_keys(numbers)
+    assert resolve_label_keys(numbers, ["la"]) == ["la"]
+    assert _labels(numbers, requested=["la"]) == [r"$\mathrm{La} = 100.00$", r"$\mathrm{La} = 11.11$"]

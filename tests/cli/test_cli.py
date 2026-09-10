@@ -779,6 +779,41 @@ class TestClickCommandPaths:
         assert result.exit_code == 0
         assert "regime_map.png" in result.output
 
+    def test_regime_map_defaults_to_the_historical_axis_pair(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        runner = CliRunner()
+        out_path = tmp_path / "regime_map_analysis" / "regime_map_bo_parallel_vs_oh.png"
+        with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", return_value=out_path) as mock_build:
+            result = runner.invoke(cli, ["regime-map", str(dirs_txt)], env={"COLUMNS": "200", "LINES": "50"})
+        assert result.exit_code == 0
+        kwargs = mock_build.call_args.kwargs
+        assert (kwargs["x_key"], kwargs["y_key"]) == ("bo_parallel", "oh")
+        assert (kwargs["xscale"], kwargs["yscale"]) == ("linear", "linear")
+
+    def test_regime_map_axis_options_reach_the_builder(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        runner = CliRunner()
+        out_path = tmp_path / "regime_map_analysis" / "regime_map_la_vs_bo.png"
+        with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", return_value=out_path) as mock_build:
+            result = runner.invoke(
+                cli,
+                ["regime-map", str(dirs_txt), "--x", "la", "--y", "bo", "--xscale", "log"],
+                env={"COLUMNS": "200", "LINES": "50"},
+            )
+        assert result.exit_code == 0
+        kwargs = mock_build.call_args.kwargs
+        assert (kwargs["x_key"], kwargs["y_key"]) == ("la", "bo")
+        assert (kwargs["xscale"], kwargs["yscale"]) == ("log", "linear")
+        assert "regime_map_la_vs_bo.png" in result.output
+
+    def test_regime_map_rejects_an_unregistered_axis(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        result = CliRunner().invoke(cli, ["regime-map", str(dirs_txt), "--x", "not_a_number"])
+        assert result.exit_code == 2
+
     def test_regime_map_no_usable_runs_exits_1(self, tmp_path):
         dirs_txt = tmp_path / "dirs.txt"
         dirs_txt.write_text("run_a\n", encoding="utf-8")

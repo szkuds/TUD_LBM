@@ -13,11 +13,20 @@ from src.cli.app import cli
 from src.cli.config_loading import _load_single_config
 from src.cli.field_select import prompt_fields_marked
 from src.config.run_config import COMPARISON_DIRNAME
+
+# Imported for its registration side effect: both choice lists below are read
+# off the ``dimensionless`` registry at import time, and click evaluates them
+# when the commands are defined.
+from src.simulation_io.analysis.physical_parameters import dimensionless_keys
 from src.simulation_io.plotting.run_labels import LABEL_PARAM_CHOICES
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
     from src.simulation_io.analysis.accelerations import Smoothing
+    from src.simulation_io.plotting.regime_map_plot import AxisScale
+
+_AXIS_CHOICES = dimensionless_keys()
+_SCALE_CHOICES = ["linear", "log"]
 
 
 @cli.command()
@@ -90,7 +99,7 @@ def compare(parent_dir: str, no_prompt: bool, label_params: tuple[str, ...]) -> 
     "out_dir",
     type=click.Path(file_okay=False),
     default=None,
-    help="Output directory for regime_map.png (default: <dirs_txt parent>/regime_map_analysis).",
+    help="Output directory for the figure (default: <dirs_txt parent>/regime_map_analysis).",
 )
 @click.option(
     "--smoothing",
@@ -100,17 +109,74 @@ def compare(parent_dir: str, no_prompt: bool, label_params: tuple[str, ...]) -> 
     help="Acceleration-curve smoothing for peak detection: 'raw' (default, unsmoothed) or "
     "'savgol' (Savitzky-Golay filtered, reduces spikiness).",
 )
+@click.option(
+    "--x",
+    "x_key",
+    type=click.Choice(_AXIS_CHOICES),
+    default=None,
+    help="Dimensionless number on the x axis (default: bo_parallel).",
+)
+@click.option(
+    "--y",
+    "y_key",
+    type=click.Choice(_AXIS_CHOICES),
+    default=None,
+    help="Dimensionless number on the y axis (default: oh).",
+)
+@click.option(
+    "--xscale",
+    "xscale",
+    type=click.Choice(_SCALE_CHOICES),
+    default="linear",
+    help="Scale of the x axis. Use 'log' for a quantity spanning decades, e.g. La.",
+)
+@click.option(
+    "--yscale",
+    "yscale",
+    type=click.Choice(_SCALE_CHOICES),
+    default="linear",
+    help="Scale of the y axis.",
+)
 @cli_command(title="Regime Map", interrupt_message="Regime map analysis interrupted by user.")
-def regime_map(dirs_txt: str, allowed_roots: tuple[str, ...], out_dir: str | None, smoothing: str) -> None:
-    """Classify runs listed in DIRS_TXT into pinning/viscous/inertial/unknown and plot Bo_parallel vs Oh."""
+def regime_map(
+    dirs_txt: str,
+    allowed_roots: tuple[str, ...],
+    out_dir: str | None,
+    smoothing: str,
+    x_key: str | None,
+    y_key: str | None,
+    xscale: str,
+    yscale: str,
+) -> None:
+    """Classify runs listed in DIRS_TXT and plot any pair of dimensionless numbers.
+
+    Regimes are pinning / dissipative / capillary / steady / unknown.
+    """
+    # Imported lazily so the CLI does not pull in the plotting stack to define
+    # its options, and so tests can patch ``build_regime_map`` at this seam. The
+    # axis defaults come from the same module for the same reason.
+    from src.simulation_io.plotting.regime_map_plot import DEFAULT_X_KEY
+    from src.simulation_io.plotting.regime_map_plot import DEFAULT_Y_KEY
     from src.simulation_io.plotting.regime_map_plot import build_regime_map
 
+    x_key = x_key or DEFAULT_X_KEY
+    y_key = y_key or DEFAULT_Y_KEY
     console.print(f"[dim]Run-dir list : {dirs_txt}[/dim]")
+    console.print(f"[dim]Axes         : {x_key} ({xscale}) vs {y_key} ({yscale})[/dim]")
     console.print()
 
-    out_path = build_regime_map(dirs_txt, allowed_roots, out_dir=out_dir, smoothing=cast("Smoothing", smoothing))
+    out_path = build_regime_map(
+        dirs_txt,
+        allowed_roots,
+        out_dir=out_dir,
+        smoothing=cast("Smoothing", smoothing),
+        x_key=x_key,
+        y_key=y_key,
+        xscale=cast("AxisScale", xscale),
+        yscale=cast("AxisScale", yscale),
+    )
     if out_path is None:
-        console.print("[yellow]No runs produced a usable classification.[/yellow]")
+        console.print("[yellow]No runs produced a usable classification for these axes.[/yellow]")
         sys.exit(1)
 
     success("Regime map complete!")

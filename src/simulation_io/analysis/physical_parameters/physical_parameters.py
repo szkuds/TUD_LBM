@@ -14,16 +14,49 @@ Public API::
 
 from __future__ import annotations
 import math
+from dataclasses import dataclass
+from dataclasses import field
 from datetime import UTC
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import NamedTuple
+from typing import cast
 import numpy as np
+from src.registry import get_operators
+from src.simulation_io.analysis.physical_parameters import (
+    numbers as _numbers,  # noqa: F401  (registers the dimensionless operators)
+)
+from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessInputs
+from src.simulation_io.analysis.physical_parameters.numbers._bond import BondNumbers
+from src.simulation_io.analysis.physical_parameters.numbers._bond import compute_bond_numbers
+from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import compute_archimedes_number
+from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import compute_reynolds_number
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from src.config.simulation_config import SimulationConfig
+    from src.registry import OperatorEntry
+    from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessNumberOperator
+
+# Re-exported so the formulas keep their historical import site while living
+# beside the operators that register them.
+__all__ = [
+    "BondNumbers",
+    "DimensionlessNumbers",
+    "build_overview",
+    "compute_archimedes_number",
+    "compute_bond_numbers",
+    "compute_dimensionless_numbers",
+    "compute_reynolds_number",
+    "dimensionless_keys",
+    "dimensionless_label",
+    "inclusion_mask_from_rho",
+    "measure_init_phase_densities",
+    "resolve_dimensionless_inputs",
+    "write_physical_parameters",
+]
 
 _CS2 = 1.0 / 3.0  # Speed of sound squared for D2Q9/D3Q19
 
@@ -455,164 +488,163 @@ def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple
     return length, f"L={length} (grid_x)"
 
 
-def compute_ohnesorge_number(config: SimulationConfig, gamma: float, length: float) -> float:
-    """Oh = nu / sqrt(gamma * length * rho_l)."""
-    nu = _nu(float(config.tau))
-    if config.rho_l is None:
-        msg = "rho_l is required for Ohnesorge number"
-        raise ValueError(msg)
-    return nu / (gamma * length * config.rho_l) ** 0.5
+# ---------------------------------------------------------------------------
+# Dimensionless numbers
+# ---------------------------------------------------------------------------
+#
+# The numbers themselves live one-per-file under ``numbers/`` and self-register
+# under registry kind ``dimensionless``. Nothing below names a specific number:
+# this section resolves the inputs they share, evaluates whatever is registered,
+# and renders the results. Adding a number is adding a file.
 
 
-class BondNumbers(NamedTuple):
-    """Bond number and its components along/across the inclined gravity vector."""
-
-    bo: float
-    bo_perp: float
-    bo_parallel: float
-
-
-def compute_bond_numbers(
-    delta_rho_phases: float,
-    gamma: float,
-    g_val: float,
-    length: float,
-    angle_deg: float = 0.0,
-) -> BondNumbers:
-    """Bo = (Δρ*g*L²)/γ, split into normal/tangential components by angle_deg."""
-    bo = (delta_rho_phases * (length**2) * g_val) / gamma
-    angle_rad = math.radians(angle_deg)
-    return BondNumbers(bo=bo, bo_perp=bo * math.cos(angle_rad), bo_parallel=bo * math.sin(angle_rad))
-
-
-class DimensionlessNumbers(NamedTuple):
-    """Oh/Bo/Bo_perp/Bo_parallel/Ar/Re for one config; all-None when inputs are missing.
-
-    ``inclination_deg`` is not itself dimensionless; it rides along because it is
-    what decides whether ``bo`` or ``bo_parallel`` is the Bond number worth
-    reporting for a run, and re-deriving it from the config would duplicate the
-    force-dict precedence in :func:`_resolve_gravity_inclination`.
-
-    The trailing fields default to ``None`` so the four original ones can still
-    be constructed positionally.
-    """
-
-    oh: float | None
-    bo: float | None
-    bo_perp: float | None
-    bo_parallel: float | None
-    ar: float | None = None
-    re: float | None = None
-    inclination_deg: float | None = None
-
-
-_ALL_NONE_DIMENSIONLESS_NUMBERS = DimensionlessNumbers(oh=None, bo=None, bo_perp=None, bo_parallel=None)
-
-
-def compute_dimensionless_numbers(config: SimulationConfig) -> DimensionlessNumbers:
-    """Resolve Oh/Bo/Bo_perp/Bo_parallel for one config; never raises.
+def resolve_dimensionless_inputs(config: SimulationConfig) -> DimensionlessInputs | None:
+    """Resolve everything the registered dimensionless numbers are built from.
 
     Mirrors the resolution sequence in :func:`_add_multiphase_section`: surface
     tension via :func:`_resolve_surface_tension`, buoyancy contrast via
     :func:`_resolve_buoyancy_delta_rho`, length via
     :func:`_resolve_length_for_dimensionless_numbers`, gravity via
-    :func:`_resolve_gravity_value`, inclination via
-    :func:`_resolve_gravity_inclination`, and Ar/Re via
-    :func:`compute_archimedes_number` / :func:`compute_reynolds_number`. Returns
-    all-None when any required input is missing (e.g. a calibration-only EOS
-    with no measured surface tension yet, or no gravity configured).
+    :func:`_resolve_gravity_value` and :func:`_resolve_gravity_inclination`.
+
+    Returns ``None`` only when *nothing* could be computed -- no surface tension
+    (a calibration-only EOS not yet measured), no density contrast, or no
+    ``rho_l``. Missing *gravity* is deliberately not such a case: it is carried
+    through as ``g=None`` so ``Oh`` and ``La``, which need none, still resolve
+    while the buoyancy-driven numbers report themselves unresolved.
     """
     resolved = _resolve_surface_tension(config)
     if resolved is None:
-        return _ALL_NONE_DIMENSIONLESS_NUMBERS
-    _drho_config, gamma, _source = resolved
+        return None
+    _drho_config, gamma, gamma_source = resolved
 
     buoyancy = _resolve_buoyancy_delta_rho(config)
-    if buoyancy is None:
-        return _ALL_NONE_DIMENSIONLESS_NUMBERS
-    drho, _drho_source = buoyancy
+    if buoyancy is None or config.rho_l is None:
+        return None
+    drho, drho_source = buoyancy
 
+    length, length_label = _resolve_length_for_dimensionless_numbers(config)
     g_val = _resolve_gravity_value(config)
-    if g_val is None:
-        return _ALL_NONE_DIMENSIONLESS_NUMBERS
-
-    length, _length_label = _resolve_length_for_dimensionless_numbers(config)
-    oh = compute_ohnesorge_number(config, gamma, length)
-    angle_deg = _resolve_gravity_inclination(config)
-    bn = compute_bond_numbers(drho, gamma, g_val, length, angle_deg)
-
-    # rho_l is already known to be set (_resolve_surface_tension returns None
-    # without it), but Ar/Re are reported as unresolved rather than raising.
-    nu = _nu(float(config.tau))
-    rho_l = None if config.rho_l is None else float(config.rho_l)
-    ar = None if rho_l is None else compute_archimedes_number(drho, g_val, length, nu, rho_l)
-    re = None if rho_l is None else compute_reynolds_number(drho, g_val, length, nu, rho_l)
-    return DimensionlessNumbers(
-        oh=oh,
-        bo=bn.bo,
-        bo_perp=bn.bo_perp,
-        bo_parallel=bn.bo_parallel,
-        ar=ar,
-        re=re,
-        inclination_deg=angle_deg,
+    return DimensionlessInputs(
+        gamma=gamma,
+        gamma_source=gamma_source,
+        drho=drho,
+        drho_source=drho_source,
+        length=length,
+        length_label=length_label,
+        nu=_nu(float(config.tau)),
+        rho_l=float(config.rho_l),
+        g=g_val,
+        angle_deg=None if g_val is None else _resolve_gravity_inclination(config),
     )
 
 
-def _format_ohnesorge_number_row(config: SimulationConfig, gamma: float, length: float, length_label: str) -> str:
-    """Build Ohnesorge-number row from lattice kinematic viscosity."""
-    oh = compute_ohnesorge_number(config, gamma, length)
-    return _row("Oh (Ohnesorge number):", f"{oh:.6g}  [ν/(ρ_l*γ*L)), {length_label}]")
+def _dimensionless_entries() -> list[OperatorEntry]:
+    """Registered dimensionless numbers, in display order.
 
-
-def _format_bond_number_row(
-    delta_rho_phases: float,
-    gamma: float,
-    g_val: float,
-    length: float,
-    length_label: str,
-    angle_deg: float = 0.0,
-) -> list[str]:
-    """Build Bond-number row(s) from shared length scale."""
-    bn = compute_bond_numbers(delta_rho_phases, gamma, g_val, length, angle_deg)
-    return [
-        _row("Bo (Bond number):", f"{bn.bo:.6g}  [(ΔρgL²)/γ, {length_label}]"),
-        _row("Bo_perp (Bond normal):", f"{bn.bo_perp:.6g}  [(Δρ*g*cos({angle_deg:.4g}deg)*L^2)/gamma, {length_label}]"),
-        _row(
-            "Bo_parallel (Bond tangential):",
-            f"{bn.bo_parallel:.6g}  [(Δρ*g*sin({angle_deg:.4g}deg)*L^2)/gamma, {length_label}]",
-        ),
-    ]
-
-
-def compute_archimedes_number(drho: float, g_val: float, length: float, nu: float, rho_l: float) -> float:
-    """Ar = gL³Δρ / (ν²ρ_l)."""
-    return (g_val * (length**3) * drho) / ((nu**2) * rho_l)
-
-
-def compute_reynolds_number(drho: float, g_val: float, length: float, nu: float, rho_l: float) -> float:
-    """Re = sqrt(Ar): characteristic buoyancy-driven Reynolds number.
-
-    Balancing inertial drag (~ρ_l·U²·L²) against buoyancy (~Δρ·g·L³) gives the
-    characteristic velocity U ~ sqrt(gLΔρ/ρ_l), so Re = UL/ν = sqrt(Ar).
+    Sorted by the ``order`` metadata, not by registration order: the latter is
+    module import order, which would silently reshuffle ``physical_parameters.txt``
+    the moment a file is added to ``numbers/``.
     """
-    ar = compute_archimedes_number(drho, g_val, length, nu, rho_l)
-    return math.sqrt(ar) if ar >= 0 else math.nan
+    entries = get_operators("dimensionless").values()
+    return sorted(entries, key=lambda entry: (_meta_of(entry).get("order", 0), entry.name))
 
 
-def _format_archimedes_number_row(
-    drho: float, g_val: float, length: float, length_label: str, nu: float, rho_l: float
-) -> str:
-    """Build Archimedes-number row: Ar = gL^3Δρ / (ν^2ρ_l)."""
-    ar = compute_archimedes_number(drho, g_val, length, nu, rho_l)
-    return _row("Ar (Archimedes number):", f"{ar:.6g}  [gL³Δρ/(ν²ρ_l), {length_label}]")
+def _meta_of(entry: OperatorEntry) -> dict[str, object]:
+    """The entry's metadata, never ``None``."""
+    return entry.metadata or {}
 
 
-def _format_reynolds_number_row(
-    drho: float, g_val: float, length: float, length_label: str, nu: float, rho_l: float
-) -> str:
-    """Build Reynolds-number row: Re = sqrt(Ar)."""
-    re = compute_reynolds_number(drho, g_val, length, nu, rho_l)
-    return _row("Re (Reynolds number):", f"{re:.6g}  [sqrt(Ar) = UL/ν, U=sqrt(gLΔρ/ρ_l), {length_label}]")
+def dimensionless_keys() -> tuple[str, ...]:
+    """Every registered dimensionless number's key, in display order."""
+    return tuple(entry.name for entry in _dimensionless_entries())
+
+
+def dimensionless_label(key: str) -> str:
+    r"""The mathtext label for *key*, e.g. ``r"$\mathrm{Oh}$"``.
+
+    Falls back to the key itself, so a number registered without a label still
+    plots rather than crashing an axis.
+    """
+    entry = get_operators("dimensionless").get(key)
+    if entry is None:
+        msg = f"unknown dimensionless number: {key!r}"
+        raise KeyError(msg)
+    return str(_meta_of(entry).get("label", key))
+
+
+def _evaluate_dimensionless(inputs: DimensionlessInputs) -> dict[str, float | None]:
+    """Call every registered number, recording a failure as an unresolved value.
+
+    A number that raises must not take down the overview file that is written at
+    the start of every run, so the whole set is best-effort.
+    """
+    values: dict[str, float | None] = {}
+    for entry in _dimensionless_entries():
+        operator = cast("DimensionlessNumberOperator", entry.target)
+        try:
+            values[entry.name] = operator(inputs)
+        except (ArithmeticError, TypeError, ValueError):
+            values[entry.name] = None
+    return values
+
+
+@dataclass(frozen=True)
+class DimensionlessNumbers:
+    """Every registered dimensionless number for one config, keyed by name.
+
+    Registry-shaped rather than one field per number: adding a file under
+    ``numbers/`` adds a key here, and every consumer -- legend labels, regime-map
+    axes, the overview file -- reads by key. An unresolvable number is present
+    with value ``None`` rather than absent.
+
+    ``inclination_deg`` is not itself dimensionless; it rides along because it is
+    what decides whether ``bo`` or ``bo_parallel`` is the Bond number worth
+    reporting for a run, and re-deriving it from the config would duplicate the
+    force-dict precedence in :func:`_resolve_gravity_inclination`.
+    """
+
+    values: Mapping[str, float | None] = field(default_factory=dict)
+    inclination_deg: float | None = None
+
+    def get(self, key: str) -> float | None:
+        """The value of *key*, or ``None`` when unregistered or unresolvable."""
+        return self.values.get(key)
+
+
+def compute_dimensionless_numbers(config: SimulationConfig) -> DimensionlessNumbers:
+    """Every registered dimensionless number for one config; never raises.
+
+    Returns an empty set of values when the shared inputs cannot be resolved at
+    all (see :func:`resolve_dimensionless_inputs`).
+    """
+    inputs = resolve_dimensionless_inputs(config)
+    if inputs is None:
+        return DimensionlessNumbers()
+    return DimensionlessNumbers(values=_evaluate_dimensionless(inputs), inclination_deg=inputs.angle_deg)
+
+
+def _dimensionless_rows(config: SimulationConfig) -> list[str]:
+    """One overview row per resolvable dimensionless number, in display order."""
+    inputs = resolve_dimensionless_inputs(config)
+    if inputs is None:
+        return []
+    values = _evaluate_dimensionless(inputs)
+    rows: list[str] = []
+    for entry in _dimensionless_entries():
+        value = values.get(entry.name)
+        if value is None:
+            continue
+        meta = _meta_of(entry)
+        # Only the gravity-driven numbers use the buoyancy contrast, so only
+        # they annotate its provenance.
+        scale_label = (
+            f"{inputs.length_label}, Δρ {inputs.drho_source}" if meta.get("needs_gravity") else inputs.length_label
+        )
+        rows.append(
+            _row(str(meta.get("row_label", entry.name)), f"{value:.6g}  [{meta.get('formula', '')}, {scale_label}]")
+        )
+    return rows
 
 
 def _format_critical_inclination_angle_row(config: SimulationConfig, gamma: float) -> str:
@@ -666,37 +698,19 @@ def _add_measured_density_rows(lines: list[str], config: SimulationConfig) -> No
     lines.append(_row("rho_mean (threshold):", f"{field.rho_mean:.6g}  [(rho_max+rho_min)/2]"))
 
 
-def _add_buoyancy_rows(
-    lines: list[str],
-    config: SimulationConfig,
-    gamma: float,
-    length: float,
-    length_label: str,
-) -> None:
-    """Append the Δρ row and every gravity-driven dimensionless number."""
+def _add_buoyancy_delta_rho_row(lines: list[str], config: SimulationConfig) -> None:
+    """Append the Δρ row, making the contrast the buoyancy numbers use auditable.
+
+    Printed whenever it resolves, gravity or not: it is a property of the field,
+    and reporting it is what lets a reader check the Bond number against the
+    density the run actually has.
+    """
     buoyancy = _resolve_buoyancy_delta_rho(config)
-    g_val = _resolve_gravity_value(config)
-    if buoyancy is None or g_val is None:
+    if buoyancy is None:
         return
     drho, drho_source = buoyancy
-
     note = "measured, rho_max-rho_min" if drho_source == "measured" else "config, rho_l-rho_v"
     lines.append(_row("Δρ (buoyancy contrast):", f"{drho:.6g}  [{note}]"))
-
-    # Oh does not use Δρ, so its row keeps the bare length label; the buoyancy
-    # rows carry both provenances.
-    scale_label = f"{length_label}, Δρ {drho_source}"
-    angle_deg = _resolve_gravity_inclination(config)
-    lines.extend(_format_bond_number_row(drho, gamma, g_val, length, scale_label, angle_deg))
-
-    nu = _nu(float(config.tau))
-    if config.rho_l is None:
-        msg = "rho_l is required for Archimedes number"
-        raise ValueError(msg)
-    lines.append(_format_archimedes_number_row(drho, g_val, length, scale_label, nu, float(config.rho_l)))
-    lines.append(_format_reynolds_number_row(drho, g_val, length, scale_label, nu, float(config.rho_l)))
-    if config.chemical_step_config is not None and config.gravity_masked_force is not None:
-        lines.append(_format_critical_inclination_angle_row(config, gamma))
 
 
 def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
@@ -721,9 +735,10 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     note = "measured, Young–Laplace" if source == "measured" else "2/3(κ/W)(Δρ)²"
     lines.append(_row("gamma (surface tension):", f"{gamma:.6g}  [{note}]"))
 
-    length, length_label = _resolve_length_for_dimensionless_numbers(config)
-    lines.append(_format_ohnesorge_number_row(config, gamma, length, length_label))
-    _add_buoyancy_rows(lines, config, gamma, length, length_label)
+    _add_buoyancy_delta_rho_row(lines, config)
+    lines.extend(_dimensionless_rows(config))
+    if config.chemical_step_config is not None and config.gravity_masked_force is not None:
+        lines.append(_format_critical_inclination_angle_row(config, gamma))
 
 
 def _add_key_value_section(lines: list[str], title: str, values: dict | None) -> None:

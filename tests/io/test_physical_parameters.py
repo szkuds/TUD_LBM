@@ -235,7 +235,7 @@ def test_bond_number_uses_the_measured_delta_rho(tmp_path):
     gamma = (2.0 / 3.0) * (0.02 / 2) * (0.5**2)  # prescribed drho, unchanged
     length = math.sqrt(20.0 * 5.0 / math.pi)  # the 100-cell inclusion
     expected_bo = (0.36 * length**2 * 1e-6) / gamma  # measured drho
-    assert numbers.bo == pytest.approx(expected_bo)
+    assert numbers.get("bo") == pytest.approx(expected_bo)
 
 
 def test_overview_reports_measured_density_provenance(tmp_path):

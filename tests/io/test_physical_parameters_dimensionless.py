@@ -7,10 +7,12 @@ from src.simulation_io.analysis.physical_parameters import BondNumbers
 from src.simulation_io.analysis.physical_parameters import build_overview
 from src.simulation_io.analysis.physical_parameters import compute_bond_numbers
 from src.simulation_io.analysis.physical_parameters import compute_dimensionless_numbers
-from src.simulation_io.analysis.physical_parameters import compute_ohnesorge_number
+from src.simulation_io.analysis.physical_parameters import dimensionless_keys
+from src.simulation_io.analysis.physical_parameters import resolve_dimensionless_inputs
+from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import compute_archimedes_number
+from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import compute_reynolds_number
+from src.simulation_io.analysis.physical_parameters.numbers._ohnesorge import ohnesorge_number
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _nu
-from src.simulation_io.analysis.physical_parameters.physical_parameters import compute_archimedes_number
-from src.simulation_io.analysis.physical_parameters.physical_parameters import compute_reynolds_number
 
 
 def _mp_config(**kwargs) -> SimulationConfig:
@@ -28,15 +30,15 @@ def _mp_config(**kwargs) -> SimulationConfig:
     return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
-def test_compute_ohnesorge_number_matches_hand_computed_value():
+def test_ohnesorge_number_matches_hand_computed_value():
     cfg = _mp_config(tau=0.8, rho_l=1.0)
-    gamma = 0.001
-    length = 10.0
+    inputs = resolve_dimensionless_inputs(cfg)
+    assert inputs is not None
 
-    oh = compute_ohnesorge_number(cfg, gamma, length)
+    oh = ohnesorge_number(inputs)
 
-    nu = _nu(0.8)
-    expected = nu / (gamma * length * 1.0) ** 0.5
+    expected = _nu(0.8) / (inputs.gamma * inputs.length * 1.0) ** 0.5
+    assert oh is not None
     assert math.isclose(oh, expected, rel_tol=1e-12)
 
 
@@ -67,28 +69,30 @@ def test_compute_dimensionless_numbers_resolves_all_fields_when_inputs_available
 
     dn = compute_dimensionless_numbers(cfg)
 
-    assert dn.oh is not None
-    assert dn.bo is not None
-    assert dn.bo_perp is not None
-    assert dn.bo_parallel is not None
-    assert dn.bo_parallel > 0.0
-    assert dn.ar is not None
-    assert dn.re is not None
-    assert math.isclose(dn.re, math.sqrt(dn.ar), rel_tol=1e-12)
+    assert all(dn.get(key) is not None for key in ("oh", "la", "bo", "bo_perp", "bo_parallel", "ar", "re"))
+    bo_parallel = dn.get("bo_parallel")
+    ar, re = dn.get("ar"), dn.get("re")
+    assert bo_parallel is not None
+    assert bo_parallel > 0.0
+    assert ar is not None
+    assert re is not None
+    assert math.isclose(re, math.sqrt(ar), rel_tol=1e-12)
     assert dn.inclination_deg == 30.0
 
 
-def test_compute_dimensionless_numbers_all_none_without_gravity():
+def test_only_the_gravity_driven_numbers_are_none_without_gravity():
+    """Oh and La need no gravity, so a gravity-free run still reports them.
+
+    Every number used to be dropped together, which contradicted the overview
+    file — it printed the Oh row for exactly these configs.
+    """
     cfg = _mp_config(gravity_force=None)
 
     dn = compute_dimensionless_numbers(cfg)
 
-    assert dn.oh is None
-    assert dn.bo is None
-    assert dn.bo_perp is None
-    assert dn.bo_parallel is None
-    assert dn.ar is None
-    assert dn.re is None
+    assert dn.get("oh") is not None
+    assert dn.get("la") is not None
+    assert all(dn.get(key) is None for key in ("bo", "bo_perp", "bo_parallel", "ar", "re"))
     assert dn.inclination_deg is None
 
 
@@ -100,7 +104,8 @@ def test_compute_dimensionless_numbers_all_none_for_calibration_only_eos_without
 
     dn = compute_dimensionless_numbers(cfg)
 
-    assert dn == (None, None, None, None, None, None, None)
+    assert all(dn.get(key) is None for key in dimensionless_keys())
+    assert dn.inclination_deg is None
 
 
 def test_compute_dimensionless_numbers_uses_measured_surface_tension():
@@ -108,8 +113,8 @@ def test_compute_dimensionless_numbers_uses_measured_surface_tension():
 
     dn = compute_dimensionless_numbers(cfg)
 
-    assert dn.oh is not None
-    assert dn.bo_parallel is not None
+    assert dn.get("oh") is not None
+    assert dn.get("bo_parallel") is not None
 
 
 def test_format_rows_unchanged_after_refactor():
@@ -118,6 +123,7 @@ def test_format_rows_unchanged_after_refactor():
     text = build_overview(cfg)
 
     assert "Oh (Ohnesorge number):" in text
+    assert "La (Laplace number):" in text
     assert "Bo (Bond number):" in text
     assert "Bo_perp (Bond normal):" in text
     assert "Bo_parallel (Bond tangential):" in text
@@ -132,3 +138,19 @@ def test_compute_reynolds_number_is_sqrt_of_archimedes():
     re = compute_reynolds_number(drho, g_val, length, nu, rho_l)
 
     assert math.isclose(re, math.sqrt(ar), rel_tol=1e-12)
+
+
+def test_laplace_number_is_the_reciprocal_square_of_ohnesorge():
+    """The identity that justifies keeping La out of automatic legend labels.
+
+    Both are built from the same :class:`DimensionlessInputs`, so this holds by
+    construction rather than by coincidence of parameters.
+    """
+    cfg = _mp_config(tau=0.8, gravity_force={"force_g": 1e-6, "inclination_angle_deg": 30.0})
+
+    dn = compute_dimensionless_numbers(cfg)
+
+    la, oh = dn.get("la"), dn.get("oh")
+    assert la is not None
+    assert oh is not None
+    assert math.isclose(la, 1.0 / oh**2, rel_tol=1e-12)

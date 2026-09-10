@@ -7,7 +7,9 @@ from src.simulation_io.analysis.accelerations.acceleration_analysis import find_
 from src.simulation_io.analysis.accelerations.acceleration_analysis import save_diagnostic_plot
 from src.simulation_io.analysis.accelerations.regime_classification import Regime
 from src.simulation_io.analysis.accelerations.regime_classification import RegimeResult
+from src.simulation_io.analysis.accelerations.regime_classification import TrendFit
 from src.simulation_io.analysis.accelerations.regime_classification import classify_regime
+from src.simulation_io.analysis.accelerations.regime_classification import fit_trend
 from src.simulation_io.analysis.accelerations.regime_classification import is_pinned
 
 __all__ = [
@@ -15,9 +17,11 @@ __all__ = [
     "Regime",
     "RegimeResult",
     "Smoothing",
+    "TrendFit",
     "classify_regime",
     "compute_acceleration",
     "find_slope_window",
+    "fit_trend",
     "is_pinned",
     "save_diagnostic_plot",
 ]

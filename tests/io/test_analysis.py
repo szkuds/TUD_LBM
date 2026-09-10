@@ -255,7 +255,7 @@ class TestLoadComparisonEntries:
         labels = [entry["label"] for entry in result]
         assert all("Bo" in label for label in labels)
         # Ordered by the labelled quantity, so the weaker drive comes first.
-        assert result[0]["numbers"].bo_parallel < result[1]["numbers"].bo_parallel
+        assert result[0]["numbers"].get("bo_parallel") < result[1]["numbers"].get("bo_parallel")
 
     def test_label_keys_override_the_automatic_selection(self, tmp_path):
         pytest.importorskip("pandas")

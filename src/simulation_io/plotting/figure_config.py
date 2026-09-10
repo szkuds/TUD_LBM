@@ -58,17 +58,20 @@ class FigureStyle:
 
 DEFAULT_STYLE = FigureStyle()
 
-#: Axis labels shared across plot modules, so the same quantity is always
-#: rendered with the same LaTeX label.
+#: Axis labels for the per-timestep series plotted from ``simulation_data.csv``,
+#: so the same quantity is always rendered with the same LaTeX label.
+#:
+#: Dimensionless *numbers* are not listed here: each one owns its own label in
+#: its module under ``analysis/physical_parameters/numbers/``, reachable via
+#: ``dimensionless_label(key)``. Keeping them out is what lets those modules be
+#: imported without pulling in this package. ``LABEL_RE`` below is not the
+#: buoyancy ``Re = sqrt(Ar)`` but the *measured* droplet Reynolds number
+#: ``avg_u_x*2R_0/nu`` from ``droplet_metrics.series`` -- a different quantity
+#: that happens to share the symbol.
 LABEL_CA = r"$\mathrm{Ca}$"
 LABEL_RE = r"$\mathrm{Re}$"
 LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
 LABEL_X_AVG_NORM = r"$X_{\mathrm{CM}}/R_0$"
-LABEL_OH = r"$\mathrm{Oh}$"
-LABEL_BO = r"$\mathrm{Bo}$"
-LABEL_BO_PERP = r"$\mathrm{Bo}_{\perp}$"
-LABEL_BO_PAR = r"$\mathrm{Bo}_{\parallel}$"
-LABEL_AR = r"$\mathrm{Ar}$"
 
 #: Marker and colour per regime label on the regime map.
 #:
@@ -79,10 +82,17 @@ LABEL_AR = r"$\mathrm{Ar}$"
 #: import cycle. ``Regime`` is a :class:`~enum.StrEnum`, so its members index
 #: these dicts directly. ``tests/io/test_regime_map_plot.py`` pins the keys to
 #: the enum.
-REGIME_MARKERS: dict[str, str] = {"Pinning": "o", "Dissipative": "s", "Inertial": "^", "unknown": "x"}
+REGIME_MARKERS: dict[str, str] = {
+    "Pinning": "o",
+    "Dissipative": "s",
+    "Capillary": "^",
+    "Steady": "D",
+    "unknown": "x",
+}
 REGIME_COLORS: dict[str, str] = {
     "Pinning": "tab:blue",
     "Dissipative": "tab:green",
-    "Inertial": "tab:red",
+    "Capillary": "tab:red",
+    "Steady": "tab:orange",
     "unknown": "tab:gray",
 }

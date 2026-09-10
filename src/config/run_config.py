@@ -70,4 +70,13 @@ COMPARISON_DIRNAME = "comparison_analysis"
 
 #: Output directory and figure name for ``tud-lbm regime-map``.
 REGIME_MAP_DIRNAME = "regime_map_analysis"
-REGIME_MAP_FILENAME = "regime_map.png"
+REGIME_MAP_FILENAME_TEMPLATE = "regime_map_{x}_vs_{y}.png"
+
+
+def regime_map_filename(x_key: str, y_key: str) -> str:
+    """Figure name for a regime map of *y_key* against *x_key*.
+
+    The axis pair is part of the name because it is now chosen per invocation:
+    a fixed ``regime_map.png`` would have each pair silently overwrite the last.
+    """
+    return REGIME_MAP_FILENAME_TEMPLATE.format(x=x_key, y=y_key)

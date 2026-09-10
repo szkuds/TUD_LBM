@@ -7,24 +7,21 @@ run with the dimensionless numbers already derived for its
 *differ* across the set being compared, since a quantity every run shares is
 noise in a legend.
 
-Two collapses keep the automatic label short. Only one member of the Bond family
-appears: ``Bo_parallel`` when the runs are inclined, plain ``Bo`` when they are
-not. Only ``Re`` appears of the buoyancy pair, because ``Re = sqrt(Ar)`` carries
-the same information. Both ``Bo_perp`` and ``Ar`` remain reachable by naming them
-explicitly (``tud-lbm compare --label-param``), which also bypasses the
-differing-only test.
+Three collapses keep the automatic label short. Only one member of the Bond
+family appears: ``Bo_parallel`` when the runs are inclined, plain ``Bo`` when
+they are not. Only ``Re`` appears of the buoyancy pair, because ``Re = sqrt(Ar)``
+carries the same information; and only ``Oh`` of the viscous-capillary pair,
+because ``La = 1/Oh**2`` does likewise. ``Bo_perp``, ``Ar`` and ``La`` all remain
+reachable by naming them explicitly (``tud-lbm compare --label-param``), which
+also bypasses the differing-only test.
 """
 
 from __future__ import annotations
 import math
 from collections import Counter
 from typing import TYPE_CHECKING
-from src.simulation_io.plotting.figure_config import LABEL_AR
-from src.simulation_io.plotting.figure_config import LABEL_BO
-from src.simulation_io.plotting.figure_config import LABEL_BO_PAR
-from src.simulation_io.plotting.figure_config import LABEL_BO_PERP
-from src.simulation_io.plotting.figure_config import LABEL_OH
-from src.simulation_io.plotting.figure_config import LABEL_RE
+from src.simulation_io.analysis.physical_parameters import dimensionless_keys
+from src.simulation_io.analysis.physical_parameters import dimensionless_label
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -47,27 +44,21 @@ _SIGNIFICANT_SPREAD = 0.02
 
 
 def _math_body(label: str) -> str:
-    """The inner math of a ``$...$`` label from ``figure_config``.
+    """The inner math of a ``$...$`` label from the number's own registration.
 
     Terms are composed into ``$<body> = <value>$`` segments, so the spelling of
-    each quantity stays owned by ``figure_config`` rather than duplicated here.
+    each quantity stays owned by the module that defines it rather than
+    duplicated here.
     """
     return label.strip("$")
 
 
-#: Every quantity that may appear in a label, mapped to its math-text body.
-#: Keys are attribute names on :class:`DimensionlessNumbers`.
-_QUANTITY_LABELS: dict[str, str] = {
-    "bo": _math_body(LABEL_BO),
-    "bo_parallel": _math_body(LABEL_BO_PAR),
-    "bo_perp": _math_body(LABEL_BO_PERP),
-    "oh": _math_body(LABEL_OH),
-    "ar": _math_body(LABEL_AR),
-    "re": _math_body(LABEL_RE),
-}
-
 #: Valid ``--label-param`` values, in the order the CLI lists them.
-LABEL_PARAM_CHOICES: tuple[str, ...] = (*_QUANTITY_LABELS, NAME_KEY)
+#:
+#: Read off the ``dimensionless`` registry, so a number added under
+#: ``analysis/physical_parameters/numbers/`` becomes selectable without this
+#: file being touched.
+LABEL_PARAM_CHOICES: tuple[str, ...] = (*dimensionless_keys(), NAME_KEY)
 
 
 def _is_inclined(numbers: Sequence[DimensionlessNumbers]) -> bool:
@@ -75,6 +66,13 @@ def _is_inclined(numbers: Sequence[DimensionlessNumbers]) -> bool:
     return any(n.inclination_deg is not None and abs(n.inclination_deg) > 0.0 for n in numbers)
 
 
+#: Quantities eligible for *automatic* selection, one per family.
+#:
+#: Deliberately hand-curated rather than read off the registry: which numbers
+#: belong in a legend is a judgement about redundancy, not a fact about the
+#: number. ``ar`` is omitted because ``Re = sqrt(Ar)``, and ``la`` because
+#: ``La = 1/Oh**2`` -- both would print the same information twice. Every
+#: omitted number stays reachable through ``--label-param``.
 def _auto_candidates(numbers: Sequence[DimensionlessNumbers]) -> list[str]:
     """One representative per family, in the order a label renders them."""
     return ["bo_parallel" if _is_inclined(numbers) else "bo", "oh", "re"]
@@ -115,7 +113,7 @@ def resolve_label_keys(
     """
     if requested:
         return [key for key in requested if key in LABEL_PARAM_CHOICES]
-    return [key for key in _auto_candidates(numbers) if _varies([getattr(n, key) for n in numbers])]
+    return [key for key in _auto_candidates(numbers) if _varies([n.get(key) for n in numbers])]
 
 
 #: Decimal places every value in a label is rendered with. Fixed rather than
@@ -130,10 +128,10 @@ def _term(key: str, name: str, numbers: DimensionlessNumbers) -> str | None:
     """One rendered label term, or ``None`` when this run cannot supply it."""
     if key == NAME_KEY:
         return name
-    value = getattr(numbers, key, None)
+    value = numbers.get(key)
     if value is None:
         return None
-    return f"${_QUANTITY_LABELS[key]} = {value:.{_LABEL_DECIMALS}f}$"
+    return f"${_math_body(dimensionless_label(key))} = {value:.{_LABEL_DECIMALS}f}$"
 
 
 def _disambiguate(labels: Sequence[str], names: Sequence[str]) -> list[str]:
@@ -178,6 +176,6 @@ def label_sort_key(numbers: DimensionlessNumbers, keys: Sequence[str]) -> tuple[
     for key in keys:
         if key == NAME_KEY:
             continue
-        value = getattr(numbers, key, None)
+        value = numbers.get(key)
         values.append(math.inf if value is None else float(value))
     return tuple(values)
