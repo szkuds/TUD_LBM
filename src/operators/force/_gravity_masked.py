@@ -119,11 +119,13 @@ Usage::
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import NamedTuple
+from typing import cast
 import jax.numpy as jnp
 from src.operators.force._gravity import _build_gravity_template
 from src.registry import force_model
 
 if TYPE_CHECKING:
+    from src.config.simulation_config import SimulationConfig
     from src.pipeline.state import State
 
 # Fraction of the phase contrast by which the indicator's ramp is inset from
@@ -166,7 +168,7 @@ def _ramp_fraction(t: jnp.ndarray, precomputed: GravityPrecomputed) -> jnp.ndarr
     return jnp.clip((t - precomputed.ramp_start_t) / precomputed.ramp_steps, 0.0, 1.0)
 
 
-def _measured_phase_densities(config: object) -> tuple[float, float] | None:
+def _measured_phase_densities(config: SimulationConfig) -> tuple[float, float] | None:
     """Phase densities read off the run's init field, for ``init_from_file``.
 
     An equilibrated field's coexistence densities differ from the prescribed
@@ -175,20 +177,18 @@ def _measured_phase_densities(config: object) -> tuple[float, float] | None:
     the force *injects* equal to the one the run's Bond number is *reported*
     with. Imported lazily because ``build`` runs at setup time, outside JIT.
     """
-    if getattr(config, "init_type", None) != "init_from_file":
+    if config.init_type != "init_from_file":
         return None
     from src.simulation_io.analysis.physical_parameters import measure_init_phase_densities
 
-    return measure_init_phase_densities(config)  # ty: ignore[invalid-argument-type]
+    return measure_init_phase_densities(config)
 
 
-def _phase_references(config: object) -> tuple[float, float] | None:
+def _phase_references(config: SimulationConfig) -> tuple[float, float] | None:
     """Return ``(rho_lo, rho_hi)`` for the indicator, or None for single phase."""
-    rho_v = getattr(config, "rho_v", None)
-    rho_l = getattr(config, "rho_l", None)
-    if rho_v is None or rho_l is None:
+    if config.rho_v is None or config.rho_l is None:
         return None
-    return _measured_phase_densities(config) or (float(rho_v), float(rho_l))
+    return _measured_phase_densities(config) or (float(config.rho_v), float(config.rho_l))
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -231,7 +231,10 @@ class GravityForceModule:
         """
         template = _build_gravity_template(params, grid_shape, **kwargs)
 
-        config = kwargs.get("config")
+        # ``config`` arrives through ``**kwargs: object``; the concrete type is
+        # restored here rather than reading it back with ``getattr`` chains that
+        # would leave every field typed ``object``.
+        config = cast("SimulationConfig | None", kwargs.get("config"))
         refs = _phase_references(config) if config is not None else None
 
         ramp_steps = params.get("ramp_steps")

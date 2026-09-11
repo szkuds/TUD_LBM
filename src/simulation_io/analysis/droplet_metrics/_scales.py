@@ -132,20 +132,6 @@ class MetricScales:
         return "measured" if self.sigma_measured is not None else "analytical"
 
 
-def resolve_wall_edge(config: SimulationConfig) -> str:
-    """The single wall marked ``"wetting"`` in ``bc_config``, else ``"bottom"``.
-
-    Delegates to :func:`..physical_parameters.physical_parameters.resolve_wall_edge`,
-    which owns the definition: that module needs the same answer to pick the wall
-    row for the setup contact-line measurement, and it sits below this one, so
-    the dependency has to run this way. Imported lazily for the same reason as
-    :func:`resolve_r_zero`.
-    """
-    from src.simulation_io.analysis.physical_parameters.physical_parameters import resolve_wall_edge as _resolve
-
-    return _resolve(config)
-
-
 def resolve_scales(config: SimulationConfig) -> MetricScales | None:
     """Resolve every scaling quantity for *config*.
 
@@ -154,6 +140,12 @@ def resolve_scales(config: SimulationConfig) -> MetricScales | None:
     surface tension is obtainable. That is a capability failure rather than an
     error: callers skip the run.
     """
+    # ``physical_parameters`` owns the wetting-wall definition -- it needs the
+    # same answer to pick the wall row for the setup contact-line measurement --
+    # and imports back into this module, so it is reached lazily, as
+    # :func:`resolve_r_zero` does.
+    from src.simulation_io.analysis.physical_parameters.physical_parameters import resolve_wall_edge
+
     if config.rho_l is None or config.rho_v is None:
         return None
     sigma_measured = measured_sigma_lg(config)

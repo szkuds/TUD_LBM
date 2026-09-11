@@ -6,19 +6,14 @@ from typing import Any
 import jax.numpy as jnp
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
+from src.operators.wetting._params import NEUTRAL_WETTING_CONFIG
+from src.operators.wetting._params import wetting_scalar
 from src.pipeline.state.state import State
 from src.pipeline.state.state import WettingState
 from src.registry import extra_state_plugin
 
 if TYPE_CHECKING:
     from src.pipeline.setup import SimulationSetup
-
-
-def _cfg_value(cfg: dict[str, Any], *keys: str, default: float) -> float:
-    for key in keys:
-        if key in cfg:
-            return float(cfg[key])
-    return default
 
 
 @extra_state_plugin(name="wetting")
@@ -36,12 +31,7 @@ class WettingExtraStatePlugin:
     def init_state(setup: SimulationSetup) -> dict[str, Any]:
         wetting_cfg = setup.config.wetting_config
         if wetting_cfg is None:
-            wetting_cfg = {
-                "phi_left": 1.0,
-                "phi_right": 1.0,
-                "d_rho_left": 0.0,
-                "d_rho_right": 0.0,
-            }
+            wetting_cfg = NEUTRAL_WETTING_CONFIG
 
         if setup.initial_f_fn is None:
             msg = "initial_f_fn is required for wetting initial state"
@@ -67,10 +57,10 @@ class WettingExtraStatePlugin:
 
         return {
             "wetting": WettingState(
-                phi_left=jnp.array(_cfg_value(wetting_cfg, "phi_left", "phi_l", default=1.0)),
-                phi_right=jnp.array(_cfg_value(wetting_cfg, "phi_right", "phi_r", default=1.0)),
-                d_rho_left=jnp.array(_cfg_value(wetting_cfg, "d_rho_left", "d_rho_l", default=0.0)),
-                d_rho_right=jnp.array(_cfg_value(wetting_cfg, "d_rho_right", "d_rho_r", default=0.0)),
+                phi_left=jnp.array(wetting_scalar(wetting_cfg, "phi_left", "phi_l", default=1.0)),
+                phi_right=jnp.array(wetting_scalar(wetting_cfg, "phi_right", "phi_r", default=1.0)),
+                d_rho_left=jnp.array(wetting_scalar(wetting_cfg, "d_rho_left", "d_rho_l", default=0.0)),
+                d_rho_right=jnp.array(wetting_scalar(wetting_cfg, "d_rho_right", "d_rho_r", default=0.0)),
                 ca_left=ca_left,
                 ca_right=ca_right,
                 cll_left=cll_left,

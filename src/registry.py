@@ -236,6 +236,23 @@ def pressure_operator(
     return register_operator("pressure", name=name, **meta)
 
 
+def surface_tension_operator(
+    *,
+    name: str | None = None,
+    **meta: object,
+) -> Callable[[_OT], _OT]:
+    """Register a closed-form surface tension (kind ``"surface_tension"``).
+
+    Names match the ``"eos"`` kind: an EOS gains a closed-form liquid-gas
+    surface tension ``gamma(mp)`` by registering here under the same name.
+    Like ``"pressure"`` this is a separate kind rather than metadata on the
+    EOS entry, because not every EOS has one — membership *is* the check for
+    "this EOS needs a Young-Laplace calibration instead", and there is
+    deliberately no list of such EOS anywhere.
+    """
+    return register_operator("surface_tension", name=name, **meta)
+
+
 def initialise_operator(
     *,
     name: str | None = None,

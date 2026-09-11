@@ -127,12 +127,12 @@ def inclusion_mask_2d(rho_2d: np.ndarray, rho_mean: float) -> np.ndarray:
     **continuous** phase of a bubble run — nearly the whole domain — turning
     every metric built on it into an ambient average.
 
-    The 5-D sibling of this rule, applied one layer up to the dimensionless
-    numbers, is
-    :func:`~src.simulation_io.analysis.physical_parameters.physical_parameters.inclusion_mask_from_rho`;
-    the two must stay in step. Kept as a separate 2-D function rather than
-    imported: the two modules reach each other only through function-body
-    imports, because each needs something the other owns.
+    The single definition of the rule: the dimensionless-number layer reaches
+    it through
+    :func:`~src.simulation_io.analysis.physical_parameters.physical_parameters.inclusion_mask_from_rho`,
+    which only adapts the 5-D field shape. Measuring ``L_eff`` by one rule and
+    the per-snapshot metrics by another is the bug this guards against, so keep
+    it one function.
 
     Cells exactly at ``rho_mean`` fall in neither phase.
     """

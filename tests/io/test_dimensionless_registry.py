@@ -14,9 +14,9 @@ from src.simulation_io.analysis.physical_parameters import compute_dimensionless
 from src.simulation_io.analysis.physical_parameters import dimensionless_keys
 from src.simulation_io.analysis.physical_parameters import dimensionless_label
 from src.simulation_io.analysis.physical_parameters import resolve_dimensionless_inputs
-from src.simulation_io.plotting.run_labels import LABEL_PARAM_CHOICES
-from src.simulation_io.plotting.run_labels import NAME_KEY
-from src.simulation_io.plotting.run_labels import resolve_label_keys
+from src.simulation_io.analysis.run_labels import LABEL_PARAM_CHOICES
+from src.simulation_io.analysis.run_labels import NAME_KEY
+from src.simulation_io.analysis.run_labels import resolve_label_keys
 
 _REQUIRED_META = ("label", "row_label", "formula", "order", "needs_gravity")
 

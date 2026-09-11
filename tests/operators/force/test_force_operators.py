@@ -180,7 +180,7 @@ class TestGravityMaskedForce:
     def _build(self, lattice, *, grid_shape=(NX, NY, NZ), **extra_params):
         from src.operators.force._gravity_masked import GravityForceModule
 
-        cfg = SimpleNamespace(rho_l=self.RHO_L, rho_v=self.RHO_V)
+        cfg = SimpleNamespace(rho_l=self.RHO_L, rho_v=self.RHO_V, init_type="multiphase_bubbles")
         return GravityForceModule.build(
             {"force_g": self.FORCE_G, **extra_params},
             grid_shape,
@@ -247,7 +247,7 @@ class TestGravityMaskedForce:
         """
         from src.operators.force._gravity_masked import GravityForceModule
 
-        cfg = SimpleNamespace(rho_l=1.0, rho_v=0.001)
+        cfg = SimpleNamespace(rho_l=1.0, rho_v=0.001, init_type="multiphase_bubbles")
         precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=cfg, lattice=lattice)
         force = np.array(GravityForceModule.compute(make_state(lattice, rho_value=0.0062), precomputed))
 
@@ -372,7 +372,7 @@ class TestGravityMaskedForce:
         """
         from src.operators.force._gravity_masked import GravityForceModule
 
-        cfg = SimpleNamespace(rho_l=1.0, rho_v=1.0)
+        cfg = SimpleNamespace(rho_l=1.0, rho_v=1.0, init_type="multiphase_bubbles")
         precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=cfg, lattice=lattice)
         force = np.array(GravityForceModule.compute(make_state(lattice, rho_value=1.0), precomputed))
 

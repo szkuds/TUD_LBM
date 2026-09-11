@@ -13,12 +13,13 @@ from src.cli.app import cli
 from src.cli.config_loading import _load_single_config
 from src.cli.field_select import prompt_fields_marked
 from src.config.run_config import COMPARISON_DIRNAME
+from src.config.run_config import PHYSICAL_PARAMETERS_FILENAME
 
 # Imported for its registration side effect: both choice lists below are read
 # off the ``dimensionless`` registry at import time, and click evaluates them
 # when the commands are defined.
 from src.simulation_io.analysis.physical_parameters import dimensionless_keys
-from src.simulation_io.plotting.run_labels import LABEL_PARAM_CHOICES
+from src.simulation_io.analysis.run_labels import LABEL_PARAM_CHOICES
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
@@ -220,7 +221,7 @@ def _analyse_length_scale(config: SimulationConfig, config_toml: str, out_dir: P
 
     # physical_parameters.txt is otherwise only written at run start, so a
     # finished run would keep the Bo computed before this analysis existed.
-    overview_path = out_dir / "physical_parameters.txt"
+    overview_path = out_dir / PHYSICAL_PARAMETERS_FILENAME
     write_physical_parameters(config, overview_path)
     console.print(f"[bold green]Overview refreshed:[/bold green] {overview_path}")
 

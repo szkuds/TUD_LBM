@@ -28,6 +28,7 @@ from typing import NamedTuple
 import numpy as np
 from src.config.run_config import ANALYSIS_DIRNAME
 from src.config.run_config import DATA_DIRNAME
+from src.config.run_config import LENGTH_SCALE_PLOT_FILENAME
 from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import SNAPSHOT_GLOB
 from src.simulation_io.analysis.droplet_metrics._snapshot import extract_rho_2d
@@ -36,20 +37,15 @@ from src.simulation_io.analysis.physical_parameters.physical_parameters import _
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _load_init_rho
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _measure_field
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_buoyancy_delta_rho
-from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_inclination
-from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_value
-from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_surface_tension
-from src.simulation_io.analysis.physical_parameters.physical_parameters import compute_bond_numbers
+from src.simulation_io.analysis.physical_parameters.physical_parameters import dimensionless_for_inputs
 from src.simulation_io.analysis.physical_parameters.physical_parameters import inclusion_mask_from_rho
+from src.simulation_io.analysis.physical_parameters.physical_parameters import resolve_dimensionless_inputs
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     import matplotlib.axes
     from src.config.simulation_config import SimulationConfig
     from src.simulation_io.plotting.density import DensityPlotOperator
-
-#: Figure name under ``<out_dir>/plots/analysis/``.
-LENGTH_SCALE_FILENAME = "length_scale.png"
 
 _PANEL_FIGSIZE = (5.0, 5.0)
 _MASK_ALPHA = 0.28
@@ -130,7 +126,7 @@ def write_length_scale_figure(
     )
     fig.tight_layout()
 
-    dest = Path(out_dir) / PLOTS_DIRNAME / ANALYSIS_DIRNAME / LENGTH_SCALE_FILENAME
+    dest = Path(out_dir) / PLOTS_DIRNAME / ANALYSIS_DIRNAME / LENGTH_SCALE_PLOT_FILENAME
     dest.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(dest, dpi=DEFAULT_STYLE.dpi, bbox_inches="tight")
     plt.close(fig)
@@ -327,11 +323,15 @@ def _draw_analytic(
 
 
 def _caption_builder(config: SimulationConfig) -> Callable[[_Panel], str]:
-    """Return a function rendering one panel's numbers, with Bo when resolvable."""
-    resolved = _resolve_surface_tension(config)
-    gamma = None if resolved is None else resolved[1]
-    g_val = _resolve_gravity_value(config)
-    angle_deg = _resolve_gravity_inclination(config)
+    """Return a function rendering one panel's numbers, with Bo when resolvable.
+
+    The run's shared inputs are resolved once, then re-evaluated per panel with
+    that panel's own area and density contrast substituted in. Going through
+    ``resolve_dimensionless_inputs`` rather than reassembling gamma and g by
+    hand is the point of the figure: it exists to let a reader check the Bo in
+    ``physical_parameters.txt``, which it cannot do if it computes its own.
+    """
+    inputs = resolve_dimensionless_inputs(config)
 
     def caption(panel: _Panel) -> str:
         rows = []
@@ -344,10 +344,12 @@ def _caption_builder(config: SimulationConfig) -> Callable[[_Panel], str]:
         length = math.sqrt(panel.area / math.pi)
         rows.append(f"A = {panel.area:.6g}")
         rows.append(f"L_eff = {length:.4g}")
-        if gamma is not None and g_val is not None and panel.drho is not None:
-            bo = compute_bond_numbers(panel.drho, gamma, g_val, length, angle_deg).bo
+        if inputs is not None and panel.drho is not None:
+            panel_inputs = inputs._replace(drho=panel.drho, length=length)
+            bo = dimensionless_for_inputs(panel_inputs).get("bo")
             rows.append(f"Δρ = {panel.drho:.6g}")
-            rows.append(f"Bo = {bo:.6g}")
+            if bo is not None:
+                rows.append(f"Bo = {bo:.6g}")
         return "\n".join(rows)
 
     return caption

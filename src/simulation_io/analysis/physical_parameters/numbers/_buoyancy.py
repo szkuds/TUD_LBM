@@ -14,16 +14,6 @@ def compute_archimedes_number(drho: float, g_val: float, length: float, nu: floa
     return (g_val * (length**3) * drho) / ((nu**2) * rho_l)
 
 
-def compute_reynolds_number(drho: float, g_val: float, length: float, nu: float, rho_l: float) -> float:
-    """Re = sqrt(Ar): characteristic buoyancy-driven Reynolds number.
-
-    Balancing inertial drag (~ρ_l·U²·L²) against buoyancy (~Δρ·g·L³) gives the
-    characteristic velocity U ~ sqrt(gLΔρ/ρ_l), so Re = UL/ν = sqrt(Ar).
-    """
-    ar = compute_archimedes_number(drho, g_val, length, nu, rho_l)
-    return math.sqrt(ar) if ar >= 0 else math.nan
-
-
 @dimensionless_operator(
     name="ar",
     label=r"$\mathrm{Ar}$",
@@ -48,7 +38,11 @@ def archimedes_number(inputs: DimensionlessInputs) -> float | None:
     needs_gravity=True,
 )
 def reynolds_number(inputs: DimensionlessInputs) -> float | None:
-    """Re = sqrt(Ar), routed through :func:`archimedes_number`'s own formula."""
+    """Re = sqrt(Ar), routed through :func:`archimedes_number`'s own formula.
+
+    Balancing inertial drag (~ρ_l·U²·L²) against buoyancy (~Δρ·g·L³) gives the
+    characteristic velocity U ~ sqrt(gLΔρ/ρ_l), so Re = UL/ν = sqrt(Ar).
+    """
     ar = archimedes_number(inputs)
     if ar is None:
         return None

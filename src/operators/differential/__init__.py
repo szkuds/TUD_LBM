@@ -104,36 +104,19 @@ def build_wetting_laplacian_fn() -> WettingLaplacianBuilder:
     return cast("WettingLaplacianBuilder", build_operator("differential", "laplacian_wetting"))
 
 
-def _wetting_scalar(
-    wetting: dict[str, Any],
-    name: str,
-    legacy_name: str,
-    *,
-    default: float,
-) -> jnp.ndarray:
-    """Read one wetting scalar as a 0-d array, accepting the legacy short key.
+def _wetting_array(wetting: dict[str, Any], name: str, legacy_name: str, *, default: float) -> jnp.ndarray:
+    """One wetting scalar as a 0-d array, via the shared config reader.
 
-    ``wetting_config`` is a free-form ``dict[str, Any]`` straight off the TOML,
-    so a lookup is ``Any`` and a missing key is ``None`` — neither of which
-    ``float()`` accepts. Resolving the two spellings here keeps that narrowing
-    in one place instead of a nested ``.get`` chain per parameter.
-
-    Args:
-        wetting: The effective wetting configuration.
-        name: Canonical key, e.g. ``"phi_left"``.
-        legacy_name: Older short spelling, e.g. ``"phi_l"``.
-        default: Value used when neither key carries a number.
-
-    Returns:
-        The value as a 0-d :mod:`jax.numpy` array.
+    The narrowing itself lives in :mod:`src.operators.wetting._params`, next to
+    the neutral defaults, so the value baked into these closures and the value
+    the wetting state is initialised with cannot be read differently -- a key
+    present but null used to mean the default here and a hard failure there.
+    Imported lazily to keep this module's JAX import at call time.
     """
     import jax.numpy as jnp
+    from src.operators.wetting._params import wetting_scalar
 
-    for key in (name, legacy_name):
-        value = wetting.get(key)
-        if value is not None:
-            return jnp.array(float(value))
-    return jnp.array(default)
+    return jnp.array(wetting_scalar(wetting, name, legacy_name, default=default))
 
 
 def build_diff_ops(
@@ -200,12 +183,9 @@ def build_diff_ops(
     hysteresis_config = config.hysteresis_config
     effective_wetting = wetting_config
     if hysteresis_config is not None and effective_wetting is None:
-        effective_wetting = {
-            "phi_left": 1.0,
-            "phi_right": 1.0,
-            "d_rho_left": 0.0,
-            "d_rho_right": 0.0,
-        }
+        from src.operators.wetting._params import NEUTRAL_WETTING_CONFIG
+
+        effective_wetting = NEUTRAL_WETTING_CONFIG
 
     if effective_wetting is not None and mp_params is not None:
         # Wetting: build parametric closures with rho_l, rho_v baked in.
@@ -230,10 +210,10 @@ def build_diff_ops(
         )
 
         # Extract wetting params once, used in both branches below.
-        _phi_l = _wetting_scalar(effective_wetting, "phi_left", "phi_l", default=1.0)
-        _phi_r = _wetting_scalar(effective_wetting, "phi_right", "phi_r", default=1.0)
-        _d_rho_l = _wetting_scalar(effective_wetting, "d_rho_left", "d_rho_l", default=0.0)
-        _d_rho_r = _wetting_scalar(effective_wetting, "d_rho_right", "d_rho_r", default=0.0)
+        _phi_l = _wetting_array(effective_wetting, "phi_left", "phi_l", default=1.0)
+        _phi_r = _wetting_array(effective_wetting, "phi_right", "phi_r", default=1.0)
+        _d_rho_l = _wetting_array(effective_wetting, "d_rho_left", "d_rho_l", default=0.0)
+        _d_rho_r = _wetting_array(effective_wetting, "d_rho_right", "d_rho_r", default=0.0)
 
         def gradient_density(grid: jnp.ndarray) -> jnp.ndarray:
             return _grad_wetting(grid, _phi_l, _phi_r, _d_rho_l, _d_rho_r)
