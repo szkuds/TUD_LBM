@@ -121,10 +121,32 @@ def test_cache_key_changes_with_eos_params(tmp_path):
     assert st._cache_key(base) != st._cache_key(changed)
 
 
-def test_cache_key_changes_with_grid_shape():
+def test_cache_key_changes_with_the_calibration_box():
+    """Not with the run's own grid — sigma is a property of the fluid."""
     base = _stub_config(grid_shape=(64, 64, 1))
-    changed = _stub_config(grid_shape=(128, 128, 1))
-    assert st._cache_key(base) != st._cache_key(changed)
+    bigger_box = _stub_config(grid_shape=(2 * st._MIN_CALIBRATION_SIDE, 2 * st._MIN_CALIBRATION_SIDE, 1))
+    assert st._cache_key(base) != st._cache_key(bigger_box)
+
+
+def test_cache_key_is_shared_by_runs_with_the_same_calibration_box():
+    """Two grids below the minimum square calibrate identically, so they share an entry.
+
+    Before the sweep was decoupled from the run's grid, a 201x101 run measured
+    sigma in its own 201x101 box — an aspect ratio Young-Laplace does not
+    survive — and cached the result under a key nothing else could reuse.
+    """
+    small = _stub_config(grid_shape=(64, 64, 1))
+    oblong = _stub_config(grid_shape=(201, 101, 1))
+    assert st._calibration_grid_shape(small) == st._calibration_grid_shape(oblong)
+    assert st._cache_key(small) == st._cache_key(oblong)
+
+
+def test_calibration_box_is_square_and_at_least_the_minimum_side():
+    for grid in [(64, 64, 1), (201, 101, 1), (701, 701, 1), (201, 901, 1)]:
+        nx, ny, _ = st._calibration_grid_shape(_stub_config(grid_shape=grid))
+        assert nx == ny, f"{grid} gave a non-square calibration box"
+        assert nx >= st._MIN_CALIBRATION_SIDE
+        assert nx >= max(grid[0], grid[1])
 
 
 def test_load_cache_drops_malformed_entries(tmp_path):
@@ -282,17 +304,23 @@ def test_calibrate_nests_all_outputs_in_subdirectory(tmp_path, monkeypatch):
     ]
 
 
-def test_calibrate_cache_is_grid_specific(tmp_path, monkeypatch):
-    config_a = _cs_config(grid_shape=(32, 32))
-    config_b = _cs_config(grid_shape=(48, 48))
+def test_calibrate_cache_is_keyed_on_the_calibration_box(tmp_path, monkeypatch):
+    """Runs sharing a calibration box measure once; a different box measures again."""
+    side = st._MIN_CALIBRATION_SIDE
+    config_a = _cs_config(grid_shape=(32, 32))  # -> the minimum square
+    config_b = _cs_config(grid_shape=(48, 48))  # -> the same minimum square
+    config_c = _cs_config(grid_shape=(2 * side, 2 * side))  # -> a larger square
 
-    seen_grid_shapes: list[tuple[int, ...]] = []
+    # `_measure_pressure_jumps` is stubbed out, so it is handed the run's own
+    # config; the box it *would* have swept in is `_calibration_grid_shape`.
+    seen_boxes: list[tuple[int, ...]] = []
 
     def fake_measure(config, states_dir=None):
         del states_dir
-        seen_grid_shapes.append(tuple(config.grid_shape))
+        box = st._calibration_grid_shape(config)
+        seen_boxes.append(box)
         radii = np.array([10.0, 20.0, 30.0])
-        sigma = 0.02 if tuple(config.grid_shape) == (32, 32, 1) else 0.03
+        sigma = 0.02 if box == (side, side, 1) else 0.03
         return radii, sigma / radii, [_droplet_field(config, r) for r in radii]
 
     monkeypatch.setattr(st, "_measure_pressure_jumps", fake_measure)
@@ -300,12 +328,13 @@ def test_calibrate_cache_is_grid_specific(tmp_path, monkeypatch):
 
     sigma_a = st.calibrate_surface_tension(config_a, tmp_path / "run_a")
     sigma_b = st.calibrate_surface_tension(config_b, tmp_path / "run_b")
-    sigma_a_cached = st.calibrate_surface_tension(config_a, tmp_path / "run_c")
+    sigma_c = st.calibrate_surface_tension(config_c, tmp_path / "run_c")
 
     assert sigma_a == pytest.approx(0.02, rel=1e-9)
-    assert sigma_b == pytest.approx(0.03, rel=1e-9)
-    assert sigma_a_cached == pytest.approx(sigma_a)
-    assert seen_grid_shapes == [(32, 32, 1), (48, 48, 1)]
+    assert sigma_b == pytest.approx(sigma_a), "same calibration box must reuse the cached value"
+    assert sigma_c == pytest.approx(0.03, rel=1e-9)
+    # Two measurements, not three: config_b was a cache hit on config_a's entry.
+    assert seen_boxes == [(side, side, 1), (2 * side, 2 * side, 1)]
 
 
 def test_field_cache_never_lands_in_the_checkout():
@@ -583,12 +612,16 @@ def test_measure_pressure_jumps_missing_params_raises():
 def test_measure_pressure_jumps_small_sweep(tmp_path, monkeypatch):
     monkeypatch.setattr(st, "_N_RADII", 2)
     monkeypatch.setattr(st, "_N_ITERATIONS", 2)
+    # The sweep runs in its own square box, not the run's grid; shrink the
+    # minimum so this stays a unit test rather than a 301x301 simulation.
+    monkeypatch.setattr(st, "_MIN_CALIBRATION_SIDE", 32)
     config = _cs_config()
     states_dir = tmp_path / "states"
 
     radii, delta_p, densities = st._measure_pressure_jumps(config, states_dir=states_dir)
 
-    # min(nx, ny) = 32 → radii span [6.4, 10.67].
+    # The calibration box is 32x32 → radii span [8.0, 10.67], fractions of the
+    # *calibration* side, not of the run's grid.
     np.testing.assert_allclose(radii, [8.0, 10.666666666666666])
     assert delta_p.shape == (2,)
     assert np.all(np.isfinite(delta_p))

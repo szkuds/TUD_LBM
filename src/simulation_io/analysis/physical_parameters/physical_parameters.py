@@ -179,11 +179,50 @@ def _get_setup_contact_line_length(config: SimulationConfig) -> float | None:
 #: A wall row must cross ``rho_mean`` at least twice to bracket a contact line.
 _MIN_CROSSINGS = 2
 
+#: Order in which ``bc_config`` is scanned for the wetting wall. Matches
+#: :func:`src.operators.wetting._edge_config._resolve_wetting_edges`, so the wall
+#: reported here is the one the solver actually measured at.
+_EDGE_SCAN_ORDER = ("bottom", "top", "left", "right")
 
-def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | None:
-    """Return setup contact-line spacing from a rho field using wall-row transitions."""
+
+def resolve_wall_edge(config: SimulationConfig) -> str:
+    """The single wall marked ``"wetting"`` in ``bc_config``, else ``"bottom"``.
+
+    Config validation guarantees exactly one wetting wall for wetting runs;
+    non-wetting runs fall back to ``"bottom"``, for which the canonical
+    transform is the identity.
+
+    Defined here rather than in :mod:`..droplet_metrics._scales` so that this
+    module — which ``_scales`` already imports from lazily — does not have to
+    import back into ``droplet_metrics``.
+    """
+    bc = config.bc_config or {}
+    for edge in _EDGE_SCAN_ORDER:
+        if bc.get(edge) == "wetting":
+            return edge
+    return "bottom"
+
+
+def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float, wall_edge: str = "bottom") -> float | None:
+    """Return setup contact-line spacing from a rho field using wall-row transitions.
+
+    *wall_edge* names the wetting wall. The row is taken from the wall-aligned
+    canonical view for that edge, so a droplet or bubble on ``"top"``,
+    ``"left"`` or ``"right"`` is measured at its own wall. Slicing ``y = 0``
+    unconditionally sampled the far wall for those runs, found no crossings,
+    and silently pushed ``resolve_r_zero`` onto its nominal-radius fallback —
+    which then propagated into ``L_eff`` and every dimensionless number.
+    """
+    # Lazily, and from droplet_metrics rather than the JAX original in
+    # `operators.wetting._canonical_view`: this is a numpy field, and the twin
+    # there is already annotated and tested for numpy. The import is deferred
+    # because `droplet_metrics._scales` imports back into this module the same
+    # way, so neither may reach the other at module load.
+    from src.simulation_io.analysis.droplet_metrics._snapshot import to_canonical_2d
+
     try:
-        row = np.asarray(rho[:, 0, 0, 0, 0], dtype=float)
+        plane = np.asarray(rho[:, :, 0, 0, 0], dtype=float)
+        row = np.asarray(to_canonical_2d(plane, wall_edge)[:, 0], dtype=float)
 
         mask = (row < float(rho_mean)).astype(np.int32)
         diff = np.diff(mask)
@@ -305,7 +344,7 @@ def _get_contact_line_length_from_file(config: SimulationConfig) -> float | None
     field = _load_init_rho(config)
     if field is None:
         return None
-    return _contact_line_length_from_rho(field.rho, field.rho_mean)
+    return _contact_line_length_from_rho(field.rho, field.rho_mean, resolve_wall_edge(config))
 
 
 def _get_setup_droplet_area(config: SimulationConfig) -> float | None:
@@ -648,17 +687,17 @@ def _dimensionless_rows(config: SimulationConfig) -> list[str]:
 
 
 def _format_critical_inclination_angle_row(config: SimulationConfig, gamma: float) -> str:
-    if (
-        config.chemical_step_config is None
-        or config.gravity_masked_force is None
-        or config.rho_l is None
-        or config.rho_v is None
-    ):
-        msg = "chemical_step_config, gravity_masked_force, rho_l, and rho_v must be set"
+    g_val = _resolve_gravity_value(config)
+    if config.chemical_step_config is None or g_val is None or config.rho_l is None or config.rho_v is None:
+        msg = "chemical_step_config, a gravity force, rho_l, and rho_v must be set"
         raise RuntimeError(msg)
     ca_adv = math.radians(float(config.chemical_step_config["ca_advancing_pre_step"]))
     ca_rec = math.radians(float(config.chemical_step_config["ca_receding_pre_step"]))
-    g = float(config.gravity_masked_force["force_g"])
+    # Either gravity variant: the balance is against the *net* buoyancy, which
+    # both forces produce. Insisting on `gravity_masked_force` dropped this row
+    # -- the one row that is specifically about chemical-step pinning -- from
+    # every run using plain `[gravity_force]`.
+    g = g_val
     radius = float(config.initialisation["radii"][0])
     nx = int(config.grid_shape[0])
     # The drive per unit area is the *net* buoyancy of the inclusion, so it
@@ -737,7 +776,7 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
 
     _add_buoyancy_delta_rho_row(lines, config)
     lines.extend(_dimensionless_rows(config))
-    if config.chemical_step_config is not None and config.gravity_masked_force is not None:
+    if config.chemical_step_config is not None and _resolve_gravity_value(config) is not None:
         lines.append(_format_critical_inclination_angle_row(config, gamma))
 
 

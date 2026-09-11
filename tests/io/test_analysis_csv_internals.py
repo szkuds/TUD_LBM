@@ -35,7 +35,9 @@ from src.simulation_io.analysis.droplet_metrics._snapshot import avg_x_location
 from src.simulation_io.analysis.droplet_metrics._snapshot import center_of_mass
 from src.simulation_io.analysis.droplet_metrics._snapshot import contact_angles_from_rho
 from src.simulation_io.analysis.droplet_metrics._snapshot import contact_lines_from_rho
+from src.simulation_io.analysis.droplet_metrics._snapshot import inclusion_mask_2d
 from src.simulation_io.analysis.droplet_metrics._snapshot import interpolate_interface
+from src.simulation_io.analysis.droplet_metrics._snapshot import mean_velocity_in_inclusion
 from src.simulation_io.analysis.droplet_metrics._snapshot import parse_timestep_from_path
 from src.simulation_io.plotting.run_comparison import _clean_dir_label
 from src.simulation_io.plotting.simulation_csv import SimulationCsvExport
@@ -282,6 +284,48 @@ def test_avg_x_location():
     avg_x = avg_x_location(rho_2d, _RHO_MEAN, offset_x=15.0)
     # Should be close to 0 for a centred droplet with offset=15
     assert abs(avg_x) < 2.0
+
+
+def _bubble_rho_2d(nx: int = 30, ny: int = 10, lo: int = 10, hi: int = 20) -> np.ndarray:
+    """A vapour inclusion in a liquid ambient — the phase-inverted twin of :func:`_droplet_rho_2d`."""
+    rho = np.full((nx, ny), _RHO_L)
+    rho[lo:hi, :] = _RHO_V
+    return rho
+
+
+def test_inclusion_mask_selects_the_minority_phase_for_either_topology():
+    """The whole point: `rho > rho_mean` would return the ambient for a bubble."""
+    lo, hi = 10, 20
+    droplet = inclusion_mask_2d(_droplet_rho_2d(nx=30, ny=10, lo=lo, hi=hi), _RHO_MEAN)
+    bubble = inclusion_mask_2d(_bubble_rho_2d(nx=30, ny=10, lo=lo, hi=hi), _RHO_MEAN)
+    # Both select exactly the inclusion columns, never the ambient.
+    np.testing.assert_array_equal(droplet, bubble)
+    assert droplet[lo:hi, :].all()
+    assert not droplet[:lo, :].any()
+    assert not droplet[hi:, :].any()
+
+
+def test_center_of_mass_tracks_a_bubble_not_its_ambient():
+    """An off-centre bubble's CoM must sit in the bubble, not at the domain centroid."""
+    rho_2d = _bubble_rho_2d(nx=40, ny=10, lo=4, hi=14)
+    cm_x, _ = center_of_mass(rho_2d, _RHO_MEAN)
+    assert 4 < cm_x < 14  # inside the inclusion; the liquid-ambient answer is ~22
+
+
+def test_avg_x_location_tracks_a_bubble_not_its_ambient():
+    rho_2d = _bubble_rho_2d(nx=40, ny=10, lo=4, hi=14)
+    avg_x = avg_x_location(rho_2d, _RHO_MEAN, offset_x=9.0)
+    assert abs(avg_x) < 1.0  # the inclusion is centred on the offset
+
+
+def test_mean_velocity_averages_over_the_inclusion_not_the_liquid():
+    """A bubble moving through still liquid must report its own velocity."""
+    rho_2d = _bubble_rho_2d(nx=40, ny=10, lo=4, hi=14)
+    u_x = np.where(rho_2d < _RHO_MEAN, 0.5, 0.0)
+    u_y = np.zeros_like(u_x)
+    avg_ux, avg_uy = mean_velocity_in_inclusion(u_x, u_y, rho_2d, _RHO_MEAN)
+    assert avg_ux == pytest.approx(0.5)  # averaging over the liquid would give 0.0
+    assert avg_uy == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------

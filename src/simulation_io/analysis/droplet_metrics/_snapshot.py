@@ -118,34 +118,61 @@ def contact_lines_from_rho(rho_2d: np.ndarray, rho_mean: float, wall_edge: str =
     return x_left, x_right
 
 
+def inclusion_mask_2d(rho_2d: np.ndarray, rho_mean: float) -> np.ndarray:
+    """Boolean mask of the inclusion — the droplet of a droplet run, the bubble of a bubble run.
+
+    Both topologies put the inclusion in the *minority* phase, so thresholding
+    at ``rho_mean`` and keeping the smaller side selects it without being told
+    which it is. Taking ``rho_2d > rho_mean`` unconditionally selected the
+    **continuous** phase of a bubble run — nearly the whole domain — turning
+    every metric built on it into an ambient average.
+
+    The 5-D sibling of this rule, applied one layer up to the dimensionless
+    numbers, is
+    :func:`~src.simulation_io.analysis.physical_parameters.physical_parameters.inclusion_mask_from_rho`;
+    the two must stay in step. Kept as a separate 2-D function rather than
+    imported: the two modules reach each other only through function-body
+    imports, because each needs something the other owns.
+
+    Cells exactly at ``rho_mean`` fall in neither phase.
+    """
+    liquid = rho_2d > rho_mean
+    vapour = rho_2d < rho_mean
+    return liquid if np.count_nonzero(liquid) <= np.count_nonzero(vapour) else vapour
+
+
 def center_of_mass(rho_2d: np.ndarray, rho_mean: float) -> tuple[float, float]:
-    """Density-weighted centre of mass of the liquid region."""
-    mask = rho_2d > rho_mean
+    """Density-weighted centre of mass of the inclusion."""
+    mask = inclusion_mask_2d(rho_2d, rho_mean)
     xi, yi = np.indices(rho_2d.shape)
     total = np.sum(mask * rho_2d)
     return float(np.sum(xi * mask * rho_2d) / total), float(np.sum(yi * mask * rho_2d) / total)
 
 
 def avg_x_location(rho_2d: np.ndarray, rho_mean: float, offset_x: float) -> float:
-    """Mean x-index of the liquid region, measured relative to *offset_x*."""
+    """Mean x-index of the inclusion, measured relative to *offset_x*."""
     nx = rho_2d.shape[0]
-    mask = rho_2d > rho_mean
+    mask = inclusion_mask_2d(rho_2d, rho_mean)
     x_idx = np.arange(nx, dtype=float) - offset_x
     return float(np.sum(x_idx[:, None] * mask) / np.sum(mask))
 
 
-def mean_velocity_in_liquid(
+def mean_velocity_in_inclusion(
     u_x: np.ndarray,
     u_y: np.ndarray,
     rho_2d: np.ndarray,
     rho_mean: float,
 ) -> tuple[float, float]:
-    """Mean ``(u_x, u_y)`` over cells whose density exceeds *rho_mean*."""
-    mask = rho_2d > rho_mean
-    n_liq = np.sum(mask)
-    if n_liq == 0:
+    """Mean ``(u_x, u_y)`` over the inclusion's cells.
+
+    Named for the inclusion, not the liquid: for a bubble run the two are
+    opposite phases, and averaging over the liquid would report the ambient.
+    """
+    mask = inclusion_mask_2d(rho_2d, rho_mean)
+    n_cells = np.sum(mask)
+    if n_cells == 0:
         return 0.0, 0.0
-    return float(np.sum(u_x * mask) / n_liq), float(np.sum(u_y * mask) / n_liq)
+    return float(np.sum(u_x * mask) / n_cells), float(np.sum(u_y * mask) / n_cells)
 
 
 def optional_contact_metrics(

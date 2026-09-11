@@ -37,7 +37,8 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
 #: Small enough to equilibrate three droplets in seconds, large enough that the
-#: vapour corners sample points sit outside the biggest droplet.
+#: vapour corners sample points sit outside the biggest droplet. The fixture
+#: pins ``_MIN_CALIBRATION_SIDE`` to this so the sweep's own square box matches.
 _GRID = 48
 _N_RADII = 3
 _N_ITERATIONS = 200
@@ -101,6 +102,11 @@ def calibration(tmp_path_factory) -> SimpleNamespace:
         mp.setattr(st, "_FIELDS_CACHE_DIR", tmp / "field_cache")
         mp.setattr(st, "_N_RADII", _N_RADII)
         mp.setattr(st, "_N_ITERATIONS", _N_ITERATIONS)
+        # The sweep runs in its own square box, sized independently of the run,
+        # so shrink that minimum to the test grid. Without this the sweep would
+        # equilibrate three 301x301 droplets — the very confinement problem the
+        # module docstring describes is why production sizes up, not down.
+        mp.setattr(st, "_MIN_CALIBRATION_SIDE", _GRID)
         mp.setattr(st, "_measure_pressure_jumps", counting_measure)
 
         run_dir = tmp / "run"
@@ -110,9 +116,13 @@ def calibration(tmp_path_factory) -> SimpleNamespace:
         cached_run_dir = tmp / "cached_run"
         cached_run_dir.mkdir()
         cached_sigma = st.calibrate_surface_tension(config, cached_run_dir)
+        # Captured inside the patch context: the key embeds the calibration box,
+        # which is pinned to `_GRID` only here.
+        cache_key = st._cache_key(config)
 
     return SimpleNamespace(
         config=config,
+        cache_key=cache_key,
         updated=updated,
         run_dir=run_dir,
         cached_run_dir=cached_run_dir,
@@ -193,7 +203,7 @@ def test_each_equilibrated_droplet_is_still_a_droplet(calibration):
 def test_cached_density_fields_are_the_measured_ones(calibration, monkeypatch):
     """A later cache hit redraws its figures from the fields the sweep produced."""
     monkeypatch.setattr(st, "_FIELDS_CACHE_DIR", calibration.fields_cache_dir)
-    fields = st._load_fields(st._cache_key(calibration.config), _N_RADII)
+    fields = st._load_fields(calibration.cache_key, _N_RADII)
 
     assert fields is not None
     data_dir = st.surface_tension_data_dir(calibration.run_dir)

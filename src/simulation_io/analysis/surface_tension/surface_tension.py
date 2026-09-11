@@ -91,6 +91,42 @@ _RADIUS_MAX_FRACTION = 1.0 / 3.0
 # ``3 * W = 12`` put the corners 5.7 lattice units from the centre, i.e. deep
 # inside the largest (R = 10.7) droplet, silently measuring liquid as vapour.
 _SAMPLE_MARGIN_FRACTION = 1.0 / 8.0
+
+# Smallest square side the sweep runs in, regardless of how small the run's own
+# grid is.
+#
+# The sweep is deliberately NOT run in the run's own domain. Young-Laplace
+# assumes a circular droplet in an effectively unbounded bath, and a
+# non-square box breaks that: in a 201x101 domain the largest sweep droplet
+# (R = 33.7) leaves only 33.7 lattice units to its own vertical periodic image,
+# against 100+ in a square box, and the squeeze varies across the five radii
+# (50.5 units of clearance at the smallest, 33.7 at the largest). That biases
+# the five dP samples unequally, which is what a dP-vs-1/R slope fit cannot
+# survive -- the shipped 201x101 entry fitted sigma = -0.0754 while four square
+# boxes spanning a 2.3x range of sizes agreed at +0.0720 to +0.0731.
+#
+# 301 is the smallest square in that agreeing set, so it is the smallest side
+# with evidence behind it. Sizing up rather than down also keeps the cost of a
+# calibration independent of how small the run that triggered it happens to be.
+_MIN_CALIBRATION_SIDE = 301
+
+
+def _calibration_grid_shape(config: SimulationConfig) -> tuple[int, int, int]:
+    """Square domain the droplet sweep runs in, decoupled from the run's own grid.
+
+    Square, so no axis confines the droplet more than another; and at least
+    :data:`_MIN_CALIBRATION_SIDE` on a side. See that constant for why.
+
+    This is also the ``grid_shape`` that goes into the cache key
+    (:func:`_cache_grid_shape`), so every run whose calibration lands in the
+    same box shares one measurement -- a 201x101 and a 201x201 run now hit the
+    same entry, because sigma is a property of the fluid, not of the domain the
+    run happens to use.
+    """
+    side = max(int(config.grid_shape[0]), int(config.grid_shape[1]), _MIN_CALIBRATION_SIDE)
+    return (side, side, 1)
+
+
 _PERIODIC_BC = {"top": "periodic", "bottom": "periodic", "left": "periodic", "right": "periodic"}
 
 _CACHE_FILENAME = "surface_tension_cache.json"
@@ -248,13 +284,16 @@ def _measure_pressure_jumps(
         msg = "interface_width, rho_l, rho_v are required for surface-tension calibration"
         raise ValueError(msg)
 
-    nx, ny = int(config.grid_shape[0]), int(config.grid_shape[1])
+    calib_config = _calibration_config(config)
+
+    # Radii are fractions of the *calibration* box, not the run's own grid --
+    # they have to match the domain the droplets are actually equilibrated in.
+    nx, ny = int(calib_config.grid_shape[0]), int(calib_config.grid_shape[1])
     min_dim = min(nx, ny)
     radii = np.linspace(min_dim * _RADIUS_MIN_FRACTION, min_dim * _RADIUS_MAX_FRACTION, _N_RADII)
     width = int(config.interface_width)
     rho_l, rho_v = float(config.rho_l), float(config.rho_v)
 
-    calib_config = _calibration_config(config)
     mp = build_multiphase_params(calib_config)
     pressure_fn = build_pressure_fn(mp)
 
@@ -328,6 +367,7 @@ def _calibration_config(config: SimulationConfig) -> SimulationConfig:
         config,
         sim_type="multiphase",
         bc_config=dict(_PERIODIC_BC),
+        grid_shape=_calibration_grid_shape(config),
         nt=_N_ITERATIONS,
         save_interval=0,
         skip_interval=0,
@@ -406,7 +446,8 @@ def _cache_path() -> Path:
 
 
 def _cache_grid_shape(config: SimulationConfig) -> list[int]:
-    return [int(dim) for dim in config.grid_shape]
+    """The *calibration* box, not the run's grid — see :func:`_calibration_grid_shape`."""
+    return list(_calibration_grid_shape(config))
 
 
 def _cache_key(config: SimulationConfig) -> str:
