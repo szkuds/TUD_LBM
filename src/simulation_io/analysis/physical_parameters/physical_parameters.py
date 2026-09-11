@@ -179,6 +179,13 @@ def _get_setup_contact_line_length(config: SimulationConfig) -> float | None:
 #: A wall row must cross ``rho_mean`` at least twice to bracket a contact line.
 _MIN_CROSSINGS = 2
 
+#: Smallest single-cell density step across which the ``rho_mean`` crossing is
+#: interpolated. A flatter step makes the interpolation below explode, so the
+#: row yields no usable length. An explicit absolute tolerance is required:
+#: ``math.isclose(x, 0.0)`` defaults to ``abs_tol=0.0`` and so reduces to
+#: ``x == 0.0``, which is the one case that never needed guarding.
+_MIN_CROSSING_SLOPE = 1e-9
+
 #: Order in which ``bc_config`` is scanned for the wetting wall. Matches
 #: :func:`src.operators.wetting._edge_config._resolve_wetting_edges`, so the wall
 #: reported here is the one the solver actually measured at.
@@ -239,7 +246,7 @@ def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float, wall_edge: s
 
         denom_left = row[idx_left + 1] - row[idx_left]
         denom_right = row[idx_right + 1] - row[idx_right]
-        if math.isclose(denom_left, 0.0) or math.isclose(denom_right, 0.0):
+        if abs(denom_left) <= _MIN_CROSSING_SLOPE or abs(denom_right) <= _MIN_CROSSING_SLOPE:
             return None
 
         x_left = idx_left + ((rho_mean - row[idx_left]) / denom_left)

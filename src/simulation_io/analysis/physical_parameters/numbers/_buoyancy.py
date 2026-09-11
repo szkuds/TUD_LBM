@@ -34,7 +34,7 @@ def compute_reynolds_number(drho: float, g_val: float, length: float, nu: float,
 )
 def archimedes_number(inputs: DimensionlessInputs) -> float | None:
     """Ar = gL³Δρ/(ν²ρ_l)."""
-    if inputs.g is None or inputs.nu == 0.0 or inputs.rho_l == 0.0:
+    if inputs.g is None or inputs.nu <= 0.0 or inputs.rho_l <= 0.0:
         return None
     return compute_archimedes_number(inputs.drho, inputs.g, inputs.length, inputs.nu, inputs.rho_l)
 

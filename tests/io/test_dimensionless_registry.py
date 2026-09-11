@@ -94,7 +94,7 @@ def test_dimensionless_label_rejects_an_unknown_key():
 
 def test_every_number_is_a_valid_label_param():
     """The CLI's --label-param choices are the registry plus the run name."""
-    assert (*dimensionless_keys(), NAME_KEY) == LABEL_PARAM_CHOICES
+    assert list(LABEL_PARAM_CHOICES) == [*dimensionless_keys(), NAME_KEY]
 
 
 def test_every_choice_resolves_through_the_label_selector():

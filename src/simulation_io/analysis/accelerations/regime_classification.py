@@ -39,7 +39,7 @@ class Regime(StrEnum):
 
 _PINNING_FRACTION_OF_R0 = 0.5
 
-#: Minimum ``|slope * window_span| / mean(Ca)`` for a trend to count. Chemical-step
+#: Minimum ``|slope * window_span| / |mean(Ca)|`` for a trend to count. Chemical-step
 #: runs that reach a terminal velocity on the step drift by only a few percent
 #: across the window, and that residual drift is monotone in ``Bo_parallel``
 #: (-0.26% at 0.21, -2.26% at 0.26, -4.36% at 0.32) -- real, but far smaller than
@@ -95,27 +95,37 @@ def fit_trend(x: np.ndarray, y: np.ndarray) -> TrendFit | None:
     """Least-squares slope of *y* over *x*, its relative drift and t-statistic.
 
     ``drift`` is the total change the fit predicts across the window as a
-    fraction of ``mean(y)`` -- the scale-free measure of whether the trend
+    fraction of ``|mean(y)|`` -- the scale-free measure of whether the trend
     matters. ``t_statistic`` is the slope over its own standard error. Returns
     ``None`` when the fit is not defined: fewer than three points (no residual
-    degrees of freedom), a degenerate *x*, or a zero mean to normalise by. An
-    exact fit has no residual and so gives an infinite t-statistic, which is the
-    right answer for a noiseless straight line.
+    degrees of freedom), a degenerate *x*, or a vanishing ``|mean(y)|`` to
+    normalise by. An exact fit has no residual and so gives an infinite
+    t-statistic, which is the right answer for a noiseless straight line.
+
+    The magnitude of the mean, not the mean: ``Ca`` is signed. It is built from
+    ``avg_u_x``, the inclusion's mean *x*-velocity, so a run driven in ``-x``
+    carries a negative ``Ca`` throughout -- and under the banded gravity
+    indicator a bubble moves opposite the droplet it shares a config with.
+    Normalising by the signed mean would flip ``drift`` against ``slope`` for
+    exactly those runs; rejecting them outright would drop them to
+    ``Regime.UNKNOWN``. Taking the magnitude leaves the scale where it belongs
+    and lets ``drift`` track the sign of the trend, not the sign of the frame.
     """
-    if x.size < _MIN_POINTS_FOR_TREND or np.std(x) == 0.0:
+    x_std = float(np.std(x))
+    if x.size < _MIN_POINTS_FOR_TREND or x_std <= 0.0:
         return None
-    mean_y = float(np.mean(y))
-    if mean_y == 0.0:
+    scale = abs(float(np.mean(y)))
+    if scale <= 0.0:
         return None
 
     slope, intercept = np.polyfit(x, y, 1)
-    drift = float(slope) * float(x[-1] - x[0]) / mean_y
+    drift = float(slope) * float(x[-1] - x[0]) / scale
 
     residual_std = float(np.std(y - (slope * x + intercept), ddof=_MIN_POINTS_FOR_TREND - 1))
-    if residual_std == 0.0:
+    if residual_std <= 0.0:
         t_statistic = float(np.inf) * np.sign(slope) if slope != 0 else 0.0
     else:
-        stderr = residual_std / (float(np.std(x)) * np.sqrt(x.size))
+        stderr = residual_std / (x_std * np.sqrt(x.size))
         t_statistic = float(slope) / stderr
     return TrendFit(slope=float(slope), drift=drift, t_statistic=float(t_statistic))
 

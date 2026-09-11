@@ -50,7 +50,7 @@ def test_classify_regime_pinning_takes_priority_over_acceleration_data():
 def test_classify_regime_viscous_when_slope_negative_in_window():
     cm_x = np.array([0.0, 5.0, 30.0])
     iteration = np.arange(30, dtype=float)
-    ca = 10.0 - iteration  # strictly decreasing everywhere, including the window
+    ca = 30.0 - iteration  # strictly decreasing everywhere, and positive: Ca is a magnitude
     accel_result = _accel_result(iteration, ca, peak_accel_idx=4, peak_decel_idx=24)
 
     result = classify_regime(cm_x, r_zero=10.0, accel_result=accel_result)
@@ -141,6 +141,47 @@ def test_fit_trend_reports_drift_relative_to_the_mean():
     assert fit.slope == pytest.approx(0.1)
     assert fit.drift == pytest.approx(1.0 / 1.5)
     assert fit.is_significant
+
+
+def test_fit_trend_normalises_by_the_magnitude_of_the_mean():
+    """``Ca`` is signed: a run driven in -x must classify like its mirror image.
+
+    ``Ca = avg_u_x * nu / sigma`` and ``avg_u_x`` is the inclusion's signed mean
+    x-velocity, so a negative-``Ca`` run is a frame choice, not a degenerate fit.
+    Its drift must have the same magnitude as the mirrored run and must follow
+    its own slope, rather than being flipped by the sign of the mean.
+    """
+    x = np.arange(11, dtype=float)
+    rising = fit_trend(x, 1.0 + 0.1 * x)
+    mirrored = fit_trend(x, -(1.0 + 0.1 * x))
+
+    assert rising is not None
+    assert mirrored is not None
+    assert mirrored.slope == pytest.approx(-rising.slope)
+    assert mirrored.drift == pytest.approx(-rising.drift)
+    assert abs(mirrored.drift) == pytest.approx(abs(rising.drift))
+    assert mirrored.is_significant == rising.is_significant
+
+
+def test_classify_regime_survives_a_negative_capillary_number_window():
+    """A window of negative ``Ca`` classifies, rather than collapsing to unknown."""
+    cm_x = np.array([0.0, 5.0, 30.0])
+    iteration = np.arange(30, dtype=float)
+    ca = -(30.0 - iteration)  # strictly increasing, negative throughout
+    accel_result = _accel_result(iteration, ca, peak_accel_idx=4, peak_decel_idx=24)
+
+    result = classify_regime(cm_x, r_zero=10.0, accel_result=accel_result)
+
+    assert result.regime == "Capillary"
+    assert result.slope is not None
+    assert result.slope > 0
+
+
+def test_fit_trend_none_when_the_mean_vanishes():
+    x = np.arange(11, dtype=float)
+    y = x - float(np.mean(x))  # symmetric about zero: no scale to normalise by
+
+    assert fit_trend(x, y) is None
 
 
 def test_classify_regime_unknown_when_no_usable_window():

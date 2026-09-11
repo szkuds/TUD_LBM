@@ -37,7 +37,7 @@ def _bond(inputs: DimensionlessInputs) -> BondNumbers | None:
     All three operators go through here so the decomposition can never drift
     apart from the total it decomposes.
     """
-    if inputs.g is None or inputs.gamma == 0.0:
+    if inputs.g is None or inputs.gamma <= 0.0:
         return None
     return compute_bond_numbers(inputs.drho, inputs.gamma, inputs.g, inputs.length, inputs.angle_deg or 0.0)
 

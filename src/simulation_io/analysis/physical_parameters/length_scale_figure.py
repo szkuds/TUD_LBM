@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     import matplotlib.axes
     from src.config.simulation_config import SimulationConfig
+    from src.simulation_io.plotting.density import DensityPlotOperator
 
 #: Figure name under ``<out_dir>/plots/analysis/``.
 LENGTH_SCALE_FILENAME = "length_scale.png"
@@ -262,12 +263,12 @@ def _analytic_region(config: SimulationConfig) -> _AnalyticRegion | None:
 def _render_panel(
     ax: matplotlib.axes.Axes,
     panel: _Panel,
-    operator: object,
+    operator: DensityPlotOperator,
     config: SimulationConfig,
 ) -> None:
     """Draw one panel: the density field with its mask, or the analytic circle."""
     if panel.rho is not None:
-        operator(ax, {"rho": panel.rho}, panel.timestep)  # ty: ignore[call-non-callable]
+        operator(ax, {"rho": panel.rho}, panel.timestep)
         if panel.mask is not None:
             _overlay_mask(ax, panel.mask)
         return

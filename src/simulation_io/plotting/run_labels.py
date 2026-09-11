@@ -90,7 +90,7 @@ def _varies(values: Sequence[float | None]) -> bool:
     if len(resolved) != len(values):
         return True
     scale = max(abs(value) for value in resolved)
-    if scale == 0.0:
+    if scale <= 0.0:
         return False
     return (max(resolved) - min(resolved)) / scale > _SIGNIFICANT_SPREAD
 
