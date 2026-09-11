@@ -693,10 +693,6 @@ def _format_critical_inclination_angle_row(config: SimulationConfig, gamma: floa
         raise RuntimeError(msg)
     ca_adv = math.radians(float(config.chemical_step_config["ca_advancing_pre_step"]))
     ca_rec = math.radians(float(config.chemical_step_config["ca_receding_pre_step"]))
-    # Either gravity variant: the balance is against the *net* buoyancy, which
-    # both forces produce. Insisting on `gravity_masked_force` dropped this row
-    # -- the one row that is specifically about chemical-step pinning -- from
-    # every run using plain `[gravity_force]`.
     g = g_val
     radius = float(config.initialisation["radii"][0])
     nx = int(config.grid_shape[0])
