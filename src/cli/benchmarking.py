@@ -356,7 +356,7 @@ def _breakdown_variants(setup: SimulationSetup) -> list[tuple[str, SimulationSet
     """
     from src.operators.step import build_step_fn
 
-    if "multiphase" not in setup.config.sim_type:
+    if not setup.config.is_multiphase:
         return []
 
     variants: list[tuple[str, SimulationSetup, str]] = []
@@ -394,16 +394,14 @@ def _load_benchmark_config(config_path: str, overrides: tuple[str, ...]) -> Simu
     Raises:
         click.UsageError: If the config expands to more than one simulation.
     """
-    import click
-    from src.cli.config_loading import _expand_raw_config
-    from src.cli.config_loading import _load_raw_config
+    from src.cli.config_loading import _load_single_config
 
-    raw_config = _load_raw_config(config_path, overrides)
-    _configs, config, sweep_metadata, _params = _expand_raw_config(raw_config)
-    if sweep_metadata is not None or config is None:
-        msg = "benchmark does not support parameter sweeps; benchmark one grid at a time"
-        raise click.UsageError(msg)
-    return config
+    return _load_single_config(
+        config_path,
+        overrides,
+        command="benchmark",
+        hint="benchmark one grid at a time",
+    )
 
 
 def _resolve_json_path(config: SimulationConfig, json_path: str | None, label: str, backend: str) -> Path:

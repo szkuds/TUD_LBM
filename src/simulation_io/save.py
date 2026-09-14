@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from src.config.run_config import DATA_DIRNAME
+from src.config.run_config import PHYSICAL_PARAMETERS_FILENAME
 from .output_data import output_writers
 
 if TYPE_CHECKING:
@@ -52,7 +53,7 @@ class SimulationIO:
             self.save_config(config)
             from src.simulation_io.analysis.physical_parameters import write_physical_parameters
 
-            write_physical_parameters(config, Path(self.run_dir) / "physical_parameters.txt")
+            write_physical_parameters(config, Path(self.run_dir) / PHYSICAL_PARAMETERS_FILENAME)
 
         _fmt: str = (output_format[0] if isinstance(output_format, list) else output_format) or "numpy"
         self.save_data_step: Callable[[int, dict[str, np.ndarray]], None] = output_writers[_fmt].save_data_step.__get__(

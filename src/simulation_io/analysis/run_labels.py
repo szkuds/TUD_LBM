@@ -14,6 +14,13 @@ carries the same information; and only ``Oh`` of the viscous-capillary pair,
 because ``La = 1/Oh**2`` does likewise. ``Bo_perp``, ``Ar`` and ``La`` all remain
 reachable by naming them explicitly (``tud-lbm compare --label-param``), which
 also bypasses the differing-only test.
+
+Deliberately outside :mod:`src.simulation_io.plotting` even though only plots
+consume it: it imports nothing from there, while the plotting package's own
+``__init__`` eagerly loads every plot operator and hence matplotlib. The CLI
+reads :data:`LABEL_PARAM_CHOICES` at decoration time, so living under
+``plotting`` put a ~190 ms matplotlib import on the path of *every* command,
+``--help`` included.
 """
 
 from __future__ import annotations

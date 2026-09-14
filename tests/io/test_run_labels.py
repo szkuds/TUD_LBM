@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 from src.simulation_io.analysis.physical_parameters import DimensionlessNumbers
-from src.simulation_io.plotting.run_labels import LABEL_PARAM_CHOICES
-from src.simulation_io.plotting.run_labels import build_run_labels
-from src.simulation_io.plotting.run_labels import label_sort_key
-from src.simulation_io.plotting.run_labels import resolve_label_keys
+from src.simulation_io.analysis.run_labels import LABEL_PARAM_CHOICES
+from src.simulation_io.analysis.run_labels import build_run_labels
+from src.simulation_io.analysis.run_labels import label_sort_key
+from src.simulation_io.analysis.run_labels import resolve_label_keys
 
 
 def _dn(*, inclination_deg: float | None = 0.0, **kwargs) -> DimensionlessNumbers:

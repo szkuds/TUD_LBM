@@ -9,8 +9,9 @@ from src.simulation_io.analysis.physical_parameters import compute_bond_numbers
 from src.simulation_io.analysis.physical_parameters import compute_dimensionless_numbers
 from src.simulation_io.analysis.physical_parameters import dimensionless_keys
 from src.simulation_io.analysis.physical_parameters import resolve_dimensionless_inputs
-from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import compute_archimedes_number
-from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import compute_reynolds_number
+from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessInputs
+from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import archimedes_number
+from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import reynolds_number
 from src.simulation_io.analysis.physical_parameters.numbers._ohnesorge import ohnesorge_number
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _nu
 
@@ -131,12 +132,25 @@ def test_format_rows_unchanged_after_refactor():
     assert "Re (Reynolds number):" in text
 
 
-def test_compute_reynolds_number_is_sqrt_of_archimedes():
-    drho, g_val, length, nu, rho_l = 0.5, 1e-6, 10.0, 0.1, 1.0
+def test_reynolds_number_is_sqrt_of_archimedes():
+    inputs = DimensionlessInputs(
+        gamma=1e-3,
+        gamma_source="analytical",
+        drho=0.5,
+        drho_source="config",
+        length=10.0,
+        length_label="L",
+        nu=0.1,
+        rho_l=1.0,
+        g=1e-6,
+        angle_deg=0.0,
+    )
 
-    ar = compute_archimedes_number(drho, g_val, length, nu, rho_l)
-    re = compute_reynolds_number(drho, g_val, length, nu, rho_l)
+    ar = archimedes_number(inputs)
+    re = reynolds_number(inputs)
 
+    assert ar is not None
+    assert re is not None
     assert math.isclose(re, math.sqrt(ar), rel_tol=1e-12)
 
 

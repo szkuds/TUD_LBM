@@ -145,11 +145,22 @@ def _validate_run_dir_has_config(run_dir: str) -> Path:
     return config_path
 
 
-def _load_single_config(config_toml: str) -> SimulationConfig:
-    """Load CONFIG_TOML and expand it to exactly one config; sweeps are rejected."""
-    raw_config = _load_raw_config(config_toml, ())
+def _load_single_config(
+    config_toml: str,
+    overrides: tuple[str, ...] = (),
+    *,
+    command: str = "analyse",
+    hint: str = "remove list-valued fields from the config",
+) -> SimulationConfig:
+    """Load CONFIG_TOML and expand it to exactly one config; sweeps are rejected.
+
+    *command* and *hint* only shape the error text: every command that reduces a
+    config to a single simulation rejects sweeps for the same structural reason,
+    so they share the load-expand-reject sequence rather than each writing it out.
+    """
+    raw_config = _load_raw_config(config_toml, overrides)
     _configs, config, sweep_metadata, _params = _expand_raw_config(raw_config)
     if sweep_metadata is not None or config is None:
-        msg = "analyse does not support parameter sweeps; remove list-valued fields from the config"
+        msg = f"{command} does not support parameter sweeps; {hint}"
         raise click.UsageError(msg)
     return config

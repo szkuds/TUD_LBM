@@ -24,6 +24,9 @@ from typing import TYPE_CHECKING
 from typing import NamedTuple
 from typing import cast
 import numpy as np
+from src.operators.macroscopic import build_multiphase_params
+from src.operators.macroscopic.eos import analytical_surface_tension
+from src.operators.macroscopic.eos import has_analytical_surface_tension
 from src.registry import get_operators
 from src.simulation_io.analysis.physical_parameters import (
     numbers as _numbers,  # noqa: F401  (registers the dimensionless operators)
@@ -31,8 +34,6 @@ from src.simulation_io.analysis.physical_parameters import (
 from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessInputs
 from src.simulation_io.analysis.physical_parameters.numbers._bond import BondNumbers
 from src.simulation_io.analysis.physical_parameters.numbers._bond import compute_bond_numbers
-from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import compute_archimedes_number
-from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import compute_reynolds_number
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -46,10 +47,9 @@ __all__ = [
     "BondNumbers",
     "DimensionlessNumbers",
     "build_overview",
-    "compute_archimedes_number",
     "compute_bond_numbers",
     "compute_dimensionless_numbers",
-    "compute_reynolds_number",
+    "dimensionless_for_inputs",
     "dimensionless_keys",
     "dimensionless_label",
     "inclusion_mask_from_rho",
@@ -293,7 +293,16 @@ def _load_init_rho(config: SimulationConfig) -> _InitField | None:
     return _load_field_cached(npz_path, (stat.st_mtime_ns, stat.st_size))
 
 
-@lru_cache(maxsize=4)
+#: Init fields held at once. Sized for a *set* of runs, not one: ``compare``
+#: and ``regime-map`` walk N run directories, and each run's numbers are
+#: resolved after every run's CSV has already read the same field, so a cache
+#: that only spans one run re-reads a multi-megabyte NPZ per run. Matches
+#: ``droplet_metrics._MAX_CACHED_RUNS``, which bounds the parallel snapshot
+#: cache for the same walk.
+_MAX_CACHED_INIT_FIELDS = 8
+
+
+@lru_cache(maxsize=_MAX_CACHED_INIT_FIELDS)
 def _load_field_cached(npz_path: str, _stat_key: tuple[int, int]) -> _InitField | None:
     """Read and measure an init NPZ, memoized on the file's identity.
 
@@ -389,22 +398,25 @@ def _get_setup_droplet_area(config: SimulationConfig) -> float | None:
 def inclusion_mask_from_rho(rho: np.ndarray, rho_mean: float) -> np.ndarray | None:
     """Boolean ``(nx, ny)`` mask of the inclusion in the z=0 plane.
 
-    Both topologies put the inclusion in the minority phase, so thresholding at
-    ``rho_mean`` and keeping the smaller side selects a droplet or a bubble
-    without being told which it is. Taking ``rho > rho_mean`` unconditionally
-    selected the *continuous* phase of a bubble run — nearly the whole domain —
-    which inflated ``L_eff`` and every dimensionless number built on it.
+    The 5-D adapter over
+    :func:`~src.simulation_io.analysis.droplet_metrics._snapshot.inclusion_mask_2d`,
+    which owns the minority-phase rule itself: this layer only slices the plane
+    and turns "no inclusion" into ``None``. Deliberately not a second copy of
+    the rule — a run whose ``L_eff`` is measured one way and whose per-snapshot
+    metrics are measured the other is exactly the bubble-run bug this selects
+    against.
 
-    Cells exactly at ``rho_mean`` fall in neither phase. Returns ``None`` when
-    the field cannot be sliced or neither phase is present.
+    Returns ``None`` when the field cannot be sliced or neither phase is
+    present. The import is deferred because ``droplet_metrics._scales`` imports
+    back into this module, so neither may reach the other at module load.
     """
+    from src.simulation_io.analysis.droplet_metrics._snapshot import inclusion_mask_2d
+
     try:
         plane = np.asarray(rho[:, :, 0, 0, 0], dtype=float)
-        liquid = plane > rho_mean
-        vapour = plane < rho_mean
     except (IndexError, TypeError, ValueError):
         return None
-    mask = liquid if np.count_nonzero(liquid) <= np.count_nonzero(vapour) else vapour
+    mask = inclusion_mask_2d(plane, rho_mean)
     return mask if np.any(mask) else None
 
 
@@ -458,20 +470,23 @@ def _resolve_gravity_inclination(config: SimulationConfig) -> float:
 
 
 def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, float] | None:
-    """Return (delta_rho_phases, gamma) when multiphase parameters are available and valid."""
-    if config.kappa is None or config.interface_width is None or config.rho_l is None or config.rho_v is None:
+    """Return ``(delta_rho_phases, gamma)`` from the EOS's own closed-form surface tension.
+
+    ``gamma`` comes from the ``"surface_tension"`` registry kind, so an EOS
+    that has no closed form returns ``None`` here simply by not being
+    registered — that absence is what used to be spelled out as a list of EOS
+    names in this module. ``None`` likewise when a multiphase parameter is
+    missing or the interface width cannot define an interface.
+    """
+    if config.eos is None or config.kappa is None or config.interface_width is None:
         return None
-    if config.interface_width == 0:
+    if config.rho_l is None or config.rho_v is None:
         return None
 
-    drho = float(config.rho_l) - float(config.rho_v)
-    gamma = (2.0 / 3.0) * (float(config.kappa) / float(config.interface_width)) * (drho**2)
-    return drho, gamma
-
-
-# EOS without a closed-form surface tension; sigma is measured at run time and
-# stored in config.extra by src.simulation_io.analysis.surface_tension.
-_EOS_REQUIRING_CALIBRATION = frozenset({"carnahan-starling"})
+    gamma = analytical_surface_tension(build_multiphase_params(config))
+    if gamma is None:
+        return None
+    return float(config.rho_l) - float(config.rho_v), gamma
 
 
 def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, str] | None:
@@ -480,9 +495,10 @@ def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, st
     ``source`` is "measured" or "analytical". Returns ``None`` when no value is
     available (e.g. a calibration-only EOS that has not been measured yet).
 
-    The ``drho`` returned here is the *prescribed* contrast, and belongs only to
-    the closed form ``gamma = 2/3 (kappa/W) drho^2``. The buoyancy contrast in
-    Bo/Ar/Re comes from :func:`_resolve_buoyancy_delta_rho` instead.
+    The ``drho`` returned here is the *prescribed* contrast, and belongs only
+    to the EOS's closed form (for the double well, ``gamma = 2/3 (kappa/W)
+    drho^2``). The buoyancy contrast in Bo/Ar/Re comes from
+    :func:`_resolve_buoyancy_delta_rho` instead.
     """
     if config.rho_l is None or config.rho_v is None:
         return None
@@ -491,8 +507,6 @@ def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, st
     measured = config.extra.get("surface_tension")
     if measured is not None:
         return drho, float(measured), "measured"
-    if config.eos in _EOS_REQUIRING_CALIBRATION:
-        return None
     derived = _derive_multiphase_parameters(config)
     if derived is None:
         return None
@@ -665,8 +679,18 @@ def compute_dimensionless_numbers(config: SimulationConfig) -> DimensionlessNumb
     all (see :func:`resolve_dimensionless_inputs`).
     """
     inputs = resolve_dimensionless_inputs(config)
-    if inputs is None:
-        return DimensionlessNumbers()
+    return DimensionlessNumbers() if inputs is None else dimensionless_for_inputs(inputs)
+
+
+def dimensionless_for_inputs(inputs: DimensionlessInputs) -> DimensionlessNumbers:
+    """Every registered number for inputs that are already resolved.
+
+    The seam for callers that need a number over a *varied* input -- the
+    length-scale figure recomputes Bo per panel from that panel's own area and
+    density contrast. Going through the registry here rather than calling a
+    number's formula directly is what keeps such a figure honest: it reports the
+    same quantity, resolved the same way, as ``physical_parameters.txt``.
+    """
     return DimensionlessNumbers(values=_evaluate_dimensionless(inputs), inclination_deg=inputs.angle_deg)
 
 
@@ -770,7 +794,7 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
 
     resolved = _resolve_surface_tension(config)
     if resolved is None:
-        if config.eos in _EOS_REQUIRING_CALIBRATION:
+        if not has_analytical_surface_tension(config.eos):
             lines.append(_row("gamma (surface tension):", "requires Young–Laplace calibration"))
         return
     _drho_config, gamma, source = resolved

@@ -20,8 +20,11 @@ if TYPE_CHECKING:
 
 _SLOPE_WINDOW_MARGIN = 4
 #: A trend fit needs a residual to test against, so a window of two points --
-#: which any straight line fits exactly -- is not usable.
-_MIN_SLOPE_WINDOW_POINTS = 3
+#: which any straight line fits exactly -- is not usable. Public because
+#: ``regime_classification`` fits the windows this module hands out and must
+#: reject exactly the same ones: two thresholds would let one produce windows
+#: the other silently labels ``unknown``.
+MIN_SLOPE_WINDOW_POINTS = 3
 _MIN_POINTS_FOR_SECOND_DIFFERENCE = 3
 _DEFAULT_SAVGOL_WINDOW = 5
 _DEFAULT_SAVGOL_POLYORDER = 2
@@ -95,13 +98,13 @@ def find_slope_window(result: AccelerationResult, *, margin: int = _SLOPE_WINDOW
     inside the window, which biases the trend fit upward.
 
     ``None`` when no peak pair was found, or fewer than
-    ``_MIN_SLOPE_WINDOW_POINTS`` indices remain in the window.
+    ``MIN_SLOPE_WINDOW_POINTS`` indices remain in the window.
     """
     if not result.has_peak_pair or result.peak_accel_idx is None or result.peak_decel_idx is None:
         return None
     start = result.peak_accel_idx + 3 * margin
     end = result.peak_decel_idx - margin
-    if end - start + 1 < _MIN_SLOPE_WINDOW_POINTS:
+    if end - start + 1 < MIN_SLOPE_WINDOW_POINTS:
         return None
     return start, end
 

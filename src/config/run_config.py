@@ -63,6 +63,12 @@ SIMULATION_CSV_FILENAME = "simulation_data.csv"
 #: Acceleration/regime diagnostic figure, written under ``plots/analysis/``.
 ACCELERATION_PLOT_FILENAME = "acceleration_analysis.png"
 
+#: Length-scale diagnostic figure, written under ``plots/analysis/``.
+LENGTH_SCALE_PLOT_FILENAME = "length_scale.png"
+
+#: Dimensionless-number overview at the run-directory root.
+PHYSICAL_PARAMETERS_FILENAME = "physical_parameters.txt"
+
 # --- Multi-run analysis output -----------------------------------------------
 
 #: Output directory for ``tud-lbm compare``.

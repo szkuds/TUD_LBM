@@ -24,7 +24,7 @@ def laplace_number(inputs: DimensionlessInputs) -> float | None:
     building both from the same :class:`DimensionlessInputs` is what guarantees
     the identity holds. Because it *is* an exact reparametrisation of ``Oh``, it
     is excluded from automatic legend labelling — see
-    :mod:`src.simulation_io.plotting.run_labels`.
+    :mod:`src.simulation_io.analysis.run_labels`.
 
     The numerator guard mirrors :func:`ohnesorge_number`'s denominator guard so
     the identity holds at the edges too: without it a run with ``gamma == 0``

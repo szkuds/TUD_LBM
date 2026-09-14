@@ -21,6 +21,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 import numpy as np
+from src.simulation_io.analysis.accelerations.acceleration_analysis import MIN_SLOPE_WINDOW_POINTS
 from src.simulation_io.analysis.accelerations.acceleration_analysis import find_slope_window
 
 if TYPE_CHECKING:
@@ -58,7 +59,11 @@ _MIN_SLOPE_T_STATISTIC = 2.0
 #: ramp into the plateau; a label that flips under these shifts is not reported.
 _ROBUSTNESS_START_OFFSETS = (-4, 0, 4)
 
-_MIN_POINTS_FOR_TREND = 3
+#: Free parameters of the straight line being fitted, hence the residual's
+#: degrees-of-freedom correction. Distinct from
+#: :data:`MIN_SLOPE_WINDOW_POINTS` even though both are set by the same fit:
+#: raising the minimum window would not change how many parameters a line has.
+_LINEAR_FIT_PARAMS = 2
 
 
 class TrendFit(NamedTuple):
@@ -112,7 +117,7 @@ def fit_trend(x: np.ndarray, y: np.ndarray) -> TrendFit | None:
     and lets ``drift`` track the sign of the trend, not the sign of the frame.
     """
     x_std = float(np.std(x))
-    if x.size < _MIN_POINTS_FOR_TREND or x_std <= 0.0:
+    if x.size < MIN_SLOPE_WINDOW_POINTS or x_std <= 0.0:
         return None
     scale = abs(float(np.mean(y)))
     if scale <= 0.0:
@@ -121,7 +126,7 @@ def fit_trend(x: np.ndarray, y: np.ndarray) -> TrendFit | None:
     slope, intercept = np.polyfit(x, y, 1)
     drift = float(slope) * float(x[-1] - x[0]) / scale
 
-    residual_std = float(np.std(y - (slope * x + intercept), ddof=_MIN_POINTS_FOR_TREND - 1))
+    residual_std = float(np.std(y - (slope * x + intercept), ddof=_LINEAR_FIT_PARAMS))
     if residual_std <= 0.0:
         t_statistic = float(np.inf) * np.sign(slope) if slope != 0 else 0.0
     else:
@@ -136,7 +141,7 @@ def _sign_is_stable(accel_result: AccelerationResult, window: tuple[int, int], s
     reference = slope >= 0
     for offset in _ROBUSTNESS_START_OFFSETS:
         start = _start + offset
-        if start < 0 or end - start + 1 < _MIN_POINTS_FOR_TREND:
+        if start < 0 or end - start + 1 < MIN_SLOPE_WINDOW_POINTS:
             continue
         fit = fit_trend(accel_result.iteration[start : end + 1], accel_result.ca[start : end + 1])
         if fit is not None and fit.is_significant and (fit.slope >= 0) != reference:

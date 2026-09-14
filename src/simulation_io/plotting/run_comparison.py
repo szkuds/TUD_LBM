@@ -12,15 +12,15 @@ from matplotlib.colors import TABLEAU_COLORS
 from src.config.run_config import COMPARISON_DIRNAME
 from src.config.run_config import CONFIG_FILENAME
 from src.config.run_config import SIMULATION_CSV_FILENAME
+from src.simulation_io.analysis.run_labels import NAME_KEY
+from src.simulation_io.analysis.run_labels import build_run_labels
+from src.simulation_io.analysis.run_labels import label_sort_key
+from src.simulation_io.analysis.run_labels import resolve_label_keys
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 from src.simulation_io.plotting.figure_config import LABEL_CA
 from src.simulation_io.plotting.figure_config import LABEL_IT_NORM
 from src.simulation_io.plotting.figure_config import LABEL_RE
 from src.simulation_io.plotting.figure_config import LABEL_X_AVG_NORM
-from src.simulation_io.plotting.run_labels import NAME_KEY
-from src.simulation_io.plotting.run_labels import build_run_labels
-from src.simulation_io.plotting.run_labels import label_sort_key
-from src.simulation_io.plotting.run_labels import resolve_label_keys
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -144,7 +144,7 @@ def _load_comparison_entries(parent_dir: Path, label_keys: Sequence[str] | None 
     """Collect all processed run CSVs under *parent_dir*, labelled and ordered.
 
     Legend labels come from the dimensionless numbers that differ across the
-    collected runs (see :mod:`src.simulation_io.plotting.run_labels`), which is a
+    collected runs (see :mod:`src.simulation_io.analysis.run_labels`), which is a
     property of the whole set — so they are assigned once, after every run has
     been read, rather than per run inside the loop. *label_keys* overrides that
     selection. Runs are ordered by the labelled quantities when there are any,

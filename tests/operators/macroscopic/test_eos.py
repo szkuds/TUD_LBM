@@ -473,6 +473,77 @@ class TestPressureRegistry:
         assert get_operator_names("pressure") <= get_operator_names("eos")
 
 
+class TestSurfaceTensionRegistry:
+    """Whether an EOS needs a Young-Laplace calibration is registry membership."""
+
+    def test_double_well_closed_form_matches_the_formula(self):
+        from src.operators.macroscopic import MultiphaseParams
+        from src.operators.macroscopic.eos import analytical_surface_tension
+
+        mp = MultiphaseParams(
+            eos="double-well",
+            kappa=_KAPPA,
+            rho_l=_RHO_L,
+            rho_v=_RHO_V,
+            interface_width=_INTERFACE_WIDTH,
+        )
+        expected = (2.0 / 3.0) * (_KAPPA / _INTERFACE_WIDTH) * (_RHO_L - _RHO_V) ** 2
+        assert analytical_surface_tension(mp) == pytest.approx(expected)
+
+    def test_eos_without_a_closed_form_resolves_to_none(self, cs_mp):
+        """Carnahan-Starling is absent from the kind, so it reports no closed form."""
+        from src.operators.macroscopic.eos import analytical_surface_tension
+        from src.operators.macroscopic.eos import has_analytical_surface_tension
+
+        assert has_analytical_surface_tension("carnahan-starling") is False
+        assert analytical_surface_tension(cs_mp) is None
+
+    def test_degenerate_interface_width_resolves_to_none(self):
+        """A width that cannot define an interface yields None, not a division by zero."""
+        from src.operators.macroscopic import MultiphaseParams
+        from src.operators.macroscopic.eos import analytical_surface_tension
+
+        mp = MultiphaseParams(
+            eos="double-well",
+            kappa=_KAPPA,
+            rho_l=_RHO_L,
+            rho_v=_RHO_V,
+            interface_width=0,
+        )
+        assert analytical_surface_tension(mp) is None
+
+    def test_registering_gives_an_eos_a_closed_form_with_no_list_to_edit(self):
+        from src.operators.macroscopic import MultiphaseParams
+        from src.operators.macroscopic.eos import analytical_surface_tension
+        from src.operators.macroscopic.eos import has_analytical_surface_tension
+        from src.registry import surface_tension_operator
+        from src.registry import unregister_operator
+
+        @surface_tension_operator(name="_test_eos")
+        def _test_surface_tension(mp):
+            return 3.0 * mp.kappa
+
+        try:
+            mp = MultiphaseParams(
+                eos="_test_eos",
+                kappa=2.0,
+                rho_l=_RHO_L,
+                rho_v=_RHO_V,
+                interface_width=_INTERFACE_WIDTH,
+            )
+            assert has_analytical_surface_tension("_test_eos") is True
+            assert analytical_surface_tension(mp) == pytest.approx(6.0)
+        finally:
+            unregister_operator("surface_tension", "_test_eos")
+
+    def test_surface_tension_kind_names_match_the_eos_that_implement_one(self):
+        """Membership is the capability set — the calibration gate queries exactly this."""
+        from src.registry import get_operator_names
+
+        assert get_operator_names("surface_tension") == {"double-well"}
+        assert get_operator_names("surface_tension") <= get_operator_names("eos")
+
+
 # ---------------------------------------------------------------------------
 # build_multiphase_params
 # ---------------------------------------------------------------------------

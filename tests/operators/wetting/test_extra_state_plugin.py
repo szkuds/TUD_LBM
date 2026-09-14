@@ -17,11 +17,12 @@ def _state_template(*, wetting: WettingState | None) -> State:
     )
 
 
-def test_cfg_value_reads_alias_and_default():
-    from src.operators.wetting._extra_state import _cfg_value
+def test_wetting_scalar_reads_alias_and_default():
+    from src.operators.wetting._params import wetting_scalar
 
-    assert _cfg_value({"phi_l": 1.2}, "phi_left", "phi_l", default=1.0) == 1.2
-    assert _cfg_value({}, "phi_left", "phi_l", default=1.0) == 1.0
+    assert wetting_scalar({"phi_l": 1.2}, "phi_left", "phi_l", default=1.0) == 1.2
+    assert wetting_scalar({"phi_left": None}, "phi_left", "phi_l", default=1.0) == 1.0
+    assert wetting_scalar({}, "phi_left", "phi_l", default=1.0) == 1.0
 
 
 def test_is_active_detects_wetting_or_hysteresis():

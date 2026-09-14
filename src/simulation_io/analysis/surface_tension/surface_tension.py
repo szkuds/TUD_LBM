@@ -7,9 +7,10 @@ equilibrated, the Laplace pressure jump is read from each, and a line is
 fitted to ``dP = sigma / R`` (2-D Young-Laplace).
 
 During ``tud-lbm run`` the measurement is triggered automatically only for
-EOS without a closed form (Carnahan-Starling); ``tud-lbm analyse
-CONFIG.toml --surface-tension`` forces it for any supported multiphase EOS,
-e.g. to verify the closed-form double-well sigma numerically.
+EOS without a closed form — those absent from the ``"surface_tension"``
+registry kind, which is the whole definition; ``tud-lbm analyse CONFIG.toml
+--surface-tension`` forces it for any supported multiphase EOS, e.g. to verify
+the closed-form double-well sigma numerically.
 
 The measurement is expensive, so results are cached on disk keyed by the
 thermodynamic parameters and calibration grid size that determine sigma. The
@@ -62,18 +63,17 @@ import numpy as np
 from rich.console import Console
 from src.config.config_overview import BASE_RESULTS_DIR
 from src.config.run_config import DATA_DIRNAME
+from src.config.run_config import PHYSICAL_PARAMETERS_FILENAME
 from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import SNAPSHOTS_DIRNAME
 from src.operators.macroscopic.eos import build_pressure_fn  # also registers the pressure operators
+from src.operators.macroscopic.eos import has_analytical_surface_tension
 from src.registry import get_operator_names
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
     from src.pipeline.setup import SimulationSetup
     from src.pipeline.state.state import State
-
-# EOS whose surface tension must be measured rather than derived analytically.
-_EOS_REQUIRING_CALIBRATION = frozenset({"carnahan-starling"})
 
 _MIN_GRID_SHAPE_DIMS = 2
 _N_RADII = 5
@@ -198,19 +198,20 @@ def surface_tension_plots_dir(run_dir: str | Path) -> Path:
 def record_surface_tension(config: SimulationConfig, run_dir: str | Path) -> SimulationConfig:
     """Measure sigma when the EOS needs it, refresh the parameter file, return updated config.
 
-    For an EOS with a closed-form surface tension the config is returned
+    "Needs it" is registry membership: an EOS that registers under the
+    ``"surface_tension"`` kind has a closed form and the config is returned
     unchanged. Otherwise sigma is measured (or read from cache), stored in
     ``config.extra['surface_tension']``, and ``physical_parameters.txt`` is
     rewritten in *run_dir* with the measured value.
     """
-    if not (config.is_multiphase and config.eos in _EOS_REQUIRING_CALIBRATION):
+    if not config.is_multiphase or has_analytical_surface_tension(config.eos):
         return config
 
     from src.simulation_io.analysis.physical_parameters import write_physical_parameters
 
     sigma = calibrate_surface_tension(config, run_dir)
     updated = replace(config, extra={**config.extra, "surface_tension": sigma})
-    write_physical_parameters(updated, Path(run_dir) / "physical_parameters.txt")
+    write_physical_parameters(updated, Path(run_dir) / PHYSICAL_PARAMETERS_FILENAME)
     return updated
 
 

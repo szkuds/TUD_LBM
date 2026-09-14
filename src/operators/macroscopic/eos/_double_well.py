@@ -1,10 +1,11 @@
-"""Double-well EOS: bulk chemical potential and bulk pressure."""
+"""Double-well EOS: bulk chemical potential, bulk pressure and closed-form surface tension."""
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
 from src.registry import eos_operator
 from src.registry import pressure_operator
+from src.registry import surface_tension_operator
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
@@ -61,3 +62,22 @@ def build_double_well_pressure(mp: MultiphaseParams) -> PressureFunction:
     """Return ``pressure_fn(rho)`` for the double-well bulk pressure using bound params."""
     beta = _beta(mp)
     return lambda rho: np.asarray(_pressure_double_well(rho, beta, mp.rho_l, mp.rho_v))
+
+
+@surface_tension_operator(name="double-well")
+def double_well_surface_tension(mp: MultiphaseParams) -> float | None:
+    """Closed-form liquid-gas surface tension ``gamma = (2/3)(kappa/W)(drho)^2``.
+
+    The planar-interface integral of the double-well free energy, so it is the
+    same free energy :func:`_eos_double_well` and :func:`_pressure_double_well`
+    differentiate (equivalently ``beta * W * drho**4 / 12`` via :func:`_beta`).
+
+    Registering it is what tells the analysis layer that this EOS does *not*
+    need a Young-Laplace calibration; an EOS with no closed form simply does
+    not register here. Returns ``None`` when the interface width cannot define
+    an interface, so the caller falls back to a measured value rather than
+    dividing by zero.
+    """
+    if mp.interface_width <= 0:
+        return None
+    return (2.0 / 3.0) * (float(mp.kappa) / float(mp.interface_width)) * (float(mp.rho_l) - float(mp.rho_v)) ** 2
