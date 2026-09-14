@@ -138,7 +138,14 @@ extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-select = ["ALL"]
+# `RUF069` (float-equality-comparison) is preview-gated, so `"ALL"` alone never
+# activates it -- and it is the local mirror of SonarCloud's S1244, which this
+# project trips repeatedly on divide-by-zero guards. `explicit-preview-rules`
+# keeps `"ALL"` from pulling in the *rest* of the preview ruleset: only the
+# literally-named `RUF069` below is enabled.
+preview = true
+explicit-preview-rules = true
+select = ["ALL", "RUF069"]
 ignore = [
   "ANN204",
   "ANN205",
@@ -160,12 +167,18 @@ pydocstyle.convention = "google"
 extend-immutable-calls = ["array_field"]
 
 [tool.ruff.lint.per-file-ignores]
+# `RUF069`: exact-equality asserts on exactly-representable values (`== 1.0`,
+# `== 3.0`) are deliberate in tests, and SonarCloud does not flag them either.
 "tests/**.py" = [
   "ANN201","PT011","S101","SLF001","INP001","S108","ANN001","D103",
   "PLC0415","ARG001","PLR2004","D102","ARG004","ARG003","ANN202",
   "ANN002","ANN003","ARG005","ARG002","RUF002","RUF003","D100",
-  "D104","D205","PLR0913","TRY300",
+  "D104","D205","PLR0913","TRY300","RUF069",
 ]
+# Lint preview mode (enabled above for RUF069) widens `F401` to the submodule
+# imports here. Every one exists purely for its `@*_operator` registration side
+# effect -- `--fix` would delete them and break the test.
+"tests/test_registry.py" = ["F401"]
 "examples/**.py"                                  = ["INP001","ANN201","ERA001","T201","D103"]
 "examples/minimal_example.py"                     = ["RUF002"]
 "src/config/simulation_config.py"             = ["RUF009"]

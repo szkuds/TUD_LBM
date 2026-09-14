@@ -6,8 +6,10 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 from src.config import SimulationConfig
-from src.simulation_io.plotting.regime_map_plot import _REGIME_COLORS
-from src.simulation_io.plotting.regime_map_plot import _REGIME_MARKERS
+from src.simulation_io.analysis.accelerations import Regime
+from src.simulation_io.analysis.physical_parameters import DimensionlessNumbers
+from src.simulation_io.plotting.figure_config import REGIME_COLORS
+from src.simulation_io.plotting.figure_config import REGIME_MARKERS
 from src.simulation_io.plotting.regime_map_plot import RunRegimeEntry
 from src.simulation_io.plotting.regime_map_plot import build_regime_map
 from src.simulation_io.plotting.regime_map_plot import parse_run_dir_list
@@ -209,27 +211,70 @@ def test_process_run_dir_none_for_missing_config(tmp_path: Path):
     assert process_run_dir(run_dir) is None
 
 
-def test_process_run_dir_none_for_calibration_only_eos_without_surface_tension(tmp_path: Path):
+def test_calibration_only_eos_classifies_but_resolves_no_numbers(tmp_path: Path):
+    """Classification no longer depends on the axes, so the gate moved to plotting.
+
+    An uncalibrated Carnahan-Starling run has no surface tension and therefore no
+    dimensionless numbers at all; it still classifies, and is dropped when the
+    figure is drawn rather than when the snapshots are read.
+    """
     run_dir = tmp_path / "no_dimensionless"
     cfg = _run_config(eos="carnahan-starling", a_eos=1.0, b_eos=4.0, r_eos=1.0, t_eos=0.07)
     _build_run_dir(run_dir, [4, 4, 4, 4], cfg)
 
-    assert process_run_dir(run_dir) is None
+    entry = process_run_dir(run_dir)
+
+    assert entry is not None
+    assert entry.numbers.get("oh") is None
+    assert plot_regime_map([entry], tmp_path / "out.png") is None
+
+
+def test_regime_style_tables_cover_every_regime():
+    """figure_config's style tables are keyed by the Regime enum's own values."""
+    assert set(REGIME_MARKERS) == {regime.value for regime in Regime}
+    assert set(REGIME_COLORS) == {regime.value for regime in Regime}
+
+
+def _entry(tmp_path: Path, name: str, regime: str, **values: float | None) -> RunRegimeEntry:
+    return RunRegimeEntry(
+        run_dir=tmp_path / name,
+        label=name,
+        numbers=DimensionlessNumbers(values=values),
+        regime=regime,
+    )
 
 
 def test_plot_regime_map_writes_file_with_all_regime_markers(tmp_path: Path):
     entries = [
-        RunRegimeEntry(run_dir=tmp_path / "a", label="a", bo_parallel=1.0, oh=0.1, regime="Pinning"),
-        RunRegimeEntry(run_dir=tmp_path / "b", label="b", bo_parallel=2.0, oh=0.2, regime="Dissipative"),
-        RunRegimeEntry(run_dir=tmp_path / "c", label="c", bo_parallel=3.0, oh=0.3, regime="Inertial"),
-        RunRegimeEntry(run_dir=tmp_path / "d", label="d", bo_parallel=4.0, oh=0.4, regime="unknown"),
+        _entry(tmp_path, "a", "Pinning", bo_parallel=1.0, oh=0.1),
+        _entry(tmp_path, "b", "Dissipative", bo_parallel=2.0, oh=0.2),
+        _entry(tmp_path, "c", "Capillary", bo_parallel=3.0, oh=0.3),
+        _entry(tmp_path, "d", "Steady", bo_parallel=4.0, oh=0.4),
+        _entry(tmp_path, "e", "unknown", bo_parallel=5.0, oh=0.5),
     ]
-    assert set(_REGIME_MARKERS) == {e.regime for e in entries}
-    assert set(_REGIME_COLORS) == {e.regime for e in entries}
+    assert set(REGIME_MARKERS) == {e.regime for e in entries}
+    assert set(REGIME_COLORS) == {e.regime for e in entries}
 
     out_path = plot_regime_map(entries, tmp_path / "regime_map.png")
 
+    assert out_path is not None
     assert out_path.exists()
+
+
+def test_plot_regime_map_drops_runs_missing_an_axis(tmp_path: Path):
+    """A run can classify fine yet lack the number an axis asks for."""
+    entries = [
+        _entry(tmp_path, "a", "Pinning", bo_parallel=1.0, oh=0.1, la=100.0),
+        _entry(tmp_path, "b", "Capillary", bo_parallel=2.0, oh=0.2, la=None),
+    ]
+
+    assert plot_regime_map(entries, tmp_path / "la.png", x_key="la", y_key="oh") is not None
+
+
+def test_plot_regime_map_returns_none_when_no_run_resolves_the_axes(tmp_path: Path):
+    entries = [_entry(tmp_path, "a", "Pinning", bo_parallel=1.0, oh=0.1, ar=None)]
+
+    assert plot_regime_map(entries, tmp_path / "ar.png", x_key="ar", y_key="oh") is None
 
 
 def test_build_regime_map_end_to_end(tmp_path: Path):
@@ -246,6 +291,20 @@ def test_build_regime_map_end_to_end(tmp_path: Path):
     assert out_path is not None
     assert out_path.exists()
     assert out_path.parent == tmp_path / "regime_map_analysis"
+    assert out_path.name == "regime_map_bo_parallel_vs_oh.png"
+
+
+def test_build_regime_map_names_the_figure_after_the_axis_pair(tmp_path: Path):
+    """Each pair gets its own file, so plotting a second pair does not clobber the first."""
+    _build_run_dir(tmp_path / "mobile_run", [4, 10, 30, 48], _run_config())
+    txt_path = tmp_path / "dirs.txt"
+    txt_path.write_text("mobile_run\n", encoding="utf-8")
+
+    out_path = build_regime_map(txt_path, allowed_roots=[tmp_path], x_key="la", y_key="bo", xscale="log")
+
+    assert out_path is not None
+    assert out_path.name == "regime_map_la_vs_bo.png"
+    assert out_path.exists()
 
 
 def test_build_regime_map_none_when_no_runs_usable(tmp_path: Path):

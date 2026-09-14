@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from src.config.run_config import DATA_DIRNAME
 from .output_data import output_writers
 
 if TYPE_CHECKING:
@@ -42,7 +43,7 @@ class SimulationIO:
         self.simulation_name = simulation_name
         self.config_file_type = config_file_type
         self.run_dir = self._create_timestamped_directory()
-        self.data_dir = str(Path(self.run_dir) / "data")
+        self.data_dir = str(Path(self.run_dir) / DATA_DIRNAME)
         Path(self.data_dir).mkdir(parents=True, exist_ok=True)
 
         self._setup_logging()

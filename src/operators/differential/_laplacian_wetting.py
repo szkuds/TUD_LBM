@@ -15,32 +15,35 @@ from src.operators.differential._pad_utils import to_2d
 from src.registry import register_operator
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Any
     import jax.numpy as jnp
-    from src.operators.differential import DifferentialOperator
+    from jax.typing import ArrayLike
+    from src.operators.protocols import WettingDifferentialOperator
 
 
 @register_operator("differential", name="laplacian_wetting")
 def build_wetting_laplacian(
     w: jnp.ndarray,
-    pad_mode: tuple[str, ...] | list[str],
-    bc_config: dict | None = None,
-    rho_l: float | None = None,
-    rho_v: float | None = None,
-) -> DifferentialOperator:
+    pad_mode: Sequence[str],
+    bc_config: dict[str, Any] | None = None,
+    *,
+    rho_l: float,
+    rho_v: float,
+) -> WettingDifferentialOperator:
     """Return a wetting-corrected Laplacian closure.
 
-    Closes over static config (w, pad_mode, bc_config, rho_l, rho_v, width).
+    Closes over static config (w, pad_mode, bc_config, rho_l, rho_v).
     The returned callable accepts only the grid and dynamic wetting parameters,
     returning shape ``(nx, ny, nz, 1, 1)``.
 
     Args:
-        w:         Lattice weights ``(q,)``.
+        w:         Lattice weights ``(1, 1, 1, q, 1)``.
         pad_mode:  ``(right_y, left_y, bottom_x, top_x)``.
         bc_config: Boundary-condition edge map, e.g.
                    ``{"bottom": "wetting", "top": "bounce-back"}``.
         rho_l:     Liquid density (baked into closure at build time).
         rho_v:     Vapour density (baked into closure at build time).
-        width:     Interface width in lattice units (baked into closure at build time).
 
     Returns:
         ``lap(grid, phi_l, phi_r, d_rho_l, d_rho_r) → (nx, ny, nz, 1, 1)``
@@ -53,10 +56,10 @@ def build_wetting_laplacian(
 
     def _lap(
         grid: jnp.ndarray,
-        phi_l: jnp.ndarray,
-        phi_r: jnp.ndarray,
-        d_rho_l: jnp.ndarray,
-        d_rho_r: jnp.ndarray,
+        phi_l: ArrayLike,
+        phi_r: ArrayLike,
+        d_rho_l: ArrayLike,
+        d_rho_r: ArrayLike,
     ) -> jnp.ndarray:
         """Wetting-corrected Laplacian of a scalar field.
 

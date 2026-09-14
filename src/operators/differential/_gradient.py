@@ -21,10 +21,14 @@ close over it to get a jittable closure.
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from src.operators.differential._pad_utils import _apply_stencil_padding
 from src.operators.differential._pad_utils import to_2d
 from src.registry import register_operator
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @register_operator("differential", name="gradient")
@@ -32,7 +36,7 @@ def compute_gradient(
     grid: jnp.ndarray,
     w: jnp.ndarray,
     c: jnp.ndarray,
-    pad_mode: list | tuple,
+    pad_mode: Sequence[str],
 ) -> jnp.ndarray:
     """LBM-stencil gradient of a scalar field.
 

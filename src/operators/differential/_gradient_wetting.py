@@ -16,22 +16,26 @@ from src.operators.differential._pad_utils import to_2d
 from src.registry import register_operator
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Sequence
+    from typing import Any
     import jax.numpy as jnp
+    from jax.typing import ArrayLike
+    from src.operators.protocols import WettingDifferentialOperator
 
 
 @register_operator("differential", name="gradient_wetting")
 def build_wetting_gradient(
     w: jnp.ndarray,
     c: jnp.ndarray,
-    pad_mode: tuple[str, ...] | list[str],
-    bc_config: dict | None = None,
-    rho_l: jnp.ndarray | None = None,
-    rho_v: jnp.ndarray | None = None,
-) -> Callable[..., jnp.ndarray]:
+    pad_mode: Sequence[str],
+    bc_config: dict[str, Any] | None = None,
+    *,
+    rho_l: float,
+    rho_v: float,
+) -> WettingDifferentialOperator:
     """Return a wetting-corrected gradient closure.
 
-    Closes over static config (w, c, pad_mode, bc_config, rho_l, rho_v, width).
+    Closes over static config (w, c, pad_mode, bc_config, rho_l, rho_v).
     The returned callable accepts only the grid and dynamic wetting parameters,
     returning shape ``(nx, ny, nz, 1, 2)``.
 
@@ -43,7 +47,6 @@ def build_wetting_gradient(
                    ``{"bottom": "wetting", "top": "bounce-back"}``.
         rho_l:     Liquid density (baked into closure at build time).
         rho_v:     Vapour density (baked into closure at build time).
-        width:     Interface width in lattice units (baked into closure at build time).
 
     Returns:
         ``grad(grid, phi_l, phi_r, d_rho_l, d_rho_r) → (nx,ny,nz,1,2)``
@@ -56,10 +59,10 @@ def build_wetting_gradient(
 
     def _grad(
         grid: jnp.ndarray,
-        phi_l: jnp.ndarray,
-        phi_r: jnp.ndarray,
-        d_rho_l: jnp.ndarray,
-        d_rho_r: jnp.ndarray,
+        phi_l: ArrayLike,
+        phi_r: ArrayLike,
+        d_rho_l: ArrayLike,
+        d_rho_r: ArrayLike,
     ) -> jnp.ndarray:
         gp = _apply_stencil_padding(to_2d(grid), _pad_mode)
         gp = _apply_wetting(gp, phi_l, phi_r, d_rho_l, d_rho_r)

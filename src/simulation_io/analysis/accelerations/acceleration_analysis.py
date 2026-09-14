@@ -19,7 +19,9 @@ if TYPE_CHECKING:
     import pandas as pd
 
 _SLOPE_WINDOW_MARGIN = 4
-_MIN_SLOPE_WINDOW_POINTS = 2
+#: A trend fit needs a residual to test against, so a window of two points --
+#: which any straight line fits exactly -- is not usable.
+_MIN_SLOPE_WINDOW_POINTS = 3
 _MIN_POINTS_FOR_SECOND_DIFFERENCE = 3
 _DEFAULT_SAVGOL_WINDOW = 5
 _DEFAULT_SAVGOL_POLYORDER = 2
@@ -86,10 +88,14 @@ def compute_acceleration(
 
 
 def find_slope_window(result: AccelerationResult, *, margin: int = _SLOPE_WINDOW_MARGIN) -> tuple[int, int] | None:
-    """Return ``[peak_accel_idx+margin, peak_decel_idx-margin]``, or ``None``.
+    """Return ``[peak_accel_idx + 3*margin, peak_decel_idx - margin]``, or ``None``.
 
-    ``None`` when no peak pair was found, or fewer than two indices remain in
-    the window.
+    The start offset is three times *margin* because ``Ca`` approaches its
+    plateau asymptotically: a single margin still leaves the tail of the ramp
+    inside the window, which biases the trend fit upward.
+
+    ``None`` when no peak pair was found, or fewer than
+    ``_MIN_SLOPE_WINDOW_POINTS`` indices remain in the window.
     """
     if not result.has_peak_pair or result.peak_accel_idx is None or result.peak_decel_idx is None:
         return None
@@ -100,8 +106,22 @@ def find_slope_window(result: AccelerationResult, *, margin: int = _SLOPE_WINDOW
     return start, end
 
 
-def save_diagnostic_plot(result: AccelerationResult, window: tuple[int, int] | None, out_path: str | Path) -> Path:
-    """Save Ca(t) + twin-axis accel(t) with peak markers and the slope window."""
+def save_diagnostic_plot(
+    result: AccelerationResult,
+    window: tuple[int, int] | None,
+    out_path: str | Path,
+    *,
+    annotation: str | None = None,
+) -> Path:
+    """Save Ca(t) + twin-axis accel(t) with peak markers and the slope window.
+
+    *annotation* is drawn in the corner of the axes and is meant to carry the
+    classification verdict and the numbers behind it, so a run's label can be
+    audited from its own diagnostic figure. It is passed as pre-formatted text
+    rather than as a ``RegimeResult`` because
+    :mod:`src.simulation_io.analysis.accelerations.regime_classification` imports
+    from this module -- taking the result type back would close that cycle.
+    """
     import matplotlib.pyplot as plt
 
     fig, ax_ca = plt.subplots(figsize=DEFAULT_STYLE.analysis_figsize)
@@ -171,6 +191,18 @@ def save_diagnostic_plot(result: AccelerationResult, window: tuple[int, int] | N
         )
 
     ax_ca.set_title("Ca(t) acceleration analysis", fontsize=DEFAULT_STYLE.title_fontsize)
+
+    if annotation:
+        ax_ca.text(
+            0.02,
+            0.02,
+            annotation,
+            transform=ax_ca.transAxes,
+            ha="left",
+            va="bottom",
+            fontsize=DEFAULT_STYLE.empty_state_fontsize,
+            color="black",
+        )
     fig.tight_layout()
 
     out_path = Path(out_path)

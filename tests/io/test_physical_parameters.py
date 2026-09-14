@@ -7,11 +7,15 @@ import numpy as np
 import pytest
 from src.config import SimulationConfig
 from src.simulation_io.analysis.physical_parameters import build_overview
+from src.simulation_io.analysis.physical_parameters import compute_dimensionless_numbers
+from src.simulation_io.analysis.physical_parameters import inclusion_mask_from_rho
 from src.simulation_io.analysis.physical_parameters import write_physical_parameters
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _contact_line_length_from_rho
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _get_contact_line_length_from_file
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _get_setup_droplet_area
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _inclusion_area_from_rho
+from src.simulation_io.analysis.physical_parameters.physical_parameters import _load_init_rho
+from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_buoyancy_delta_rho
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_inclination
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_value
 
@@ -173,3 +177,116 @@ def test_contact_line_length_from_rho_returns_none_for_degenerate_profile():
 def test_get_contact_line_length_from_file_returns_none_for_missing_file(tmp_path):
     cfg = _mp_config(init_type="init_from_file", init_dir=str(tmp_path / "missing.npz"), initialisation={})
     assert _get_contact_line_length_from_file(cfg) is None
+
+
+# ---------------------------------------------------------------------------
+# Densities measured off the field rather than taken from the config
+# ---------------------------------------------------------------------------
+
+
+def _drifted_field_config(tmp_path, **kwargs):
+    """A config declaring rho_v=0.5/rho_l=1.0 over a field that has drifted to 0.55/0.91.
+
+    An equilibrated droplet relaxes away from the prescribed coexistence
+    densities, so the config midpoint (0.75) is not the field's mid-interface
+    contour (0.73) and the config contrast (0.5) is not its buoyancy contrast
+    (0.36).
+    """
+    rho = np.full((40, 20, 1, 1, 1), 0.55)
+    rho[10:30, 3:8, 0, 0, 0] = 0.91
+    npz_path = tmp_path / "init_state.npz"
+    np.savez(npz_path, rho=rho)
+    return _mp_config(init_type="init_from_file", init_dir=str(npz_path), initialisation={}, **kwargs)
+
+
+def test_load_init_rho_measures_the_threshold_from_the_field(tmp_path):
+    cfg = _drifted_field_config(tmp_path)
+
+    field = _load_init_rho(cfg)
+
+    assert field is not None
+    assert field.rho_min == pytest.approx(0.55)
+    assert field.rho_max == pytest.approx(0.91)
+    assert field.rho_mean == pytest.approx(0.73)  # not the config's 0.75
+    assert field.drho == pytest.approx(0.36)  # not the config's 0.5
+
+
+def test_load_init_rho_returns_none_for_a_non_finite_field(tmp_path):
+    rho = np.full((8, 8, 1, 1, 1), 0.5)
+    rho[0, 0, 0, 0, 0] = np.nan
+    npz_path = tmp_path / "init_state.npz"
+    np.savez(npz_path, rho=rho)
+    cfg = _mp_config(init_type="init_from_file", init_dir=str(npz_path), initialisation={})
+
+    assert _load_init_rho(cfg) is None
+
+
+def test_bond_number_uses_the_measured_delta_rho(tmp_path):
+    """Bo scales with the measured contrast; gamma keeps the prescribed one.
+
+    The closed form gamma = 2/3(kappa/W)(rho_l-rho_v)^2 is derived for the
+    prescribed double-well and is recomputed from the same prescribed values in
+    droplet_metrics/_scales.py, so measuring it there would diverge the two.
+    """
+    cfg = _drifted_field_config(tmp_path)
+
+    numbers = compute_dimensionless_numbers(cfg)
+
+    gamma = (2.0 / 3.0) * (0.02 / 2) * (0.5**2)  # prescribed drho, unchanged
+    length = math.sqrt(20.0 * 5.0 / math.pi)  # the 100-cell inclusion
+    expected_bo = (0.36 * length**2 * 1e-6) / gamma  # measured drho
+    assert numbers.get("bo") == pytest.approx(expected_bo)
+
+
+def test_overview_reports_measured_density_provenance(tmp_path):
+    cfg = _drifted_field_config(tmp_path)
+
+    text = build_overview(cfg)
+
+    assert "rho_min / rho_max:" in text
+    assert "[measured, init NPZ]" in text
+    assert "measured, rho_max-rho_min" in text
+    assert "Δρ measured" in text  # tag carried onto the Bo/Ar/Re rows
+
+
+def test_overview_reports_config_delta_rho_without_a_field():
+    cfg = _mp_config(initialisation={"centres": [[0.5, 0.1]], "radii": [0.4]})
+
+    text = build_overview(cfg)
+
+    assert "config, rho_l-rho_v" in text
+    assert "rho_min / rho_max:" not in text
+
+
+def test_resolve_buoyancy_delta_rho_falls_back_to_config_without_a_file(tmp_path):
+    cfg = _mp_config(init_type="init_from_file", init_dir=str(tmp_path / "missing.npz"), initialisation={})
+
+    assert _resolve_buoyancy_delta_rho(cfg) == (pytest.approx(0.5), "config")
+
+
+def test_inclusion_mask_matches_the_counted_area():
+    """The plot and the number are the same predicate, so they cannot disagree."""
+    rho = np.full((40, 20, 1, 1, 1), 0.5)
+    rho[10:30, 3:8, 0, 0, 0] = 1.0
+
+    mask = inclusion_mask_from_rho(rho, rho_mean=0.75)
+
+    assert mask is not None
+    assert mask.shape == (40, 20)
+    assert np.count_nonzero(mask) == _inclusion_area_from_rho(rho, rho_mean=0.75)
+
+
+def test_inclusion_mask_selects_the_bubble_not_its_ambient():
+    rho = np.full((40, 20, 1, 1, 1), 1.0)
+    rho[10:30, 3:8, 0, 0, 0] = 0.5
+
+    mask = inclusion_mask_from_rho(rho, rho_mean=0.75)
+
+    assert mask is not None
+    assert np.count_nonzero(mask) == 100
+    assert bool(mask[15, 5])  # the bubble, not the surrounding liquid
+
+
+def test_inclusion_mask_returns_none_for_a_single_phase_field():
+    rho = np.full((40, 20, 1, 1, 1), 0.5)
+    assert inclusion_mask_from_rho(rho, rho_mean=0.75) is None

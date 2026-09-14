@@ -90,11 +90,15 @@ def resolve_step_x(config: SimulationConfig) -> float | None:
 
 
 def inclination_angle_deg(config: SimulationConfig) -> float:
-    """Gravity inclination angle in degrees, or ``0.0`` when not configured."""
-    gravity = config.gravity_force
-    if gravity and isinstance(gravity, dict):
-        return float(gravity.get("inclination_angle_deg", 0.0))
-    return 0.0
+    """Gravity inclination angle in degrees, or ``0.0`` when not configured.
+
+    Delegates so that ``[gravity_masked_force]`` counts too. Reading only
+    ``config.gravity_force`` left every masked-force run at ``0.0``, which
+    silently turned ``Ca_norm`` back into plain ``Ca``.
+    """
+    from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_inclination
+
+    return _resolve_gravity_inclination(config)
 
 
 @dataclass(frozen=True)
@@ -131,15 +135,15 @@ class MetricScales:
 def resolve_wall_edge(config: SimulationConfig) -> str:
     """The single wall marked ``"wetting"`` in ``bc_config``, else ``"bottom"``.
 
-    Config validation guarantees exactly one wetting wall for wetting runs;
-    non-wetting runs fall back to ``"bottom"`` (the historical default), for
-    which the canonical transform is the identity.
+    Delegates to :func:`..physical_parameters.physical_parameters.resolve_wall_edge`,
+    which owns the definition: that module needs the same answer to pick the wall
+    row for the setup contact-line measurement, and it sits below this one, so
+    the dependency has to run this way. Imported lazily for the same reason as
+    :func:`resolve_r_zero`.
     """
-    bc = config.bc_config or {}
-    for edge in ("bottom", "top", "left", "right"):
-        if bc.get(edge) == "wetting":
-            return edge
-    return "bottom"
+    from src.simulation_io.analysis.physical_parameters.physical_parameters import resolve_wall_edge as _resolve
+
+    return _resolve(config)
 
 
 def resolve_scales(config: SimulationConfig) -> MetricScales | None:

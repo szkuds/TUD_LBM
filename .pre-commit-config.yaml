@@ -1,6 +1,9 @@
 repos:
+  # Keep in lock-step with the `ruff` pin in `uv.lock`: the lint config selects
+  # `RUF069` by name, and a hook older than that rule fails to parse
+  # `pyproject.toml` outright rather than skipping it.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.0
+    rev: v0.16.0
     hooks:
       - id: ruff-check
         args: [--fix]

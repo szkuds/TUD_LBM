@@ -738,6 +738,25 @@ class TestClickCommandPaths:
             result = runner.invoke(cli, ["compare", str(tmp_path)])
         assert result.exit_code == 0
 
+    def test_compare_accepts_label_param(self, tmp_path):
+        runner = CliRunner()
+        with patch("src.cli.analysis_routing.analyse_tree", return_value=(2, 2)) as mock_tree:
+            result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt", "--label-param", "oh"])
+        assert result.exit_code == 0
+        assert mock_tree.call_args.kwargs["label_keys"] == ["oh"]
+
+    def test_compare_without_label_param_selects_automatically(self, tmp_path):
+        runner = CliRunner()
+        with patch("src.cli.analysis_routing.analyse_tree", return_value=(2, 2)) as mock_tree:
+            result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt"])
+        assert result.exit_code == 0
+        assert mock_tree.call_args.kwargs["label_keys"] is None
+
+    def test_compare_rejects_unknown_label_param(self, tmp_path):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt", "--label-param", "nonsense"])
+        assert result.exit_code == 2
+
     def test_compare_keyboard_interrupt_exits_130(self, tmp_path):
         runner = CliRunner()
         with patch("src.cli.analysis_routing.analyse_tree", side_effect=KeyboardInterrupt):
@@ -759,6 +778,41 @@ class TestClickCommandPaths:
             result = runner.invoke(cli, ["regime-map", str(dirs_txt)], env={"COLUMNS": "200", "LINES": "50"})
         assert result.exit_code == 0
         assert "regime_map.png" in result.output
+
+    def test_regime_map_defaults_to_the_historical_axis_pair(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        runner = CliRunner()
+        out_path = tmp_path / "regime_map_analysis" / "regime_map_bo_parallel_vs_oh.png"
+        with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", return_value=out_path) as mock_build:
+            result = runner.invoke(cli, ["regime-map", str(dirs_txt)], env={"COLUMNS": "200", "LINES": "50"})
+        assert result.exit_code == 0
+        kwargs = mock_build.call_args.kwargs
+        assert (kwargs["x_key"], kwargs["y_key"]) == ("bo_parallel", "oh")
+        assert (kwargs["xscale"], kwargs["yscale"]) == ("linear", "linear")
+
+    def test_regime_map_axis_options_reach_the_builder(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        runner = CliRunner()
+        out_path = tmp_path / "regime_map_analysis" / "regime_map_la_vs_bo.png"
+        with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", return_value=out_path) as mock_build:
+            result = runner.invoke(
+                cli,
+                ["regime-map", str(dirs_txt), "--x", "la", "--y", "bo", "--xscale", "log"],
+                env={"COLUMNS": "200", "LINES": "50"},
+            )
+        assert result.exit_code == 0
+        kwargs = mock_build.call_args.kwargs
+        assert (kwargs["x_key"], kwargs["y_key"]) == ("la", "bo")
+        assert (kwargs["xscale"], kwargs["yscale"]) == ("log", "linear")
+        assert "regime_map_la_vs_bo.png" in result.output
+
+    def test_regime_map_rejects_an_unregistered_axis(self, tmp_path):
+        dirs_txt = tmp_path / "dirs.txt"
+        dirs_txt.write_text("run_a\n", encoding="utf-8")
+        result = CliRunner().invoke(cli, ["regime-map", str(dirs_txt), "--x", "not_a_number"])
+        assert result.exit_code == 2
 
     def test_regime_map_no_usable_runs_exits_1(self, tmp_path):
         dirs_txt = tmp_path / "dirs.txt"
@@ -918,6 +972,28 @@ class TestBuildWettingInitRaw:
 
         result = _build_wetting_init_raw(self._base_raw(), {})
         assert result["nt"] == _WETTING_INIT_NT
+
+    def test_nt_override_is_honoured(self):
+        result = _build_wetting_init_raw(self._base_raw(), {}, 20_000)
+        assert result["nt"] == 20_000
+
+    def test_save_interval_yields_multiple_snapshots(self):
+        from src.cli.wetting_init import _WETTING_INIT_NT
+        from src.cli.wetting_init import _WETTING_INIT_SNAPSHOTS
+
+        result = _build_wetting_init_raw(self._base_raw(), {})
+        assert result["save_interval"] == _WETTING_INIT_NT // _WETTING_INIT_SNAPSHOTS
+        assert result["nt"] // result["save_interval"] == _WETTING_INIT_SNAPSHOTS
+
+    def test_save_interval_never_zero_for_short_runs(self):
+        result = _build_wetting_init_raw(self._base_raw(), {}, 5)
+        assert result["save_interval"] == 1
+
+    def test_skip_interval_cleared(self):
+        base = self._base_raw()
+        base["skip_interval"] = 1000
+        result = _build_wetting_init_raw(base, {})
+        assert result["skip_interval"] == 0
 
     def test_wetting_params_injected(self):
         params = {"phi_left": 1.1, "phi_right": 1.2, "d_rho_left": 0.0, "d_rho_right": 0.0}
@@ -1936,12 +2012,23 @@ class TestRunTwoPhaseWettingInit:
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=False, overview=False)
 
+    def _data_dir_with_snapshots(self, tmp_path, steps=(1000, 2000)):
+        """A run data directory holding one ``u`` field per timestep in *steps*."""
+        import numpy as np
+
+        data_dir = tmp_path / "run" / "data"
+        data_dir.mkdir(parents=True)
+        for i, step in enumerate(steps):
+            u = np.zeros((8, 8, 1, 1, 2))
+            u[0, 0, 0, 0, 0] = 1e-3 / (i + 1)
+            np.savez(data_dir / f"timestep_{step}.npz", u=u)
+        return data_dir
+
     def test_no_prompt_runs_both_phases(self, tmp_path):
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        data_dir = tmp_path / "data"
-        data_dir.mkdir()
+        data_dir = self._data_dir_with_snapshots(tmp_path)
 
         run_calls = []
 
@@ -1961,8 +2048,7 @@ class TestRunTwoPhaseWettingInit:
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        data_dir = tmp_path / "data"
-        data_dir.mkdir()
+        data_dir = self._data_dir_with_snapshots(tmp_path)
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
             _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
@@ -1970,6 +2056,73 @@ class TestRunTwoPhaseWettingInit:
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=True)
         assert "PHYSICAL PARAMETER OVERVIEW" in capsys.readouterr().out
+
+    def test_phase2_seeds_from_last_snapshot_on_disk(self, tmp_path):
+        """Phase 2 resumes from the highest saved timestep, not from ``nt`` itself."""
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = self._data_dir_with_snapshots(tmp_path, steps=(1000, 2000, 3000))
+        gravity_raws = []
+
+        def _record(base_raw, params, snapshot):
+            gravity_raws.append(snapshot)
+            return {"nt": 10}
+
+        with (
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
+            _patch("src.cli.wetting_init._build_wetting_gravity_raw", _record),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False)
+        assert gravity_raws == [str(data_dir / "timestep_3000.npz")]
+
+    def test_phase1_writes_max_velocity_convergence_plot(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = self._data_dir_with_snapshots(tmp_path)
+        with (
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False)
+        assert (data_dir.parent / "plots" / "analysis" / "max_velocity.png").exists()
+
+    def test_init_nt_reaches_phase1_config(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = self._data_dir_with_snapshots(tmp_path)
+        seen = []
+
+        def _expand(raw, phase_name):
+            seen.append((phase_name, raw.get("nt")))
+            return cfg
+
+        with (
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", _expand),
+            _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False, init_nt=20_000)
+        assert seen[0] == ("Phase 1", 20_000)
+
+    def test_missing_snapshot_raises(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = tmp_path / "run" / "data"
+        data_dir.mkdir(parents=True)
+        with (
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
+            pytest.raises(FileNotFoundError, match="No saved snapshots"),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False)
 
 
 # =========================================================================
@@ -2028,8 +2181,9 @@ class TestRunImplAdditional:
         cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
         called = {"n": 0}
 
-        def _fake_wetting(path, overrides, *, no_prompt, overview):
+        def _fake_wetting(path, overrides, *, no_prompt, overview, init_nt):
             called["n"] += 1
+            called["init_nt"] = init_nt
 
         with _patch("src.cli.execution._run_two_phase_wetting_init", _fake_wetting):
             result = _run_impl(
@@ -2037,9 +2191,10 @@ class TestRunImplAdditional:
                 overrides=(),
                 max_workers=None,
                 init_dir=None,
-                flags=RunFlags(no_prompt=True, init_wetting=True),
+                flags=RunFlags(no_prompt=True, init_wetting=True, init_wetting_nt=1234),
             )
         assert called["n"] == 1
+        assert called["init_nt"] == 1234
         assert result is False
 
 
@@ -2349,3 +2504,35 @@ class TestAnalyseCommand:
             result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
         assert result.exit_code == 0
         assert "0.0123" in result.output
+
+    def test_length_scale_writes_figure_and_refreshes_overview(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+
+        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--length-scale"])
+
+        assert result.exit_code == 0
+        assert (tmp_path / "plots" / "analysis" / "length_scale.png").exists()
+        assert (tmp_path / "physical_parameters.txt").exists()
+
+    def test_length_scale_honours_out_dir(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        out_dir = tmp_path / "analysis_out"
+
+        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--length-scale", "--out-dir", str(out_dir)])
+
+        assert result.exit_code == 0
+        assert (out_dir / "plots" / "analysis" / "length_scale.png").exists()
+        assert not (tmp_path / "physical_parameters.txt").exists()
+
+    def test_length_scale_reports_when_no_region_resolves(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        content = (tmp_path / "config.toml").read_text(encoding="utf-8")
+        (tmp_path / "config.toml").write_text(
+            content.replace("radii = [0.2]", "radii = []").replace("centres = [[0.5, 0.5]]", "centres = []"),
+            encoding="utf-8",
+        )
+
+        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--length-scale"])
+
+        assert result.exit_code == 0
+        assert "no figure written" in result.output.lower()

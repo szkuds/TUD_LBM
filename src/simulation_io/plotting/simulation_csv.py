@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
+from src.config.run_config import SIMULATION_CSV_FILENAME
 from src.registry import analysis_operator
 from src.simulation_io.analysis.droplet_metrics import droplet_series_for_run
 from src.simulation_io.plotting._analysis_common import _set_empty_state
@@ -25,7 +26,6 @@ _SUPPORTED_SIM_TYPES = {
     "multiphase_hysteresis",
     "multiphase_hysteresis_chemical_step",
 }
-_CSV_FILENAME = "simulation_data.csv"
 
 
 def _warn_r_zero_fallback(config: SimulationConfig, scales: MetricScales) -> None:
@@ -72,7 +72,7 @@ def build_simulation_csv(run_dir: str | Path, config: SimulationConfig) -> Path 
     if series.scales.r_zero_is_fallback:
         _warn_r_zero_fallback(config, series.scales)
 
-    csv_path = run_dir / _CSV_FILENAME
+    csv_path = run_dir / SIMULATION_CSV_FILENAME
     series.to_dataframe().to_csv(csv_path, index=False)
     print(f"Saved {csv_path}")
     return csv_path

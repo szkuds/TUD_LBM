@@ -9,6 +9,10 @@ from rich.prompt import Prompt
 from src.cli._console import console
 from src.cli.overrides import _apply_overrides
 from src.config import SimulationConfig
+from src.config.run_config import CONFIG_FILENAME
+from src.config.run_config import DATA_DIRNAME
+from src.config.run_config import SNAPSHOT_GLOB
+from src.config.run_config import SNAPSHOT_PREFIX
 
 if TYPE_CHECKING:
     from src.config.array_expansion import ArrayParameterSet
@@ -44,18 +48,27 @@ def _validate_cli_args(
             raise click.UsageError(msg)
 
 
-def _find_latest_snapshot(config_path: str) -> Path:
-    """Return the highest-numbered NumPy snapshot saved beside *config_path*."""
-    data_dir = Path(config_path).expanduser().resolve().parent / "data"
+def _latest_snapshot_in(data_dir: Path, *, context: str) -> Path:
+    """Return the highest-numbered NumPy snapshot in *data_dir*.
+
+    *context* names the caller in the error message raised when the directory
+    holds no ``timestep_<N>.npz`` files.
+    """
     snapshots = [
         (int(step), path)
-        for path in data_dir.glob("timestep_*.npz")
-        if path.is_file() and (step := path.stem.removeprefix("timestep_")).isdigit()
+        for path in data_dir.glob(SNAPSHOT_GLOB)
+        if path.is_file() and (step := path.stem.removeprefix(SNAPSHOT_PREFIX)).isdigit()
     ]
     if not snapshots:
-        msg = f"No saved snapshots found in {data_dir}; --continue requires timestep_<N>.npz files."
+        msg = f"No saved snapshots found in {data_dir}; {context} requires timestep_<N>.npz files."
         raise FileNotFoundError(msg)
     return max(snapshots, key=lambda snapshot: snapshot[0])[1]
+
+
+def _find_latest_snapshot(config_path: str) -> Path:
+    """Return the highest-numbered NumPy snapshot saved beside *config_path*."""
+    data_dir = Path(config_path).expanduser().resolve().parent / DATA_DIRNAME
+    return _latest_snapshot_in(data_dir, context="--continue")
 
 
 def _load_raw_config(
@@ -125,7 +138,7 @@ def _expand_single_phase(raw_config: dict[str, Any], phase_name: str) -> Simulat
 
 def _validate_run_dir_has_config(run_dir: str) -> Path:
     """TRY301: raise lives here, outside the try-block in animate()."""
-    config_path = Path(run_dir) / "config.toml"
+    config_path = Path(run_dir) / CONFIG_FILENAME
     if not config_path.exists():
         msg = f"No config.toml found in {run_dir}. Is this a valid run directory?"
         raise FileNotFoundError(msg)

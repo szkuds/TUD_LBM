@@ -13,7 +13,10 @@ from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
+from src.config.run_config import DATA_DIRNAME
+from src.config.run_config import SNAPSHOT_GLOB
 from src.simulation_io.analysis.droplet_metrics._scales import MetricScales
+from src.simulation_io.analysis.droplet_metrics._scales import inclination_angle_deg
 from src.simulation_io.analysis.droplet_metrics._scales import resolve_scales
 from src.simulation_io.analysis.droplet_metrics._snapshot import avg_x_location
 from src.simulation_io.analysis.droplet_metrics._snapshot import center_of_mass
@@ -21,7 +24,7 @@ from src.simulation_io.analysis.droplet_metrics._snapshot import contact_angles_
 from src.simulation_io.analysis.droplet_metrics._snapshot import contact_lines_from_rho
 from src.simulation_io.analysis.droplet_metrics._snapshot import extract_rho_2d
 from src.simulation_io.analysis.droplet_metrics._snapshot import extract_velocity_components_2d
-from src.simulation_io.analysis.droplet_metrics._snapshot import mean_velocity_in_liquid
+from src.simulation_io.analysis.droplet_metrics._snapshot import mean_velocity_in_inclusion
 from src.simulation_io.analysis.droplet_metrics._snapshot import optional_contact_metrics
 from src.simulation_io.analysis.droplet_metrics._snapshot import parse_timestep
 from src.simulation_io.analysis.droplet_metrics._snapshot import parse_timestep_from_path
@@ -149,7 +152,11 @@ class DropletSeries:
 
     @cached_property
     def ca(self) -> np.ndarray:
-        """Capillary number from the mean liquid velocity, using the primary sigma."""
+        """Capillary number from the inclusion's mean velocity, using the primary sigma.
+
+        The inclusion, not the liquid: for a bubble run the two are opposite
+        phases, so averaging over the liquid would report the ambient.
+        """
         return self._capillary(self.avg_u_x, self.scales.sigma_primary)
 
     @cached_property
@@ -276,7 +283,7 @@ def _read_snapshot_uncached(path: Path, scales: MetricScales) -> _SnapshotMetric
     if u_x is None or u_y is None:
         avg_ux, avg_uy = 0.0, 0.0
     else:
-        avg_ux, avg_uy = mean_velocity_in_liquid(u_x, u_y, rho_2d, scales.rho_mean)
+        avg_ux, avg_uy = mean_velocity_in_inclusion(u_x, u_y, rho_2d, scales.rho_mean)
 
     cm_x, cm_y = center_of_mass(rho_2d, scales.rho_mean)
     avg_x = avg_x_location(rho_2d, scales.rho_mean, scales.offset_x)
@@ -343,8 +350,11 @@ def _config_fingerprint(config: SimulationConfig) -> tuple[object, ...]:
     """
     chem = config.chemical_step_config
     step_location = chem.get("chemical_step_location") if isinstance(chem, dict) else None
-    gravity = config.gravity_force
-    incl = gravity.get("inclination_angle_deg") if isinstance(gravity, dict) else None
+    # Via the same resolver the scales use, so a `[gravity_masked_force]` run's
+    # angle reaches the key. Reading `config.gravity_force` alone left every
+    # masked-force run fingerprinted at None, colliding runs that differ only
+    # in inclination.
+    incl = inclination_angle_deg(config)
     return (
         config.sim_type,
         config.rho_l,
@@ -378,10 +388,10 @@ def series_for_files(files: Sequence[Path], config: SimulationConfig) -> Droplet
 
 def droplet_series_for_run(run_dir: str | Path, config: SimulationConfig) -> DropletSeries | None:
     """Cached droplet series for every ``data/timestep_*.npz`` under *run_dir*."""
-    data_dir = Path(run_dir) / "data"
+    data_dir = Path(run_dir) / DATA_DIRNAME
     if not data_dir.exists():
         return None
-    files = sorted(data_dir.glob("timestep_*.npz"), key=parse_timestep_from_path)
+    files = sorted(data_dir.glob(SNAPSHOT_GLOB), key=parse_timestep_from_path)
     if not files:
         return None
     return series_for_files(files, config)

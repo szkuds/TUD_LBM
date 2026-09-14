@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import numpy as np
+from src.config.run_config import SNAPSHOT_PREFIX
 from .base import OutputWriter
 
 
@@ -15,5 +16,5 @@ class Numpy(OutputWriter):
             iteration: The iteration number.
             data: Dictionary mapping field names to numpy arrays.
         """
-        filename = str(Path(self.data_dir) / f"timestep_{iteration}.npz")
+        filename = str(Path(self.data_dir) / f"{SNAPSHOT_PREFIX}{iteration}.npz")
         np.savez(filename, **data)  # ty: ignore[invalid-argument-type]

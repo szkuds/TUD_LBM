@@ -328,3 +328,24 @@ def extra_state_plugin(
 ) -> Callable[[_OT], _OT]:
     """Register an extra-state plugin (kind ``"extra_state"``)."""
     return register_operator("extra_state", name=name, **meta)
+
+
+def dimensionless_operator(
+    *,
+    name: str | None = None,
+    **meta: object,
+) -> Callable[[_OT], _OT]:
+    """Register a dimensionless number (kind ``"dimensionless"``).
+
+    The target is a pure function of a
+    :class:`~src.simulation_io.analysis.physical_parameters._inputs.DimensionlessInputs`
+    returning ``float | None`` -- ``None`` when this run cannot supply the number
+    (e.g. a gravity-driven number on a run with no gravity configured).
+
+    Metadata carries the number's presentation, so a new file is the whole
+    change: ``label`` (mathtext, for axes and legends), ``row_label`` and
+    ``formula`` (for ``physical_parameters.txt``), ``order`` (display and
+    choice ordering -- registry insertion order is import order, too fragile to
+    display from) and ``needs_gravity`` (which provenance the row annotates).
+    """
+    return register_operator("dimensionless", name=name, **meta)

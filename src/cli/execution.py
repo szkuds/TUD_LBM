@@ -17,7 +17,9 @@ from src.cli.display import _display_simulation_operators
 from src.cli.display import _display_summary
 from src.cli.display import _print_dry_run_message
 from src.cli.overrides import _apply_overrides
+from src.cli.wetting_init import _WETTING_INIT_NT
 from src.cli.wetting_init import _run_two_phase_wetting_init
+from src.config.run_config import COMPARISON_DIRNAME
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
@@ -183,7 +185,6 @@ def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
     expanded/flattened fields.
     """
     from src.cli.analysis_routing import analyse_run
-    from src.simulation_io.plotting.run_comparison import _COMPARISON_DIR
     from src.simulation_io.plotting.run_comparison import compare_runs
 
     console.print("[dim]Running comparison analysis...[/dim]")
@@ -193,20 +194,19 @@ def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
     # compare_runs expects a parent directory that contains run dirs; passing
     # the single run directory makes it plot that one run via rglob.
     compare_runs(run_dir)
-    console.print(f"[bold green]Comparison plots saved to:[/bold green] {run_dir / _COMPARISON_DIR}")
+    console.print(f"[bold green]Comparison plots saved to:[/bold green] {run_dir / COMPARISON_DIRNAME}")
 
 
 def _run_compare_sweep(results_dir: Path) -> None:
     """Build CSVs and comparison plots across all runs in a sweep directory."""
     from src.cli.analysis_routing import analyse_tree
-    from src.simulation_io.plotting.run_comparison import _COMPARISON_DIR
 
     console.print("[dim]Running comparison analysis...[/dim]")
     _n_runs, n_ok = analyse_tree(results_dir)
     if n_ok == 0:
         console.print("[yellow]--compare: no runs produced CSV data.[/yellow]")
         return
-    console.print(f"[bold green]Comparison plots saved to:[/bold green] {results_dir / _COMPARISON_DIR}")
+    console.print(f"[bold green]Comparison plots saved to:[/bold green] {results_dir / COMPARISON_DIRNAME}")
 
 
 def _run_with_optional_overrides(
@@ -266,7 +266,9 @@ class RunFlags:
     """Option values for `run`, bundled to keep `_run_impl`'s signature within S107's limit.
 
     All boolean but `debug_wetting_interval`, which carries the
-    `--debug-wetting-interval` value through to `_enable_debug_flags`.
+    `--debug-wetting-interval` value through to `_enable_debug_flags`, and
+    `init_wetting_nt`, which carries `--init-wetting-nt` through to
+    `_run_two_phase_wetting_init`.
     """
 
     no_prompt: bool = False
@@ -279,6 +281,7 @@ class RunFlags:
     debug_wetting_interval: int = 50
     debug_stability: bool = False
     init_wetting: bool = False
+    init_wetting_nt: int = _WETTING_INIT_NT
     run_compare: bool = False
     continue_run: bool = False
 
@@ -316,7 +319,13 @@ def _run_impl(
         if config_path is None:
             msg = "config_path is required for wetting initialisation"
             raise ValueError(msg)
-        _run_two_phase_wetting_init(config_path, overrides, no_prompt=flags.no_prompt, overview=flags.overview)
+        _run_two_phase_wetting_init(
+            config_path,
+            overrides,
+            no_prompt=flags.no_prompt,
+            overview=flags.overview,
+            init_nt=flags.init_wetting_nt,
+        )
         success("Wetting initialisation complete!")
         return False
 

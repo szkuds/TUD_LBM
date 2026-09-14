@@ -22,7 +22,7 @@ import src.operators.force
 import src.operators.initialise
 import src.operators.macroscopic
 import src.operators.streaming
-import src.operators.wetting  # noqa: F401
+import src.operators.wetting
 from src.registry import OPERATOR_REGISTRY
 from src.registry import get_operator_category
 from src.registry import get_operator_names

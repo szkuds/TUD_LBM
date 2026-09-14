@@ -161,15 +161,15 @@ class TestGravityForce:
 
 
 class TestGravityMaskedForce:
-    """The weight is the density excess over the vapour, ``(rho - rho_v)``.
+    """The weight is a band-limited phase indicator: 0 light, ``drho`` dense.
 
     One formula covers both topologies. A liquid droplet is driven at
     ``drho*g`` with its vapour ambient left force-free; a vapour bubble is
     itself force-free and the liquid around it carries ``drho*g``, so the
     bubble is buoyed by the resulting pressure gradient rather than having the
-    net force injected into its own negligible inertia. Referencing ``rho_v``
-    rather than ``rho_l`` is the whole point: the dense phase can sustain a
-    pressure gradient and the light phase cannot.
+    net force injected into its own negligible inertia. Vanishing on the light
+    branch rather than the dense one is the whole point: the dense phase can
+    sustain a pressure gradient and the light phase cannot.
     """
 
     RHO_L = 1.0
@@ -212,11 +212,16 @@ class TestGravityMaskedForce:
             (RHO_L, DRHO),
             (RHO_V, 0.0),
             (0.5 * (RHO_L + RHO_V), 0.5 * DRHO),
-            (0.2, 0.2 - RHO_V),
+            # Inside the band: linear, and antisymmetric about rho_mean.
+            (RHO_V + 0.3 * DRHO, DRHO * 0.25),
+            (RHO_L - 0.3 * DRHO, DRHO * 0.75),
+            # Outside it: saturated, both above rho_l and below rho_v.
+            (RHO_L + 0.2, DRHO),
+            (0.2, 0.0),
         ],
     )
-    def test_the_weight_is_the_density_excess_over_the_vapour(self, lattice, rho_value, expected_weight):
-        """Continuous in rho, including below rho_v where it simply changes sign."""
+    def test_the_weight_is_a_band_limited_phase_indicator(self, lattice, rho_value, expected_weight):
+        """Continuous in rho, and flat on both bulk branches."""
         from src.operators.force._gravity_masked import GravityForceModule
 
         precomputed = self._build(lattice)
@@ -227,6 +232,26 @@ class TestGravityMaskedForce:
             np.array(-precomputed.template * expected_weight),
             atol=1e-12,
         )
+
+    def test_an_ambient_far_off_its_prescribed_density_is_still_force_free(self, lattice):
+        """The regression this band exists for.
+
+        The predecessor weight ``rho - rho_v`` left the ambient accelerating at
+        ``(1 - rho_ref/rho_ambient)*g``, which is only ~0 when the prescribed
+        density matches the field's own. An equilibrated droplet run measured
+        a bulk vapour of 0.0062 against a prescribed ``rho_v = 0.001``, so the
+        vapour was driven at 88% of g and, carrying 1/160 of the mass, ran away.
+        The band puts its lower edge at ``rho_v + 0.1*drho`` instead, 16x above
+        that ambient, so the weight is exactly zero however far the vapour
+        density drifts.
+        """
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        cfg = SimpleNamespace(rho_l=1.0, rho_v=0.001)
+        precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=cfg, lattice=lattice)
+        force = np.array(GravityForceModule.compute(make_state(lattice, rho_value=0.0062), precomputed))
+
+        np.testing.assert_array_equal(force, 0.0)
 
     def test_the_dense_phase_is_driven_and_the_light_phase_is_force_free(self, lattice):
         """The force sits where a pressure gradient can balance it.
@@ -278,11 +303,12 @@ class TestGravityMaskedForce:
     def test_the_net_force_over_an_interface_matches_the_masked_form(self, lattice):
         """Smoothing the weight does not change the net force on an inclusion.
 
-        A tanh profile is antisymmetric about ``rho_mean``, so the excess mass
-        it adds on the dense side of the interface is exactly what it removes
-        on the light side. Summing ``(rho - rho_v)`` therefore reproduces the
-        old ``drho * (cells above rho_mean)`` — existing droplet runs keep the
-        same drive.
+        A tanh profile is antisymmetric about ``rho_mean`` and so is the banded
+        indicator, since the band is inset by the same amount at both ends. The
+        weight it adds on the dense side of the interface is therefore exactly
+        what it removes on the light side, reproducing the hard-threshold
+        ``drho * (cells above rho_mean)`` — existing droplet runs keep the same
+        drive.
         """
         from src.operators.force._gravity_masked import GravityForceModule
 
@@ -338,8 +364,11 @@ class TestGravityMaskedForce:
         np.testing.assert_allclose(np.array(force), np.array(expected), atol=1e-12)
 
     def test_equal_reference_densities_produce_no_force_in_the_bulk(self, lattice):
-        """A degenerate rho_l == rho_v leaves a bulk cell unforced, and the
-        division-free weight cannot produce a NaN.
+        """A degenerate rho_l == rho_v leaves a bulk cell unforced.
+
+        The band collapses to zero width, so ``compute`` branches on the
+        build-time contrast rather than dividing by that span and producing a
+        NaN.
         """
         from src.operators.force._gravity_masked import GravityForceModule
 
@@ -349,6 +378,54 @@ class TestGravityMaskedForce:
 
         assert bool(np.isfinite(force).all())
         np.testing.assert_allclose(force, 0.0, atol=1e-12)
+
+    @staticmethod
+    def _init_from_file_config(tmp_path, rho_min, rho_max):
+        rho = np.full((NX, NY, NZ, 1, 1), rho_min)
+        rho[: NX // 2] = rho_max
+        npz_path = tmp_path / "init_state.npz"
+        np.savez(npz_path, rho=rho)
+        return SimulationConfig(
+            sim_type="multiphase",
+            grid_shape=(NX, NY),
+            eos="double-well",
+            kappa=0.02,
+            rho_l=1.0,
+            rho_v=0.001,
+            interface_width=2,
+            init_type="init_from_file",
+            init_dir=str(npz_path),
+            initialisation={},
+        )
+
+    def test_the_band_is_measured_off_the_init_field_when_there_is_one(self, lattice, tmp_path):
+        """Prescribed densities are not the field's own.
+
+        ``physical_parameters`` already measures the buoyancy contrast off this
+        same NPZ, so reading it here keeps the contrast the force injects equal
+        to the one the run's Bond number is reported with.
+        """
+        from src.operators.force._gravity_masked import _PHASE_BAND
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        rho_min, rho_max = 0.0062, 1.01
+        cfg = self._init_from_file_config(tmp_path, rho_min, rho_max)
+        precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=cfg, lattice=lattice)
+
+        drho = rho_max - rho_min
+        assert precomputed.drho == pytest.approx(drho)
+        assert precomputed.band_lo == pytest.approx(rho_min + _PHASE_BAND * drho)
+        assert precomputed.band_hi == pytest.approx(rho_max - _PHASE_BAND * drho)
+
+    def test_the_band_falls_back_to_the_config_densities_without_an_init_file(self, lattice):
+        from src.operators.force._gravity_masked import _PHASE_BAND
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        cfg = SimpleNamespace(rho_l=self.RHO_L, rho_v=self.RHO_V, init_type="multiphase_bubbles")
+        precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=cfg, lattice=lattice)
+
+        assert precomputed.drho == pytest.approx(self.DRHO)
+        assert precomputed.band_lo == pytest.approx(self.RHO_V + _PHASE_BAND * self.DRHO)
 
     def test_jittable(self, lattice):
         from src.operators.force._gravity_masked import GravityForceModule

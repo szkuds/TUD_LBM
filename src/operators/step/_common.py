@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 
 if TYPE_CHECKING:
-    from src.operators.protocols import DifferentialOperator
+    from src.operators.protocols import BoundDifferentialOperator
     from src.pipeline.setup import SimulationSetup
     from src.pipeline.state.state import State
 
@@ -18,8 +18,8 @@ def _multiphase_pipeline(
     setup: SimulationSetup,
     f_t: jnp.ndarray,
     force_ext: jnp.ndarray | None,
-    gradient_density: DifferentialOperator,
-    laplacian_density: DifferentialOperator,
+    gradient_density: BoundDifferentialOperator,
+    laplacian_density: BoundDifferentialOperator,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Run one multiphase physics pass — the single canonical implementation.
 
@@ -102,7 +102,7 @@ def _apply_common_step(
     rho: jnp.ndarray,
     u: jnp.ndarray,
     force_tot: jnp.ndarray | None,
-    gradient_density: DifferentialOperator | None = None,
+    gradient_density: BoundDifferentialOperator | None = None,
 ) -> State:
     """Apply equilibrium → collision (+source) → streaming → BCs.
 

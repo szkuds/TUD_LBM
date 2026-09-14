@@ -9,21 +9,26 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import TypedDict
 from matplotlib.colors import TABLEAU_COLORS
+from src.config.run_config import COMPARISON_DIRNAME
+from src.config.run_config import CONFIG_FILENAME
+from src.config.run_config import SIMULATION_CSV_FILENAME
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 from src.simulation_io.plotting.figure_config import LABEL_CA
 from src.simulation_io.plotting.figure_config import LABEL_IT_NORM
 from src.simulation_io.plotting.figure_config import LABEL_RE
 from src.simulation_io.plotting.figure_config import LABEL_X_AVG_NORM
-from src.simulation_io.plotting.simulation_csv import _CSV_FILENAME
+from src.simulation_io.plotting.run_labels import NAME_KEY
+from src.simulation_io.plotting.run_labels import build_run_labels
+from src.simulation_io.plotting.run_labels import label_sort_key
+from src.simulation_io.plotting.run_labels import resolve_label_keys
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     import matplotlib.axes
     import pandas as pd
     from src.config import SimulationConfig
 
 _DIR_SPLIT_PARTS = 2
-_CONFIG_TOML = "config.toml"
-_COMPARISON_DIR = "comparison_analysis"
 
 
 class _PlotConfig(TypedDict, total=False):
@@ -135,19 +140,29 @@ def _safe_load_config(toml_path: Path) -> SimulationConfig | None:
         return None
 
 
-def _load_comparison_entries(parent_dir: Path) -> list[dict]:
-    """Collect all processed run CSVs under *parent_dir*, sorted by advancing CA."""
+def _load_comparison_entries(parent_dir: Path, label_keys: Sequence[str] | None = None) -> list[dict]:
+    """Collect all processed run CSVs under *parent_dir*, labelled and ordered.
+
+    Legend labels come from the dimensionless numbers that differ across the
+    collected runs (see :mod:`src.simulation_io.plotting.run_labels`), which is a
+    property of the whole set — so they are assigned once, after every run has
+    been read, rather than per run inside the loop. *label_keys* overrides that
+    selection. Runs are ordered by the labelled quantities when there are any,
+    and by advancing contact angle otherwise, so the legend reads monotonically.
+    """
     try:
         import pandas as pd
     except ImportError:
         return []
 
+    from src.simulation_io.analysis.physical_parameters import compute_dimensionless_numbers
+
     entries = []
-    for csv_path in sorted(parent_dir.rglob(_CSV_FILENAME)):
+    for csv_path in sorted(parent_dir.rglob(SIMULATION_CSV_FILENAME)):
         run_dir = csv_path.parent
-        if _COMPARISON_DIR in run_dir.parts:
+        if COMPARISON_DIRNAME in run_dir.parts:
             continue
-        toml_path = run_dir / _CONFIG_TOML
+        toml_path = run_dir / CONFIG_FILENAME
         if not toml_path.exists():
             continue
         config = _safe_load_config(toml_path)
@@ -155,15 +170,29 @@ def _load_comparison_entries(parent_dir: Path) -> list[dict]:
             continue
 
         adv_ca = config.wetting_config.get("advancing_ca", 0) if config.wetting_config else 0
-        label = config.simulation_name or _clean_dir_label(run_dir.name)
         entries.append(
             {
-                "label": label,
+                "name": config.simulation_name or _clean_dir_label(run_dir.name),
+                "numbers": compute_dimensionless_numbers(config),
                 "sort_key": adv_ca,
                 "data": pd.read_csv(csv_path),
             }
         )
 
+    return _label_and_sort(entries, label_keys)
+
+
+def _label_and_sort(entries: list[dict], label_keys: Sequence[str] | None) -> list[dict]:
+    """Attach a legend label to every entry and order the set for the legend."""
+    names = [entry["name"] for entry in entries]
+    numbers = [entry["numbers"] for entry in entries]
+    keys = resolve_label_keys(numbers, label_keys)
+    for entry, label in zip(entries, build_run_labels(names, numbers, keys), strict=True):
+        entry["label"] = label
+
+    numeric_keys = [key for key in keys if key != NAME_KEY]
+    if numeric_keys:
+        return sorted(entries, key=lambda e: label_sort_key(e["numbers"], numeric_keys))
     return sorted(entries, key=lambda e: e["sort_key"])
 
 
@@ -218,7 +247,7 @@ def _plot_comparison_entry(
     _scatter_series(ax, df, x2_col, y2, color=color, marker=marker, alpha=0.5, label=f"{label} ({l2})")
 
 
-def compare_runs(parent_dir: str | Path) -> None:
+def compare_runs(parent_dir: str | Path, label_keys: Sequence[str] | None = None) -> None:
     """Generate comparison scatter plots across all processed runs.
 
     Reads ``simulation_data.csv`` files produced by :func:`build_simulation_csv`
@@ -227,16 +256,19 @@ def compare_runs(parent_dir: str | Path) -> None:
 
     Args:
         parent_dir: Parent directory that contains the individual run directories.
+        label_keys: Legend-label keys from :data:`LABEL_PARAM_CHOICES`. ``None``
+            labels the runs with whichever dimensionless numbers differ between
+            them, falling back to the run names when none do.
     """
     import matplotlib.pyplot as plt
 
     parent_dir = Path(parent_dir).resolve()
-    entries = _load_comparison_entries(parent_dir)
+    entries = _load_comparison_entries(parent_dir, label_keys)
     if not entries:
         print("No processed simulation data found for comparison.")
         return
 
-    out_dir = (parent_dir / _COMPARISON_DIR).resolve()
+    out_dir = (parent_dir / COMPARISON_DIRNAME).resolve()
     if out_dir.parent != parent_dir:
         msg = f"Comparison output directory escapes {parent_dir}: {out_dir}"
         raise ValueError(msg)

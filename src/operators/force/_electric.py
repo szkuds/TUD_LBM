@@ -32,7 +32,7 @@ from src.registry import force_model
 if TYPE_CHECKING:
     from src import Lattice
     from src.config import SimulationConfig
-    from src.operators.protocols import DifferentialOperator
+    from src.operators.protocols import BoundDifferentialOperator
     from src.pipeline.state import State
 
 # ══════════════════════════════════════════════════════════════════════
@@ -161,7 +161,7 @@ class ElectricForceModule:
         state: State,
         precomputed: ElectricParams,
         *,
-        gradient_standard: DifferentialOperator | None = None,
+        gradient_standard: BoundDifferentialOperator | None = None,
         **_kwargs: object,
     ) -> jnp.ndarray:
         """Compute electric force (step-time, jittable).

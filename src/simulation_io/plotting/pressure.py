@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     import matplotlib.axes
     from src.operators.macroscopic import MultiphaseParams
-    from src.operators.protocols import DifferentialOperator
+    from src.operators.protocols import BoundDifferentialOperator
 
 
 class _BasePressureOperator(PlotOperator):
@@ -107,9 +107,9 @@ class TotalPressurePlotOperator(_BasePressureOperator):
     name = "pressure_total"
     title = "Total pressure"
 
-    _diff_ops: tuple[DifferentialOperator, DifferentialOperator] | None = None
+    _diff_ops: tuple[BoundDifferentialOperator, BoundDifferentialOperator] | None = None
 
-    def _differentials(self) -> tuple[DifferentialOperator, DifferentialOperator]:
+    def _differentials(self) -> tuple[BoundDifferentialOperator, BoundDifferentialOperator]:
         """Return the cached ``(gradient_density, laplacian_density)`` closures.
 
         Built from the run's own config, so they inherit its boundary-condition

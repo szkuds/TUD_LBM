@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING
 import jax
 import jax.numpy as jnp
 import src.config.config_overview as _flags
+from src.config.run_config import SNAPSHOT_PREFIX
 from src.pipeline.state.state import State
 
 if TYPE_CHECKING:
@@ -71,10 +72,10 @@ def _t_from_snapshot(config: SimulationConfig) -> jnp.ndarray:
         return jnp.array(0)
 
     stem = Path(config.init_dir).stem
-    if not stem.startswith("timestep_"):
+    if not stem.startswith(SNAPSHOT_PREFIX):
         return jnp.array(0)
 
-    step_str = stem.removeprefix("timestep_")
+    step_str = stem.removeprefix(SNAPSHOT_PREFIX)
     if not step_str.isdigit():
         return jnp.array(0)
 

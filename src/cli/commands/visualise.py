@@ -12,6 +12,7 @@ from src.cli.app import cli
 from src.cli.config_loading import _validate_run_dir_has_config
 from src.cli.field_select import _configure_snapshot_fig
 from src.cli.field_select import prompt_fields_marked
+from src.config.run_config import DATA_DIRNAME
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
@@ -28,7 +29,6 @@ _MIN_GRID_DIMENSIONS = 2
 _SINGLE_SNAPSHOT_USAGE = "--single requires PATH to point to an existing .npz snapshot file."
 _SINGLE_SNAPSHOT_FIELD_USAGE = "--single requires a snapshot containing a two-dimensional 'rho' or 'u' field."
 _RUN_DIRECTORY_USAGE = "PATH must point to an existing run directory unless --single is provided."
-_DATA_DIR_NAME = "data"
 
 
 def _load_run_config(run_dir: str | Path) -> SimulationConfig:
@@ -64,7 +64,7 @@ def _run_dir_for_snapshot(snapshot_path: Path) -> Path:
     ``data/``. A snapshot sitting anywhere else is its own run directory.
     """
     parent = snapshot_path.parent
-    if parent.name == _DATA_DIR_NAME:
+    if parent.name == DATA_DIRNAME:
         return parent.parent
     return parent
 

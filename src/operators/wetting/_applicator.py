@@ -28,7 +28,6 @@ def build_wetting_applicator(
     Args:
         rho_l: Liquid density.
         rho_v: Vapour density.
-        width: Interface width in lattice units.
         bc_config: Boundary-condition config dict, e.g.
             ``{"bottom": "wetting", "top": "bounce-back", ...}``.
             ``None`` defaults to bottom-only wetting.

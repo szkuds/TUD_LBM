@@ -14,22 +14,73 @@ Public API::
 
 from __future__ import annotations
 import math
+from dataclasses import dataclass
+from dataclasses import field
 from datetime import UTC
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import NamedTuple
+from typing import cast
 import numpy as np
+from src.registry import get_operators
+from src.simulation_io.analysis.physical_parameters import (
+    numbers as _numbers,  # noqa: F401  (registers the dimensionless operators)
+)
+from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessInputs
+from src.simulation_io.analysis.physical_parameters.numbers._bond import BondNumbers
+from src.simulation_io.analysis.physical_parameters.numbers._bond import compute_bond_numbers
+from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import compute_archimedes_number
+from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import compute_reynolds_number
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from src.config.simulation_config import SimulationConfig
+    from src.registry import OperatorEntry
+    from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessNumberOperator
+
+# Re-exported so the formulas keep their historical import site while living
+# beside the operators that register them.
+__all__ = [
+    "BondNumbers",
+    "DimensionlessNumbers",
+    "build_overview",
+    "compute_archimedes_number",
+    "compute_bond_numbers",
+    "compute_dimensionless_numbers",
+    "compute_reynolds_number",
+    "dimensionless_keys",
+    "dimensionless_label",
+    "inclusion_mask_from_rho",
+    "measure_init_phase_densities",
+    "resolve_dimensionless_inputs",
+    "write_physical_parameters",
+]
 
 _CS2 = 1.0 / 3.0  # Speed of sound squared for D2Q9/D3Q19
 
-# Prefix remaps for analysing runs downloaded off DelftBlue: data stored under
-# /scratch/<user>/LBM/26_TUD_LBM/ on the cluster lives under ~/ locally, so
-# .../TUD_LBM_data/<run>/ resolves to ~/TUD_LBM_data/<run>/.
-_INIT_PATH_REMAPS: tuple[tuple[str, str], ...] = (("/scratch/sbszkudlarek/LBM/26_TUD_LBM/", f"{Path.home()}/"),)
+# Prefix remaps for analysing runs whose init NPZ is no longer where the config
+# recorded it. Tried in order, first existing file wins:
+#
+# * Runs downloaded off DelftBlue: data stored under /scratch/<user>/LBM/26_TUD_LBM/
+#   on the cluster lives under ~/ locally, so .../TUD_LBM_data/<run>/ resolves to
+#   ~/TUD_LBM_data/<run>/.
+# * Runs since archived: finished sweeps are moved into ~/TUD_LBM_data/old/ (with
+#   the DelftBlue ones under old/DB/), which leaves every init_dir in their configs
+#   pointing one or two levels above where the file now is. Without these, an
+#   archived run silently falls back to the nominal config radius and the
+#   prescribed rho_l - rho_v, i.e. a different Bo/Oh than the run was measured with.
+_ARCHIVE_ROOTS: tuple[str, ...] = (
+    f"{Path.home()}/TUD_LBM_data/old/DB/",
+    f"{Path.home()}/TUD_LBM_data/old/",
+)
+_INIT_PATH_REMAPS: tuple[tuple[str, str], ...] = (
+    ("/scratch/sbszkudlarek/LBM/26_TUD_LBM/", f"{Path.home()}/"),
+    *((f"{Path.home()}/TUD_LBM_data/DB/", root) for root in _ARCHIVE_ROOTS),
+    *(("/scratch/sbszkudlarek/LBM/26_TUD_LBM/TUD_LBM_data/", root) for root in _ARCHIVE_ROOTS),
+    *((f"{Path.home()}/TUD_LBM_data/", root) for root in _ARCHIVE_ROOTS),
+)
 
 
 def _resolve_npz_path(path: str | None) -> str | None:
@@ -128,11 +179,57 @@ def _get_setup_contact_line_length(config: SimulationConfig) -> float | None:
 #: A wall row must cross ``rho_mean`` at least twice to bracket a contact line.
 _MIN_CROSSINGS = 2
 
+#: Smallest single-cell density step across which the ``rho_mean`` crossing is
+#: interpolated. A flatter step makes the interpolation below explode, so the
+#: row yields no usable length. An explicit absolute tolerance is required:
+#: ``math.isclose(x, 0.0)`` defaults to ``abs_tol=0.0`` and so reduces to
+#: ``x == 0.0``, which is the one case that never needed guarding.
+_MIN_CROSSING_SLOPE = 1e-9
 
-def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | None:
-    """Return setup contact-line spacing from a rho field using wall-row transitions."""
+#: Order in which ``bc_config`` is scanned for the wetting wall. Matches
+#: :func:`src.operators.wetting._edge_config._resolve_wetting_edges`, so the wall
+#: reported here is the one the solver actually measured at.
+_EDGE_SCAN_ORDER = ("bottom", "top", "left", "right")
+
+
+def resolve_wall_edge(config: SimulationConfig) -> str:
+    """The single wall marked ``"wetting"`` in ``bc_config``, else ``"bottom"``.
+
+    Config validation guarantees exactly one wetting wall for wetting runs;
+    non-wetting runs fall back to ``"bottom"``, for which the canonical
+    transform is the identity.
+
+    Defined here rather than in :mod:`..droplet_metrics._scales` so that this
+    module — which ``_scales`` already imports from lazily — does not have to
+    import back into ``droplet_metrics``.
+    """
+    bc = config.bc_config or {}
+    for edge in _EDGE_SCAN_ORDER:
+        if bc.get(edge) == "wetting":
+            return edge
+    return "bottom"
+
+
+def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float, wall_edge: str = "bottom") -> float | None:
+    """Return setup contact-line spacing from a rho field using wall-row transitions.
+
+    *wall_edge* names the wetting wall. The row is taken from the wall-aligned
+    canonical view for that edge, so a droplet or bubble on ``"top"``,
+    ``"left"`` or ``"right"`` is measured at its own wall. Slicing ``y = 0``
+    unconditionally sampled the far wall for those runs, found no crossings,
+    and silently pushed ``resolve_r_zero`` onto its nominal-radius fallback —
+    which then propagated into ``L_eff`` and every dimensionless number.
+    """
+    # Lazily, and from droplet_metrics rather than the JAX original in
+    # `operators.wetting._canonical_view`: this is a numpy field, and the twin
+    # there is already annotated and tested for numpy. The import is deferred
+    # because `droplet_metrics._scales` imports back into this module the same
+    # way, so neither may reach the other at module load.
+    from src.simulation_io.analysis.droplet_metrics._snapshot import to_canonical_2d
+
     try:
-        row = np.asarray(rho[:, 0, 0, 0, 0], dtype=float)
+        plane = np.asarray(rho[:, :, 0, 0, 0], dtype=float)
+        row = np.asarray(to_canonical_2d(plane, wall_edge)[:, 0], dtype=float)
 
         mask = (row < float(rho_mean)).astype(np.int32)
         diff = np.diff(mask)
@@ -149,7 +246,7 @@ def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | N
 
         denom_left = row[idx_left + 1] - row[idx_left]
         denom_right = row[idx_right + 1] - row[idx_right]
-        if math.isclose(denom_left, 0.0) or math.isclose(denom_right, 0.0):
+        if abs(denom_left) <= _MIN_CROSSING_SLOPE or abs(denom_right) <= _MIN_CROSSING_SLOPE:
             return None
 
         x_left = idx_left + ((rho_mean - row[idx_left]) / denom_left)
@@ -162,12 +259,48 @@ def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float) -> float | N
         return None
 
 
-def _load_init_rho(config: SimulationConfig) -> tuple[np.ndarray, float] | None:
-    """Load the init rho field from NPZ and return ``(rho, rho_mean)`` for init_from_file."""
+class _InitField(NamedTuple):
+    """An init density field with the phase densities measured off it.
+
+    ``rho_mean`` and ``drho`` come from the field's own extrema rather than from
+    ``config.rho_l``/``rho_v``: an equilibrated droplet relaxes away from the
+    prescribed coexistence densities, so the config midpoint is not the
+    mid-interface contour of the field and the config contrast is not the
+    buoyancy contrast the run actually has.
+    """
+
+    rho: np.ndarray
+    rho_min: float
+    rho_max: float
+    rho_mean: float
+    drho: float
+
+
+def _load_init_rho(config: SimulationConfig) -> _InitField | None:
+    """Load the init rho field from NPZ and measure its densities, for init_from_file.
+
+    Returns ``None`` when no file resolves, it holds no ``rho``, or the field is
+    empty or non-finite.
+    """
     npz_path = _resolve_npz_path(config.init_dir or config.initialisation.get("npz_path"))
     if not npz_path:
         return None
 
+    try:
+        stat = Path(npz_path).stat()
+    except OSError:
+        return None
+    return _load_field_cached(npz_path, (stat.st_mtime_ns, stat.st_size))
+
+
+@lru_cache(maxsize=4)
+def _load_field_cached(npz_path: str, _stat_key: tuple[int, int]) -> _InitField | None:
+    """Read and measure an init NPZ, memoized on the file's identity.
+
+    Several resolvers (area, buoyancy contrast, contact-line spacing) each need
+    the same multi-megabyte field, so it is read once. ``_stat_key`` carries the
+    file's mtime and size purely so that rewriting a path invalidates the entry.
+    """
     try:
         with np.load(npz_path) as data:
             if "rho" not in data:
@@ -176,19 +309,49 @@ def _load_init_rho(config: SimulationConfig) -> tuple[np.ndarray, float] | None:
     except (KeyError, OSError, TypeError, ValueError):
         return None
 
-    if config.rho_l is not None and config.rho_v is not None:
-        rho_mean = 0.5 * (float(config.rho_l) + float(config.rho_v))
-    else:
-        rho_mean = float(np.mean(rho))
-    return rho, rho_mean
+    return _measure_field(rho)
+
+
+def _measure_field(rho: np.ndarray) -> _InitField | None:
+    """Return *rho* with its extrema, midpoint and contrast, or None when unusable."""
+    try:
+        values = np.asarray(rho, dtype=float)
+        if values.size == 0 or not np.all(np.isfinite(values)):
+            return None
+        rho_min = float(np.min(values))
+        rho_max = float(np.max(values))
+    except (TypeError, ValueError):
+        return None
+    return _InitField(
+        rho=rho,
+        rho_min=rho_min,
+        rho_max=rho_max,
+        rho_mean=0.5 * (rho_max + rho_min),
+        drho=rho_max - rho_min,
+    )
+
+
+def measure_init_phase_densities(config: SimulationConfig) -> tuple[float, float] | None:
+    """Return ``(rho_min, rho_max)`` measured off the run's init NPZ, or None.
+
+    The public face of :func:`_load_init_rho` for callers outside this module —
+    :mod:`src.operators.force._gravity_masked` bands its phase indicator on the
+    same measured densities this file reports the buoyancy contrast with, so the
+    contrast a run injects and the one its Bond number quotes cannot diverge.
+    Returns None when the run has no init file, or it holds no usable ``rho``.
+    """
+    field = _load_init_rho(config)
+    if field is None:
+        return None
+    return field.rho_min, field.rho_max
 
 
 def _get_contact_line_length_from_file(config: SimulationConfig) -> float | None:
     """Load rho from NPZ and estimate setup contact-line spacing for init_from_file."""
-    loaded = _load_init_rho(config)
-    if loaded is None:
+    field = _load_init_rho(config)
+    if field is None:
         return None
-    return _contact_line_length_from_rho(*loaded)
+    return _contact_line_length_from_rho(field.rho, field.rho_mean, resolve_wall_edge(config))
 
 
 def _get_setup_droplet_area(config: SimulationConfig) -> float | None:
@@ -223,30 +386,39 @@ def _get_setup_droplet_area(config: SimulationConfig) -> float | None:
     return None
 
 
-def _inclusion_area_from_rho(rho: np.ndarray, rho_mean: float) -> float | None:
-    """Inclusion area in the z=0 plane, as the minority phase's cell count.
+def inclusion_mask_from_rho(rho: np.ndarray, rho_mean: float) -> np.ndarray | None:
+    """Boolean ``(nx, ny)`` mask of the inclusion in the z=0 plane.
 
     Both topologies put the inclusion in the minority phase, so thresholding at
-    ``rho_mean`` and keeping the smaller side measures a droplet or a bubble
-    without being told which it is. Counting ``rho > rho_mean`` unconditionally
-    measured the *continuous* phase of a bubble run — nearly the whole domain —
+    ``rho_mean`` and keeping the smaller side selects a droplet or a bubble
+    without being told which it is. Taking ``rho > rho_mean`` unconditionally
+    selected the *continuous* phase of a bubble run — nearly the whole domain —
     which inflated ``L_eff`` and every dimensionless number built on it.
+
+    Cells exactly at ``rho_mean`` fall in neither phase. Returns ``None`` when
+    the field cannot be sliced or neither phase is present.
     """
     try:
         plane = np.asarray(rho[:, :, 0, 0, 0], dtype=float)
-        liquid = float(np.count_nonzero(plane > rho_mean))
-        vapour = float(np.count_nonzero(plane < rho_mean))
+        liquid = plane > rho_mean
+        vapour = plane < rho_mean
     except (IndexError, TypeError, ValueError):
         return None
-    area = min(liquid, vapour)
-    return area if area > 0.0 else None
+    mask = liquid if np.count_nonzero(liquid) <= np.count_nonzero(vapour) else vapour
+    return mask if np.any(mask) else None
+
+
+def _inclusion_area_from_rho(rho: np.ndarray, rho_mean: float) -> float | None:
+    """Inclusion area in the z=0 plane, as the cell count of :func:`inclusion_mask_from_rho`."""
+    mask = inclusion_mask_from_rho(rho, rho_mean)
+    return None if mask is None else float(np.count_nonzero(mask))
 
 
 def _get_droplet_area(config: SimulationConfig) -> tuple[float, str] | None:
     """Return ``(area, source)`` for the setup droplet, or None when unavailable."""
     if config.init_type == "init_from_file":
-        loaded = _load_init_rho(config)
-        area = _inclusion_area_from_rho(*loaded) if loaded is not None else None
+        field = _load_init_rho(config)
+        area = _inclusion_area_from_rho(field.rho, field.rho_mean) if field is not None else None
         return (area, "init_from_file") if area is not None else None
 
     area = _get_setup_droplet_area(config)
@@ -307,6 +479,10 @@ def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, st
 
     ``source`` is "measured" or "analytical". Returns ``None`` when no value is
     available (e.g. a calibration-only EOS that has not been measured yet).
+
+    The ``drho`` returned here is the *prescribed* contrast, and belongs only to
+    the closed form ``gamma = 2/3 (kappa/W) drho^2``. The buoyancy contrast in
+    Bo/Ar/Re comes from :func:`_resolve_buoyancy_delta_rho` instead.
     """
     if config.rho_l is None or config.rho_v is None:
         return None
@@ -323,15 +499,34 @@ def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, st
     return derived[0], derived[1], "analytical"
 
 
+def _resolve_buoyancy_delta_rho(config: SimulationConfig) -> tuple[float, str] | None:
+    """Return ``(drho, source)`` for buoyancy, measured off the init field when there is one.
+
+    Deliberately separate from the ``drho`` :func:`_resolve_surface_tension`
+    returns. That one feeds the closed form ``gamma = 2/3 (kappa/W) drho^2``,
+    which is derived for the *prescribed* double-well and is computed from the
+    same prescribed densities in ``droplet_metrics/_scales.py``; measuring it
+    there would diverge the two. The buoyancy contrast in Bo/Ar/Re is a property
+    of the field, so it is measured wherever a field exists.
+    """
+    if config.init_type == "init_from_file":
+        field = _load_init_rho(config)
+        if field is not None:
+            return field.drho, "measured"
+    if config.rho_l is not None and config.rho_v is not None:
+        return float(config.rho_l) - float(config.rho_v), "config"
+    return None
+
+
 def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple[float, str]:
     """Resolve shared length scale and annotation for Oh/Bo rows.
 
-    Uses the effective droplet radius L_eff = sqrt(Area/pi) from the setup
-    droplet area, falling back to grid_x when no droplet can be resolved.
+    Uses the effective dispersed phase radius L_eff = sqrt(Area/pi) from the setup
+    dispersed phase area, falling back to grid_x when no dispersed area can be resolved.
     """
-    resolved = _get_droplet_area(config)
-    if resolved is not None:
-        area, source = resolved
+    dispersed_phase_resolved = _get_droplet_area(config)
+    if dispersed_phase_resolved is not None:
+        area, source = dispersed_phase_resolved
         l_eff = math.sqrt(area / math.pi)
         return l_eff, f"L_eff={l_eff:.4g} (sqrt(A/pi), {source})"
 
@@ -339,144 +534,173 @@ def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple
     return length, f"L={length} (grid_x)"
 
 
-def compute_ohnesorge_number(config: SimulationConfig, gamma: float, length: float) -> float:
-    """Oh = nu / sqrt(gamma * length * rho_l)."""
-    nu = _nu(float(config.tau))
-    if config.rho_l is None:
-        msg = "rho_l is required for Ohnesorge number"
-        raise ValueError(msg)
-    return nu / (gamma * length * config.rho_l) ** 0.5
+# ---------------------------------------------------------------------------
+# Dimensionless numbers
+# ---------------------------------------------------------------------------
+#
+# The numbers themselves live one-per-file under ``numbers/`` and self-register
+# under registry kind ``dimensionless``. Nothing below names a specific number:
+# this section resolves the inputs they share, evaluates whatever is registered,
+# and renders the results. Adding a number is adding a file.
 
 
-class BondNumbers(NamedTuple):
-    """Bond number and its components along/across the inclined gravity vector."""
-
-    bo: float
-    bo_perp: float
-    bo_parallel: float
-
-
-def compute_bond_numbers(
-    delta_rho_phases: float,
-    gamma: float,
-    g_val: float,
-    length: float,
-    angle_deg: float = 0.0,
-) -> BondNumbers:
-    """Bo = (Δρ*g*L²)/γ, split into normal/tangential components by angle_deg."""
-    bo = (delta_rho_phases * (length**2) * g_val) / gamma
-    angle_rad = math.radians(angle_deg)
-    return BondNumbers(bo=bo, bo_perp=bo * math.cos(angle_rad), bo_parallel=bo * math.sin(angle_rad))
-
-
-class DimensionlessNumbers(NamedTuple):
-    """Oh/Bo/Bo_perp/Bo_parallel for one config; all-None when inputs are missing."""
-
-    oh: float | None
-    bo: float | None
-    bo_perp: float | None
-    bo_parallel: float | None
-
-
-_ALL_NONE_DIMENSIONLESS_NUMBERS = DimensionlessNumbers(oh=None, bo=None, bo_perp=None, bo_parallel=None)
-
-
-def compute_dimensionless_numbers(config: SimulationConfig) -> DimensionlessNumbers:
-    """Resolve Oh/Bo/Bo_perp/Bo_parallel for one config; never raises.
+def resolve_dimensionless_inputs(config: SimulationConfig) -> DimensionlessInputs | None:
+    """Resolve everything the registered dimensionless numbers are built from.
 
     Mirrors the resolution sequence in :func:`_add_multiphase_section`: surface
-    tension via :func:`_resolve_surface_tension`, length via
+    tension via :func:`_resolve_surface_tension`, buoyancy contrast via
+    :func:`_resolve_buoyancy_delta_rho`, length via
     :func:`_resolve_length_for_dimensionless_numbers`, gravity via
-    :func:`_resolve_gravity_value`, inclination via
-    :func:`_resolve_gravity_inclination`. Returns all-None when any required
-    input is missing (e.g. a calibration-only EOS with no measured surface
-    tension yet, or no gravity configured).
+    :func:`_resolve_gravity_value` and :func:`_resolve_gravity_inclination`.
+
+    Returns ``None`` only when *nothing* could be computed -- no surface tension
+    (a calibration-only EOS not yet measured), no density contrast, or no
+    ``rho_l``. Missing *gravity* is deliberately not such a case: it is carried
+    through as ``g=None`` so ``Oh`` and ``La``, which need none, still resolve
+    while the buoyancy-driven numbers report themselves unresolved.
     """
     resolved = _resolve_surface_tension(config)
     if resolved is None:
-        return _ALL_NONE_DIMENSIONLESS_NUMBERS
-    drho, gamma, _source = resolved
+        return None
+    _drho_config, gamma, gamma_source = resolved
 
+    buoyancy = _resolve_buoyancy_delta_rho(config)
+    if buoyancy is None or config.rho_l is None:
+        return None
+    drho, drho_source = buoyancy
+
+    length, length_label = _resolve_length_for_dimensionless_numbers(config)
     g_val = _resolve_gravity_value(config)
-    if g_val is None:
-        return _ALL_NONE_DIMENSIONLESS_NUMBERS
-
-    length, _length_label = _resolve_length_for_dimensionless_numbers(config)
-    oh = compute_ohnesorge_number(config, gamma, length)
-    angle_deg = _resolve_gravity_inclination(config)
-    bn = compute_bond_numbers(drho, gamma, g_val, length, angle_deg)
-    return DimensionlessNumbers(oh=oh, bo=bn.bo, bo_perp=bn.bo_perp, bo_parallel=bn.bo_parallel)
-
-
-def _format_ohnesorge_number_row(config: SimulationConfig, gamma: float, length: float, length_label: str) -> str:
-    """Build Ohnesorge-number row from lattice kinematic viscosity."""
-    oh = compute_ohnesorge_number(config, gamma, length)
-    return _row("Oh (Ohnesorge number):", f"{oh:.6g}  [ν/(ρ_l*γ*L)), {length_label}]")
+    return DimensionlessInputs(
+        gamma=gamma,
+        gamma_source=gamma_source,
+        drho=drho,
+        drho_source=drho_source,
+        length=length,
+        length_label=length_label,
+        nu=_nu(float(config.tau)),
+        rho_l=float(config.rho_l),
+        g=g_val,
+        angle_deg=None if g_val is None else _resolve_gravity_inclination(config),
+    )
 
 
-def _format_bond_number_row(
-    delta_rho_phases: float,
-    gamma: float,
-    g_val: float,
-    length: float,
-    length_label: str,
-    angle_deg: float = 0.0,
-) -> list[str]:
-    """Build Bond-number row(s) from shared length scale."""
-    bn = compute_bond_numbers(delta_rho_phases, gamma, g_val, length, angle_deg)
-    return [
-        _row("Bo (Bond number):", f"{bn.bo:.6g}  [(ΔρgL²)/γ, {length_label}]"),
-        _row("Bo_perp (Bond normal):", f"{bn.bo_perp:.6g}  [(Δρ*g*cos({angle_deg:.4g}deg)*L^2)/gamma, {length_label}]"),
-        _row(
-            "Bo_parallel (Bond tangential):",
-            f"{bn.bo_parallel:.6g}  [(Δρ*g*sin({angle_deg:.4g}deg)*L^2)/gamma, {length_label}]",
-        ),
-    ]
+def _dimensionless_entries() -> list[OperatorEntry]:
+    """Registered dimensionless numbers, in display order.
 
-
-def compute_archimedes_number(drho: float, g_val: float, length: float, nu: float, rho_l: float) -> float:
-    """Ar = gL³Δρ / (ν²ρ_l)."""
-    return (g_val * (length**3) * drho) / ((nu**2) * rho_l)
-
-
-def compute_reynolds_number(drho: float, g_val: float, length: float, nu: float, rho_l: float) -> float:
-    """Re = sqrt(Ar): characteristic buoyancy-driven Reynolds number.
-
-    Balancing inertial drag (~ρ_l·U²·L²) against buoyancy (~Δρ·g·L³) gives the
-    characteristic velocity U ~ sqrt(gLΔρ/ρ_l), so Re = UL/ν = sqrt(Ar).
+    Sorted by the ``order`` metadata, not by registration order: the latter is
+    module import order, which would silently reshuffle ``physical_parameters.txt``
+    the moment a file is added to ``numbers/``.
     """
-    ar = compute_archimedes_number(drho, g_val, length, nu, rho_l)
-    return math.sqrt(ar) if ar >= 0 else math.nan
+    entries = get_operators("dimensionless").values()
+    return sorted(entries, key=lambda entry: (_meta_of(entry).get("order", 0), entry.name))
 
 
-def _format_archimedes_number_row(
-    drho: float, g_val: float, length: float, length_label: str, nu: float, rho_l: float
-) -> str:
-    """Build Archimedes-number row: Ar = gL^3Δρ / (ν^2ρ_l)."""
-    ar = compute_archimedes_number(drho, g_val, length, nu, rho_l)
-    return _row("Ar (Archimedes number):", f"{ar:.6g}  [gL³Δρ/(ν²ρ_l), {length_label}]")
+def _meta_of(entry: OperatorEntry) -> dict[str, object]:
+    """The entry's metadata, never ``None``."""
+    return entry.metadata or {}
 
 
-def _format_reynolds_number_row(
-    drho: float, g_val: float, length: float, length_label: str, nu: float, rho_l: float
-) -> str:
-    """Build Reynolds-number row: Re = sqrt(Ar)."""
-    re = compute_reynolds_number(drho, g_val, length, nu, rho_l)
-    return _row("Re (Reynolds number):", f"{re:.6g}  [sqrt(Ar) = UL/ν, U=sqrt(gLΔρ/ρ_l), {length_label}]")
+def dimensionless_keys() -> tuple[str, ...]:
+    """Every registered dimensionless number's key, in display order."""
+    return tuple(entry.name for entry in _dimensionless_entries())
+
+
+def dimensionless_label(key: str) -> str:
+    r"""The mathtext label for *key*, e.g. ``r"$\mathrm{Oh}$"``.
+
+    Falls back to the key itself, so a number registered without a label still
+    plots rather than crashing an axis.
+    """
+    entry = get_operators("dimensionless").get(key)
+    if entry is None:
+        msg = f"unknown dimensionless number: {key!r}"
+        raise KeyError(msg)
+    return str(_meta_of(entry).get("label", key))
+
+
+def _evaluate_dimensionless(inputs: DimensionlessInputs) -> dict[str, float | None]:
+    """Call every registered number, recording a failure as an unresolved value.
+
+    A number that raises must not take down the overview file that is written at
+    the start of every run, so the whole set is best-effort.
+    """
+    values: dict[str, float | None] = {}
+    for entry in _dimensionless_entries():
+        operator = cast("DimensionlessNumberOperator", entry.target)
+        try:
+            values[entry.name] = operator(inputs)
+        except (ArithmeticError, TypeError, ValueError):
+            values[entry.name] = None
+    return values
+
+
+@dataclass(frozen=True)
+class DimensionlessNumbers:
+    """Every registered dimensionless number for one config, keyed by name.
+
+    Registry-shaped rather than one field per number: adding a file under
+    ``numbers/`` adds a key here, and every consumer -- legend labels, regime-map
+    axes, the overview file -- reads by key. An unresolvable number is present
+    with value ``None`` rather than absent.
+
+    ``inclination_deg`` is not itself dimensionless; it rides along because it is
+    what decides whether ``bo`` or ``bo_parallel`` is the Bond number worth
+    reporting for a run, and re-deriving it from the config would duplicate the
+    force-dict precedence in :func:`_resolve_gravity_inclination`.
+    """
+
+    values: Mapping[str, float | None] = field(default_factory=dict)
+    inclination_deg: float | None = None
+
+    def get(self, key: str) -> float | None:
+        """The value of *key*, or ``None`` when unregistered or unresolvable."""
+        return self.values.get(key)
+
+
+def compute_dimensionless_numbers(config: SimulationConfig) -> DimensionlessNumbers:
+    """Every registered dimensionless number for one config; never raises.
+
+    Returns an empty set of values when the shared inputs cannot be resolved at
+    all (see :func:`resolve_dimensionless_inputs`).
+    """
+    inputs = resolve_dimensionless_inputs(config)
+    if inputs is None:
+        return DimensionlessNumbers()
+    return DimensionlessNumbers(values=_evaluate_dimensionless(inputs), inclination_deg=inputs.angle_deg)
+
+
+def _dimensionless_rows(config: SimulationConfig) -> list[str]:
+    """One overview row per resolvable dimensionless number, in display order."""
+    inputs = resolve_dimensionless_inputs(config)
+    if inputs is None:
+        return []
+    values = _evaluate_dimensionless(inputs)
+    rows: list[str] = []
+    for entry in _dimensionless_entries():
+        value = values.get(entry.name)
+        if value is None:
+            continue
+        meta = _meta_of(entry)
+        # Only the gravity-driven numbers use the buoyancy contrast, so only
+        # they annotate its provenance.
+        scale_label = (
+            f"{inputs.length_label}, Δρ {inputs.drho_source}" if meta.get("needs_gravity") else inputs.length_label
+        )
+        rows.append(
+            _row(str(meta.get("row_label", entry.name)), f"{value:.6g}  [{meta.get('formula', '')}, {scale_label}]")
+        )
+    return rows
 
 
 def _format_critical_inclination_angle_row(config: SimulationConfig, gamma: float) -> str:
-    if (
-        config.chemical_step_config is None
-        or config.gravity_masked_force is None
-        or config.rho_l is None
-        or config.rho_v is None
-    ):
-        msg = "chemical_step_config, gravity_masked_force, rho_l, and rho_v must be set"
+    g_val = _resolve_gravity_value(config)
+    if config.chemical_step_config is None or g_val is None or config.rho_l is None or config.rho_v is None:
+        msg = "chemical_step_config, a gravity force, rho_l, and rho_v must be set"
         raise RuntimeError(msg)
     ca_adv = math.radians(float(config.chemical_step_config["ca_advancing_pre_step"]))
     ca_rec = math.radians(float(config.chemical_step_config["ca_receding_pre_step"]))
-    g = float(config.gravity_masked_force["force_g"])
+    g = g_val
     radius = float(config.initialisation["radii"][0])
     nx = int(config.grid_shape[0])
     # The drive per unit area is the *net* buoyancy of the inclusion, so it
@@ -501,6 +725,36 @@ def _format_critical_inclination_angle_row(config: SimulationConfig, gamma: floa
     return _row("Critical Inclination Angle", "This droplet will remain pinned")
 
 
+def _add_measured_density_rows(lines: list[str], config: SimulationConfig) -> None:
+    """Report the densities measured off the init field, when there is one.
+
+    Makes the thresholds the length scale and the buoyancy contrast are built
+    from auditable in the file itself, rather than inferred from the config.
+    """
+    if config.init_type != "init_from_file":
+        return
+    field = _load_init_rho(config)
+    if field is None:
+        return
+    lines.append(_row("rho_min / rho_max:", f"{field.rho_min:.6g} / {field.rho_max:.6g}  [measured, init NPZ]"))
+    lines.append(_row("rho_mean (threshold):", f"{field.rho_mean:.6g}  [(rho_max+rho_min)/2]"))
+
+
+def _add_buoyancy_delta_rho_row(lines: list[str], config: SimulationConfig) -> None:
+    """Append the Δρ row, making the contrast the buoyancy numbers use auditable.
+
+    Printed whenever it resolves, gravity or not: it is a property of the field,
+    and reporting it is what lets a reader check the Bond number against the
+    density the run actually has.
+    """
+    buoyancy = _resolve_buoyancy_delta_rho(config)
+    if buoyancy is None:
+        return
+    drho, drho_source = buoyancy
+    note = "measured, rho_max-rho_min" if drho_source == "measured" else "config, rho_l-rho_v"
+    lines.append(_row("Δρ (buoyancy contrast):", f"{drho:.6g}  [{note}]"))
+
+
 def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     if "multiphase" not in config.sim_type:
         return
@@ -510,6 +764,7 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     lines.append(_row("rho_liquid:", config.rho_l))
     lines.append(_row("rho_vapour:", config.rho_v))
     lines.append(_row("Interface width:", config.interface_width))
+    _add_measured_density_rows(lines, config)
     if config.g is not None:
         lines.append(_row("g (gravity):", config.g))
 
@@ -518,26 +773,13 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
         if config.eos in _EOS_REQUIRING_CALIBRATION:
             lines.append(_row("gamma (surface tension):", "requires Young–Laplace calibration"))
         return
-    drho, gamma, source = resolved
+    _drho_config, gamma, source = resolved
     note = "measured, Young–Laplace" if source == "measured" else "2/3(κ/W)(Δρ)²"
     lines.append(_row("gamma (surface tension):", f"{gamma:.6g}  [{note}]"))
 
-    length, length_label = _resolve_length_for_dimensionless_numbers(config)
-    lines.append(_format_ohnesorge_number_row(config, gamma, length, length_label))
-
-    g_val = _resolve_gravity_value(config)
-    if g_val is None:
-        return
-
-    angle_deg = _resolve_gravity_inclination(config)
-    lines.extend(_format_bond_number_row(drho, gamma, g_val, length, length_label, angle_deg))
-    nu = _nu(float(config.tau))
-    if config.rho_l is None:
-        msg = "rho_l is required for Archimedes number"
-        raise ValueError(msg)
-    lines.append(_format_archimedes_number_row(drho, g_val, length, length_label, nu, float(config.rho_l)))
-    lines.append(_format_reynolds_number_row(drho, g_val, length, length_label, nu, float(config.rho_l)))
-    if config.chemical_step_config is not None and config.gravity_masked_force is not None:
+    _add_buoyancy_delta_rho_row(lines, config)
+    lines.extend(_dimensionless_rows(config))
+    if config.chemical_step_config is not None and _resolve_gravity_value(config) is not None:
         lines.append(_format_critical_inclination_angle_row(config, gamma))
 
 
