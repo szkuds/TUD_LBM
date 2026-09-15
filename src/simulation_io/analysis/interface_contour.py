@@ -9,7 +9,7 @@ Two markers for where the interface is, so they can be compared on one figure:
 
 ``measured``
     The midpoint of the *equilibrated* bulk densities of one snapshot: split the
-    field at a seed threshold and take ``(median(liquid) + median(vapour)) / 2``.
+    field at a rho_mean threshold and take ``(median(liquid) + median(vapour)) / 2``.
     Medians rather than ``min``/``max`` because the diffuse interface over- and
     undershoots the bulk values, and one such cell would move an extremum. The
     two markers diverge exactly when a run's bulk densities drift away from the
@@ -60,15 +60,15 @@ def config_rho_mean(config: SimulationConfig) -> float | None:
     return 0.5 * (float(config.rho_l) + float(config.rho_v))
 
 
-def measured_rho_mean(rho_2d: np.ndarray, seed: float) -> float | None:
-    """Midpoint of the bulk-phase median densities, split at *seed*.
+def measured_rho_mean(rho_2d: np.ndarray, rho_mean: float) -> float | None:
+    """Midpoint of the bulk-phase median densities, split at *rho_mean*.
 
-    Returns ``None`` when the field does not straddle *seed* — a uniform or
+    Returns ``None`` when the field does not straddle *rho_mean* — a uniform or
     single-phase field has no interface to mark.
     """
     rho = np.asarray(rho_2d, dtype=float)
-    dense = rho[rho > seed]
-    light = rho[rho < seed]
+    dense = rho[rho > rho_mean]
+    light = rho[rho < rho_mean]
     if dense.size == 0 or light.size == 0:
         return None
     return 0.5 * (float(np.median(dense)) + float(np.median(light)))
