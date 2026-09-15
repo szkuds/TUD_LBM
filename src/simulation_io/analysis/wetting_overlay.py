@@ -10,7 +10,15 @@ Wall band
     the ``rho_lower``/``rho_upper`` thresholds of
     :func:`~src.operators.wetting._wetting_modification.wetting_band_bounds`.
     A second definition of the band here could silently disagree with the
-    solver, which is exactly what the overlay exists to check.
+    solver, which is exactly what the overlay exists to check. The wall cells
+    always use the config densities, because those are what the solver bakes in.
+
+Band contours
+    The same thresholds evaluated per interface marker of
+    :mod:`.interface_contour`: ``config`` from the prescribed ``(rho_l, rho_v)``
+    — the band the solver actually applies — and ``measured`` from the
+    snapshot's bulk-phase medians, the band it *would* apply at the densities
+    the run has drifted to. Selected by ``interface_levels``, like the contour.
 
 Contact angles
     The ``ca_*``/``cll_*`` values the simulation saved into the snapshot, or —
@@ -35,7 +43,9 @@ from typing import TYPE_CHECKING
 from typing import Literal
 import numpy as np
 from src.simulation_io.analysis.droplet_metrics._snapshot import to_canonical_2d
+from src.simulation_io.analysis.interface_contour import LEVEL_CONFIG
 from src.simulation_io.analysis.interface_contour import config_rho_mean
+from src.simulation_io.analysis.interface_contour import level_densities
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -69,6 +79,15 @@ class WallBand:
 
 
 @dataclass(frozen=True)
+class BandLevel:
+    """The wetting-band thresholds at one interface marker's densities."""
+
+    level: str
+    rho_lower: float
+    rho_upper: float
+
+
+@dataclass(frozen=True)
 class ContactAngles:
     """Dispersed-phase contact angles (degrees) and contact-line positions at one wall."""
 
@@ -96,14 +115,25 @@ def wetting_edge(config: SimulationConfig) -> str | None:
     return first_wetting_edge(config.bc_config)
 
 
-def band_bounds(config: SimulationConfig) -> tuple[float, float] | None:
-    """``(rho_lower, rho_upper)`` of the wetting band, or ``None`` without both densities."""
-    if config.rho_l is None or config.rho_v is None:
+def band_level(level: str, config: SimulationConfig, rho_2d: np.ndarray) -> BandLevel | None:
+    """The wetting-band thresholds at interface marker *level*, or ``None`` if unavailable.
+
+    The solver's own :func:`~src.operators.wetting._wetting_modification.wetting_band_bounds`
+    applied to the marker's ``(dense, light)`` pair from
+    :func:`~src.simulation_io.analysis.interface_contour.level_densities`.
+    """
+    phases = level_densities(level, config, rho_2d)
+    if phases is None:
         return None
     from src.operators.wetting._wetting_modification import wetting_band_bounds
 
-    lower, upper = wetting_band_bounds(float(config.rho_l), float(config.rho_v))
-    return float(np.asarray(lower)), float(np.asarray(upper))
+    lower, upper = wetting_band_bounds(*phases)
+    return BandLevel(level, float(np.asarray(lower)), float(np.asarray(upper)))
+
+
+def band_levels(levels: tuple[str, ...], config: SimulationConfig, rho_2d: np.ndarray) -> list[BandLevel]:
+    """:func:`band_level` for every marker in *levels* this snapshot can supply."""
+    return [band for level in levels if (band := band_level(level, config, rho_2d)) is not None]
 
 
 def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
@@ -111,7 +141,7 @@ def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
 
     Empty when the config has no wetting wall or lacks ``rho_l``/``rho_v``.
     """
-    bounds = band_bounds(config)
+    bounds = band_level(LEVEL_CONFIG, config, rho_2d)
     if bounds is None or config.rho_l is None or config.rho_v is None or not config.bc_config:
         return []
     rho_l, rho_v = float(config.rho_l), float(config.rho_v)
@@ -129,7 +159,7 @@ def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
         left_cells = np.flatnonzero(np.asarray(is_left))
         right_cells = np.flatnonzero(np.asarray(is_right))
         split = float(centre) if left_cells.size or right_cells.size else None
-        bands.append(WallBand(edge, left_cells, right_cells, split, *bounds))
+        bands.append(WallBand(edge, left_cells, right_cells, split, bounds.rho_lower, bounds.rho_upper))
     return bands
 
 

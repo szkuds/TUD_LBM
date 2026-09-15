@@ -15,8 +15,10 @@ from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._wetting_modification import _apply_wetting_modification
 from src.operators.wetting._wetting_modification import wetting_band_bounds
 from src.registry import get_operators
+from src.simulation_io.analysis.interface_contour import measured_phase_densities
 from src.simulation_io.analysis.wetting_overlay import WALL_NORMAL
 from src.simulation_io.analysis.wetting_overlay import angle_glyph
+from src.simulation_io.analysis.wetting_overlay import band_level
 from src.simulation_io.analysis.wetting_overlay import contact_angles
 from src.simulation_io.analysis.wetting_overlay import to_physical
 from src.simulation_io.analysis.wetting_overlay import wall_bands
@@ -235,11 +237,12 @@ def test_both_overlays_draw_on_field_and_interface_panels(tmp_path):
     density = _line_collection_labels(_panel(fig, "Density"))
     interface = _line_collection_labels(_panel(fig, "Interface"))
     for labels in (density, interface):
-        assert any(label.startswith("ρ_upper") for label in labels)
+        assert any(label.startswith("config ρ_upper") for label in labels)
+        assert any(label.startswith("measured ρ_upper") for label in labels)
         assert any("wetting band (left)" in label for label in labels)
     # The interface panel draws its own contours once, not again as an overlay.
-    assert sum(label.startswith("config") for label in interface) == 1
-    assert sum(label.startswith("config") for label in density) == 1
+    assert sum(label.startswith("config ρ=") for label in interface) == 1
+    assert sum(label.startswith("config ρ=") for label in density) == 1
     assert any(text.get_text().startswith("θ=") for text in _panel(fig, "Density").texts)
     plt.close(fig)
 
@@ -276,7 +279,8 @@ def test_overlay_labels_are_gathered_into_one_figure_legend(tmp_path):
     (legend,) = fig.legends
     labels = [text.get_text() for text in legend.get_texts()]
     assert len(labels) == len(set(labels))
-    assert {label.split()[0] for label in labels} >= {"config", "measured", "ρ_lower=0.145", "ρ_upper=0.955"}
+    assert {"config ρ_lower=0.145", "config ρ_upper=0.955"} <= set(labels)
+    assert {label.split()[0] for label in labels} == {"config", "measured", "bottom"}
     assert any("wetting band (right)" in label for label in labels)
     plt.close(fig)
 
@@ -288,3 +292,37 @@ def test_no_figure_legend_without_labelled_overlays(tmp_path):
 
     assert fig.legends == []
     plt.close(fig)
+
+
+def test_measured_band_uses_the_snapshot_bulk_densities():
+    rho = _droplet()
+    # Bulk vapour drifted above the prescribed rho_v, as equilibrated runs do.
+    drifted = np.where(rho < 0.5 * (_RHO_L + _RHO_V), rho + 0.05, rho)
+    config = _config()
+
+    config_band = band_level("config", config, drifted)
+    measured_band = band_level("measured", config, drifted)
+    assert config_band is not None
+    assert measured_band is not None
+
+    assert (config_band.rho_lower, config_band.rho_upper) == pytest.approx(wetting_band_bounds(_RHO_L, _RHO_V))
+    phases = measured_phase_densities(drifted, 0.5 * (_RHO_L + _RHO_V))
+    assert phases is not None
+    assert (measured_band.rho_lower, measured_band.rho_upper) == pytest.approx(wetting_band_bounds(*phases))
+    assert measured_band.rho_lower > config_band.rho_lower
+
+
+def test_interface_levels_select_the_band_contours(tmp_path):
+    config = _config(interface_levels=["measured"])
+    builder = FigureBuilder(config, run_dir=tmp_path, fields=["density"], overlays=["contact_angle"])
+    fig = builder.render_figure(_data(_droplet()), timestep=0)
+    assert fig is not None
+
+    band_labels = [label for label in _line_collection_labels(_panel(fig, "Density")) if "ρ_" in label]
+    assert [label.split()[0] for label in band_labels] == ["measured", "measured"]
+    plt.close(fig)
+
+
+def test_unknown_interface_level_fails_when_the_overlay_is_constructed(tmp_path):
+    with pytest.raises(ValueError, match="bogus"):
+        FigureBuilder(_config(interface_levels=["bogus"]), run_dir=tmp_path, overlays=["contact_angle"])

@@ -117,7 +117,10 @@ _interface_levels_option = click.option(
     "--interface-levels",
     "interface_levels",
     default=None,
-    help="Comma-separated interface markers to contour: 'config', 'measured'. Defaults to both.",
+    help=(
+        "Comma-separated interface markers for the interface contour and the contact-angle "
+        "wetting band: 'config', 'measured'. Defaults to both."
+    ),
 )
 
 

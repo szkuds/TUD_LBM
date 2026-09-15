@@ -3,7 +3,9 @@
 Draws, for a run with a ``"wetting"`` wall:
 
 - the ``rho_upper`` / ``rho_lower`` iso-contours bounding the density band in
-  which the wetting BC modifies the ghost row;
+  which the wetting BC modifies the ghost row, once per interface marker
+  (``config`` and ``measured``, chosen by ``interface_levels`` exactly as for the
+  interface contour);
 - the ghost-row cells it actually modifies, as thick segments on the solid
   surface coloured by left/right contact-line region, with a tick at the split;
 - at each contact line, the tangent at the contact angle, an arc from the wall
@@ -23,9 +25,10 @@ from matplotlib.collections import LineCollection
 from src.registry import plotting_operator
 from src.simulation_io.analysis.droplet_metrics import extract_rho_2d
 from src.simulation_io.analysis.interface_contour import interface_lines
+from src.simulation_io.analysis.interface_contour import resolve_interface_levels
 from src.simulation_io.analysis.wetting_overlay import angle_glyph
-from src.simulation_io.analysis.wetting_overlay import band_bounds
 from src.simulation_io.analysis.wetting_overlay import band_cell_segments
+from src.simulation_io.analysis.wetting_overlay import band_levels
 from src.simulation_io.analysis.wetting_overlay import contact_angles
 from src.simulation_io.analysis.wetting_overlay import split_tick
 from src.simulation_io.analysis.wetting_overlay import wall_bands
@@ -34,6 +37,7 @@ from src.simulation_io.plotting.base import PlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
+    from pathlib import Path
     import matplotlib.axes
     import numpy as np
     from src.config import SimulationConfig
@@ -54,6 +58,11 @@ class ContactAnglePlotOperator(PlotOperator):
     supports_overlay = True
     overlay_only = True
     overlay_label = "contact angles and wetting band"
+
+    def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:
+        """Validate the configured interface markers up front, not inside a panel."""
+        super().__init__(config, data_dir=data_dir)
+        self.levels = resolve_interface_levels(config)
 
     @classmethod
     def overlay_prompt_default(cls, config: SimulationConfig) -> bool | None:
@@ -94,20 +103,17 @@ class ContactAnglePlotOperator(PlotOperator):
         self._draw_angles(ax, data, rho_2d, shape)
 
     def _draw_band_contours(self, ax: matplotlib.axes.Axes, rho_2d: np.ndarray) -> None:
-        bounds = band_bounds(self.config)
-        if bounds is None:
-            return
-        for key, value in zip(("lower", "upper"), bounds, strict=True):
-            color, linestyle = DEFAULT_STYLE.wetting_band_styles[key]
-            ax.add_collection(
-                LineCollection(
-                    interface_lines(rho_2d, value),
-                    colors=color,
-                    linestyles=linestyle,
-                    linewidths=DEFAULT_STYLE.interface_linewidth,
-                    label=f"ρ_{key}={value:.4g}",
+        for band in band_levels(self.levels, self.config, rho_2d):
+            for key, value in (("lower", band.rho_lower), ("upper", band.rho_upper)):
+                ax.add_collection(
+                    LineCollection(
+                        interface_lines(rho_2d, value),
+                        colors=DEFAULT_STYLE.wetting_band_colors[key],
+                        linestyles=DEFAULT_STYLE.wetting_band_linestyles[band.level],
+                        linewidths=DEFAULT_STYLE.interface_linewidth,
+                        label=f"{band.level} ρ_{key}={value:.4g}",
+                    )
                 )
-            )
 
     def _draw_wall_cells(self, ax: matplotlib.axes.Axes, rho_2d: np.ndarray, shape: tuple[int, int]) -> None:
         for band in wall_bands(rho_2d, self.config):

@@ -57,12 +57,19 @@ class FigureStyle:
     interface_linewidth: float = 1.5
     colormap_interface_time: str = "viridis"
 
-    # Contact-angle overlay: (colour, linestyle) per wetting-band threshold,
-    # colour per modified wall region, and the angle glyphs.
-    wetting_band_styles: dict[str, tuple[str, str]] = field(
+    # Contact-angle overlay: colour per wetting-band threshold, linestyle per
+    # interface marker (config / measured), colour per modified wall region,
+    # and the angle glyphs.
+    wetting_band_colors: dict[str, str] = field(
         default_factory=lambda: {
-            "upper": ("tab:orange", ":"),
-            "lower": ("tab:purple", ":"),
+            "upper": "tab:orange",
+            "lower": "tab:purple",
+        }
+    )
+    wetting_band_linestyles: dict[str, str] = field(
+        default_factory=lambda: {
+            "config": ":",
+            "measured": "-.",
         }
     )
     wetting_region_colors: dict[str, str] = field(
