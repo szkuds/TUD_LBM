@@ -3,6 +3,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from rich.prompt import Confirm
 from rich.prompt import Prompt
 from src.cli._console import console
 
@@ -125,6 +126,34 @@ def prompt_fields_marked(
     if not selected:
         console.print("[dim]No valid selection — keeping current.[/dim]")
         return current
+    return selected
+
+
+def prompt_overlays(plotting_ops: dict) -> list[str]:
+    """Ask, per overlay-capable plotting operator, whether to draw it on the field panels.
+
+    Opt-out: every question defaults to yes, and end-of-input counts as the
+    default. The questions come from the registry — one per operator with
+    ``supports_overlay`` — so a new overlay needs no edit here.
+
+    Args:
+        plotting_ops: ``{name: OperatorEntry}`` of the ``plotting`` kind.
+
+    Returns:
+        The overlay names kept. An empty list means every overlay was declined,
+        which overrides the config's ``overlay_fields``.
+    """
+    selected: list[str] = []
+    for name, entry in sorted(plotting_ops.items()):
+        if not getattr(entry.target, "supports_overlay", False):
+            continue
+        label = getattr(entry.target, "overlay_label", "") or name
+        try:
+            keep = Confirm.ask(f"Overlay {label} on field panels?", default=True)
+        except EOFError:
+            keep = True
+        if keep:
+            selected.append(name)
     return selected
 
 

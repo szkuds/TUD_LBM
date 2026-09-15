@@ -102,6 +102,7 @@ class InterfacePlotOperator(PlotOperator):
     name = "interface"
     opt_in = True
     supports_overlay = True
+    overlay_label = "interface contour"
     accepts_overlays = False
 
     def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:

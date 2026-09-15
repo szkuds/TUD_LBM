@@ -29,6 +29,9 @@ class PlotOperator(ABC):
     #: a plotting operator, not a separate registry kind.
     supports_overlay: bool = False
 
+    #: Wording for the interactive overlay question; falls back to :attr:`name`.
+    overlay_label: str = ""
+
     #: Whether overlays are drawn onto this operator's own panel. An overlay
     #: operator rendered as a standalone panel turns it off so it is not drawn
     #: twice.
