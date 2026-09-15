@@ -29,12 +29,17 @@ class PlotOperator(ABC):
     #: a plotting operator, not a separate registry kind.
     supports_overlay: bool = False
 
+    #: Only drawn as an overlay: never a standalone panel, and hidden from field
+    #: selection. Implies :attr:`supports_overlay`.
+    overlay_only: bool = False
+
     #: Wording for the interactive overlay question; falls back to :attr:`name`.
     overlay_label: str = ""
 
-    #: Whether overlays are drawn onto this operator's own panel. An overlay
-    #: operator rendered as a standalone panel turns it off so it is not drawn
-    #: twice.
+    #: Whether overlays are drawn onto this operator's own panel. Independently
+    #: of this flag, an overlay is never drawn onto its own standalone panel, so
+    #: an overlay-capable panel (``interface``) still carries the *other*
+    #: overlays without drawing itself twice.
     accepts_overlays: bool = True
 
     def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:
@@ -55,6 +60,16 @@ class PlotOperator(ABC):
         timestep: int,
     ) -> None:
         """Draw this operator on the provided axes."""
+
+    @classmethod
+    def overlay_prompt_default(cls, config: SimulationConfig) -> bool | None:  # noqa: ARG003
+        """Default answer to the interactive overlay question for *config*.
+
+        ``None`` means the question is not offered at all, because the overlay
+        has nothing to show for this run. Only consulted when
+        :attr:`supports_overlay` is set.
+        """
+        return True
 
     def draw_overlay(
         self,

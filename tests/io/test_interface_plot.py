@@ -64,7 +64,6 @@ def test_interface_is_an_opt_in_overlay_capable_plotting_operator():
 
     assert target.supports_overlay
     assert target.opt_in
-    assert not target.accepts_overlays
 
 
 def test_interface_is_not_in_the_default_figure(tmp_path):
@@ -117,7 +116,7 @@ def test_non_overlay_operator_is_rejected_as_overlay(tmp_path):
 
     messages = [str(warning.message) for warning in record]
     assert builder.overlay_operators == []
-    assert any("'density'" in m and "['interface']" in m for m in messages)
+    assert any("'density'" in m and "['contact_angle', 'interface']" in m for m in messages)
     assert any("'nonexistent'" in m for m in messages)
 
 

@@ -111,7 +111,7 @@ _overlay_option = click.option(
     "--overlay",
     "overlay",
     default=None,
-    help="Comma-separated overlay operators drawn on top of every field panel (e.g. 'interface').",
+    help="Comma-separated overlay operators drawn on top of every field panel (e.g. 'interface,contact_angle').",
 )
 _interface_levels_option = click.option(
     "--interface-levels",
@@ -122,12 +122,22 @@ _interface_levels_option = click.option(
 
 
 def _operators_for(kinds: tuple[str, ...]) -> dict:
-    """Merge the registered operators of every kind in *kinds*."""
+    """Merge the selectable operators of every kind in *kinds*.
+
+    Overlay-only operators are left out: they are chosen through the overlay
+    question or ``--overlay``, never as a field.
+    """
     from src.registry import get_operators
 
     merged: dict = {}
     for kind in kinds:
-        merged.update(get_operators(kind))
+        merged.update(
+            {
+                name: entry
+                for name, entry in get_operators(kind).items()
+                if not getattr(entry.target, "overlay_only", False)
+            }
+        )
     return merged
 
 
@@ -149,6 +159,7 @@ def _select_overlays(
     interactive: bool,
     field_list: list[str] | None,
     kinds: tuple[str, ...],
+    config: SimulationConfig,
 ) -> list[str] | None:
     """Resolve the overlays for one invocation, asking only when it makes sense.
 
@@ -166,7 +177,7 @@ def _select_overlays(
     plotting_ops = get_operators("plotting")
     if field_list is not None and not any(name in plotting_ops for name in field_list):
         return None
-    return prompt_overlays(plotting_ops)
+    return prompt_overlays(plotting_ops, config)
 
 
 def _print_overlays(overlays: list[str] | None) -> None:
@@ -203,6 +214,7 @@ def _build_figures(ctx: VisualiseContext, kinds: tuple[str, ...]) -> None:
         interactive=not ctx.fields and not ctx.no_prompt and ctx.snapshot_path is None,
         field_list=field_list,
         kinds=kinds,
+        config=config,
     )
     _print_visualise_summary(ctx, field_list, overlays)
 
@@ -344,6 +356,7 @@ def animate(
         interactive=not fields and not no_prompt,
         field_list=selected,
         kinds=_BOTH_KINDS,
+        config=config,
     )
 
     if selected:

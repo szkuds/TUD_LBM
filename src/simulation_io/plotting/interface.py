@@ -7,7 +7,8 @@ All three draw the ``rho == level`` contour for the interface markers of
 ``interface`` (plotting operator)
     One operator in two roles. Named in ``plot_fields`` it renders its own
     panel; named in ``overlay_fields`` its :meth:`draw_overlay` draws only the
-    contour on top of every other field panel (density, velocity, ...). It is
+    contour on top of every other field panel (density, velocity, ...). Its own
+    panel still carries the other overlays (e.g. ``contact_angle``). It is
     opt-in, so it never joins the default figure uninvited.
 
 ``interface_evolution_config`` / ``interface_evolution_measured`` (analysis)
@@ -68,15 +69,15 @@ def _draw_interface(
     config: SimulationConfig,
     levels: tuple[str, ...],
 ) -> None:
-    """Draw one styled contour per interface marker, with a legend naming its density.
+    """Draw one styled contour per interface marker, labelled with its density.
 
     Autoscaling is switched off first so the host panel keeps its extent. A
     marker this snapshot cannot supply (no config densities, a uniform field) is
-    skipped rather than drawn at a meaningless level.
+    skipped rather than drawn at a meaningless level. No per-panel legend: the
+    labels are gathered into the figure's single shared legend.
     """
     ax.autoscale(enable=False)
     rho_2d = extract_rho_2d(data["rho"])
-    drawn = False
     for name in levels:
         value = level_value(name, config, rho_2d)
         if value is None:
@@ -90,9 +91,6 @@ def _draw_interface(
             label=f"{name} ρ={value:.4g}",
         )
         ax.add_collection(collection)
-        drawn = True
-    if drawn:
-        ax.legend(loc="upper right", fontsize=DEFAULT_STYLE.panel_legend_fontsize)
 
 
 @plotting_operator(name="interface")
@@ -103,7 +101,6 @@ class InterfacePlotOperator(PlotOperator):
     opt_in = True
     supports_overlay = True
     overlay_label = "interface contour"
-    accepts_overlays = False
 
     def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:
         """Validate the configured interface markers up front, not inside a panel."""

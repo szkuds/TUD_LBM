@@ -19,6 +19,7 @@ from __future__ import annotations  # noqa: I001
 # which re-enters this package before it is initialised. Breaking that cycle
 # means moving ``figure_config`` out of the plotting package first.
 from . import ca_theta_plot as _ca_theta_plot_mod  # noqa: F401
+from . import contact_angle as _contact_angle_mod  # noqa: F401
 from . import contact_angle_plot as _contact_angle_plot_mod  # noqa: F401
 from . import contact_line_speed_plot as _contact_line_speed_plot_mod  # noqa: F401
 from . import density as _density_mod  # noqa: F401

@@ -23,6 +23,9 @@ class FigureStyle:
     legend_fontsize: int = 12
     pair_legend_fontsize: int = 8
     panel_legend_fontsize: int = 6
+    #: The single legend shared by every field panel, placed below the panels.
+    shared_legend_fontsize: int = 8
+    shared_legend_max_columns: int = 3
     empty_state_fontsize: int = 9
     error_text_fontsize: int = 8
 
@@ -53,6 +56,27 @@ class FigureStyle:
     )
     interface_linewidth: float = 1.5
     colormap_interface_time: str = "viridis"
+
+    # Contact-angle overlay: (colour, linestyle) per wetting-band threshold,
+    # colour per modified wall region, and the angle glyphs.
+    wetting_band_styles: dict[str, tuple[str, str]] = field(
+        default_factory=lambda: {
+            "upper": ("tab:orange", ":"),
+            "lower": ("tab:purple", ":"),
+        }
+    )
+    wetting_region_colors: dict[str, str] = field(
+        default_factory=lambda: {
+            "left": "tab:green",
+            "right": "tab:pink",
+        }
+    )
+    wetting_marker_linewidth: float = 4.0
+    contact_angle_color: str = "gold"
+    contact_angle_linewidth: float = 1.5
+    contact_angle_fontsize: int = 8
+    #: Tangent length as a fraction of the shorter domain side.
+    contact_angle_length_fraction: float = 0.25
 
     colors: dict[str, str] = field(
         default_factory=lambda: {
