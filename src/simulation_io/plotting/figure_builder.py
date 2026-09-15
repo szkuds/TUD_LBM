@@ -122,7 +122,9 @@ class FigureBuilder:
                 ]
 
         self._resolve_operators(requested)
-        self._resolve_overlays(overlays or self.config.overlay_fields or [])
+        # ``[]`` is an explicit "no overlays" (e.g. declined at the prompt) and
+        # must not fall back to the config; only ``None`` does.
+        self._resolve_overlays(overlays if overlays is not None else (self.config.overlay_fields or []))
 
     def _resolve_overlays(self, requested: list[str]) -> None:
         """Instantiate the requested overlays: plotting operators with ``supports_overlay``."""

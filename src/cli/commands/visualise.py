@@ -13,6 +13,7 @@ from src.cli.app import cli
 from src.cli.config_loading import _validate_run_dir_has_config
 from src.cli.field_select import _configure_snapshot_fig
 from src.cli.field_select import prompt_fields_marked
+from src.cli.field_select import prompt_overlays
 from src.config.run_config import DATA_DIRNAME
 
 if TYPE_CHECKING:
@@ -142,6 +143,38 @@ def _restrict(names: list[str] | None, available: dict) -> list[str] | None:
     return [name for name in names if name in available] or None
 
 
+def _select_overlays(
+    *,
+    explicit: list[str] | None,
+    interactive: bool,
+    field_list: list[str] | None,
+    kinds: tuple[str, ...],
+) -> list[str] | None:
+    """Resolve the overlays for one invocation, asking only when it makes sense.
+
+    ``--overlay`` always wins. Otherwise the opt-out question is asked only in
+    the interactive flow, and only when something could carry an overlay: the
+    field-panel kind is in play and the selection is not analysis-only. ``None``
+    lets ``FigureBuilder`` fall back to the config's ``overlay_fields``.
+    """
+    if explicit is not None:
+        return explicit
+    if not interactive or "plotting" not in kinds:
+        return None
+    from src.registry import get_operators
+
+    plotting_ops = get_operators("plotting")
+    if field_list is not None and not any(name in plotting_ops for name in field_list):
+        return None
+    return prompt_overlays(plotting_ops)
+
+
+def _print_overlays(overlays: list[str] | None) -> None:
+    """Print the resolved overlays; an explicit empty list reads as ``none``."""
+    if overlays is not None:
+        console.print(f"[dim]Overlays      : {', '.join(overlays) or 'none'}[/dim]")
+
+
 @dataclass(frozen=True)
 class VisualiseContext:
     """Options bound on the ``visualise`` group, shared with its subcommands."""
@@ -165,7 +198,13 @@ def _build_figures(ctx: VisualiseContext, kinds: tuple[str, ...]) -> None:
     available = _operators_for(kinds)
 
     field_list = _select_visualise_fields(ctx, config, available)
-    _print_visualise_summary(ctx, field_list)
+    overlays = _select_overlays(
+        explicit=ctx.overlays,
+        interactive=not ctx.fields and not ctx.no_prompt and ctx.snapshot_path is None,
+        field_list=field_list,
+        kinds=kinds,
+    )
+    _print_visualise_summary(ctx, field_list, overlays)
 
     # An empty selection would make FigureBuilder fall back to its own default,
     # which spans both kinds — so name the kind's operators explicitly.
@@ -174,7 +213,7 @@ def _build_figures(ctx: VisualiseContext, kinds: tuple[str, ...]) -> None:
         run_dir=ctx.run_dir,
         dpi=ctx.dpi,
         fields=field_list or sorted(available),
-        overlays=ctx.overlays,
+        overlays=overlays,
     )
     _configure_snapshot_fig(builder, field_list)
     saved = _build_requested_figures(builder, ctx)
@@ -202,15 +241,18 @@ def _select_visualise_fields(ctx: VisualiseContext, config: SimulationConfig, av
     )
 
 
-def _print_visualise_summary(ctx: VisualiseContext, field_list: list[str] | None) -> None:
+def _print_visualise_summary(
+    ctx: VisualiseContext,
+    field_list: list[str] | None,
+    overlays: list[str] | None,
+) -> None:
     """Print the effective inputs for a ``visualise`` invocation."""
     console.print(f"[dim]Run directory : {ctx.run_dir}[/dim]")
     if ctx.snapshot_path is not None:
         console.print(f"[dim]Snapshot      : {ctx.snapshot_path}[/dim]")
     if field_list:
         console.print(f"[dim]Fields        : {', '.join(field_list)}[/dim]")
-    if ctx.overlays:
-        console.print(f"[dim]Overlays      : {', '.join(ctx.overlays)}[/dim]")
+    _print_overlays(overlays)
     if ctx.interface_levels:
         console.print(f"[dim]Interface lvls: {', '.join(ctx.interface_levels)}[/dim]")
     if ctx.skip and ctx.snapshot_path is None:
@@ -278,7 +320,6 @@ def animate(
     from src.simulation_io.plotting import Animator
 
     config = _with_interface_levels(_load_run_config(run_dir), _comma_list(interface_levels))
-    overlays = _comma_list(overlay)
     available = _operators_for(_BOTH_KINDS)
 
     console.print(f"[dim]Run directory : {run_dir}[/dim]")
@@ -298,11 +339,16 @@ def animate(
             label="animation fields",
             config_label=_RUN_CONFIG_LABEL,
         )
+    overlays = _select_overlays(
+        explicit=_comma_list(overlay),
+        interactive=not fields and not no_prompt,
+        field_list=selected,
+        kinds=_BOTH_KINDS,
+    )
 
     if selected:
         console.print(f"[dim]Fields        : {', '.join(selected)}[/dim]")
-    if overlays:
-        console.print(f"[dim]Overlays      : {', '.join(overlays)}[/dim]")
+    _print_overlays(overlays)
     console.print()
 
     animator = Animator(config=config, run_dir=run_dir, fps=fps, fields=selected, overlays=overlays)

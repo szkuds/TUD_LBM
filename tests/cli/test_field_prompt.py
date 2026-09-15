@@ -1,6 +1,7 @@
 """Operator prompts mark which entries the run's stored config already lists."""
 
 from __future__ import annotations
+import pytest
 from src.cli.commands import cli
 from src.cli.field_select import build_choices
 from tests.support.run_dirs import build_run_dir
@@ -71,3 +72,103 @@ def test_animate_marks_against_animate_fields(runner, tmp_path, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert captured["configured"] == ["velocity"]
+
+
+_OVERLAY_QUESTION = "Overlay interface contour on field panels?"
+
+
+def test_prompt_overlays_is_opt_out(monkeypatch):
+    from src.cli import field_select
+
+    answers = iter([True, False])
+    monkeypatch.setattr(field_select.Confirm, "ask", lambda *_a, **_k: next(answers))
+    plotting = _entries("plotting")
+
+    assert field_select.prompt_overlays(plotting) == ["interface"]
+    assert field_select.prompt_overlays(plotting) == []
+
+
+def test_prompt_overlays_keeps_default_on_end_of_input(monkeypatch):
+    from src.cli import field_select
+
+    def _eof(*_args, **_kwargs):
+        raise EOFError
+
+    monkeypatch.setattr(field_select.Confirm, "ask", _eof)
+
+    assert field_select.prompt_overlays(_entries("plotting")) == ["interface"]
+
+
+def test_interactive_visualise_overlays_interface_by_default(runner, run_dir):
+    result = runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\n\n")
+
+    assert result.exit_code == 0, result.output
+    assert _OVERLAY_QUESTION in result.output
+    assert "Overlays      : interface" in result.output
+
+
+def test_interactive_visualise_overlay_can_be_declined(runner, run_dir):
+    result = runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\nn\n")
+
+    assert result.exit_code == 0, result.output
+    assert _OVERLAY_QUESTION in result.output
+    assert "Overlays      : none" in result.output
+
+
+def test_declining_overrides_overlay_fields_from_config(runner, tmp_path, monkeypatch):
+    captured: dict[str, object] = {}
+
+    def _capture(self, config, run_dir, dpi, fields, overlays):
+        captured["overlays"] = overlays
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("src.simulation_io.plotting.FigureBuilder.__init__", _capture)
+    run_dir = build_run_dir(tmp_path, config=wetting_config(overlay_fields=["interface"]))
+
+    runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\nn\n")
+
+    assert captured["overlays"] == []
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        pytest.param(["analysis"], id="analysis-subcommand"),
+        pytest.param(["--overlay", "interface", "fields"], id="explicit-overlay"),
+        pytest.param(["--no-prompt", "fields"], id="no-prompt"),
+        pytest.param(["--fields", "density", "fields"], id="explicit-fields"),
+    ],
+)
+def test_overlay_question_is_skipped(runner, run_dir, args):
+    result = runner.invoke(cli, ["visualise", str(run_dir), *args], input="\n\n")
+
+    assert result.exit_code == 0, result.output
+    assert _OVERLAY_QUESTION not in result.output
+
+
+def test_analysis_only_selection_skips_overlay_question(runner, run_dir):
+    result = runner.invoke(cli, ["visualise", str(run_dir)], input="ca_theta_vs_x\n\n")
+
+    assert result.exit_code == 0, result.output
+    assert _OVERLAY_QUESTION not in result.output
+
+
+@pytest.mark.parametrize(("answer", "expected"), [("\n", ["interface"]), ("n\n", [])])
+def test_interactive_animate_asks_overlay_question(runner, tmp_path, monkeypatch, answer, expected):
+    captured: dict[str, object] = {}
+
+    class _FakeAnimator:
+        def __init__(self, *, config, run_dir, fps, fields, overlays):
+            captured["overlays"] = overlays
+
+        def create(self, output):
+            return tmp_path / "a.mp4"
+
+    monkeypatch.setattr("src.simulation_io.plotting.Animator", _FakeAnimator)
+    run_dir = build_run_dir(tmp_path)
+
+    result = runner.invoke(cli, ["animate", str(run_dir)], input="\n" + answer)
+
+    assert result.exit_code == 0, result.output
+    assert _OVERLAY_QUESTION in result.output
+    assert captured["overlays"] == expected

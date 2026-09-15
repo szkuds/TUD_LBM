@@ -204,3 +204,9 @@ def test_operator_without_overlay_support_refuses_draw_overlay():
     with pytest.raises(NotImplementedError, match="density"):
         density.draw_overlay(ax, _snapshot(), timestep=0)
     plt.close(fig)
+
+
+def test_explicit_empty_overlays_override_config_overlay_fields(tmp_path):
+    builder = FigureBuilder(_config(overlay_fields=["interface"]), run_dir=tmp_path, overlays=[])
+
+    assert builder.overlay_operators == []
