@@ -22,6 +22,7 @@ class Animator:
         fps: int = 10,
         dpi: int = 150,
         fields: list[str] | None = None,
+        overlays: list[str] | None = None,
     ) -> None:
         """Initialise animation settings for a simulation run directory.
 
@@ -32,11 +33,19 @@ class Animator:
             dpi: Resolution in dots per inch for each frame.
             fields: Explicit operator names to animate. When ``None``, falls back to
                 ``config.animate_fields``, then ``config.plot_fields``.
+            overlays: Explicit overlay operator names. When ``None``, falls back to
+                ``config.overlay_fields``.
         """
         resolved_fields = fields if fields is not None else (config.animate_fields or config.plot_fields)
         self.fps = fps
         self.dpi = dpi
-        self.builder = FigureBuilder(config=config, run_dir=run_dir, dpi=dpi, fields=resolved_fields)
+        self.builder = FigureBuilder(
+            config=config,
+            run_dir=run_dir,
+            dpi=dpi,
+            fields=resolved_fields,
+            overlays=overlays,
+        )
         self._frames_dir = self.builder.plot_dir / "frames"
 
     def build_frames(self) -> list[Path]:

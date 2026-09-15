@@ -181,6 +181,8 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
         table.add_row("Plot Fields", ", ".join(config.plot_fields))
     if config.animate_fields:
         table.add_row("Animate Fields", ", ".join(config.animate_fields))
+    if config.overlay_fields:
+        table.add_row("Overlay Fields", ", ".join(config.overlay_fields))
 
     if config.is_multiphase:
         table.add_row("Kappa", str(config.kappa))

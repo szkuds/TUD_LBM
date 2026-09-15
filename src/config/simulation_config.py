@@ -204,6 +204,11 @@ class SimulationConfig:
     save_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
     plot_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
     animate_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
+    # Plotting operators drawn on top of every field panel (e.g. ["interface"]).
+    overlay_fields: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
+    # Interface markers to contour: "config" and/or "measured". None draws both.
+    # Validated by simulation_io.analysis.interface_contour, not here.
+    interface_levels: list[str] | None = field(default=None, metadata={CONFIG_SECTION: "output"})
     output_format: str | list[str] | None = field(default="numpy", metadata={CONFIG_SECTION: "output"})
     output_dir: str | None = field(default=None, metadata={CONFIG_SECTION: "output"})
 

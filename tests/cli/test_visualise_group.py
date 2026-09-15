@@ -162,3 +162,66 @@ def test_animate_rejects_file_run_dir(runner, tmp_path):
 
     assert result.exit_code == 2
     assert "Directory" in result.output
+
+
+def test_fields_subcommand_applies_interface_overlay(runner, run_dir):
+    result = runner.invoke(
+        cli,
+        [
+            "visualise",
+            str(run_dir),
+            "--fields",
+            "density",
+            "--overlay",
+            "interface",
+            "--interface-levels",
+            "measured",
+            "--no-prompt",
+            "fields",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Overlays      : interface" in result.output
+    assert "timestep_5.png" in _plot_names(run_dir)
+
+
+def test_unknown_interface_level_exits_with_error(runner, run_dir):
+    result = runner.invoke(
+        cli,
+        ["visualise", str(run_dir), "--fields", "interface", "--interface-levels", "median", "--no-prompt", "fields"],
+    )
+
+    assert result.exit_code == 1
+    assert "Error:" in result.output
+    assert "median" in result.output
+
+
+def test_animate_accepts_overlay_options(runner, run_dir, monkeypatch):
+    captured: dict[str, object] = {}
+
+    class _FakeAnimator:
+        def __init__(self, *, config, run_dir, fps, fields, overlays):
+            captured.update(levels=config.interface_levels, fields=fields, overlays=overlays)
+
+        def create(self, output):
+            return run_dir / "plots" / "animation.mp4"
+
+    monkeypatch.setattr("src.simulation_io.plotting.Animator", _FakeAnimator)
+    result = runner.invoke(
+        cli,
+        [
+            "animate",
+            str(run_dir),
+            "--fields",
+            "density",
+            "--overlay",
+            "interface",
+            "--interface-levels",
+            "config",
+            "--no-prompt",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured == {"levels": ["config"], "fields": ["density"], "overlays": ["interface"]}

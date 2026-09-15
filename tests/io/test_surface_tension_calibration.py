@@ -540,6 +540,7 @@ def test_calibration_config_isolates_single_droplet():
         "save_fields",
         "plot_fields",
         "animate_fields",
+        "overlay_fields",
         "g",
         "gravity_force",
         "gravity_masked_force",
