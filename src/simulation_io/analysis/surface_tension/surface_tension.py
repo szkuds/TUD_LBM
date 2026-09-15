@@ -375,6 +375,7 @@ def _calibration_config(config: SimulationConfig) -> SimulationConfig:
         save_fields=None,
         plot_fields=None,
         animate_fields=None,
+        overlay_fields=None,
         g=None,
         gravity_force=None,
         gravity_masked_force=None,

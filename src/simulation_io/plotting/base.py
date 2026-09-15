@@ -24,6 +24,16 @@ class PlotOperator(ABC):
     #: when it is named explicitly.
     opt_in: bool = False
 
+    #: May be named in ``overlay_fields``: :meth:`draw_overlay` then draws this
+    #: operator on top of every other field panel. Overlays are a capability of
+    #: a plotting operator, not a separate registry kind.
+    supports_overlay: bool = False
+
+    #: Whether overlays are drawn onto this operator's own panel. An overlay
+    #: operator rendered as a standalone panel turns it off so it is not drawn
+    #: twice.
+    accepts_overlays: bool = True
+
     def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:
         """Initialize the plot operator with config and optional data directory.
 
@@ -42,6 +52,20 @@ class PlotOperator(ABC):
         timestep: int,
     ) -> None:
         """Draw this operator on the provided axes."""
+
+    def draw_overlay(
+        self,
+        ax: matplotlib.axes.Axes,
+        data: dict[str, np.ndarray],
+        timestep: int,
+    ) -> None:
+        """Draw this operator on top of another panel's axes.
+
+        Only called when :attr:`supports_overlay` is set. Must add artists only —
+        no colorbar, title or axis-limit change — so the host panel is unchanged.
+        """
+        msg = f"Plot operator {self.name!r} does not support being drawn as an overlay."
+        raise NotImplementedError(msg)
 
     def is_available(self, data: dict[str, np.ndarray]) -> bool:  # noqa: ARG002
         """Whether this operator has enough data to render."""

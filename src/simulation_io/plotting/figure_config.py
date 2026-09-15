@@ -42,6 +42,18 @@ class FigureStyle:
     quiver_color: str = "white"
     quiver_alpha: float = 0.7
 
+    # Interface contour: (colour, linestyle) per marker in
+    # analysis.interface_contour. Chosen to read on every field colormap above
+    # and on the white standalone panel.
+    interface_level_styles: dict[str, tuple[str, str]] = field(
+        default_factory=lambda: {
+            "config": ("tab:red", "-"),
+            "measured": ("tab:cyan", "--"),
+        }
+    )
+    interface_linewidth: float = 1.5
+    colormap_interface_time: str = "viridis"
+
     colors: dict[str, str] = field(
         default_factory=lambda: {
             "max_velocity": "tab:blue",

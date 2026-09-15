@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 import click
@@ -91,6 +92,34 @@ def _validate_single_snapshot_field(field: np.ndarray) -> None:
     raise click.UsageError(_SINGLE_SNAPSHOT_FIELD_USAGE)
 
 
+def _comma_list(value: str | None) -> list[str] | None:
+    """Split a comma-separated CLI option into stripped names, or ``None`` when unset."""
+    if not value:
+        return None
+    return [name.strip() for name in value.split(",") if name.strip()] or None
+
+
+def _with_interface_levels(config: SimulationConfig, interface_levels: list[str] | None) -> SimulationConfig:
+    """Apply a ``--interface-levels`` override, so operators read one source."""
+    if interface_levels is None:
+        return config
+    return replace(config, interface_levels=interface_levels)
+
+
+_overlay_option = click.option(
+    "--overlay",
+    "overlay",
+    default=None,
+    help="Comma-separated overlay operators drawn on top of every field panel (e.g. 'interface').",
+)
+_interface_levels_option = click.option(
+    "--interface-levels",
+    "interface_levels",
+    default=None,
+    help="Comma-separated interface markers to contour: 'config', 'measured'. Defaults to both.",
+)
+
+
 def _operators_for(kinds: tuple[str, ...]) -> dict:
     """Merge the registered operators of every kind in *kinds*."""
     from src.registry import get_operators
@@ -124,13 +153,15 @@ class VisualiseContext:
     dpi: int
     fields: str | None
     no_prompt: bool
+    overlays: list[str] | None = None
+    interface_levels: list[str] | None = None
 
 
 def _build_figures(ctx: VisualiseContext, kinds: tuple[str, ...]) -> None:
     """Build the figures of the given *kinds* for one run directory."""
     from src.simulation_io.plotting import FigureBuilder
 
-    config = ctx.config or _load_run_config(ctx.run_dir)
+    config = _with_interface_levels(ctx.config or _load_run_config(ctx.run_dir), ctx.interface_levels)
     available = _operators_for(kinds)
 
     field_list = _select_visualise_fields(ctx, config, available)
@@ -143,6 +174,7 @@ def _build_figures(ctx: VisualiseContext, kinds: tuple[str, ...]) -> None:
         run_dir=ctx.run_dir,
         dpi=ctx.dpi,
         fields=field_list or sorted(available),
+        overlays=ctx.overlays,
     )
     _configure_snapshot_fig(builder, field_list)
     saved = _build_requested_figures(builder, ctx)
@@ -177,6 +209,10 @@ def _print_visualise_summary(ctx: VisualiseContext, field_list: list[str] | None
         console.print(f"[dim]Snapshot      : {ctx.snapshot_path}[/dim]")
     if field_list:
         console.print(f"[dim]Fields        : {', '.join(field_list)}[/dim]")
+    if ctx.overlays:
+        console.print(f"[dim]Overlays      : {', '.join(ctx.overlays)}[/dim]")
+    if ctx.interface_levels:
+        console.print(f"[dim]Interface lvls: {', '.join(ctx.interface_levels)}[/dim]")
     if ctx.skip and ctx.snapshot_path is None:
         console.print(f"[dim]Skip          : {ctx.skip}[/dim]")
     console.print(f"[dim]DPI           : {ctx.dpi}[/dim]")
@@ -222,8 +258,18 @@ def _figure_output_dir(builder: FigureBuilder, ctx: VisualiseContext, saved: lis
     is_flag=True,
     help="Skip interactive field selection and use config defaults.",
 )
+@_overlay_option
+@_interface_levels_option
 @cli_command(title="Animation", interrupt_message="Animation interrupted by user.")
-def animate(run_dir: str, output: str | None, fps: int, fields: str | None, no_prompt: bool) -> None:
+def animate(
+    run_dir: str,
+    output: str | None,
+    fps: int,
+    fields: str | None,
+    no_prompt: bool,
+    overlay: str | None,
+    interface_levels: str | None,
+) -> None:
     """Animate saved snapshots in RUN_DIR.
 
     A frame is one composite figure holding both field and analysis panels, so
@@ -231,7 +277,8 @@ def animate(run_dir: str, output: str | None, fps: int, fields: str | None, no_p
     """
     from src.simulation_io.plotting import Animator
 
-    config = _load_run_config(run_dir)
+    config = _with_interface_levels(_load_run_config(run_dir), _comma_list(interface_levels))
+    overlays = _comma_list(overlay)
     available = _operators_for(_BOTH_KINDS)
 
     console.print(f"[dim]Run directory : {run_dir}[/dim]")
@@ -254,9 +301,11 @@ def animate(run_dir: str, output: str | None, fps: int, fields: str | None, no_p
 
     if selected:
         console.print(f"[dim]Fields        : {', '.join(selected)}[/dim]")
+    if overlays:
+        console.print(f"[dim]Overlays      : {', '.join(overlays)}[/dim]")
     console.print()
 
-    animator = Animator(config=config, run_dir=run_dir, fps=fps, fields=selected)
+    animator = Animator(config=config, run_dir=run_dir, fps=fps, fields=selected, overlays=overlays)
     output_path = animator.create(output)
 
     console.print(f"[bold green]Animation saved to:[/bold green] {output_path}")
@@ -295,6 +344,8 @@ def animate(run_dir: str, output: str | None, fps: int, fields: str | None, no_p
     is_flag=True,
     help="Treat PATH as one .npz snapshot and render it into the run's plots/ tree.",
 )
+@_overlay_option
+@_interface_levels_option
 @click.pass_context
 def visualise(
     ctx: click.Context,
@@ -304,6 +355,8 @@ def visualise(
     fields: str | None,
     no_prompt: bool,
     single: bool,
+    overlay: str | None,
+    interface_levels: str | None,
 ) -> None:
     """Build static figures for saved snapshots in RUN_DIR or for one ``.npz`` state.
 
@@ -320,6 +373,8 @@ def visualise(
         fields=fields,
         no_prompt=no_prompt,
         single=single,
+        overlays=_comma_list(overlay),
+        interface_levels=_comma_list(interface_levels),
     )
     if ctx.invoked_subcommand is None:
         _visualise_both(ctx.obj)
@@ -332,6 +387,8 @@ def _visualise_context(
     fields: str | None,
     no_prompt: bool,
     single: bool,
+    overlays: list[str] | None = None,
+    interface_levels: list[str] | None = None,
 ) -> VisualiseContext:
     """Build the shared context for the ``visualise`` group and subcommands."""
     if single:
@@ -351,6 +408,8 @@ def _visualise_context(
         dpi=dpi,
         fields=fields,
         no_prompt=no_prompt,
+        overlays=overlays,
+        interface_levels=interface_levels,
     )
 
 

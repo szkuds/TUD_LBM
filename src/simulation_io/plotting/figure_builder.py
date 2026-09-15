@@ -67,6 +67,7 @@ class FigureBuilder:
         run_dir: str | os.PathLike,
         dpi: int = DEFAULT_STYLE.dpi,
         fields: list[str] | None = None,
+        overlays: list[str] | None = None,
     ) -> None:
         """Initialize figure builder with simulation config and output directory.
 
@@ -76,6 +77,9 @@ class FigureBuilder:
             dpi: Resolution in dots per inch for saved figures.
             fields: Explicit list of operator names to activate. When provided,
                 overrides ``config.plot_fields``.
+            overlays: Explicit list of overlay-capable plotting operators drawn
+                on top of every field panel. When provided, overrides
+                ``config.overlay_fields``.
         """
         self.config = config
         self.run_dir = Path(run_dir)
@@ -88,6 +92,7 @@ class FigureBuilder:
         self._field_operators: list = []
         self._analysis_operators: list = []
         self._analysis_export_operators: list = []
+        self._overlay_operators: list = []
 
         # Guard: plotting only supports 2D simulations (nz=1)
         nz = getattr(config, "nz", config.grid_shape[2] if len(config.grid_shape) > 2 else 1)  # noqa: PLR2004
@@ -117,6 +122,20 @@ class FigureBuilder:
                 ]
 
         self._resolve_operators(requested)
+        self._resolve_overlays(overlays or self.config.overlay_fields or [])
+
+    def _resolve_overlays(self, requested: list[str]) -> None:
+        """Instantiate the requested overlays: plotting operators with ``supports_overlay``."""
+        all_ops = get_operators("plotting")
+        capable = sorted(name for name, entry in all_ops.items() if getattr(entry.target, "supports_overlay", False))
+        for name in requested:
+            if name not in capable:
+                warnings.warn(
+                    f"No overlay-capable plot operator registered for '{name}'. Available: {capable}",
+                    stacklevel=3,
+                )
+                continue
+            self._overlay_operators.append(all_ops[name].target(self.config, data_dir=self._data_dir))
 
     def _resolve_operators(self, requested: list[str]) -> None:
         """Instantiate the requested field/analysis operators into their lists."""
@@ -172,6 +191,11 @@ class FigureBuilder:
     def field_operators(self) -> list:
         """Configured field plot operators."""
         return self._field_operators
+
+    @property
+    def overlay_operators(self) -> list:
+        """Configured overlays, drawn on top of every field panel that accepts them."""
+        return self._overlay_operators
 
     @property
     def analysis_operators(self) -> list:
@@ -261,6 +285,10 @@ class FigureBuilder:
             row, col = divmod(idx, ncols)
             try:
                 op(axes[row][col], data, timestep)
+                if op.accepts_overlays:
+                    for overlay in self._overlay_operators:
+                        if overlay.is_available(data):
+                            overlay.draw_overlay(axes[row][col], data, timestep)
             except Exception as exc:  # noqa: BLE001
                 _render_error(axes[row][col], op.name, exc)
 
