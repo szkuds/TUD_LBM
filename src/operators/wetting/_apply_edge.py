@@ -13,6 +13,7 @@ from src.operators.wetting._wetting_modification import wetting_regions
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
+    from src.operators.wetting._wetting_modification import WettingRegion
 
 
 def _oriented_ghost_row(
@@ -87,13 +88,14 @@ def wetting_edge_regions(
     perp_end_periodic: bool,
     rho_l: float | jnp.ndarray,
     rho_v: float | jnp.ndarray,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Return the ``(is_left, is_right, centre)`` cells :func:`_apply_wetting_edge` modifies.
+) -> tuple[WettingRegion, WettingRegion]:
+    """Return the ``(left, right)`` regions :func:`_apply_wetting_edge` modifies.
 
     Runs the same orientation and ghost-row reconstruction as the applicator,
     so a caller outside the step (the contact-angle overlay) sees exactly the
-    region the wetting BC changes. Indices run along the wall: x for
-    bottom/top, y for left/right.
+    region the wetting BC changes — including the density bounds each side is
+    clipped to, which are measured per contact line. Indices run along the wall:
+    x for bottom/top, y for left/right.
     """
     arr, ghost_idx, _ = _oriented_ghost_row(gp, edge, perp_start_periodic, perp_end_periodic)
     return wetting_regions(arr[1:-1, ghost_idx], rho_l, rho_v)

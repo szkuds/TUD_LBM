@@ -391,47 +391,40 @@ class TestWettingUtil:
 
     # --- Wetting modification ---------------------------------------------
 
-    def test_modification_in_interface_region(self):
-        """Modification should only affect densities inside the interface band."""
+    def test_modification_only_touches_the_contact_line_regions(self):
+        """Only cells inside one of the two contact-line regions change."""
         from src.operators.wetting._wetting_modification import _apply_wetting_modification
+        from src.operators.wetting._wetting_modification import wetting_regions
 
-        rho_l, rho_v = RHO_L, RHO_V
-        upper = 0.95 * rho_l + 0.05 * rho_v  # 0.955
-        lower = 0.05 * rho_l + 0.95 * rho_v  # 0.145
+        edge = self._wall_edge_profile(64, RHO_L, RHO_V, phase_center="liquid")
+        left, right = wetting_regions(edge, RHO_L, RHO_V)
+        result = _apply_wetting_modification(edge, RHO_L, RHO_V, 1.3, 1.3, D_RHO, D_RHO)
 
-        # Create a slice with values spanning the full density range
-        n = 32
-        edge = jnp.linspace(rho_v, rho_l, n)
-        result = _apply_wetting_modification(edge, rho_l, rho_v, PHI, PHI, D_RHO, D_RHO)
+        region = np.asarray(left.mask | right.mask)
+        assert region.any()
+        changed = ~np.isclose(np.asarray(edge), np.asarray(result))
+        np.testing.assert_array_equal(changed & ~region, np.zeros_like(changed))
+        np.testing.assert_array_equal(np.asarray(result)[~region], np.asarray(edge)[~region])
 
-        # Values clearly outside the interface should be unchanged
-        outside_mask = (np.array(edge) >= upper) | (np.array(edge) <= lower)
-        np.testing.assert_array_equal(
-            np.array(result)[outside_mask],
-            np.array(edge)[outside_mask],
-        )
+    def test_modification_clamps_to_each_sides_own_bounds(self):
+        """Extreme phi saturates at the bounds measured for that contact line.
 
-    def test_modification_clamps_to_bounds(self):
-        """Modified values inside the interface should be clamped to density bounds."""
+        The bounds are per side: each is measured in a window around its own
+        contact line, so a wall whose bulk densities vary along it does not share
+        one global clip range.
+        """
         from src.operators.wetting._wetting_modification import _apply_wetting_modification
+        from src.operators.wetting._wetting_modification import wetting_regions
 
-        rho_l, rho_v = RHO_L, RHO_V
-        upper = 0.95 * rho_l + 0.05 * rho_v
-        lower = 0.05 * rho_l + 0.95 * rho_v
+        edge = self._wall_edge_profile(64, RHO_L, RHO_V, phase_center="liquid")
+        left, right = wetting_regions(edge, RHO_L, RHO_V)
+        result = np.asarray(_apply_wetting_modification(edge, RHO_L, RHO_V, 10.0, 10.0, D_RHO, D_RHO))
 
-        edge = jnp.linspace(rho_v, rho_l, 32)
-        # Use extreme phi values to force clamping
-        result = _apply_wetting_modification(edge, rho_l, rho_v, 10 * PHI, 10 * PHI, D_RHO, D_RHO)
-
-        # Identify which values were actually modified (inside the interface)
-        edge_np = np.array(edge)
-        result_np = np.array(result)
-        modified_mask = ~np.isclose(edge_np, result_np)
-
-        if np.any(modified_mask):
-            # All modified values must be clamped within [lower, upper]
-            assert float(np.max(result_np[modified_mask])) <= upper + 1e-6
-            assert float(np.min(result_np[modified_mask])) >= lower - 1e-6
+        for region in (left, right):
+            mask = np.asarray(region.mask)
+            assert mask.any()
+            assert float(result[mask].max()) <= float(region.rho_upper) + 1e-6
+            assert float(result[mask].min()) >= float(region.rho_lower) - 1e-6
 
     @staticmethod
     def _wall_edge_profile(n: int, rho_l: float, rho_v: float, *, phase_center: str) -> jnp.ndarray:
@@ -497,29 +490,40 @@ class TestWettingUtil:
 
     # --- Per-edge application via build_wetting_applicator -----------------
 
+    @staticmethod
+    def _striped(shape: tuple[int, int], axis: int) -> jnp.ndarray:
+        """A tanh liquid stripe across *shape*, varying along *axis*.
+
+        Every row perpendicular to *axis* crosses ``rho_mean`` twice, so the
+        wetting applicator finds two contact-line anchors. A uniform field has no
+        crossing at all and is deliberately a no-op.
+        """
+        n = shape[axis]
+        coord = np.arange(n)
+        profile = RHO_V + (RHO_L - RHO_V) * 0.5 * (1.0 - np.tanh((np.abs(coord - (n - 1) / 2) - n / 4) / 2.0))
+        return jnp.asarray(np.broadcast_to(np.expand_dims(profile, 1 - axis), shape).copy())
+
     def test_bottom_wetting_changes_bottom_ghost_row(self):
         """Bottom-only wetting should modify the bottom ghost row."""
         bc = {"bottom": "wetting", "top": "bounce-back"}
         _build_wetting_applicator = build_wetting_fn("applicator")
         fn = _build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config=bc)
-        gp = jnp.ones((NX + 2, NY + 2)) * 0.5
+        gp = self._striped((NX + 2, NY + 2), axis=0)
         gp_out = fn(gp, PHI, 1.3, D_RHO, D_RHO)
         # Bottom ghost row should have been modified
-        bottom = np.array(gp_out[1:-1, 0])
-        assert not np.allclose(bottom, 0.5)
+        assert not np.allclose(np.array(gp_out[1:-1, 0]), np.array(gp[1:-1, 0]))
 
     def test_top_wetting_only(self):
         """Top-only wetting should modify only the top ghost row."""
         bc = {"bottom": "bounce-back", "top": "wetting"}
         _build_wetting_applicator = build_wetting_fn("applicator")
         fn = _build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config=bc)
-        gp = jnp.ones((NX + 2, NY + 2)) * 0.5
+        gp = self._striped((NX + 2, NY + 2), axis=0)
         gp_out = fn(gp, PHI, 1.3, D_RHO, D_RHO)
         # Bottom ghost row should be unchanged
-        np.testing.assert_array_equal(np.array(gp_out[1:-1, 0]), 0.5)
+        np.testing.assert_array_equal(np.array(gp_out[1:-1, 0]), np.array(gp[1:-1, 0]))
         # Top ghost row should be modified
-        top = np.array(gp_out[1:-1, -1])
-        assert not np.allclose(top, 0.5)
+        assert not np.allclose(np.array(gp_out[1:-1, -1]), np.array(gp[1:-1, -1]))
 
     def test_left_right_wetting_uses_transpose(self):
         """Left/right wetting should modify the left/right ghost columns."""
@@ -531,16 +535,14 @@ class TestWettingUtil:
         }
         _build_wetting_applicator = build_wetting_fn("applicator")
         fn = _build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config=bc)
-        gp = jnp.ones((NX + 2, NY + 2)) * 0.5
+        gp = self._striped((NX + 2, NY + 2), axis=1)
         gp_out = fn(gp, PHI, 1.3, D_RHO, D_RHO)
         # Left and right ghost columns should be modified
-        left_col = np.array(gp_out[0, 1:-1])
-        right_col = np.array(gp_out[-1, 1:-1])
-        assert not np.allclose(left_col, 0.5)
-        assert not np.allclose(right_col, 0.5)
+        assert not np.allclose(np.array(gp_out[0, 1:-1]), np.array(gp[0, 1:-1]))
+        assert not np.allclose(np.array(gp_out[-1, 1:-1]), np.array(gp[-1, 1:-1]))
         # Top/bottom ghost rows should be unchanged
-        np.testing.assert_array_equal(np.array(gp_out[1:-1, 0]), 0.5)
-        np.testing.assert_array_equal(np.array(gp_out[1:-1, -1]), 0.5)
+        np.testing.assert_array_equal(np.array(gp_out[1:-1, 0]), np.array(gp[1:-1, 0]))
+        np.testing.assert_array_equal(np.array(gp_out[1:-1, -1]), np.array(gp[1:-1, -1]))
 
     def test_no_wetting_edges_leaves_array_unchanged(self):
         """An empty bc_config should leave the array entirely unchanged."""
