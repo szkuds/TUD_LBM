@@ -4,6 +4,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field
 
+#: Matplotlib ``tab10`` colours, named once each: the palettes below are keyed by
+#: meaning, and several of them reach for the same colour, so spelling a colour
+#: at every use site is how two tables silently drift to different blues.
+BLUE = "tab:blue"
+ORANGE = "tab:orange"
+GREEN = "tab:green"
+RED = "tab:red"
+PURPLE = "tab:purple"
+BROWN = "tab:brown"
+PINK = "tab:pink"
+GRAY = "tab:gray"
+OLIVE = "tab:olive"
+CYAN = "tab:cyan"
+
 
 @dataclass(frozen=True)
 class FigureStyle:
@@ -50,8 +64,8 @@ class FigureStyle:
     # and on the white standalone panel.
     interface_level_styles: dict[str, tuple[str, str]] = field(
         default_factory=lambda: {
-            "config": ("tab:red", "-"),
-            "measured": ("tab:cyan", "--"),
+            "config": (RED, "-"),
+            "measured": (CYAN, "--"),
         }
     )
     interface_linewidth: float = 1.5
@@ -62,8 +76,8 @@ class FigureStyle:
     # and the angle glyphs.
     wetting_band_colors: dict[str, str] = field(
         default_factory=lambda: {
-            "upper": "tab:orange",
-            "lower": "tab:purple",
+            "upper": ORANGE,
+            "lower": PURPLE,
         }
     )
     wetting_band_linestyles: dict[str, str] = field(
@@ -74,8 +88,8 @@ class FigureStyle:
     )
     wetting_region_colors: dict[str, str] = field(
         default_factory=lambda: {
-            "left": "tab:green",
-            "right": "tab:pink",
+            "left": GREEN,
+            "right": PINK,
         }
     )
     wetting_marker_linewidth: float = 4.0
@@ -87,14 +101,14 @@ class FigureStyle:
 
     colors: dict[str, str] = field(
         default_factory=lambda: {
-            "max_velocity": "tab:blue",
-            "density_ratio": "tab:orange",
-            "avg_density": "tab:green",
-            "total_mass": "tab:olive",
-            "contact_angle_left": "tab:purple",
-            "contact_angle_right": "tab:red",
-            "contact_line_speed_left": "tab:brown",
-            "contact_line_speed_right": "tab:pink",
+            "max_velocity": BLUE,
+            "density_ratio": ORANGE,
+            "avg_density": GREEN,
+            "total_mass": OLIVE,
+            "contact_angle_left": PURPLE,
+            "contact_angle_right": RED,
+            "contact_line_speed_left": BROWN,
+            "contact_line_speed_right": PINK,
         }
     )
 
@@ -133,9 +147,9 @@ REGIME_MARKERS: dict[str, str] = {
     "unknown": "x",
 }
 REGIME_COLORS: dict[str, str] = {
-    "Pinning": "tab:blue",
-    "Dissipative": "tab:green",
-    "Capillary": "tab:red",
-    "Steady": "tab:orange",
-    "unknown": "tab:gray",
+    "Pinning": BLUE,
+    "Dissipative": GREEN,
+    "Capillary": RED,
+    "Steady": ORANGE,
+    "unknown": GRAY,
 }

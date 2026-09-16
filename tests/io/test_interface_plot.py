@@ -111,8 +111,10 @@ def test_standalone_interface_panel_is_not_overlaid_twice(tmp_path):
 
 
 def test_non_overlay_operator_is_rejected_as_overlay(tmp_path):
+    config = _config()
+
     with pytest.warns(UserWarning, match="overlay-capable") as record:
-        builder = FigureBuilder(_config(), run_dir=tmp_path, overlays=["density", "nonexistent"])
+        builder = FigureBuilder(config, run_dir=tmp_path, overlays=["density", "nonexistent"])
 
     messages = [str(warning.message) for warning in record]
     assert builder.overlay_operators == []
@@ -121,8 +123,10 @@ def test_non_overlay_operator_is_rejected_as_overlay(tmp_path):
 
 
 def test_unknown_interface_level_fails_when_the_builder_is_constructed(tmp_path):
+    config = _config(interface_levels=["bogus"])
+
     with pytest.raises(ValueError, match="bogus"):
-        FigureBuilder(_config(interface_levels=["bogus"]), run_dir=tmp_path, overlays=["interface"])
+        FigureBuilder(config, run_dir=tmp_path, overlays=["interface"])
 
 
 def test_single_phase_snapshot_draws_only_the_measured_contour(tmp_path):

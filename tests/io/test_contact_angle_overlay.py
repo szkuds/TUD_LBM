@@ -86,11 +86,13 @@ def test_band_cells_are_exactly_the_cells_the_applicator_changes():
     neutral, shifted = _apply(0.0), _apply(0.05)
     changed = np.flatnonzero(np.asarray(neutral[1:-1, 0]) != np.asarray(shifted[1:-1, 0]))
 
+    expected_bounds = wetting_band_bounds(_RHO_L, _RHO_V)
+
     np.testing.assert_array_equal(np.union1d(band.left_cells, band.right_cells), changed)
     assert band.left_cells.size > 0
     assert band.right_cells.size > 0
     assert band.left_cells.max() < band.split < band.right_cells.min()
-    assert (band.rho_lower, band.rho_upper) == pytest.approx(wetting_band_bounds(_RHO_L, _RHO_V))
+    assert (band.rho_lower, band.rho_upper) == pytest.approx(expected_bounds)
 
 
 def test_band_extraction_leaves_the_modification_unchanged():
@@ -198,8 +200,9 @@ def test_glyph_tangent_leans_over_the_dispersed_phase():
     # theta < 90: both tangents lean toward the droplet centre and rise off the wall.
     assert left.tangent[1, 0] > left.tangent[0, 0]
     assert right.tangent[1, 0] < right.tangent[0, 0]
+    expected_rise = 10.0 * math.sin(math.radians(angles.theta_left))
     rise = left.tangent[1, 1] - left.tangent[0, 1]
-    assert rise == pytest.approx(10.0 * math.sin(math.radians(angles.theta_left)))
+    assert rise == pytest.approx(expected_rise)
     assert left.arc[0, 1] == pytest.approx(WALL_NORMAL)
 
 
@@ -248,8 +251,10 @@ def test_both_overlays_draw_on_field_and_interface_panels(tmp_path):
 
 
 def test_contact_angle_named_as_a_field_warns_and_adds_no_panel(tmp_path):
+    config = _config()
+
     with pytest.warns(UserWarning, match="overlay-only"):
-        builder = FigureBuilder(_config(), run_dir=tmp_path, fields=["density", "contact_angle"])
+        builder = FigureBuilder(config, run_dir=tmp_path, fields=["density", "contact_angle"])
 
     assert [op.name for op in builder.field_operators] == ["density"]
 
@@ -279,7 +284,7 @@ def test_overlay_labels_are_gathered_into_one_figure_legend(tmp_path):
     (legend,) = fig.legends
     labels = [text.get_text() for text in legend.get_texts()]
     assert len(labels) == len(set(labels))
-    assert {"config ρ_lower=0.145", "config ρ_upper=0.955"} <= set(labels)
+    assert set(labels) >= {"config ρ_lower=0.145", "config ρ_upper=0.955"}
     assert {label.split()[0] for label in labels} == {"config", "measured", "bottom"}
     assert any("wetting band (right)" in label for label in labels)
     plt.close(fig)
@@ -300,15 +305,18 @@ def test_measured_band_uses_the_snapshot_bulk_densities():
     drifted = np.where(rho < 0.5 * (_RHO_L + _RHO_V), rho + 0.05, rho)
     config = _config()
 
-    config_band = band_level("config", config, drifted)
-    measured_band = band_level("measured", config, drifted)
-    assert config_band is not None
-    assert measured_band is not None
-
-    assert (config_band.rho_lower, config_band.rho_upper) == pytest.approx(wetting_band_bounds(_RHO_L, _RHO_V))
     phases = measured_phase_densities(drifted, 0.5 * (_RHO_L + _RHO_V))
     assert phases is not None
-    assert (measured_band.rho_lower, measured_band.rho_upper) == pytest.approx(wetting_band_bounds(*phases))
+    expected_config = wetting_band_bounds(_RHO_L, _RHO_V)
+    expected_measured = wetting_band_bounds(*phases)
+
+    config_band = band_level("config", config, drifted)
+    measured_band = band_level("measured", config, drifted)
+
+    assert config_band is not None
+    assert measured_band is not None
+    assert (config_band.rho_lower, config_band.rho_upper) == pytest.approx(expected_config)
+    assert (measured_band.rho_lower, measured_band.rho_upper) == pytest.approx(expected_measured)
     assert measured_band.rho_lower > config_band.rho_lower
 
 
@@ -324,5 +332,7 @@ def test_interface_levels_select_the_band_contours(tmp_path):
 
 
 def test_unknown_interface_level_fails_when_the_overlay_is_constructed(tmp_path):
+    config = _config(interface_levels=["bogus"])
+
     with pytest.raises(ValueError, match="bogus"):
-        FigureBuilder(_config(interface_levels=["bogus"]), run_dir=tmp_path, overlays=["contact_angle"])
+        FigureBuilder(config, run_dir=tmp_path, overlays=["contact_angle"])
