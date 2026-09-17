@@ -17,22 +17,22 @@ if TYPE_CHECKING:
 
 
 def _oriented_ghost_row(
-    gp: jnp.ndarray,
+    grid_padded: jnp.ndarray,
     edge: str,
     perp_start_periodic: bool,
     perp_end_periodic: bool,
 ) -> tuple[jnp.ndarray, int, bool]:
-    """Orient *gp* so *edge*'s ghost cells lie along axis 1, and reconstruct them.
+    """Orient *grid_padded* so *edge*'s ghost cells lie along axis 1, and reconstruct them.
 
     Normalises bottom/top vs left/right by transposing, so the ghost cells are
     always a column of the returned array.
 
     Returns:
         ``(arr, ghost_idx, transposed)`` — the oriented array with its ghost
-        column reconstructed, that column's index, and whether *arr* is ``gp.T``.
+        column reconstructed, that column's index, and whether *arr* is ``grid_padded.T``.
     """
     transposed = edge in ("left", "right")
-    arr = gp.T if transposed else gp
+    arr = grid_padded.T if transposed else grid_padded
 
     # Ghost column index in the padded array and interior neighbor offset.
     ghost_idx = 0 if edge in ("bottom", "left") else -1

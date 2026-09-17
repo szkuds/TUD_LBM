@@ -33,7 +33,7 @@ def build_wetting_applicator(
             ``None`` defaults to bottom-only wetting.
 
     Returns:
-        ``(gp, phi_l, phi_r, d_rho_l, d_rho_r) → gp``
+        ``(grid_padded, phi_l, phi_r, d_rho_l, d_rho_r) → grid_padded``
     """
     _rho_l = jnp.array(float(rho_l))
     _rho_v = jnp.array(float(rho_v))
