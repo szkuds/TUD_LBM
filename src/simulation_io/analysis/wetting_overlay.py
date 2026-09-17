@@ -152,10 +152,12 @@ def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
     from src.operators.wetting._apply_edge import wetting_edge_regions
     from src.operators.wetting._edge_config import _resolve_wetting_edges
 
-    gp = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), tuple(determine_pad_modes(config.bc_config)))
+    grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), tuple(determine_pad_modes(config.bc_config)))
     bands: list[WallBand] = []
     for edge, perp_start_periodic, perp_end_periodic in _resolve_wetting_edges(config.bc_config):
-        is_left, is_right, centre = wetting_edge_regions(gp, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v)
+        is_left, is_right, centre = wetting_edge_regions(
+            grid_padded, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v
+        )
         left_cells = np.flatnonzero(np.asarray(is_left))
         right_cells = np.flatnonzero(np.asarray(is_right))
         split = float(centre) if left_cells.size or right_cells.size else None
