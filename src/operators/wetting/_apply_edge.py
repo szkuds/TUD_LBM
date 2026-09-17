@@ -9,9 +9,42 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from src.operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
 from src.operators.wetting._wetting_modification import _apply_wetting_modification
+from src.operators.wetting._wetting_modification import wetting_regions
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
+
+
+def _oriented_ghost_row(
+    gp: jnp.ndarray,
+    edge: str,
+    perp_start_periodic: bool,
+    perp_end_periodic: bool,
+) -> tuple[jnp.ndarray, int, bool]:
+    """Orient *gp* so *edge*'s ghost cells lie along axis 1, and reconstruct them.
+
+    Normalises bottom/top vs left/right by transposing, so the ghost cells are
+    always a column of the returned array.
+
+    Returns:
+        ``(arr, ghost_idx, transposed)`` — the oriented array with its ghost
+        column reconstructed, that column's index, and whether *arr* is ``gp.T``.
+    """
+    transposed = edge in ("left", "right")
+    arr = gp.T if transposed else gp
+
+    # Ghost column index in the padded array and interior neighbor offset.
+    ghost_idx = 0 if edge in ("bottom", "left") else -1
+    interior_offset = 1 if ghost_idx == 0 else -1
+
+    arr = _reconstruct_ghost_row(
+        arr,
+        ghost_idx,
+        interior_offset,
+        perp_start_periodic,
+        perp_end_periodic,
+    )
+    return arr, ghost_idx, transposed
 
 
 def _apply_wetting_edge(
@@ -28,23 +61,13 @@ def _apply_wetting_edge(
 ) -> jnp.ndarray:
     """Apply wetting to a single edge of the padded array.
 
-    Normalises bottom/top vs left/right by transposing so the ghost
-    cells are always along axis 1 (columns), then delegates to the
-    canonical row-based functions.
+    Reconstructs the edge's ghost row from the interior, then applies the
+    wetting modification to its interior portion (excluding padding corners).
     """
-    transposed = edge in ("left", "right")
-    arr = gp.T if transposed else gp
+    arr, ghost_idx, transposed = _oriented_ghost_row(gp, edge, perp_start_periodic, perp_end_periodic)
 
-    # Ghost column index in the padded array and interior neighbor offset.
-    ghost_idx = 0 if edge in ("bottom", "left") else -1
-    interior_offset = 1 if ghost_idx == 0 else -1
-
-    arr = _reconstruct_and_modify(
-        arr,
-        ghost_idx,
-        interior_offset,
-        perp_start_periodic,
-        perp_end_periodic,
+    modified = _apply_wetting_modification(
+        arr[1:-1, ghost_idx],
         rho_l,
         rho_v,
         phi_l,
@@ -52,43 +75,25 @@ def _apply_wetting_edge(
         d_rho_l,
         d_rho_r,
     )
+    arr = arr.at[1:-1, ghost_idx].set(modified)
 
     return arr.T if transposed else arr
 
 
-def _reconstruct_and_modify(
-    arr: jnp.ndarray,
-    ghost_idx: int,
-    interior_offset: int,
+def wetting_edge_regions(
+    gp: jnp.ndarray,
+    edge: str,
     perp_start_periodic: bool,
     perp_end_periodic: bool,
-    rho_l: jnp.ndarray,
-    rho_v: jnp.ndarray,
-    phi_l: jnp.ndarray,
-    phi_r: jnp.ndarray,
-    d_rho_l: jnp.ndarray,
-    d_rho_r: jnp.ndarray,
-) -> jnp.ndarray:
-    """Reconstruct ghost row from interior, then apply wetting modification."""
-    arr = _reconstruct_ghost_row(
-        arr,
-        ghost_idx,
-        interior_offset,
-        perp_start_periodic,
-        perp_end_periodic,
-    )
+    rho_l: float | jnp.ndarray,
+    rho_v: float | jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Return the ``(is_left, is_right, centre)`` cells :func:`_apply_wetting_edge` modifies.
 
-    # Extract the interior portion of the ghost row (exclude padding corners)
-    edge_slice = arr[1:-1, ghost_idx]
-
-    modified = _apply_wetting_modification(
-        edge_slice,
-        rho_l,
-        rho_v,
-        phi_l,
-        phi_r,
-        d_rho_l,
-        d_rho_r,
-    )
-
-    return arr.at[1:-1, ghost_idx].set(modified)
+    Runs the same orientation and ghost-row reconstruction as the applicator,
+    so a caller outside the step (the contact-angle overlay) sees exactly the
+    region the wetting BC changes. Indices run along the wall: x for
+    bottom/top, y for left/right.
+    """
+    arr, ghost_idx, _ = _oriented_ghost_row(gp, edge, perp_start_periodic, perp_end_periodic)
+    return wetting_regions(arr[1:-1, ghost_idx], rho_l, rho_v)

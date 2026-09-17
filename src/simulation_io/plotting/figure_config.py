@@ -4,6 +4,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field
 
+#: Matplotlib ``tab10`` colours, named once each: the palettes below are keyed by
+#: meaning, and several of them reach for the same colour, so spelling a colour
+#: at every use site is how two tables silently drift to different blues.
+BLUE = "tab:blue"
+ORANGE = "tab:orange"
+GREEN = "tab:green"
+RED = "tab:red"
+PURPLE = "tab:purple"
+BROWN = "tab:brown"
+PINK = "tab:pink"
+GRAY = "tab:gray"
+OLIVE = "tab:olive"
+CYAN = "tab:cyan"
+
 
 @dataclass(frozen=True)
 class FigureStyle:
@@ -23,6 +37,9 @@ class FigureStyle:
     legend_fontsize: int = 12
     pair_legend_fontsize: int = 8
     panel_legend_fontsize: int = 6
+    #: The single legend shared by every field panel, placed below the panels.
+    shared_legend_fontsize: int = 8
+    shared_legend_max_columns: int = 3
     empty_state_fontsize: int = 9
     error_text_fontsize: int = 8
 
@@ -47,23 +64,51 @@ class FigureStyle:
     # and on the white standalone panel.
     interface_level_styles: dict[str, tuple[str, str]] = field(
         default_factory=lambda: {
-            "config": ("tab:red", "-"),
-            "measured": ("tab:cyan", "--"),
+            "config": (RED, "-"),
+            "measured": (CYAN, "--"),
         }
     )
     interface_linewidth: float = 1.5
     colormap_interface_time: str = "viridis"
 
+    # Contact-angle overlay: colour per wetting-band threshold, linestyle per
+    # interface marker (config / measured), colour per modified wall region,
+    # and the angle glyphs.
+    wetting_band_colors: dict[str, str] = field(
+        default_factory=lambda: {
+            "upper": ORANGE,
+            "lower": PURPLE,
+        }
+    )
+    wetting_band_linestyles: dict[str, str] = field(
+        default_factory=lambda: {
+            "config": ":",
+            "measured": "-.",
+        }
+    )
+    wetting_region_colors: dict[str, str] = field(
+        default_factory=lambda: {
+            "left": GREEN,
+            "right": PINK,
+        }
+    )
+    wetting_marker_linewidth: float = 4.0
+    contact_angle_color: str = "gold"
+    contact_angle_linewidth: float = 1.5
+    contact_angle_fontsize: int = 8
+    #: Tangent length as a fraction of the shorter domain side.
+    contact_angle_length_fraction: float = 0.25
+
     colors: dict[str, str] = field(
         default_factory=lambda: {
-            "max_velocity": "tab:blue",
-            "density_ratio": "tab:orange",
-            "avg_density": "tab:green",
-            "total_mass": "tab:olive",
-            "contact_angle_left": "tab:purple",
-            "contact_angle_right": "tab:red",
-            "contact_line_speed_left": "tab:brown",
-            "contact_line_speed_right": "tab:pink",
+            "max_velocity": BLUE,
+            "density_ratio": ORANGE,
+            "avg_density": GREEN,
+            "total_mass": OLIVE,
+            "contact_angle_left": PURPLE,
+            "contact_angle_right": RED,
+            "contact_line_speed_left": BROWN,
+            "contact_line_speed_right": PINK,
         }
     )
 
@@ -102,9 +147,9 @@ REGIME_MARKERS: dict[str, str] = {
     "unknown": "x",
 }
 REGIME_COLORS: dict[str, str] = {
-    "Pinning": "tab:blue",
-    "Dissipative": "tab:green",
-    "Capillary": "tab:red",
-    "Steady": "tab:orange",
-    "unknown": "tab:gray",
+    "Pinning": BLUE,
+    "Dissipative": GREEN,
+    "Capillary": RED,
+    "Steady": ORANGE,
+    "unknown": GRAY,
 }

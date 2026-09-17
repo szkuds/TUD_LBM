@@ -75,6 +75,11 @@ def test_animate_marks_against_animate_fields(runner, tmp_path, monkeypatch):
 
 
 _OVERLAY_QUESTION = "Overlay interface contour on field panels?"
+_CONTACT_ANGLE_QUESTION = "Overlay contact angles and wetting band on field panels?"
+
+
+def _no_wetting_config():
+    return wetting_config(sim_type="multiphase", bc_config=None, wetting_config=None)
 
 
 def test_prompt_overlays_is_opt_out(monkeypatch):
@@ -84,8 +89,28 @@ def test_prompt_overlays_is_opt_out(monkeypatch):
     monkeypatch.setattr(field_select.Confirm, "ask", lambda *_a, **_k: next(answers))
     plotting = _entries("plotting")
 
-    assert field_select.prompt_overlays(plotting) == ["interface"]
-    assert field_select.prompt_overlays(plotting) == []
+    assert field_select.prompt_overlays(plotting, _no_wetting_config()) == ["interface"]
+    assert field_select.prompt_overlays(plotting, _no_wetting_config()) == []
+
+
+def test_contact_angle_question_is_only_asked_with_a_wetting_wall(monkeypatch):
+    from src.cli import field_select
+
+    asked: list[tuple[str, bool]] = []
+
+    def _ask(question, *, default):
+        asked.append((question, default))
+        return default
+
+    monkeypatch.setattr(field_select.Confirm, "ask", _ask)
+    plotting = _entries("plotting")
+
+    assert field_select.prompt_overlays(plotting, _no_wetting_config()) == ["interface"]
+    assert [q for q, _ in asked] == [_OVERLAY_QUESTION]
+
+    asked.clear()
+    assert field_select.prompt_overlays(plotting, wetting_config()) == ["contact_angle", "interface"]
+    assert asked == [(_CONTACT_ANGLE_QUESTION, True), (_OVERLAY_QUESTION, True)]
 
 
 def test_prompt_overlays_keeps_default_on_end_of_input(monkeypatch):
@@ -96,23 +121,60 @@ def test_prompt_overlays_keeps_default_on_end_of_input(monkeypatch):
 
     monkeypatch.setattr(field_select.Confirm, "ask", _eof)
 
-    assert field_select.prompt_overlays(_entries("plotting")) == ["interface"]
+    assert field_select.prompt_overlays(_entries("plotting"), wetting_config()) == ["contact_angle", "interface"]
 
 
-def test_interactive_visualise_overlays_interface_by_default(runner, run_dir):
-    result = runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\n\n")
+def test_interactive_visualise_overlays_by_default_for_a_wetting_run(runner, run_dir):
+    result = runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\n\n\n")
 
     assert result.exit_code == 0, result.output
+    assert _CONTACT_ANGLE_QUESTION in result.output
     assert _OVERLAY_QUESTION in result.output
+    assert "Overlays      : contact_angle, interface" in result.output
+
+
+def test_interactive_visualise_contact_angle_can_be_declined_alone(runner, run_dir):
+    result = runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\nn\n\n")
+
+    assert result.exit_code == 0, result.output
     assert "Overlays      : interface" in result.output
 
 
 def test_interactive_visualise_overlay_can_be_declined(runner, run_dir):
-    result = runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\nn\n")
+    result = runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\nn\nn\n")
 
     assert result.exit_code == 0, result.output
     assert _OVERLAY_QUESTION in result.output
     assert "Overlays      : none" in result.output
+
+
+def test_non_wetting_run_is_not_asked_about_contact_angles(runner, tmp_path):
+    run_dir = build_run_dir(tmp_path, config=_no_wetting_config())
+
+    result = runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="density\n\n")
+
+    assert result.exit_code == 0, result.output
+    assert _CONTACT_ANGLE_QUESTION not in result.output
+    assert "Overlays      : interface" in result.output
+
+
+def test_explicit_overlay_accepts_both_overlays(runner, run_dir):
+    result = runner.invoke(
+        cli,
+        ["visualise", str(run_dir), "--overlay", "interface,contact_angle", "--fields", "density", "fields"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Overlays      : interface, contact_angle" in result.output
+
+
+def test_overlay_only_operator_is_not_offered_as_a_field():
+    from src.cli.commands.visualise import _operators_for
+
+    _entries("plotting")
+
+    assert "contact_angle" not in _operators_for(("plotting", "analysis"))
+    assert "interface" in _operators_for(("plotting",))
 
 
 def test_declining_overrides_overlay_fields_from_config(runner, tmp_path, monkeypatch):
@@ -125,7 +187,7 @@ def test_declining_overrides_overlay_fields_from_config(runner, tmp_path, monkey
     monkeypatch.setattr("src.simulation_io.plotting.FigureBuilder.__init__", _capture)
     run_dir = build_run_dir(tmp_path, config=wetting_config(overlay_fields=["interface"]))
 
-    runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\nn\n")
+    runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\nn\nn\n")
 
     assert captured["overlays"] == []
 
@@ -153,7 +215,7 @@ def test_analysis_only_selection_skips_overlay_question(runner, run_dir):
     assert _OVERLAY_QUESTION not in result.output
 
 
-@pytest.mark.parametrize(("answer", "expected"), [("\n", ["interface"]), ("n\n", [])])
+@pytest.mark.parametrize(("answer", "expected"), [("\n\n", ["contact_angle", "interface"]), ("n\nn\n", [])])
 def test_interactive_animate_asks_overlay_question(runner, tmp_path, monkeypatch, answer, expected):
     captured: dict[str, object] = {}
 

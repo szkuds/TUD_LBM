@@ -9,6 +9,7 @@ from src.cli._console import console
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from src.config import SimulationConfig
     from src.simulation_io.plotting import FigureBuilder
 
 
@@ -129,15 +130,19 @@ def prompt_fields_marked(
     return selected
 
 
-def prompt_overlays(plotting_ops: dict) -> list[str]:
+def prompt_overlays(plotting_ops: dict, config: SimulationConfig) -> list[str]:
     """Ask, per overlay-capable plotting operator, whether to draw it on the field panels.
 
-    Opt-out: every question defaults to yes, and end-of-input counts as the
-    default. The questions come from the registry — one per operator with
-    ``supports_overlay`` — so a new overlay needs no edit here.
+    Each operator decides its own default for this run through
+    ``overlay_prompt_default``: yes for an opt-out overlay, or ``None`` to skip
+    the question when the overlay has nothing to show (``contact_angle`` without
+    a wetting wall). End-of-input counts as the default. The questions come from
+    the registry — one per operator with ``supports_overlay`` — so a new overlay
+    needs no edit here.
 
     Args:
         plotting_ops: ``{name: OperatorEntry}`` of the ``plotting`` kind.
+        config: The run's configuration, passed to ``overlay_prompt_default``.
 
     Returns:
         The overlay names kept. An empty list means every overlay was declined,
@@ -147,11 +152,14 @@ def prompt_overlays(plotting_ops: dict) -> list[str]:
     for name, entry in sorted(plotting_ops.items()):
         if not getattr(entry.target, "supports_overlay", False):
             continue
+        default = entry.target.overlay_prompt_default(config)
+        if default is None:
+            continue
         label = getattr(entry.target, "overlay_label", "") or name
         try:
-            keep = Confirm.ask(f"Overlay {label} on field panels?", default=True)
+            keep = Confirm.ask(f"Overlay {label} on field panels?", default=default)
         except EOFError:
-            keep = True
+            keep = default
         if keep:
             selected.append(name)
     return selected

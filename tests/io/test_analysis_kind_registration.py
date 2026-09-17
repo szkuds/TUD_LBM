@@ -35,15 +35,15 @@ _EXPECTED_ANALYSIS_OPERATORS = frozenset(
 )
 
 _EXPECTED_PLOTTING_OPERATORS = frozenset(
-    {"density", "velocity", "force", "force_ext", "interface", "pressure", "pressure_total"}
+    {"contact_angle", "density", "velocity", "force", "force_ext", "interface", "pressure", "pressure_total"}
 )
 
 #: Registered, but excluded from the default figure — they only render when
 #: named in ``plot_fields``. See ``PlotOperator.opt_in``.
-_EXPECTED_OPT_IN_OPERATORS = frozenset({"interface", "pressure", "pressure_total"})
+_EXPECTED_OPT_IN_OPERATORS = frozenset({"contact_angle", "interface", "pressure", "pressure_total"})
 
 #: May be named in ``overlay_fields``. See ``PlotOperator.supports_overlay``.
-_EXPECTED_OVERLAY_OPERATORS = frozenset({"interface"})
+_EXPECTED_OVERLAY_OPERATORS = frozenset({"contact_angle", "interface"})
 
 
 def test_analysis_kind_holds_every_expected_operator() -> None:
@@ -57,7 +57,7 @@ def test_plotting_kind_holds_every_expected_operator() -> None:
 
 
 def test_opt_in_flag_matches_the_expected_plotting_operators() -> None:
-    """Exactly the pressure and interface panels are opt-in; every other field plot is default-on."""
+    """Exactly the pressure, interface and contact-angle operators are opt-in; every other field plot is default-on."""
     from src.registry import get_operators
 
     opt_in = {name for name, entry in get_operators("plotting").items() if getattr(entry.target, "opt_in", False)}

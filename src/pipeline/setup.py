@@ -247,12 +247,10 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         )
         wetting_fn = build_wetting_fn(wetting_scheme)
 
-    # Orient measurement from the first wetting wall. Wetting BCs are applied
-    # to every "wetting" edge, but contact angles are read only at this one.
-    from src.operators.wetting._edge_config import _resolve_wetting_edges
+    # Orient measurement from the first wetting wall.
+    from src.operators.wetting._edge_config import first_wetting_edge
 
-    wetting_edges = _resolve_wetting_edges(config.bc_config) if config.bc_config else []
-    wetting_edge = wetting_edges[0][0] if wetting_edges else None
+    wetting_edge = first_wetting_edge(config.bc_config)
 
     extra_state_plugins = tuple(
         cast("ExtraStatePlugin", entry.target)
