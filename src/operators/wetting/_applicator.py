@@ -43,7 +43,7 @@ def build_wetting_applicator(
     _edges = _resolve_wetting_edges(_bc_config)
 
     def apply(
-        gp: jnp.ndarray,
+        grid_padded: jnp.ndarray,
         phi_l: jnp.ndarray,
         phi_r: jnp.ndarray,
         d_rho_l: jnp.ndarray,
@@ -52,7 +52,7 @@ def build_wetting_applicator(
         """Apply wetting ghost-cell corrections to a padded density array.
 
         Args:
-            gp: Padded density field, shape ``(nx + 2, ny + 2)``.
+            grid_padded: Padded density field, shape ``(nx + 2, ny + 2)``.
             phi_l: Wetting potential (left/bottom side of interface).
             phi_r: Wetting potential (right/top side of interface).
             d_rho_l: Density offset (left/bottom side).
@@ -62,8 +62,8 @@ def build_wetting_applicator(
             Updated padded field with ghost-cell rows/columns set.
         """
         for edge, perp_start_periodic, perp_end_periodic in _edges:
-            gp = _apply_wetting_edge(
-                gp,
+            grid_padded = _apply_wetting_edge(
+                grid_padded,
                 edge,
                 perp_start_periodic,
                 perp_end_periodic,
@@ -74,6 +74,6 @@ def build_wetting_applicator(
                 d_rho_l,
                 d_rho_r,
             )
-        return gp
+        return grid_padded
 
     return apply

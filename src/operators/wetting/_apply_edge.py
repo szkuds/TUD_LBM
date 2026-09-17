@@ -49,7 +49,7 @@ def _oriented_ghost_row(
 
 
 def _apply_wetting_edge(
-    gp: jnp.ndarray,
+    grid_padded: jnp.ndarray,
     edge: str,
     perp_start_periodic: bool,
     perp_end_periodic: bool,
@@ -65,7 +65,7 @@ def _apply_wetting_edge(
     Reconstructs the edge's ghost row from the interior, then applies the
     wetting modification to its interior portion (excluding padding corners).
     """
-    arr, ghost_idx, transposed = _oriented_ghost_row(gp, edge, perp_start_periodic, perp_end_periodic)
+    arr, ghost_idx, transposed = _oriented_ghost_row(grid_padded, edge, perp_start_periodic, perp_end_periodic)
 
     modified = _apply_wetting_modification(
         arr[1:-1, ghost_idx],
