@@ -72,8 +72,8 @@ class FigureStyle:
     colormap_interface_time: str = "viridis"
 
     # Contact-angle overlay: colour per wetting-band threshold, linestyle per
-    # interface marker (config / measured), colour per modified wall region,
-    # and the angle glyphs.
+    # contact line (the solver measures each side's bounds separately), colour
+    # per modified wall region, and the angle glyphs.
     wetting_band_colors: dict[str, str] = field(
         default_factory=lambda: {
             "upper": ORANGE,
@@ -82,8 +82,8 @@ class FigureStyle:
     )
     wetting_band_linestyles: dict[str, str] = field(
         default_factory=lambda: {
-            "config": ":",
-            "measured": "-.",
+            "left": ":",
+            "right": "-.",
         }
     )
     wetting_region_colors: dict[str, str] = field(

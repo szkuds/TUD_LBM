@@ -12,13 +12,10 @@ from src.operators.differential._pad_utils import _apply_stencil_padding
 from src.operators.differential._pad_utils import determine_pad_modes
 from src.operators.wetting._apply_edge import _apply_wetting_edge
 from src.operators.wetting._contact_angle import compute_contact_angle
-from src.operators.wetting._wetting_modification import _apply_wetting_modification
-from src.operators.wetting._wetting_modification import wetting_band_bounds
+from src.operators.wetting._wetting_modification import anchor_window_half_width
 from src.registry import get_operators
-from src.simulation_io.analysis.interface_contour import measured_phase_densities
 from src.simulation_io.analysis.wetting_overlay import WALL_NORMAL
 from src.simulation_io.analysis.wetting_overlay import angle_glyph
-from src.simulation_io.analysis.wetting_overlay import band_level
 from src.simulation_io.analysis.wetting_overlay import contact_angles
 from src.simulation_io.analysis.wetting_overlay import to_physical
 from src.simulation_io.analysis.wetting_overlay import wall_bands
@@ -86,31 +83,25 @@ def test_band_cells_are_exactly_the_cells_the_applicator_changes():
     neutral, shifted = _apply(0.0), _apply(0.05)
     changed = np.flatnonzero(np.asarray(neutral[1:-1, 0]) != np.asarray(shifted[1:-1, 0]))
 
-    expected_bounds = wetting_band_bounds(_RHO_L, _RHO_V)
+    left, right = band.left, band.right
+    np.testing.assert_array_equal(np.union1d(left.cells, right.cells), changed)
+    assert left.cells.size > 0
+    assert right.cells.size > 0
 
-    np.testing.assert_array_equal(np.union1d(band.left_cells, band.right_cells), changed)
-    assert band.left_cells.size > 0
-    assert band.right_cells.size > 0
-    assert band.left_cells.max() < band.split < band.right_cells.min()
-    assert (band.rho_lower, band.rho_upper) == pytest.approx(expected_bounds)
+    # Each side's cells sit in the window around its own contact line, and the
+    # two sides are disjoint and ordered along the wall.
+    half_width = anchor_window_half_width(_NX)
+    assert left.anchor < right.anchor
+    assert left.cells.max() < right.cells.min()
+    assert np.abs(left.cells - left.anchor).max() <= half_width
+    assert np.abs(right.cells - right.anchor).max() <= half_width
 
-
-def test_band_extraction_leaves_the_modification_unchanged():
-    rng = np.random.default_rng(0)
-    edge_slice = jnp.asarray(rng.uniform(_RHO_V, _RHO_L, 40))
-    phi_l, phi_r, d_l, d_r = 1.02, 0.97, 0.01, -0.02
-
-    rho_upper = 0.95 * _RHO_L + 0.05 * _RHO_V
-    rho_lower = 0.05 * _RHO_L + 0.95 * _RHO_V
-    band = (edge_slice >= rho_lower) & (edge_slice < rho_upper)
-    idx = jnp.arange(edge_slice.shape[0])
-    centre = jnp.sum(band * idx) / jnp.count_nonzero(band * idx)
-    expected = jnp.where(band & (idx > centre), jnp.clip(phi_r * edge_slice - d_r, rho_lower, rho_upper), edge_slice)
-    expected = jnp.where(band & (idx < centre), jnp.clip(phi_l * edge_slice - d_l, rho_lower, rho_upper), expected)
-
-    actual = _apply_wetting_modification(edge_slice, _RHO_L, _RHO_V, phi_l, phi_r, d_l, d_r)
-
-    np.testing.assert_array_equal(np.asarray(actual), np.asarray(expected))
+    # The bounds a side clips to bracket the densities it actually modifies.
+    ghost = np.asarray(neutral[1:-1, 0])
+    for side in (left, right):
+        assert side.rho_lower < side.rho_upper
+        assert ghost[side.cells].min() >= side.rho_lower
+        assert ghost[side.cells].max() < side.rho_upper
 
 
 @pytest.mark.parametrize("edge", _EDGES)
@@ -120,8 +111,8 @@ def test_band_is_the_same_on_every_wall(edge):
     (band,) = wall_bands(_droplet(edge, shape), _config(edge, shape))
 
     assert band.edge == edge
-    np.testing.assert_array_equal(band.left_cells, reference.left_cells)
-    np.testing.assert_array_equal(band.right_cells, reference.right_cells)
+    np.testing.assert_array_equal(band.left.cells, reference.left.cells)
+    np.testing.assert_array_equal(band.right.cells, reference.right.cells)
 
 
 def test_no_band_without_densities_or_wetting_wall():
@@ -240,8 +231,8 @@ def test_both_overlays_draw_on_field_and_interface_panels(tmp_path):
     density = _line_collection_labels(_panel(fig, "Density"))
     interface = _line_collection_labels(_panel(fig, "Interface"))
     for labels in (density, interface):
-        assert any(label.startswith("config ρ_upper") for label in labels)
-        assert any(label.startswith("measured ρ_upper") for label in labels)
+        assert any(label.startswith("left ρ_upper") for label in labels)
+        assert any(label.startswith("right ρ_upper") for label in labels)
         assert any("wetting band (left)" in label for label in labels)
     # The interface panel draws its own contours once, not again as an overlay.
     assert sum(label.startswith("config ρ=") for label in interface) == 1
@@ -284,8 +275,13 @@ def test_overlay_labels_are_gathered_into_one_figure_legend(tmp_path):
     (legend,) = fig.legends
     labels = [text.get_text() for text in legend.get_texts()]
     assert len(labels) == len(set(labels))
-    assert set(labels) >= {"config ρ_lower=0.145", "config ρ_upper=0.955"}
-    assert {label.split()[0] for label in labels} == {"config", "measured", "bottom"}
+    # "config"/"measured" are the interface contour's markers; "left"/"right"
+    # the contact-angle overlay's per-contact-line band bounds.
+    assert {label.split()[0] for label in labels} == {"config", "measured", "bottom", "left", "right"}
+    assert {label.split()[1].split("=")[0] for label in labels if label.startswith(("left", "right"))} == {
+        "ρ_lower",
+        "ρ_upper",
+    }
     assert any("wetting band (right)" in label for label in labels)
     plt.close(fig)
 
@@ -299,40 +295,41 @@ def test_no_figure_legend_without_labelled_overlays(tmp_path):
     plt.close(fig)
 
 
-def test_measured_band_uses_the_snapshot_bulk_densities():
-    rho = _droplet()
-    # Bulk vapour drifted above the prescribed rho_v, as equilibrated runs do.
-    drifted = np.where(rho < 0.5 * (_RHO_L + _RHO_V), rho + 0.05, rho)
-    config = _config()
-
-    phases = measured_phase_densities(drifted, 0.5 * (_RHO_L + _RHO_V))
-    assert phases is not None
-    expected_config = wetting_band_bounds(_RHO_L, _RHO_V)
-    expected_measured = wetting_band_bounds(*phases)
-
-    config_band = band_level("config", config, drifted)
-    measured_band = band_level("measured", config, drifted)
-
-    assert config_band is not None
-    assert measured_band is not None
-    assert (config_band.rho_lower, config_band.rho_upper) == pytest.approx(expected_config)
-    assert (measured_band.rho_lower, measured_band.rho_upper) == pytest.approx(expected_measured)
-    assert measured_band.rho_lower > config_band.rho_lower
-
-
-def test_interface_levels_select_the_band_contours(tmp_path):
-    config = _config(interface_levels=["measured"])
-    builder = FigureBuilder(config, run_dir=tmp_path, fields=["density"], overlays=["contact_angle"])
+def test_band_contours_are_drawn_per_contact_line(tmp_path):
+    builder = FigureBuilder(_config(), run_dir=tmp_path, fields=["density"], overlays=["contact_angle"])
     fig = builder.render_figure(_data(_droplet()), timestep=0)
     assert fig is not None
 
     band_labels = [label for label in _line_collection_labels(_panel(fig, "Density")) if "ρ_" in label]
-    assert [label.split()[0] for label in band_labels] == ["measured", "measured"]
+    assert sorted(label.split()[0] for label in band_labels) == ["left", "left", "right", "right"]
     plt.close(fig)
 
 
-def test_unknown_interface_level_fails_when_the_overlay_is_constructed(tmp_path):
-    config = _config(interface_levels=["bogus"])
+def test_bulk_drift_below_the_prescribed_liquid_does_not_widen_the_region():
+    """A gravitating wall's liquid equilibrates below ``rho_l``; the region must not follow.
 
-    with pytest.raises(ValueError, match="bogus"):
-        FigureBuilder(config, run_dir=tmp_path, overlays=["contact_angle"])
+    The predecessor keyed membership on the absolute window
+    ``[0.05 rho_l + 0.95 rho_v, 0.95 rho_l + 0.05 rho_v)``, leaving only
+    ``0.05 (rho_l - rho_v)`` of headroom above it. A measured inclined bubble run
+    developed a hydrostatic drop larger than that headroom, bulk liquid entered
+    the band, and the modified region grew from 54 to 158 of 200 wall cells.
+    """
+    rho = _droplet()
+    config = _config()
+    (reference,) = wall_bands(rho, config)
+
+    # Liquid drawn down by more than the old band's headroom, and tilted along
+    # the wall as an inclined domain tilts it.
+    old_headroom = 0.05 * (_RHO_L - _RHO_V)
+    tilt = np.linspace(0.0, 1.0, _NX)[:, None]
+    drifted = np.where(rho > 0.5 * (_RHO_L + _RHO_V), rho - 2.0 * old_headroom * (1.0 + tilt), rho)
+    assert drifted[:, 0].max() < 0.95 * _RHO_L + 0.05 * _RHO_V  # the old band would swallow the wall
+
+    (band,) = wall_bands(drifted, config)
+    widened = band.left.cells.size + band.right.cells.size
+    baseline = reference.left.cells.size + reference.right.cells.size
+
+    assert widened <= 2 * baseline
+    assert widened < _NX // 2
+    for side in (band.left, band.right):
+        assert np.abs(side.cells - side.anchor).max() <= anchor_window_half_width(_NX)

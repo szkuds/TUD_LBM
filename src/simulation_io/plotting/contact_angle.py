@@ -3,11 +3,12 @@
 Draws, for a run with a ``"wetting"`` wall:
 
 - the ``rho_upper`` / ``rho_lower`` iso-contours bounding the density band in
-  which the wetting BC modifies the ghost row, once per interface marker
-  (``config`` and ``measured``, chosen by ``interface_levels`` exactly as for the
-  interface contour);
+  which the wetting BC modifies the ghost row, one pair per contact line: the
+  solver measures the bounds locally at each, so the two pairs generally differ
+  and there is no global band to select a marker for;
 - the ghost-row cells it actually modifies, as thick segments on the solid
-  surface coloured by left/right contact-line region, with a tick at the split;
+  surface coloured by left/right contact-line region, with a tick at each
+  contact-line anchor;
 - at each contact line, the tangent at the contact angle, an arc from the wall
   and a ``θ=…°`` label.
 
@@ -25,28 +26,24 @@ from matplotlib.collections import LineCollection
 from src.registry import plotting_operator
 from src.simulation_io.analysis.droplet_metrics import extract_rho_2d
 from src.simulation_io.analysis.interface_contour import interface_lines
-from src.simulation_io.analysis.interface_contour import resolve_interface_levels
+from src.simulation_io.analysis.wetting_overlay import SIDES
+from src.simulation_io.analysis.wetting_overlay import anchor_tick
 from src.simulation_io.analysis.wetting_overlay import angle_glyph
 from src.simulation_io.analysis.wetting_overlay import band_cell_segments
-from src.simulation_io.analysis.wetting_overlay import band_levels
 from src.simulation_io.analysis.wetting_overlay import contact_angles
-from src.simulation_io.analysis.wetting_overlay import split_tick
 from src.simulation_io.analysis.wetting_overlay import wall_bands
 from src.simulation_io.analysis.wetting_overlay import wetting_edge
 from src.simulation_io.plotting.base import PlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
-    from pathlib import Path
     import matplotlib.axes
     import numpy as np
     from src.config import SimulationConfig
-    from src.simulation_io.analysis.wetting_overlay import Side
+    from src.simulation_io.analysis.wetting_overlay import WallBand
 
-_SIDES: tuple[Side, Side] = ("left", "right")
-
-#: Split-tick height, in cells normal to the wall.
-_SPLIT_TICK_HEIGHT = 2.0
+#: Anchor-tick height, in cells normal to the wall.
+_ANCHOR_TICK_HEIGHT = 2.0
 
 
 @plotting_operator(name="contact_angle")
@@ -58,11 +55,6 @@ class ContactAnglePlotOperator(PlotOperator):
     supports_overlay = True
     overlay_only = True
     overlay_label = "contact angles and wetting band"
-
-    def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:
-        """Validate the configured interface markers up front, not inside a panel."""
-        super().__init__(config, data_dir=data_dir)
-        self.levels = resolve_interface_levels(config)
 
     @classmethod
     def overlay_prompt_default(cls, config: SimulationConfig) -> bool | None:
@@ -98,26 +90,42 @@ class ContactAnglePlotOperator(PlotOperator):
         rho_2d = extract_rho_2d(data["rho"])
         shape = (int(rho_2d.shape[0]), int(rho_2d.shape[1]))
 
-        self._draw_band_contours(ax, rho_2d)
-        self._draw_wall_cells(ax, rho_2d, shape)
+        bands = wall_bands(rho_2d, self.config)
+        self._draw_band_contours(ax, rho_2d, bands)
+        self._draw_wall_cells(ax, shape, bands)
         self._draw_angles(ax, data, rho_2d, shape)
 
-    def _draw_band_contours(self, ax: matplotlib.axes.Axes, rho_2d: np.ndarray) -> None:
-        for band in band_levels(self.levels, self.config, rho_2d):
-            for key, value in (("lower", band.rho_lower), ("upper", band.rho_upper)):
-                ax.add_collection(
-                    LineCollection(
-                        interface_lines(rho_2d, value),
-                        colors=DEFAULT_STYLE.wetting_band_colors[key],
-                        linestyles=DEFAULT_STYLE.wetting_band_linestyles[band.level],
-                        linewidths=DEFAULT_STYLE.interface_linewidth,
-                        label=f"{band.level} ρ_{key}={value:.4g}",
-                    )
-                )
+    def _draw_band_contours(
+        self,
+        ax: matplotlib.axes.Axes,
+        rho_2d: np.ndarray,
+        bands: list[WallBand],
+    ) -> None:
+        """Contour the density bounds each contact line's cells are clipped to.
 
-    def _draw_wall_cells(self, ax: matplotlib.axes.Axes, rho_2d: np.ndarray, shape: tuple[int, int]) -> None:
-        for band in wall_bands(rho_2d, self.config):
-            for side in _SIDES:
+        The solver measures them per contact line, so the left and right pairs
+        generally differ; drawing both is what makes a drifted or degenerate
+        bound visible.
+        """
+        for band in bands:
+            for side in SIDES:
+                sideband = band.side(side)
+                if sideband.cells.size == 0:
+                    continue
+                for key, value in (("lower", sideband.rho_lower), ("upper", sideband.rho_upper)):
+                    ax.add_collection(
+                        LineCollection(
+                            interface_lines(rho_2d, value),
+                            colors=DEFAULT_STYLE.wetting_band_colors[key],
+                            linestyles=DEFAULT_STYLE.wetting_band_linestyles[side],
+                            linewidths=DEFAULT_STYLE.interface_linewidth,
+                            label=f"{side} ρ_{key}={value:.4g}",
+                        )
+                    )
+
+    def _draw_wall_cells(self, ax: matplotlib.axes.Axes, shape: tuple[int, int], bands: list[WallBand]) -> None:
+        for band in bands:
+            for side in SIDES:
                 segments = band_cell_segments(band, side, shape)
                 if not segments:
                     continue
@@ -131,9 +139,9 @@ class ContactAnglePlotOperator(PlotOperator):
                         label=f"{band.edge} wetting band ({side})",
                     )
                 )
-            tick = split_tick(band, shape, _SPLIT_TICK_HEIGHT)
-            if tick is not None:
-                ax.plot(tick[:, 0], tick[:, 1], color="black", linewidth=1.0, clip_on=False)
+                tick = anchor_tick(band, side, shape, _ANCHOR_TICK_HEIGHT)
+                if tick is not None:
+                    ax.plot(tick[:, 0], tick[:, 1], color="black", linewidth=1.0, clip_on=False)
 
     def _draw_angles(
         self,
@@ -147,7 +155,7 @@ class ContactAnglePlotOperator(PlotOperator):
             return
         length = max(3.0, DEFAULT_STYLE.contact_angle_length_fraction * min(shape))
         color = DEFAULT_STYLE.contact_angle_color
-        for side in _SIDES:
+        for side in SIDES:
             glyph = angle_glyph(angles, side, shape, length)
             for line in (glyph.tangent, glyph.arc):
                 ax.plot(line[:, 0], line[:, 1], color=color, linewidth=DEFAULT_STYLE.contact_angle_linewidth)

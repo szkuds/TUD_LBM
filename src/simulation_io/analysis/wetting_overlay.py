@@ -7,18 +7,16 @@ Wall band
     The ghost-row cells the wetting BC actually modifies, from
     :func:`~src.operators.wetting._apply_edge.wetting_edge_regions` run on the
     same stencil padding the wetting differential operators use, together with
-    the ``rho_lower``/``rho_upper`` thresholds of
-    :func:`~src.operators.wetting._wetting_modification.wetting_band_bounds`.
-    A second definition of the band here could silently disagree with the
-    solver, which is exactly what the overlay exists to check. The wall cells
-    always use the config densities, because those are what the solver bakes in.
+    the ``rho_lower``/``rho_upper`` bounds each side is clipped to. A second
+    definition of the region here could silently disagree with the solver, which
+    is exactly what the overlay exists to check.
 
 Band contours
-    The same thresholds evaluated per interface marker of
-    :mod:`.interface_contour`: ``config`` from the prescribed ``(rho_l, rho_v)``
-    — the band the solver actually applies — and ``measured`` from the
-    snapshot's bulk-phase medians, the band it *would* apply at the densities
-    the run has drifted to. Selected by ``interface_levels``, like the contour.
+    Those same per-side bounds, drawn as iso-density contours of the field. The
+    solver measures them per contact line from the densities local to it, so
+    there is no global band left to draw and no ``config``/``measured`` marker
+    choice for them — the left and right pairs generally differ, and the gap
+    between one side's two contours is the diffuse interface it acts on.
 
 Contact angles
     The ``ca_*``/``cll_*`` values the simulation saved into the snapshot, or —
@@ -43,16 +41,18 @@ from typing import TYPE_CHECKING
 from typing import Literal
 import numpy as np
 from src.simulation_io.analysis.droplet_metrics._snapshot import to_canonical_2d
-from src.simulation_io.analysis.interface_contour import LEVEL_CONFIG
 from src.simulation_io.analysis.interface_contour import config_rho_mean
-from src.simulation_io.analysis.interface_contour import level_densities
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from numpy.typing import ArrayLike
     from src.config import SimulationConfig
+    from src.operators.wetting._wetting_modification import WettingRegion
 
 Side = Literal["left", "right"]
+
+#: The two contact lines, in the ascending tangential order the solver anchors them in.
+SIDES: tuple[Side, Side] = ("left", "right")
 
 #: Canonical normal coordinate of the solid surface: half a cell below the wall row.
 WALL_NORMAL = -0.5
@@ -67,24 +67,27 @@ _LABEL_RADIUS = 1.8
 
 
 @dataclass(frozen=True)
-class WallBand:
-    """The ghost-row cells one wetting wall modifies, indexed along that wall."""
+class SideBand:
+    """One contact line's modified cells, anchor and density bounds."""
 
-    edge: str
-    left_cells: np.ndarray
-    right_cells: np.ndarray
-    split: float | None
+    side: Side
+    cells: np.ndarray
+    anchor: float
     rho_lower: float
     rho_upper: float
 
 
 @dataclass(frozen=True)
-class BandLevel:
-    """The wetting-band thresholds at one interface marker's densities."""
+class WallBand:
+    """The ghost-row cells one wetting wall modifies, indexed along that wall."""
 
-    level: str
-    rho_lower: float
-    rho_upper: float
+    edge: str
+    left: SideBand
+    right: SideBand
+
+    def side(self, side: Side) -> SideBand:
+        """The :class:`SideBand` for *side*."""
+        return self.left if side == "left" else self.right
 
 
 @dataclass(frozen=True)
@@ -115,34 +118,12 @@ def wetting_edge(config: SimulationConfig) -> str | None:
     return first_wetting_edge(config.bc_config)
 
 
-def band_level(level: str, config: SimulationConfig, rho_2d: np.ndarray) -> BandLevel | None:
-    """The wetting-band thresholds at interface marker *level*, or ``None`` if unavailable.
-
-    The solver's own :func:`~src.operators.wetting._wetting_modification.wetting_band_bounds`
-    applied to the marker's ``(dense, light)`` pair from
-    :func:`~src.simulation_io.analysis.interface_contour.level_densities`.
-    """
-    phases = level_densities(level, config, rho_2d)
-    if phases is None:
-        return None
-    from src.operators.wetting._wetting_modification import wetting_band_bounds
-
-    lower, upper = wetting_band_bounds(*phases)
-    return BandLevel(level, float(np.asarray(lower)), float(np.asarray(upper)))
-
-
-def band_levels(levels: tuple[str, ...], config: SimulationConfig, rho_2d: np.ndarray) -> list[BandLevel]:
-    """:func:`band_level` for every marker in *levels* this snapshot can supply."""
-    return [band for level in levels if (band := band_level(level, config, rho_2d)) is not None]
-
-
 def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
     """The modified ghost-row cells of every wetting wall in *config*.
 
     Empty when the config has no wetting wall or lacks ``rho_l``/``rho_v``.
     """
-    bounds = band_level(LEVEL_CONFIG, config, rho_2d)
-    if bounds is None or config.rho_l is None or config.rho_v is None or not config.bc_config:
+    if config.rho_l is None or config.rho_v is None or not config.bc_config:
         return []
     rho_l, rho_v = float(config.rho_l), float(config.rho_v)
 
@@ -155,14 +136,21 @@ def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
     grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), tuple(determine_pad_modes(config.bc_config)))
     bands: list[WallBand] = []
     for edge, perp_start_periodic, perp_end_periodic in _resolve_wetting_edges(config.bc_config):
-        is_left, is_right, centre = wetting_edge_regions(
-            grid_padded, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v
-        )
-        left_cells = np.flatnonzero(np.asarray(is_left))
-        right_cells = np.flatnonzero(np.asarray(is_right))
-        split = float(centre) if left_cells.size or right_cells.size else None
-        bands.append(WallBand(edge, left_cells, right_cells, split, bounds.rho_lower, bounds.rho_upper))
+        regions = wetting_edge_regions(grid_padded, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v)
+        sides = tuple(_side_band(side, region) for side, region in zip(SIDES, regions, strict=True))
+        bands.append(WallBand(edge, *sides))
     return bands
+
+
+def _side_band(side: Side, region: WettingRegion) -> SideBand:
+    """One solver :class:`~src.operators.wetting._wetting_modification.WettingRegion` as plain numpy."""
+    return SideBand(
+        side,
+        np.flatnonzero(np.asarray(region.mask)),
+        float(np.asarray(region.anchor)),
+        float(np.asarray(region.rho_lower)),
+        float(np.asarray(region.rho_upper)),
+    )
 
 
 def _crossings(row: np.ndarray, rho_mean: float) -> int:
@@ -246,19 +234,24 @@ def to_physical(
 
 def band_cell_segments(band: WallBand, side: Side, shape: tuple[int, int]) -> list[np.ndarray]:
     """One ``(2, 2)`` segment per modified cell, lying on the solid surface of *band*'s wall."""
-    cells = band.left_cells if side == "left" else band.right_cells
     segments = []
-    for cell in cells:
+    for cell in band.side(side).cells:
         x, y = to_physical([cell - 0.5, cell + 0.5], [WALL_NORMAL, WALL_NORMAL], band.edge, shape)
         segments.append(np.column_stack((x, y)))
     return segments
 
 
-def split_tick(band: WallBand, shape: tuple[int, int], height: float) -> np.ndarray | None:
-    """A ``(2, 2)`` segment normal to the wall at the band's left/right split."""
-    if band.split is None:
+def anchor_tick(band: WallBand, side: Side, shape: tuple[int, int], height: float) -> np.ndarray | None:
+    """A ``(2, 2)`` segment normal to the wall at one side's contact-line anchor.
+
+    ``None`` when that side modifies nothing, so an anchor the contrast floor
+    rejected is not drawn as though it had been used.
+    """
+    sideband = band.side(side)
+    if sideband.cells.size == 0:
         return None
-    x, y = to_physical([band.split, band.split], [WALL_NORMAL, WALL_NORMAL + height], band.edge, shape)
+    anchor = sideband.anchor
+    x, y = to_physical([anchor, anchor], [WALL_NORMAL, WALL_NORMAL + height], band.edge, shape)
     return np.column_stack((x, y))
 
 

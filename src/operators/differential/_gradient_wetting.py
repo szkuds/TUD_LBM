@@ -64,10 +64,10 @@ def build_wetting_gradient(
         d_rho_l: ArrayLike,
         d_rho_r: ArrayLike,
     ) -> jnp.ndarray:
-        gp = _apply_stencil_padding(to_2d(grid), _pad_mode)
-        gp = _apply_wetting(gp, phi_l, phi_r, d_rho_l, d_rho_r)
+        grid_padded = _apply_stencil_padding(to_2d(grid), _pad_mode)
+        grid_padded = _apply_wetting(grid_padded, phi_l, phi_r, d_rho_l, d_rho_r)
 
         # Pass FULL padded array to grad_core.
-        return grad_core_2d(gp, w, c)
+        return grad_core_2d(grid_padded, w, c)
 
     return _grad

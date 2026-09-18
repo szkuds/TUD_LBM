@@ -26,7 +26,9 @@ from typing import cast
 import numpy as np
 from src.operators.macroscopic import build_multiphase_params
 from src.operators.macroscopic.eos import analytical_surface_tension
+from src.operators.macroscopic.eos import build_pressure_fn
 from src.operators.macroscopic.eos import has_analytical_surface_tension
+from src.registry import get_operator_names
 from src.registry import get_operators
 from src.simulation_io.analysis.physical_parameters import (
     numbers as _numbers,  # noqa: F401  (registers the dimensionless operators)
@@ -36,10 +38,16 @@ from src.simulation_io.analysis.physical_parameters.numbers._bond import BondNum
 from src.simulation_io.analysis.physical_parameters.numbers._bond import compute_bond_numbers
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Mapping
     from src.config.simulation_config import SimulationConfig
+    from src.operators.macroscopic import MultiphaseParams
     from src.registry import OperatorEntry
     from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessNumberOperator
+
+#: The config fields :func:`build_multiphase_params` requires, guarded in one
+#: place by :func:`_multiphase_params_or_none`.
+_MULTIPHASE_PARAM_FIELDS = ("eos", "kappa", "rho_l", "rho_v", "interface_width")
 
 # Re-exported so the formulas keep their historical import site while living
 # beside the operators that register them.
@@ -469,6 +477,18 @@ def _resolve_gravity_inclination(config: SimulationConfig) -> float:
     return 0.0
 
 
+def _multiphase_params_or_none(config: SimulationConfig) -> MultiphaseParams | None:
+    """``build_multiphase_params(config)``, or ``None`` if its preconditions are unmet.
+
+    One copy of that precondition, so a caller cannot guard a subset of the
+    fields the builder actually requires and turn a missing one into a
+    ``ValueError`` where every other caller gets ``None``.
+    """
+    if any(getattr(config, name, None) is None for name in _MULTIPHASE_PARAM_FIELDS):
+        return None
+    return build_multiphase_params(config)
+
+
 def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, float] | None:
     """Return ``(delta_rho_phases, gamma)`` from the EOS's own closed-form surface tension.
 
@@ -478,13 +498,12 @@ def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, floa
     names in this module. ``None`` likewise when a multiphase parameter is
     missing or the interface width cannot define an interface.
     """
-    if config.eos is None or config.kappa is None or config.interface_width is None:
-        return None
-    if config.rho_l is None or config.rho_v is None:
+    params = _multiphase_params_or_none(config)
+    if params is None:
         return None
 
-    gamma = analytical_surface_tension(build_multiphase_params(config))
-    if gamma is None:
+    gamma = analytical_surface_tension(params)
+    if gamma is None or config.rho_l is None or config.rho_v is None:
         return None
     return float(config.rho_l) - float(config.rho_v), gamma
 
@@ -530,6 +549,21 @@ def _resolve_buoyancy_delta_rho(config: SimulationConfig) -> tuple[float, str] |
     if config.rho_l is not None and config.rho_v is not None:
         return float(config.rho_l) - float(config.rho_v), "config"
     return None
+
+
+def _resolve_bulk_pressure(config: SimulationConfig) -> Callable[[np.ndarray], np.ndarray] | None:
+    """The EOS bulk pressure ``p_0(rho)``, or ``None`` when this EOS has none.
+
+    Membership of the ``"pressure"`` registry kind *is* the capability check —
+    the same gate the pressure panels and the surface-tension calibration use,
+    rather than a hand-kept list of EOS names. Importing
+    :func:`build_pressure_fn` above performs the registration side-effect import
+    that query needs.
+    """
+    if config.eos is None or config.eos not in get_operator_names("pressure"):
+        return None
+    params = _multiphase_params_or_none(config)
+    return None if params is None else build_pressure_fn(params)
 
 
 def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple[float, str]:
@@ -596,6 +630,8 @@ def resolve_dimensionless_inputs(config: SimulationConfig) -> DimensionlessInput
         rho_l=float(config.rho_l),
         g=g_val,
         angle_deg=None if g_val is None else _resolve_gravity_inclination(config),
+        domain=(float(config.grid_shape[0]), float(config.grid_shape[1])),
+        pressure=_resolve_bulk_pressure(config),
     )
 
 
@@ -707,13 +743,16 @@ def _dimensionless_rows(config: SimulationConfig) -> list[str]:
             continue
         meta = _meta_of(entry)
         # Only the gravity-driven numbers use the buoyancy contrast, so only
-        # they annotate its provenance.
-        scale_label = (
-            f"{inputs.length_label}, Δρ {inputs.drho_source}" if meta.get("needs_gravity") else inputs.length_label
-        )
-        rows.append(
-            _row(str(meta.get("row_label", entry.name)), f"{value:.6g}  [{meta.get('formula', '')}, {scale_label}]")
-        )
+        # they annotate its provenance -- and a number built from neither the
+        # inclusion length nor the contrast declares ``annotates_scale=False``
+        # rather than claim a provenance it never read.
+        note = str(meta.get("formula", ""))
+        if meta.get("annotates_scale", True):
+            scale_label = (
+                f"{inputs.length_label}, Δρ {inputs.drho_source}" if meta.get("needs_gravity") else inputs.length_label
+            )
+            note = f"{note}, {scale_label}"
+        rows.append(_row(str(meta.get("row_label", entry.name)), f"{value:.6g}  [{note}]"))
     return rows
 
 

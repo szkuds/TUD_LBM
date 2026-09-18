@@ -106,8 +106,8 @@ class TestDictAdapter:
 
         assert final_state.t == 5
 
-    def test_dict_adapter_normalizes_grid_shape(self):
-        """Verify list grid_shape is converted to tuple and normalized to 3D."""
+    def test_dict_adapter_normalises_grid_shape(self):
+        """Verify list grid_shape is converted to tuple and normalised to 3D."""
         adapter = DictAdapter()
         config = adapter.load(
             {

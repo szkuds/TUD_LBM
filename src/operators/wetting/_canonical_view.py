@@ -12,7 +12,7 @@ column index — geometrically identical to a sessile drop on the bottom. Every
 downstream formula then applies unchanged for all four edges.
 
 The transform is exactly the transpose-plus-flip that the wetting *applicator*
-already uses in :mod:`src.operators.wetting._apply_edge` (``arr = gp.T`` for
+already uses in :mod:`src.operators.wetting._apply_edge` (``arr = grid_padded.T`` for
 left/right; ghost index ``0`` vs ``-1``). Keeping the two in lock-step is what
 guarantees the optimiser's ``phi_left`` / ``d_rho_left`` parameters address the
 same physical contact line the measurement reports.

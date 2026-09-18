@@ -30,10 +30,10 @@ def _apply_stencil_padding(
     Returns:
         Shape ``(nx + 2, ny + 2)``.
     """
-    gp = jnp.pad(grid_2d, ((0, 0), (0, 1)), mode=pad_mode[0])
-    gp = jnp.pad(gp, ((0, 0), (1, 0)), mode=pad_mode[1])
-    gp = jnp.pad(gp, ((0, 1), (0, 0)), mode=pad_mode[2])
-    return jnp.pad(gp, ((1, 0), (0, 0)), mode=pad_mode[3])
+    grid_padded = jnp.pad(grid_2d, ((0, 0), (0, 1)), mode=pad_mode[0])
+    grid_padded = jnp.pad(grid_padded, ((0, 0), (1, 0)), mode=pad_mode[1])
+    grid_padded = jnp.pad(grid_padded, ((0, 1), (0, 0)), mode=pad_mode[2])
+    return jnp.pad(grid_padded, ((1, 0), (0, 0)), mode=pad_mode[3])
 
 
 def to_2d(grid: jnp.ndarray) -> jnp.ndarray:

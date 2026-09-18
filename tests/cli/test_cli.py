@@ -162,11 +162,11 @@ class TestParseOverrideArgument:
 
 
 # =========================================================================
-# _normalize_override_path Tests
+# _normalise_override_path Tests
 # =========================================================================
 
 
-class TestNormalizeOverridePath:
+class TestNormaliseOverridePath:
     """Tests for normalizing TOML section paths to field names."""
 
     def test_simple_field_no_normalization(self):
@@ -272,12 +272,12 @@ class TestSetNestedOverride:
         with pytest.raises(TypeError, match="is not a table"):
             _set_nested_override(raw, "tau.something", 42)
 
-    def test_set_with_normalized_path(self):
+    def test_set_with_normalised_path(self):
         raw = {}
         _set_nested_override(raw, "simulation_type.tau", 0.7)
         assert raw == {"tau": 0.7}
 
-    def test_set_nested_with_normalized_path(self):
+    def test_set_nested_with_normalised_path(self):
         raw = {}
         _set_nested_override(raw, "boundary_conditions.top", "periodic")
         assert raw == {"bc_config": {"top": "periodic"}}

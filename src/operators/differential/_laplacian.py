@@ -46,8 +46,8 @@ def compute_laplacian(
     Returns:
         Laplacian field, shape ``(nx, ny, nz, 1, 1)``.
     """
-    gp = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
-    return lap_core_2d(gp, w)
+    grid_padded = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
+    return lap_core_2d(grid_padded, w)
 
 
 def lap_core_2d(

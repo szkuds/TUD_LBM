@@ -56,8 +56,8 @@ def compute_gradient(
     Returns:
         Gradient field, shape ``(nx, ny, nz, 1, 2)``.
     """
-    gp = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
-    return grad_core_2d(gp, w, c)
+    grid_padded = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
+    return grad_core_2d(grid_padded, w, c)
 
 
 def grad_core_2d(

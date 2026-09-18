@@ -97,11 +97,11 @@ class AnalysisPlot(ABC):
     is_multi_panel: bool = False
 
     def __init__(self, config: SimulationConfig | None = None) -> None:
-        """Initialize with optional simulation config.
+        """Initialise with optional simulation config.
 
         Args:
             config: Simulation configuration object. Required by config-aware
-                operators (for example, capillary-number or normalized
+                operators (for example, capillary-number or normalised
                 contact-line operators). Operators that do not need config can
                 ignore it.
         """

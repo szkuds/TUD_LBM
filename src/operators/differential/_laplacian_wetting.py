@@ -74,13 +74,13 @@ def build_wetting_laplacian(
             Laplacian field, shape ``(nx, ny, nz, 1, 1)``.
         """
         grid_2d = to_2d(grid)
-        gp = _apply_stencil_padding(grid_2d, _pad_mode)
+        grid_padded = _apply_stencil_padding(grid_2d, _pad_mode)
 
         # Wetting ghost-cell correction on the padded array
         # (rho_l, rho_v, width now baked into the applicator)
-        gp = _apply_wetting(gp, phi_l, phi_r, d_rho_l, d_rho_r)
+        grid_padded = _apply_wetting(grid_padded, phi_l, phi_r, d_rho_l, d_rho_r)
 
         # Pass FULL padded array to lap_core.
-        return lap_core_2d(gp, w)
+        return lap_core_2d(grid_padded, w)
 
     return _lap

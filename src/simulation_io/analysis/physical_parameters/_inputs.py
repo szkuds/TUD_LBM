@@ -11,7 +11,11 @@ next to the resolvers it composes.
 
 from __future__ import annotations
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 from typing import NamedTuple
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 class DimensionlessInputs(NamedTuple):
@@ -26,6 +30,15 @@ class DimensionlessInputs(NamedTuple):
     ``g`` and ``angle_deg`` are optional: a run may configure no gravity at all,
     which leaves the buoyancy-driven numbers unresolvable while ``Oh`` and
     ``La`` remain perfectly well defined. Each operator decides for itself.
+
+    ``domain`` and ``pressure`` serve numbers that weigh a run against the
+    *domain* rather than against the inclusion: ``domain`` is the grid's
+    ``(nx, ny)``, and ``pressure`` the EOS bulk pressure ``p_0(rho)`` (NumPy in,
+    NumPy out), which is ``None`` for an EOS with no operator registered under
+    the ``pressure`` kind. Both default to ``None`` — "not available", like
+    ``g`` and ``angle_deg`` — rather than to a neutral-looking value: ``Hs`` is
+    a threshold diagnostic where ``>= 1`` means the run dies, so a caller that
+    omits ``domain`` must get no answer, not the most reassuring one.
     """
 
     gamma: float
@@ -38,6 +51,8 @@ class DimensionlessInputs(NamedTuple):
     rho_l: float
     g: float | None
     angle_deg: float | None
+    domain: tuple[float, float] | None = None
+    pressure: Callable[[np.ndarray], np.ndarray] | None = None
 
 
 #: A registered ``dimensionless`` operator: pure, total, and ``None`` rather

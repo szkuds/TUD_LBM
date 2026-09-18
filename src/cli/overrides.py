@@ -95,7 +95,7 @@ def _parse_override_argument(raw_override: str) -> tuple[str, object]:
 def _normalise_override_path(path: str) -> list[str]:
     """Map TOML table paths to raw-config keys and split into segments.
 
-    Normalizes TOML section aliases to their field names:
+    Normalises TOML section aliases to their field names:
     - simulation_type.* → * (direct field)
     - boundary_conditions.* → bc_config.*
     - wetting.* → wetting_config.*
