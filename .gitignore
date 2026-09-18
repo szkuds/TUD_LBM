@@ -28,6 +28,7 @@ share/python-wheels/
 # Environment variables
 .env
 !.env.example
+.idea/
 
 # Unit test / coverage reports
 htmlcov/
