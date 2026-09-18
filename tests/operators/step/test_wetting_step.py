@@ -6,12 +6,12 @@ and hysteresis optimisation.
 
 from pathlib import Path
 import jax.numpy as jnp
-from tud_lbm.config.adapter_toml import TomlAdapter
-from tud_lbm.config.simulation_config import SimulationConfig
-from tud_lbm.operators.step import build_step_fn
-from tud_lbm.pipeline.runner import init_state
-from tud_lbm.pipeline.setup import build_setup
-from tud_lbm.pipeline.state import WettingState
+from src.config.adapter_toml import TomlAdapter
+from src.config.simulation_config import SimulationConfig
+from src.operators.step import build_step_fn
+from src.pipeline.runner import init_state
+from src.pipeline.setup import build_setup
+from src.pipeline.state import WettingState
 
 (
     NX,

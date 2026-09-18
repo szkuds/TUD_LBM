@@ -1,21 +1,27 @@
 from __future__ import annotations
 import jax.numpy as jnp
 import pytest
-from tud_lbm.operators.wetting._params import WettingParams
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _clamp_params
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _import_optax
-from tud_lbm.operators.wetting.hysteresis.hysteresis import _phi_is_active
+from src.operators.wetting._params import WettingParams
+from src.operators.wetting.hysteresis.hysteresis import _clamp_params
+from src.operators.wetting.hysteresis.hysteresis import _import_optax
+from src.operators.wetting.hysteresis.hysteresis import _phi_is_active
+
+_DROPLET = jnp.array(False)
 
 
 def test_phi_is_active_truth_table():
-    # Above-window CA always activates phi.
-    assert bool(_phi_is_active(jnp.array(False), jnp.array(True), jnp.array(True)))
+    """Droplet-topology spot checks; the exhaustive table with both topologies
+    lives in ``test_hysteresis_internals.py``.
+    """
+    # Above-window CA activates phi — for a droplet, where the reported angle
+    # is the liquid angle and phi lowers it.
+    assert bool(_phi_is_active(jnp.array(False), jnp.array(True), jnp.array(True), _DROPLET))
 
     # In-window + backward drift activates phi.
-    assert bool(_phi_is_active(jnp.array(True), jnp.array(False), jnp.array(False)))
+    assert bool(_phi_is_active(jnp.array(True), jnp.array(False), jnp.array(False), _DROPLET))
 
     # In-window + forward drift keeps d_rho active.
-    assert not bool(_phi_is_active(jnp.array(True), jnp.array(False), jnp.array(True)))
+    assert not bool(_phi_is_active(jnp.array(True), jnp.array(False), jnp.array(True), _DROPLET))
 
 
 def test_import_optax_raises_helpful_message_when_missing(mock_optax_missing):

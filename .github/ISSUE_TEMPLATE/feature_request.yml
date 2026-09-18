@@ -1,0 +1,62 @@
+name: Feature request
+description: Suggest new physics, a new operator, or an improvement to existing behaviour
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please
+        [search the existing issues](https://github.com/szkuds/TUD_LBM/issues?q=is%3Aissue)
+        first — the idea may already be under discussion.
+
+        As described in [CONTRIBUTING.md](https://github.com/szkuds/TUD_LBM/blob/main/CONTRIBUTING.md),
+        opening an issue before you start work is the expected first step for any code change.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the limitation you have run into, rather than the solution you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to see?
+      description: >
+        Sketch the behaviour you want. If it is new physics, a reference to the paper or
+        formulation is very helpful.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area does this touch?
+      multiple: true
+      options:
+        - Physics / operators
+        - Configuration
+        - CLI
+        - Analysis and plotting
+        - I/O and file formats
+        - Documentation
+        - Not sure
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to work on this myself
+          required: false

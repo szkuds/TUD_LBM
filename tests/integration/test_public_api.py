@@ -13,11 +13,11 @@ import tempfile
 from pathlib import Path
 import numpy as np
 import pytest
-from tud_lbm import SimulationConfig
-from tud_lbm import build_setup
-from tud_lbm import run
-from tud_lbm.io.readers import DictAdapter
-from tud_lbm.pipeline.runner import init_state
+from src import SimulationConfig
+from src import build_setup
+from src import run
+from src.pipeline.runner import init_state
+from src.simulation_io.readers import DictAdapter
 
 
 class TestMinimalSimulation:
@@ -239,7 +239,7 @@ class TestOutputAdapters:
     def test_write_numpy_creates_file(self):
         """Verify write_numpy creates valid .npz file."""
         try:
-            from tud_lbm.io.output_data import output_writers
+            from src.simulation_io.output_data import output_writers
         except ImportError:
             pytest.skip("Output writer module not available")
 
@@ -269,7 +269,7 @@ class TestOutputAdapters:
         """Verify write_vtk creates valid .vtk file."""
         try:
             import pyevtk  # noqa: F401
-            from tud_lbm.io.output_data import output_writers
+            from src.simulation_io.output_data import output_writers
         except ImportError:
             pytest.skip("VTK writer or pyevtk not available")
 

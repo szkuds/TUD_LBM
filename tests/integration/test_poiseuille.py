@@ -29,13 +29,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-# Ensure tud_lbm/ is importable
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "tud_lbm"))
+# Ensure src/ is importable
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from tud_lbm.config.simulation_config import SimulationConfig
-from tud_lbm.pipeline.runner import init_state
-from tud_lbm.pipeline.runner import run
-from tud_lbm.pipeline.setup import build_setup
+from src.config.simulation_config import SimulationConfig
+from src.pipeline.runner import init_state
+from src.pipeline.runner import run
+from src.pipeline.setup import build_setup
 
 # ── Test parameters ──────────────────────────────────────────────────
 

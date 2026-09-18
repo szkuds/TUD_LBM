@@ -1,11 +1,12 @@
-"""Tests for tud_lbm.io.analysis.accelerations.acceleration_analysis."""
+"""Tests for src.simulation_io.analysis.accelerations.acceleration_analysis."""
 
 from __future__ import annotations
 import numpy as np
 import pandas as pd
-from tud_lbm.io.analysis.accelerations import compute_acceleration
-from tud_lbm.io.analysis.accelerations import find_slope_window
-from tud_lbm.io.analysis.accelerations import save_diagnostic_plot
+from src.simulation_io.analysis.accelerations import AccelerationResult
+from src.simulation_io.analysis.accelerations import compute_acceleration
+from src.simulation_io.analysis.accelerations import find_slope_window
+from src.simulation_io.analysis.accelerations import save_diagnostic_plot
 
 
 def _ramp_up_then_down_df(n: int = 100) -> pd.DataFrame:
@@ -64,6 +65,30 @@ def test_find_slope_window_none_when_window_too_narrow():
     assert window is None
 
 
+def _result_with_peaks(peak_accel_idx: int, peak_decel_idx: int) -> AccelerationResult:
+    """An AccelerationResult carrying only what find_slope_window reads."""
+    size = peak_decel_idx + 1
+    return AccelerationResult(
+        iteration=np.arange(size, dtype=float),
+        ca=np.zeros(size),
+        accel=np.full(size, np.nan),
+        peak_accel_idx=peak_accel_idx,
+        peak_decel_idx=peak_decel_idx,
+        has_peak_pair=True,
+    )
+
+
+def test_find_slope_window_keeps_three_points_but_rejects_two():
+    """Three points is the minimum: two are fit exactly, leaving no residual.
+
+    With the default margin the window spans ``peak_decel - peak_accel - 15``
+    indices, so a gap of 18 is the narrowest that classification can fit a
+    trend to.
+    """
+    assert find_slope_window(_result_with_peaks(0, 18)) == (12, 14)
+    assert find_slope_window(_result_with_peaks(0, 17)) is None
+
+
 def test_find_slope_window_none_when_no_peak_pair():
     df = pd.DataFrame({"normalised_iteration": [0, 1, 2], "Ca": [0.0, 0.0, 5.0]})
     result = compute_acceleration(df)
@@ -77,6 +102,21 @@ def test_save_diagnostic_plot_writes_file_with_window(tmp_path):
     window = find_slope_window(result)
 
     out_path = save_diagnostic_plot(result, window, tmp_path / "acceleration_analysis.png")
+
+    assert out_path.exists()
+
+
+def test_save_diagnostic_plot_writes_file_with_annotation(tmp_path):
+    df = _ramp_up_then_down_df()
+    result = compute_acceleration(df)
+    window = find_slope_window(result)
+
+    out_path = save_diagnostic_plot(
+        result,
+        window,
+        tmp_path / "acceleration_analysis.png",
+        annotation="Steady | drift -0.26% | t -0.72",
+    )
 
     assert out_path.exists()
 

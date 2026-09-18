@@ -3,9 +3,9 @@
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from tud_lbm.lattice.lattice import build_lattice
-from tud_lbm.operators.boundary._velocity_inlet import apply_velocity_inlet
-from tud_lbm.operators.macroscopic._single_phase import compute_macroscopic
+from src.lattice.lattice import build_lattice
+from src.operators.boundary._velocity_inlet import apply_velocity_inlet
+from src.operators.macroscopic._single_phase import compute_macroscopic
 
 NX, NY, NZ = 8, 10, 1
 

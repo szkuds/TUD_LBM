@@ -10,9 +10,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from tud_lbm.lattice.lattice import build_lattice
-from tud_lbm.operators.initialise import build_initialise_fn
-from tud_lbm.registry import get_operators
+from src.lattice.lattice import build_lattice
+from src.operators.initialise import build_initialise_fn
+from src.registry import get_operators
 
 NX, NY, NZ = 16, 16, 1  # nz=1 for 2D/3D equivalence verification
 

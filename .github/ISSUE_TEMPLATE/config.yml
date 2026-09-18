@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/szkuds/TUD_LBM/security/advisories/new
+    about: >
+      Do not file security vulnerabilities as public issues. Report them privately through a
+      draft security advisory, or by email as described in SECURITY.md.
+  - name: Ask a question
+    url: https://github.com/szkuds/TUD_LBM/issues/new
+    about: >
+      Open a normal issue and apply the "Question" label, as described in CONTRIBUTING.md.
+  - name: Documentation
+    url: https://tud-lbm.readthedocs.io/en/latest/
+    about: Installation, quickstart, architecture, and operator reference.

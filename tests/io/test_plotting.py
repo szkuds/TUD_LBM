@@ -4,9 +4,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
 import pytest
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.figure_builder import FigureBuilder
-from tud_lbm.registry import get_operator_names
+from src.config import SimulationConfig
+from src.registry import get_operator_names
+from src.simulation_io.plotting.figure_builder import FigureBuilder
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -29,15 +29,15 @@ def simple_config():
 
 
 def test_layout_1():
-    assert FigureBuilder._layout(1) == (1, 1)
+    assert FigureBuilder.layout(1) == (1, 1)
 
 
 def test_layout_4():
-    assert FigureBuilder._layout(4) == (2, 2)
+    assert FigureBuilder.layout(4) == (2, 2)
 
 
 def test_layout_5():
-    ncols, nrows = FigureBuilder._layout(5)
+    ncols, nrows = FigureBuilder.layout(5)
     assert ncols * nrows >= 5
 
 
@@ -77,7 +77,7 @@ def test_velocity_operator_registered():
 
 
 def test_analysis_operators_registered():
-    names = get_operator_names("comparison")
+    names = get_operator_names("analysis")
     assert "max_velocity" in names
     assert "density_ratio" in names
     assert "avg_density" in names

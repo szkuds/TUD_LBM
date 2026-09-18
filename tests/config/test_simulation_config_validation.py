@@ -15,7 +15,7 @@ Covers every raise statement in _validate_common and _validate_multiphase:
 from __future__ import annotations
 from typing import Any
 import pytest
-from tud_lbm.config.simulation_config import SimulationConfig
+from src.config.simulation_config import SimulationConfig
 
 # ---------------------------------------------------------------------------
 # Base configs shared across parametrized tests
@@ -301,3 +301,41 @@ class TestValidateObstacle:
             obstacle_config={"center_x": 20, "center_y": 10, "radius": 5},
         )
         assert cfg.obstacle_config is not None
+
+
+# ---------------------------------------------------------------------------
+# Wetting-wall resolution (measurement orientation)
+# ---------------------------------------------------------------------------
+
+
+class TestWettingWallConfig:
+    """Wetting walls are accepted on any edge, and several at once.
+
+    Measurement orients from the first wetting wall (see
+    ``SimulationSetup.wetting_edge``); multiple wetting walls are permitted and
+    share one ``WettingState`` parameter pair.
+    """
+
+    @staticmethod
+    def _wetting_config(**bc: str) -> dict[str, Any]:
+        return {
+            **_DW_BASE,
+            "sim_type": "multiphase_wetting",
+            "wetting_config": {"advancing_ca": 100.0},
+            "bc_config": bc,
+        }
+
+    def test_top_wetting_wall_is_valid(self):
+        cfg = SimulationConfig(**self._wetting_config(top="wetting"))
+        assert cfg.bc_config is not None
+        assert cfg.bc_config["top"] == "wetting"
+
+    def test_two_wetting_walls_are_valid(self):
+        cfg = SimulationConfig(**self._wetting_config(bottom="wetting", top="wetting"))
+        assert cfg.bc_config is not None
+        assert cfg.bc_config["bottom"] == "wetting"
+        assert cfg.bc_config["top"] == "wetting"
+
+    def test_zero_wetting_walls_is_permissive(self):
+        cfg = SimulationConfig(**self._wetting_config())
+        assert cfg.sim_type == "multiphase_wetting"

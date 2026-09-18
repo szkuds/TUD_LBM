@@ -1,15 +1,16 @@
 """Tests for force operators — gravity and electric."""
 
+import math
 from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from tud_lbm.config.simulation_config import SimulationConfig
-from tud_lbm.lattice.lattice import build_lattice
-from tud_lbm.operators.force import ForceParams
-from tud_lbm.operators.force import ForceSetup
-from tud_lbm.pipeline.state.state import State
+from src.config.simulation_config import SimulationConfig
+from src.lattice.lattice import build_lattice
+from src.operators.force import ForceParams
+from src.operators.force import ForceSetup
+from src.pipeline.state.state import State
 
 NX, NY, NZ = 8, 8, 1
 
@@ -28,7 +29,7 @@ def sim_config():
 @pytest.fixture(scope="module")
 def electric_params(lattice, sim_config):
     """Pre-built ElectricParams with a real gradient closure."""
-    from tud_lbm.operators.force._electric import ElectricForceModule
+    from src.operators.force._electric import ElectricForceModule
 
     return ElectricForceModule.build(
         {
@@ -58,7 +59,7 @@ def make_state(lattice, rho_value=1.0, h=None):
 
 
 def make_electric_setup(lattice, electric_params):
-    from tud_lbm.operators.streaming._streaming import stream
+    from src.operators.streaming._streaming import stream
 
     specs = (
         ForceParams(
@@ -84,13 +85,13 @@ class TestGravityForce:
     """GravityForceModule build/compute behaviour."""
 
     def test_template_shape(self, lattice, sim_config):
-        from tud_lbm.operators.force._gravity import GravityForceModule
+        from src.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=sim_config, lattice=lattice)
         assert template.shape == (NX, NY, NZ, 1, 2)
 
     def test_vertical_gravity(self, lattice, sim_config):
-        from tud_lbm.operators.force._gravity import GravityForceModule
+        from src.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build(
             {"force_g": 0.001, "inclination_angle_deg": 0.0},
@@ -110,7 +111,7 @@ class TestGravityForce:
         )
 
     def test_inclined_gravity(self, lattice, sim_config):
-        from tud_lbm.operators.force._gravity import GravityForceModule
+        from src.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build(
             {"force_g": 0.001, "inclination_angle_deg": 90.0},
@@ -130,7 +131,7 @@ class TestGravityForce:
         )
 
     def test_compute_gravity_force_shape(self, lattice, sim_config):
-        from tud_lbm.operators.force._gravity import GravityForceModule
+        from src.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=sim_config, lattice=lattice)
         state = make_state(lattice, rho_value=1.0)
@@ -138,7 +139,7 @@ class TestGravityForce:
         assert force.shape == (NX, NY, NZ, 1, 2)
 
     def test_compute_gravity_force_value(self, lattice, sim_config):
-        from tud_lbm.operators.force._gravity import GravityForceModule
+        from src.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=sim_config, lattice=lattice)
         state = make_state(lattice, rho_value=2.0)
@@ -151,7 +152,7 @@ class TestGravityForce:
         )
 
     def test_jittable(self, lattice, sim_config):
-        from tud_lbm.operators.force._gravity import GravityForceModule
+        from src.operators.force._gravity import GravityForceModule
 
         template = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=sim_config, lattice=lattice)
         state = make_state(lattice, rho_value=1.0)
@@ -160,29 +161,279 @@ class TestGravityForce:
 
 
 class TestGravityMaskedForce:
-    """GravityForceModule with phase mask based on rho_v/rho_l references."""
+    """The weight is a band-limited phase indicator: 0 light, ``drho`` dense.
 
-    def test_compute_matches_masked_formula(self, lattice):
-        from tud_lbm.operators.force._gravity_masked import GravityForceModule
+    One formula covers both topologies. A liquid droplet is driven at
+    ``drho*g`` with its vapour ambient left force-free; a vapour bubble is
+    itself force-free and the liquid around it carries ``drho*g``, so the
+    bubble is buoyed by the resulting pressure gradient rather than having the
+    net force injected into its own negligible inertia. Vanishing on the light
+    branch rather than the dense one is the whole point: the dense phase can
+    sustain a pressure gradient and the light phase cannot.
+    """
 
-        cfg = SimpleNamespace(rho_l=1.0, rho_v=0.5)
+    RHO_L = 1.0
+    RHO_V = 0.33
+    DRHO = RHO_L - RHO_V
+    FORCE_G = 0.001
+
+    def _build(self, lattice, *, grid_shape=(NX, NY, NZ), **extra_params):
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        cfg = SimpleNamespace(rho_l=self.RHO_L, rho_v=self.RHO_V, init_type="multiphase_bubbles")
+        return GravityForceModule.build(
+            {"force_g": self.FORCE_G, **extra_params},
+            grid_shape,
+            config=cfg,
+            lattice=lattice,
+        )
+
+    def _state_from_rho_2d(self, lattice, rho_2d, t=0):
+        nx, ny = rho_2d.shape
+        rho = jnp.asarray(rho_2d.reshape(nx, ny, NZ, 1, 1))
+        f = jnp.broadcast_to(rho / lattice.q, (nx, ny, NZ, lattice.q, 1))
+        return State(
+            f=f,
+            rho=rho,
+            u=jnp.zeros((nx, ny, NZ, 1, lattice.d)),
+            t=jnp.array(t),
+        )
+
+    def _two_phase_state(self, lattice, t=0):
+        """Liquid in the left third, vapour in the right third, ``rho_mean`` between."""
+        rho_2d = np.full((NX, NY), self.RHO_V)
+        rho_2d[: NX // 3, :] = self.RHO_L
+        rho_2d[NX // 3 : 2 * NX // 3, :] = 0.5 * (self.RHO_L + self.RHO_V)
+        return self._state_from_rho_2d(lattice, rho_2d, t=t)
+
+    @pytest.mark.parametrize(
+        ("rho_value", "expected_weight"),
+        [
+            (RHO_L, DRHO),
+            (RHO_V, 0.0),
+            (0.5 * (RHO_L + RHO_V), 0.5 * DRHO),
+            # Inside the band: linear, and antisymmetric about rho_mean.
+            (RHO_V + 0.3 * DRHO, DRHO * 0.25),
+            (RHO_L - 0.3 * DRHO, DRHO * 0.75),
+            # Outside it: saturated, both above rho_l and below rho_v.
+            (RHO_L + 0.2, DRHO),
+            (0.2, 0.0),
+        ],
+    )
+    def test_the_weight_is_a_band_limited_phase_indicator(self, lattice, rho_value, expected_weight):
+        """Continuous in rho, and flat on both bulk branches."""
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice)
+        force = GravityForceModule.compute(make_state(lattice, rho_value=rho_value), precomputed)
+
+        np.testing.assert_allclose(
+            np.array(force),
+            np.array(-precomputed.template * expected_weight),
+            atol=1e-12,
+        )
+
+    def test_an_ambient_far_off_its_prescribed_density_is_still_force_free(self, lattice):
+        """The regression this band exists for.
+
+        The predecessor weight ``rho - rho_v`` left the ambient accelerating at
+        ``(1 - rho_ref/rho_ambient)*g``, which is only ~0 when the prescribed
+        density matches the field's own. An equilibrated droplet run measured
+        a bulk vapour of 0.0062 against a prescribed ``rho_v = 0.001``, so the
+        vapour was driven at 88% of g and, carrying 1/160 of the mass, ran away.
+        The band puts its lower edge at ``rho_v + 0.1*drho`` instead, 16x above
+        that ambient, so the weight is exactly zero however far the vapour
+        density drifts.
+        """
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        cfg = SimpleNamespace(rho_l=1.0, rho_v=0.001, init_type="multiphase_bubbles")
         precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=cfg, lattice=lattice)
-        state = make_state(lattice, rho_value=0.75)
-        force = GravityForceModule.compute(state, precomputed)
+        force = np.array(GravityForceModule.compute(make_state(lattice, rho_value=0.0062), precomputed))
 
-        rho = jnp.sum(state.f, axis=-2, keepdims=True)
-        mask = jnp.clip((rho - cfg.rho_v) / (cfg.rho_l - cfg.rho_v), 0.0, 1.0)
-        expected = -precomputed.template * rho * mask
-        np.testing.assert_allclose(np.array(force), np.array(expected), atol=1e-12)
+        np.testing.assert_array_equal(force, 0.0)
+
+    def test_the_dense_phase_is_driven_and_the_light_phase_is_force_free(self, lattice):
+        """The force sits where a pressure gradient can balance it.
+
+        This is the fix for bubbles: driving the vapour at ``drho*g`` gave it
+        ``drho/rho_v`` times the intended acceleration, and needed a pressure
+        difference across the inclusion far exceeding the vapour's absolute
+        pressure, so no equilibrium existed and the gas evacuated.
+        """
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice)
+        force = np.array(GravityForceModule.compute(self._two_phase_state(lattice), precomputed))
+        template = np.array(precomputed.template)
+
+        np.testing.assert_allclose(force[: NX // 3], -template[: NX // 3] * self.DRHO, atol=1e-12)
+        np.testing.assert_allclose(force[2 * NX // 3 :], 0.0, atol=1e-12)
+        # The interface carries the intermediate weight — no threshold, no tie.
+        np.testing.assert_allclose(
+            force[NX // 3 : 2 * NX // 3],
+            -template[NX // 3 : 2 * NX // 3] * self.DRHO * 0.5,
+            atol=1e-12,
+        )
+
+    def test_the_force_acts_along_gravity(self, lattice):
+        """``_build_gravity_template`` stores ``(-sin, cos)*force_g`` and
+        ``compute`` negates it, so gravity acts along ``(sin, -cos)`` — at the
+        default theta = 0, straight down, pulling the liquid down.
+        """
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        force = np.array(GravityForceModule.compute(self._two_phase_state(lattice), self._build(lattice)))
+        gravity_direction = np.array([0.0, -1.0])
+
+        assert float(force[0, 0, 0, 0] @ gravity_direction) == pytest.approx(self.DRHO * self.FORCE_G)
+        np.testing.assert_allclose(force[-1, 0, 0, 0], 0.0, atol=1e-12)
+
+    def test_the_inclined_force_acts_along_gravity(self, lattice):
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        angle = 50.0
+        precomputed = self._build(lattice, inclination_angle_deg=angle)
+        liquid = np.array(GravityForceModule.compute(self._two_phase_state(lattice), precomputed))[0, 0, 0, 0]
+
+        rad = math.radians(angle)
+        gravity = np.array([math.sin(rad), -math.cos(rad)]) * self.FORCE_G
+        np.testing.assert_allclose(liquid, gravity * self.DRHO, atol=1e-12)
+
+    def test_the_net_force_over_an_interface_matches_the_masked_form(self, lattice):
+        """Smoothing the weight does not change the net force on an inclusion.
+
+        A tanh profile is antisymmetric about ``rho_mean`` and so is the banded
+        indicator, since the band is inset by the same amount at both ends. The
+        weight it adds on the dense side of the interface is therefore exactly
+        what it removes on the light side, reproducing the hard-threshold
+        ``drho * (cells above rho_mean)`` — existing droplet runs keep the same
+        drive.
+        """
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        nx, ny, width, centre = 64, 4, 4.0, 32.0
+        phi = 0.5 * (1.0 - np.tanh(2.0 * (np.arange(nx) + 0.5 - centre) / width))
+        rho_2d = np.repeat((self.RHO_V + self.DRHO * phi)[:, None], ny, axis=1)
+
+        precomputed = self._build(lattice, grid_shape=(nx, ny, NZ))
+        force = np.array(GravityForceModule.compute(self._state_from_rho_2d(lattice, rho_2d), precomputed))
+
+        masked_cells = np.count_nonzero(rho_2d > 0.5 * (self.RHO_L + self.RHO_V))
+        assert force[..., 1].sum() == pytest.approx(-self.FORCE_G * self.DRHO * masked_cells, rel=1e-9)
+
+    @pytest.mark.parametrize(
+        ("t", "expected_fraction"),
+        [(100, 0.0), (600, 0.0), (800, 0.25), (1200, 0.75), (1600, 1.0), (5000, 1.0)],
+    )
+    def test_the_ramp_scales_the_force_between_start_and_finish(self, lattice, t, expected_fraction):
+        """``ramp_start_t`` is absolute because ``state.t`` survives restarts."""
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice, ramp_start_t=600, ramp_steps=800)
+        force = np.array(GravityForceModule.compute(self._two_phase_state(lattice, t=t), precomputed))
+        template = np.array(precomputed.template)
+
+        np.testing.assert_allclose(
+            force[: NX // 3],
+            -template[: NX // 3] * self.DRHO * expected_fraction,
+            atol=1e-12,
+        )
+
+    def test_without_ramp_steps_the_force_is_full_strength_immediately(self, lattice):
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice)
+        assert precomputed.ramp_steps is None
+
+        force = np.array(GravityForceModule.compute(self._two_phase_state(lattice, t=0), precomputed))
+        template = np.array(precomputed.template)
+        np.testing.assert_allclose(force[: NX // 3], -template[: NX // 3] * self.DRHO, atol=1e-12)
+
+    def test_non_positive_ramp_steps_raises(self, lattice):
+        with pytest.raises(ValueError, match="ramp_steps"):
+            self._build(lattice, ramp_steps=0)
 
     def test_compute_without_phase_refs_matches_single_phase(self, lattice):
-        from tud_lbm.operators.force._gravity_masked import GravityForceModule
+        from src.operators.force._gravity_masked import GravityForceModule
 
         precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=None, lattice=lattice)
         state = make_state(lattice, rho_value=1.2)
         force = GravityForceModule.compute(state, precomputed)
         expected = -precomputed.template * 1.2
         np.testing.assert_allclose(np.array(force), np.array(expected), atol=1e-12)
+
+    def test_equal_reference_densities_produce_no_force_in_the_bulk(self, lattice):
+        """A degenerate rho_l == rho_v leaves a bulk cell unforced.
+
+        The band collapses to zero width, so ``compute`` branches on the
+        build-time contrast rather than dividing by that span and producing a
+        NaN.
+        """
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        cfg = SimpleNamespace(rho_l=1.0, rho_v=1.0, init_type="multiphase_bubbles")
+        precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=cfg, lattice=lattice)
+        force = np.array(GravityForceModule.compute(make_state(lattice, rho_value=1.0), precomputed))
+
+        assert bool(np.isfinite(force).all())
+        np.testing.assert_allclose(force, 0.0, atol=1e-12)
+
+    @staticmethod
+    def _init_from_file_config(tmp_path, rho_min, rho_max):
+        rho = np.full((NX, NY, NZ, 1, 1), rho_min)
+        rho[: NX // 2] = rho_max
+        npz_path = tmp_path / "init_state.npz"
+        np.savez(npz_path, rho=rho)
+        return SimulationConfig(
+            sim_type="multiphase",
+            grid_shape=(NX, NY),
+            eos="double-well",
+            kappa=0.02,
+            rho_l=1.0,
+            rho_v=0.001,
+            interface_width=2,
+            init_type="init_from_file",
+            init_dir=str(npz_path),
+            initialisation={},
+        )
+
+    def test_the_band_is_measured_off_the_init_field_when_there_is_one(self, lattice, tmp_path):
+        """Prescribed densities are not the field's own.
+
+        ``physical_parameters`` already measures the buoyancy contrast off this
+        same NPZ, so reading it here keeps the contrast the force injects equal
+        to the one the run's Bond number is reported with.
+        """
+        from src.operators.force._gravity_masked import _PHASE_BAND
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        rho_min, rho_max = 0.0062, 1.01
+        cfg = self._init_from_file_config(tmp_path, rho_min, rho_max)
+        precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=cfg, lattice=lattice)
+
+        drho = rho_max - rho_min
+        assert precomputed.drho == pytest.approx(drho)
+        assert precomputed.band_lo == pytest.approx(rho_min + _PHASE_BAND * drho)
+        assert precomputed.band_hi == pytest.approx(rho_max - _PHASE_BAND * drho)
+
+    def test_the_band_falls_back_to_the_config_densities_without_an_init_file(self, lattice):
+        from src.operators.force._gravity_masked import _PHASE_BAND
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        cfg = SimpleNamespace(rho_l=self.RHO_L, rho_v=self.RHO_V, init_type="multiphase_bubbles")
+        precomputed = GravityForceModule.build({"force_g": 0.001}, (NX, NY, NZ), config=cfg, lattice=lattice)
+
+        assert precomputed.drho == pytest.approx(self.DRHO)
+        assert precomputed.band_lo == pytest.approx(self.RHO_V + _PHASE_BAND * self.DRHO)
+
+    def test_jittable(self, lattice):
+        from src.operators.force._gravity_masked import GravityForceModule
+
+        precomputed = self._build(lattice, ramp_start_t=10, ramp_steps=100)
+        state = self._two_phase_state(lattice)
+        force = jax.jit(lambda s: GravityForceModule.compute(s, precomputed))(state)
+        assert force.shape == (NX, NY, NZ, 1, 2)
 
 
 # =====================================================================
@@ -194,7 +445,7 @@ class TestElectricParams:
     """ElectricForceModule.build creates a valid NamedTuple pytree."""
 
     def test_creation(self, lattice, sim_config):
-        from tud_lbm.operators.force._electric import ElectricForceModule
+        from src.operators.force._electric import ElectricForceModule
 
         ep = ElectricForceModule.build(
             {
@@ -211,7 +462,7 @@ class TestElectricParams:
         assert ep.permittivity_vapour == 1.0
 
     def test_is_pytree(self, lattice, sim_config):
-        from tud_lbm.operators.force._electric import ElectricForceModule
+        from src.operators.force._electric import ElectricForceModule
 
         ep = ElectricForceModule.build(
             {
@@ -229,7 +480,7 @@ class TestElectricParams:
         assert ep2.permittivity_liquid == ep.permittivity_liquid
 
     def test_legacy_state_hooks_removed(self):
-        from tud_lbm.operators.force._electric import ElectricForceModule
+        from src.operators.force._electric import ElectricForceModule
 
         assert not hasattr(ElectricForceModule, "init_state")
         assert not hasattr(ElectricForceModule, "update_state")
@@ -244,15 +495,15 @@ class TestElectricExtraStateInit:
     """ElectricExtraStatePlugin.init_state produces a valid initial distribution."""
 
     def test_shape(self, lattice, electric_params):
-        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
         setup = make_electric_setup(lattice, electric_params)
         hi = ElectricExtraStatePlugin.init_state(setup)["h"]
         assert hi.shape == (NX, NY, NZ, 9, 1)
 
     def test_linear_profile(self, lattice, sim_config):
-        from tud_lbm.operators.force._electric import ElectricForceModule
-        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+        from src.operators.force._electric import ElectricForceModule
+        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
         params = ElectricForceModule.build(
             {
@@ -291,9 +542,9 @@ class TestComputeElectricForce:
     """ElectricForceModule.compute returns correct shape and is jittable."""
 
     def test_shape(self, lattice, sim_config, electric_params):
-        from tud_lbm.operators.differential import build_diff_ops
-        from tud_lbm.operators.force._electric import ElectricForceModule
-        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+        from src.operators.differential import build_diff_ops
+        from src.operators.force._electric import ElectricForceModule
+        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
         gradient_standard, *_ = build_diff_ops(sim_config, mp_params=None, lattice=lattice)
         setup = make_electric_setup(lattice, electric_params)
@@ -304,9 +555,9 @@ class TestComputeElectricForce:
         assert force.shape == (NX, NY, NZ, 1, 2)
 
     def test_zero_voltage_zero_force(self, lattice, sim_config):
-        from tud_lbm.operators.differential import build_diff_ops
-        from tud_lbm.operators.force._electric import ElectricForceModule
-        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+        from src.operators.differential import build_diff_ops
+        from src.operators.force._electric import ElectricForceModule
+        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
         params = ElectricForceModule.build(
             {
@@ -330,9 +581,9 @@ class TestComputeElectricForce:
         np.testing.assert_allclose(np.array(force), 0.0, atol=1e-10)
 
     def test_jittable(self, lattice, sim_config, electric_params):
-        from tud_lbm.operators.differential import build_diff_ops
-        from tud_lbm.operators.force._electric import ElectricForceModule
-        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+        from src.operators.differential import build_diff_ops
+        from src.operators.force._electric import ElectricForceModule
+        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
         gradient_standard, *_ = build_diff_ops(sim_config, mp_params=None, lattice=lattice)
         setup = make_electric_setup(lattice, electric_params)
@@ -353,7 +604,7 @@ class TestElectricExtraStateUpdate:
     """ElectricExtraStatePlugin.update_state advances the electric distribution."""
 
     def test_shape(self, lattice, electric_params):
-        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
         setup = make_electric_setup(lattice, electric_params)
         hi = ElectricExtraStatePlugin.init_state(setup)["h"]
@@ -364,7 +615,7 @@ class TestElectricExtraStateUpdate:
         assert state_new.h.shape == hi.shape
 
     def test_update_returns_new_state_when_h_is_none(self, lattice, electric_params):
-        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
         setup = make_electric_setup(lattice, electric_params)
         state_no_h = make_state(lattice, rho_value=1.0, h=None)
@@ -372,7 +623,7 @@ class TestElectricExtraStateUpdate:
         assert result is state_no_h
 
     def test_update_returns_new_state_when_no_electric_force_spec(self, lattice):
-        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
         setup = SimpleNamespace(forces=None)
         state = make_state(lattice)
@@ -380,9 +631,9 @@ class TestElectricExtraStateUpdate:
         assert result is state
 
     def test_update_raises_when_streaming_fn_none(self, lattice, electric_params):
-        from tud_lbm.operators.force import ForceParams
-        from tud_lbm.operators.force import ForceSetup
-        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+        from src.operators.force import ForceParams
+        from src.operators.force import ForceSetup
+        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
         hi = jnp.ones((NX, NY, NZ, 9, 1))
         state = make_state(lattice, rho_value=1.0, h=hi)
@@ -406,27 +657,76 @@ class TestElectricIsActive:
     """ElectricExtraStatePlugin.is_active reflects config.electric_force."""
 
     def test_active_when_electric_force_set(self):
-        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
         cfg = SimpleNamespace(electric_force={"strength": 1.0})
         assert ElectricExtraStatePlugin.is_active(cfg) is True  # ty: ignore[invalid-argument-type]
 
     def test_inactive_when_electric_force_none(self):
-        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
         assert ElectricExtraStatePlugin.is_active(SimpleNamespace(electric_force=None)) is False  # ty: ignore[invalid-argument-type]
 
     def test_inactive_when_attribute_absent(self):
-        from tud_lbm.operators.force._extra_state import ElectricExtraStatePlugin
+        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
         assert ElectricExtraStatePlugin.is_active(SimpleNamespace()) is False  # ty: ignore[invalid-argument-type]
+
+
+class TestElectricForceSetupWiring:
+    """build_setup wires gradient_standard for electric-force runs.
+
+    Regression guard: the electric force needs the standard gradient closure
+    from build_diff_ops, which requires the differential operator subpackage
+    to have been auto-loaded before setup completes.  If import order ever
+    regresses, gradient_standard would be missing and every electric compute
+    would raise at step time.
+    """
+
+    @pytest.fixture(scope="class")
+    def electric_setup(self):
+        from src.config.adapter_dict import DictAdapter
+        from src.pipeline.setup import build_setup
+
+        config = DictAdapter().load(
+            {
+                "grid_shape": (NX, NY),
+                "nt": 10,
+                "electric_force": {
+                    "permittivity_liquid": 80.0,
+                    "permittivity_vapour": 1.0,
+                    "conductivity_liquid": 0.01,
+                    "conductivity_vapour": 0.001,
+                    "voltage_top": 1.0,
+                    "voltage_bottom": 0.0,
+                },
+            }
+        )
+        return build_setup(config)
+
+    def test_gradient_standard_is_built(self, electric_setup):
+        assert electric_setup.gradient_standard is not None
+        assert callable(electric_setup.gradient_standard)
+
+    def test_electric_force_spec_registered(self, electric_setup):
+        assert [spec.name for spec in electric_setup.forces.specs] == ["electric_force"]
+
+    def test_total_force_computes_from_setup(self, electric_setup):
+        from src.operators.force import compute_total_force_ext
+        from src.pipeline.runner import init_state
+
+        state = init_state(electric_setup)
+        total_force, _ = compute_total_force_ext(electric_setup, state, electric_setup.forces)
+        assert total_force is not None
+        assert total_force.shape == (NX, NY, NZ, 1, 2)
+        assert bool(jnp.all(jnp.isfinite(total_force)))
 
 
 class TestElectricForceComputeErrors:
     """ElectricForceModule.compute raises TypeError on missing prerequisites."""
 
     def test_raises_without_gradient_standard(self, lattice, sim_config):
-        from tud_lbm.operators.force._electric import ElectricForceModule
+        from src.operators.force._electric import ElectricForceModule
 
         params = ElectricForceModule.build(
             {
@@ -444,8 +744,8 @@ class TestElectricForceComputeErrors:
             ElectricForceModule.compute(state, params)
 
     def test_raises_when_h_is_none(self, lattice, sim_config, electric_params):
-        from tud_lbm.operators.differential import build_diff_ops
-        from tud_lbm.operators.force._electric import ElectricForceModule
+        from src.operators.differential import build_diff_ops
+        from src.operators.force._electric import ElectricForceModule
 
         gradient_standard, *_ = build_diff_ops(sim_config, mp_params=None, lattice=lattice)
         state = make_state(lattice, h=None)

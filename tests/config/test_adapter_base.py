@@ -1,8 +1,8 @@
 """Focused tests for ConfigAdapter shared utilities."""
 
 from __future__ import annotations
-from tud_lbm.config.adapter_base import ConfigAdapter
-from tud_lbm.config.simulation_config import SimulationConfig
+from src.config.adapter_base import ConfigAdapter
+from src.config.simulation_config import SimulationConfig
 
 
 def test_build_sections_skips_multiphase_bucket_for_single_phase_and_merges_extra():

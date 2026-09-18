@@ -9,13 +9,13 @@ Configuration is loaded from config_von_karman.toml.
 """
 
 from pathlib import Path
-from tud_lbm.config.adapter_toml import TomlAdapter
-from tud_lbm.config.jax_config import configure_jax
-from tud_lbm.io.plotting.figure_builder import FigureBuilder
-from tud_lbm.io.save import SimulationIO
-from tud_lbm.pipeline.runner import init_state
-from tud_lbm.pipeline.runner import run
-from tud_lbm.pipeline.setup import build_setup
+from src.config.adapter_toml import TomlAdapter
+from src.config.jax_config import configure_jax
+from src.pipeline.runner import init_state
+from src.pipeline.runner import run
+from src.pipeline.setup import build_setup
+from src.simulation_io.plotting.figure_builder import FigureBuilder
+from src.simulation_io.save import SimulationIO
 
 # Configure JAX (64-bit precision, JIT enabled).
 configure_jax()

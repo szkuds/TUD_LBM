@@ -17,8 +17,9 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  # Core runtime — previously managed via environment.yml
-  "jax[cpu]",
+  # Core runtime — previously managed via environment.yml.
+  # Plain "jax" is CPU-capable on its own; the CUDA plugin packages come from
+  # the "cluster" extra so a GPU install is opt-in rather than a pin here.
   "jax",
   "numpy",
   "scipy",
@@ -32,6 +33,7 @@ dependencies = [
   "rich",
   "pytest>=9.0.3",
   "moviepy>=2.2.1",
+  "contourpy>=1.3.3",
 ]
 description = "This is a lattice Boltzmann method package developed at Delft University of Technology."
 keywords = ["LBM", "TUD", "Delft University of Technology"]
@@ -49,6 +51,9 @@ dev = [
   "ruff",
   "python-dotenv",
   "ty",
+  # Used by .pre-commit-config.yaml and the release procedure in CONTRIBUTING.md.
+  "pre-commit",
+  "bump-my-version",
 ]
 docs = [
   "sphinx",
@@ -56,27 +61,33 @@ docs = [
   "myst-parser",
   "sphinx-autoapi",
   "pandoc",
-  # jax[cpu] is already a core dep — listed here for clarity/standalone doc installs
-  "jax[cpu]",
+  # jax is already a core dep — listed here for clarity/standalone doc installs
+  "jax",
 ]
 animation = ["moviepy"]
 publishing = ["build", "twine"]
+# GPU install for DelftBlue GPU nodes: uv sync --extra cluster.
+# The marker is load-bearing — jax[cuda12] publishes linux-x86_64 wheels only,
+# and without it resolution fails on macOS. See scripts/setup_on_delftblue.sh
+# (--cuda) and docs/notes/delftblue_setup.md.
+cluster = ["jax[cuda12]; sys_platform == 'linux'"]
 
 [project.urls]
-Repository = "https://github.com/szkuds/tud_lbm"
-Issues     = "https://github.com/szkuds/tud_lbm/issues"
-ReadTheDocs = "https://tud_lbm.readthedocs.io"
+Repository = "https://github.com/szkuds/TUD_LBM"
+Issues     = "https://github.com/szkuds/TUD_LBM/issues"
+Documentation = "https://tud-lbm.readthedocs.io"
+Changelog = "https://github.com/szkuds/TUD_LBM/blob/main/CHANGELOG.md"
 
 [project.scripts]
-tud-lbm = "tud_lbm.cli.cli:cli"
+tud-lbm = "src.cli.commands:cli"
 
 # ---------------------------------------------------------------------------
 # uv
 # ---------------------------------------------------------------------------
 [tool.uv]
 # Use the lockfile for reproducible installs; uv will create uv.lock on first run.
-# Override jax to CPU-only in CI — GPU builds are only needed locally.
-# If you need GPU support locally, run:  uv sync --extra dev --override jax[cuda12]
+# `uv sync` installs CPU JAX. For a CUDA build (DelftBlue GPU nodes) use the
+# "cluster" extra:  uv sync --extra cluster
 package = true
 
 # ---------------------------------------------------------------------------
@@ -102,7 +113,7 @@ markers = [
 # ---------------------------------------------------------------------------
 [tool.coverage.run]
 branch = true
-source = ["tud_lbm"]
+source = ["src"]
 command_line = "-m pytest"
 
 # ---------------------------------------------------------------------------
@@ -128,7 +139,14 @@ extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-select = ["ALL"]
+# `RUF069` (float-equality-comparison) is preview-gated, so `"ALL"` alone never
+# activates it -- and it is the local mirror of SonarCloud's S1244, which this
+# project trips repeatedly on divide-by-zero guards. `explicit-preview-rules`
+# keeps `"ALL"` from pulling in the *rest* of the preview ruleset: only the
+# literally-named `RUF069` below is enabled.
+preview = true
+explicit-preview-rules = true
+select = ["ALL", "RUF069"]
 ignore = [
   "ANN204",
   "ANN205",
@@ -137,10 +155,12 @@ ignore = [
   "FIX001",
   "FIX002",
   "PLR0913",
+  "PLR0917",
   "PLC0415",
   "COM812",
   "RUF002",
     "RUF001",
+  "CPY001",
 ]
 pydocstyle.convention = "google"
 
@@ -148,33 +168,39 @@ pydocstyle.convention = "google"
 extend-immutable-calls = ["array_field"]
 
 [tool.ruff.lint.per-file-ignores]
+# `RUF069`: exact-equality asserts on exactly-representable values (`== 1.0`,
+# `== 3.0`) are deliberate in tests, and SonarCloud does not flag them either.
 "tests/**.py" = [
   "ANN201","PT011","S101","SLF001","INP001","S108","ANN001","D103",
   "PLC0415","ARG001","PLR2004","D102","ARG004","ARG003","ANN202",
   "ANN002","ANN003","ARG005","ARG002","RUF002","RUF003","D100",
-  "D104","D205","PLR0913","TRY300",
+  "D104","D205","PLR0913","TRY300","RUF069",
 ]
+# Lint preview mode (enabled above for RUF069) widens `F401` to the submodule
+# imports here. Every one exists purely for its `@*_operator` registration side
+# effect -- `--fix` would delete them and break the test.
+"tests/test_registry.py" = ["F401"]
 "examples/**.py"                                  = ["INP001","ANN201","ERA001","T201","D103"]
 "examples/minimal_example.py"                     = ["RUF002"]
-"tud_lbm/config/simulation_config.py"             = ["RUF009"]
-"tud_lbm/util/plotting/__init__.py"               = ["I001"]
-"tud_lbm/util/plotting/base.py"                   = ["ARG002"]
-"tud_lbm/pipeline/setup.py"                       = ["PLC0415","RUF002"]
-"tud_lbm/pipeline/__init__.py"                    = ["PLC0415"]
-"tud_lbm/runner/parallel_runner.py"               = ["PLC0415","ARG001","LOG015","G004"]
-"tud_lbm/operators/protocols.py"                  = ["ANN401","RUF002"]
-"tud_lbm/operators/macroscopic/_multiphase.py"    = ["RUF002","RUF003"]
-"tud_lbm/operators/collision/_bgk.py"             = ["RUF002"]
-"tud_lbm/util/io.py"                              = ["ANN002"]
-"tud_lbm/pipeline/**"                             = ["T201"]
-"tud_lbm/operators/wetting/hysteresis/hysteresis.py" = ["C901", "PLR0915"]
-"tud_lbm/io/plotting/run_comparison.py"   = ["T201"]
-"tud_lbm/io/plotting/simulation_csv.py"   = ["T201"]
-"tud_lbm/io/plotting/regime_map_plot.py"  = ["T201"]
-"tud_lbm/io/plotting/ca_theta_plot.py"    = ["C901", "PLR0912", "PLR0915"]
+"src/config/simulation_config.py"             = ["RUF009"]
+"src/pipeline/setup.py"                       = ["PLC0415","RUF002"]
+"src/pipeline/__init__.py"                    = ["PLC0415"]
+"src/operators/protocols.py"                  = ["ANN401","RUF002"]
+"src/operators/macroscopic/_multiphase.py"    = ["RUF002","RUF003"]
+"src/operators/collision/_bgk.py"             = ["RUF002"]
+"src/pipeline/**"                             = ["T201"]
+"src/operators/wetting/hysteresis/hysteresis.py" = ["C901", "PLR0915"]
+# `src.io` is only ever imported fully qualified, so it never shadows the
+# stdlib `io` at runtime (absolute imports are the default). Surfaced by the
+# tud_lbm -> src package rename, not by anything in the module itself.
+"src/simulation_io/__init__.py"                      = ["A005"]
+"src/simulation_io/plotting/run_comparison.py"   = ["T201"]
+"src/cli/analysis_routing.py"          = ["T201"]
+"src/simulation_io/plotting/simulation_csv.py"   = ["T201"]
+"src/simulation_io/plotting/regime_map_plot.py"  = ["T201"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["tud_lbm"]
+known-first-party = ["src"]
 force-single-line = true
 no-lines-before = ["future","standard-library","third-party","first-party","local-folder"]
 
@@ -185,7 +211,7 @@ no-lines-before = ["future","standard-library","third-party","first-party","loca
 current_version = "2026.0.1"
 
 [[tool.bumpversion.files]]
-filename = "tud_lbm/__init__.py"
+filename = "src/__init__.py"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"

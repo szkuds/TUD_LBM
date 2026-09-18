@@ -21,27 +21,27 @@ class TestBuildLattice:
     """``build_lattice`` produces a correct, JAX-friendly D2Q9 lattice."""
 
     def test_d2q9_dimensions(self):
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
         assert lat.d == 2
         assert lat.q == 9
 
     def test_d2q9_velocity_shape(self):
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
         assert lat.c.shape == (1, 1, 1, 9, 2)
 
     def test_d2q9_weights_shape_and_sum(self):
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
         assert lat.w.shape == (1, 1, 1, 9, 1)
         np.testing.assert_allclose(float(jnp.sum(lat.w)), 1.0)
 
     def test_d2q9_opposite_indices(self):
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
         # For every velocity i, opp[opp[i]] == i (involution)
@@ -49,7 +49,7 @@ class TestBuildLattice:
         np.testing.assert_array_equal(opp[opp], np.arange(9))
 
     def test_d2q9_directional_indices_nonempty(self):
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
         assert len(lat.main_indices) > 0
@@ -59,7 +59,7 @@ class TestBuildLattice:
         assert len(lat.bottom_indices) > 0
 
     def test_d2q9_arrays_are_jax(self):
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
         for arr in (
@@ -75,20 +75,20 @@ class TestBuildLattice:
             assert isinstance(arr, jax.Array), f"{arr} is not a jax.Array"
 
     def test_case_insensitive(self):
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("d2q9")
         assert lat.d == 2
 
     def test_unsupported_lattice_raises(self):
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         with pytest.raises(ValueError, match="Unsupported lattice type"):
             build_lattice("D1Q3")
 
     def test_lattice_is_pytree(self):
         """Lattice can be flattened and unflattened as a JAX pytree."""
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
         leaves, treedef = jax.tree_util.tree_flatten(lat)
@@ -107,7 +107,7 @@ class TestState:
     """``State`` NamedTuple is a valid JAX pytree."""
 
     def _make_state(self):
-        from tud_lbm.pipeline.state import State
+        from src.pipeline.state import State
 
         return State(
             f=jnp.zeros((8, 8, 9, 1)),
@@ -147,7 +147,7 @@ class TestWettingState:
     """``WettingState`` is also a valid pytree."""
 
     def _make_wetting_state(self):
-        from tud_lbm.pipeline.state import WettingState
+        from src.pipeline.state import WettingState
 
         return WettingState(
             phi_left=jnp.array(0.5),
@@ -172,7 +172,7 @@ class TestWettingState:
 
     def test_nested_in_state(self):
         """WettingState can be nested inside State as a pytree leaf."""
-        from tud_lbm.pipeline.state import State
+        from src.pipeline.state import State
 
         ws = self._make_wetting_state()
         s = State(
@@ -197,7 +197,7 @@ class TestSimulationConfigDefaults:
     """Default construction produces a valid frozen config."""
 
     def test_default_construction(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(grid_shape=(64, 64))
         assert cfg.sim_type == "single_phase"
@@ -207,14 +207,14 @@ class TestSimulationConfigDefaults:
         assert cfg.collision_scheme == "bgk"
 
     def test_frozen(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         with pytest.raises(AttributeError):
             cfg.tau = 0.9  # ty: ignore[invalid-assignment]
 
     def test_default_bc_config_is_periodic(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         assert cfg.bc_config is not None
@@ -222,7 +222,7 @@ class TestSimulationConfigDefaults:
             assert cfg.bc_config[edge] == "periodic"
 
     def test_is_single_phase_property(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         assert cfg.is_single_phase is True
@@ -233,68 +233,68 @@ class TestSimulationConfigValidation:
     """Validation matches the legacy SimulationSetup behaviour."""
 
     def test_invalid_tau_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match=r"tau must be > 0\.5"):
             SimulationConfig(grid_shape=(8, 8), tau=0.3)
 
     def test_invalid_nt_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="nt must be positive"):
             SimulationConfig(grid_shape=(8, 8), nt=0)
 
     def test_invalid_grid_shape_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         # 1D grids should be promoted to 3D (nx, 1, 1), so this should NOT raise
         config = SimulationConfig(grid_shape=(8,))
         assert config.grid_shape == (8, 1, 1)
 
     def test_negative_grid_dimension_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="positive"):
             SimulationConfig(grid_shape=(8, -1))
 
     def test_invalid_lattice_type_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="lattice_type"):
             SimulationConfig(grid_shape=(8, 8), lattice_type="D1Q3")
 
     def test_invalid_collision_scheme_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="collision_scheme"):
             SimulationConfig(grid_shape=(8, 8), collision_scheme="invalid")
 
     def test_mrt_without_k_diag_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="k_diag"):
             SimulationConfig(grid_shape=(8, 8), collision_scheme="mrt")
 
     def test_invalid_save_interval_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="save_interval"):
             SimulationConfig(grid_shape=(8, 8), save_interval=-1)
 
     def test_negative_skip_interval_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="skip_interval"):
             SimulationConfig(grid_shape=(8, 8), skip_interval=-1)
 
     def test_init_from_file_without_dir_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="init_dir"):
             SimulationConfig(grid_shape=(8, 8), init_type="init_from_file")
 
     def test_invalid_save_fields_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="Invalid save_fields"):
             SimulationConfig(grid_shape=(8, 8), save_fields=["invalid_field"])
@@ -304,7 +304,7 @@ class TestSimulationConfigMultiphase:
     """Multiphase-specific validation mirrors legacy behaviour."""
 
     def test_multiphase_construction(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -319,7 +319,7 @@ class TestSimulationConfigMultiphase:
         assert cfg.is_multiphase is True
 
     def test_multiphase_missing_kappa_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="'kappa' is required"):
             SimulationConfig(
@@ -332,7 +332,7 @@ class TestSimulationConfigMultiphase:
             )
 
     def test_multiphase_missing_eos_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="'eos' is required"):
             SimulationConfig(
@@ -345,7 +345,7 @@ class TestSimulationConfigMultiphase:
             )
 
     def test_multiphase_invalid_densities_raises(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match=r"rho_l.*must be greater than rho_v"):
             SimulationConfig(
@@ -363,14 +363,14 @@ class TestSimulationConfigToDict:
     """``to_dict()`` serialisation."""
 
     def test_to_dict_contains_sim_type(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         d = cfg.to_dict()
         assert d["simulation_type"] == "single_phase"
 
     def test_to_dict_contains_core_fields(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(grid_shape=(16, 16), tau=0.7, nt=500)
         d = cfg.to_dict()
@@ -379,7 +379,7 @@ class TestSimulationConfigToDict:
         assert d["nt"] == 500
 
     def test_to_dict_merges_extra(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
+        from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(grid_shape=(8, 8), extra={"custom_key": 42})
         d = cfg.to_dict()
@@ -396,8 +396,8 @@ class TestBuildSetup:
     """``build_setup`` produces a correct, immutable SimulationSetup pytree."""
 
     def test_from_simulation_config_single_phase(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8)
         setup = build_setup(cfg)
@@ -409,8 +409,8 @@ class TestBuildSetup:
         assert setup.multiphase_params is None
 
     def test_from_simulation_config_multiphase(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -433,8 +433,8 @@ class TestBuildSetup:
 
     def test_setup_is_pytree(self):
         """SimulationSetup round-trips through JAX pytree flatten/unflatten."""
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         setup = build_setup(cfg)
@@ -451,8 +451,8 @@ class TestBuildSetup:
 
     def test_save_fields_on_config(self):
         """save_fields lives on the config, not the setup."""
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), save_fields=["f", "rho"])
         setup = build_setup(cfg)
@@ -461,8 +461,8 @@ class TestBuildSetup:
         assert setup.config.save_fields == ["f", "rho"]
 
     def test_bc_config_preserved(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         bc = {
             "top": "symmetry",
@@ -479,8 +479,8 @@ class TestBuildSetup:
 
     def test_bc_masks_present(self):
         """build_setup produces BCMasks on the setup."""
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         setup = build_setup(cfg)
@@ -493,8 +493,8 @@ class TestBuildSetup:
 
     def test_bc_masks_correct_edges(self):
         """BCMasks mark the correct boundary rows/columns."""
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         setup = build_setup(cfg)
@@ -514,14 +514,14 @@ class TestBuildSetup:
         assert bool(setup.bc_masks.right[0, 3, 0, 0]) is False
 
     def test_bc_masks_are_jax_arrays(self):
-        from tud_lbm.operators.boundary import build_bc_masks
+        from src.operators.boundary import build_bc_masks
 
         masks = build_bc_masks((16, 16))
         for arr in (masks.top, masks.bottom, masks.left, masks.right):
             assert isinstance(arr, jax.Array)
 
     def test_bc_masks_pytree_round_trip(self):
-        from tud_lbm.operators.boundary import build_bc_masks
+        from src.operators.boundary import build_bc_masks
 
         masks = build_bc_masks((8, 8))
         leaves, treedef = jax.tree_util.tree_flatten(masks)
@@ -530,8 +530,8 @@ class TestBuildSetup:
 
     def test_operator_closures_present_single_phase(self):
         """build_setup must attach all five operator closures for single-phase."""
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8)
         setup = build_setup(cfg)
@@ -544,8 +544,8 @@ class TestBuildSetup:
 
     def test_operator_closures_are_bgk_collision(self):
         """The collision_fn should use the configured collision scheme."""
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
             grid_shape=(8, 8),
@@ -560,8 +560,8 @@ class TestBuildSetup:
 
     def test_operator_closures_pytree_round_trip(self):
         """Operator closures should pass through JAX pytree flatten/unflatten."""
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.pipeline.setup import build_setup
+        from src.config.simulation_config import SimulationConfig
+        from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         setup = build_setup(cfg)
@@ -594,7 +594,7 @@ class TestBuildBCMasks:
     """Standalone ``build_bc_masks`` factory."""
 
     def test_shapes(self):
-        from tud_lbm.operators.boundary import build_bc_masks
+        from src.operators.boundary import build_bc_masks
 
         masks = build_bc_masks((16, 32))
         assert masks.top.shape == (16, 32, 1, 1, 1)
@@ -604,7 +604,7 @@ class TestBuildBCMasks:
 
     def test_mask_counts(self):
         """Each edge mask should have exactly one row/column of True."""
-        from tud_lbm.operators.boundary import build_bc_masks
+        from src.operators.boundary import build_bc_masks
 
         masks = build_bc_masks((10, 20))
         # top: entire row y=19 → 10 True cells
@@ -626,8 +626,8 @@ class TestBuildMultiphaseParams:
     """Standalone ``build_multiphase_params`` factory."""
 
     def test_from_config(self):
-        from tud_lbm.config.simulation_config import SimulationConfig
-        from tud_lbm.operators.macroscopic import build_multiphase_params
+        from src.config.simulation_config import SimulationConfig
+        from src.operators.macroscopic import build_multiphase_params
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -648,7 +648,7 @@ class TestBuildMultiphaseParams:
 
     def test_missing_field_raises(self):
         from dataclasses import dataclass
-        from tud_lbm.operators.macroscopic import build_multiphase_params
+        from src.operators.macroscopic import build_multiphase_params
 
         @dataclass
         class Incomplete:
@@ -663,7 +663,7 @@ class TestBuildMultiphaseParams:
             build_multiphase_params(incomplete)  # ty: ignore[invalid-argument-type]
 
     def test_multiphase_params_is_pytree(self):
-        from tud_lbm.operators.macroscopic import MultiphaseParams
+        from src.operators.macroscopic import MultiphaseParams
 
         mp = MultiphaseParams(
             eos="double-well",
@@ -688,7 +688,7 @@ class TestLatticeOn8x8Grid:
 
     def test_build_lattice_and_create_populations(self):
         """Build D2Q9 lattice and create zero-initialised populations on 8×8."""
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
         nx, ny = 8, 8
@@ -697,7 +697,7 @@ class TestLatticeOn8x8Grid:
 
     def test_lattice_weights_broadcast_over_grid(self):
         """Lattice weights can be broadcast across the grid."""
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
         nx, ny = 8, 8
@@ -710,7 +710,7 @@ class TestLatticeOn8x8Grid:
 
     def test_streaming_roll_on_8x8(self):
         """Verify that jnp.roll with lattice velocities works on 8×8."""
-        from tud_lbm.lattice.lattice import build_lattice
+        from src.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
         nx, ny, nz = 8, 8, 1

@@ -3,8 +3,8 @@
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from tud_lbm.lattice.lattice import build_lattice
-from tud_lbm.operators.obstacle import build_obstacle_fn
+from src.lattice.lattice import build_lattice
+from src.operators.obstacle import build_obstacle_fn
 
 NX, NY, NZ = 8, 8, 1
 

@@ -1,8 +1,8 @@
 """Tests for the circular obstacle mask builder."""
 
 import pytest
-from tud_lbm.operators.obstacle import build_obstacle_mask
-from tud_lbm.operators.obstacle._circle import build_circle_mask
+from src.operators.obstacle import build_obstacle_mask
+from src.operators.obstacle._circle import build_circle_mask
 
 
 def test_shape() -> None:

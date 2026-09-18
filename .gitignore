@@ -83,3 +83,9 @@ venv.bak/
 
 # Trunk (CI tool — not used in this project)
 .trunk/
+
+# Surface-tension calibration: the fitted sigma (data/surface_tension_cache.json)
+# is shared via git, but the equilibrated density fields are simulation output
+# and belong under $TUD_LBM_DATA_DIR. Ignored as a backstop for the runtime
+# guard in _store_fields, so a regression can never be committed.
+/src/simulation_io/analysis/surface_tension/data/fields/

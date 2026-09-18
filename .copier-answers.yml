@@ -30,7 +30,7 @@ full_name: Sacha Szkudlarek
 github_organization: szkuds
 keywords: LBM, TUD, Delft University of Technology
 license: Apachev2
-package_name: tud_lbm
+package_name: src
 package_short_description: This is a lattice Boltzmann method package developed at
     Delft University of Technology.
 template_profile: recommended

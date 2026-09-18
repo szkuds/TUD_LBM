@@ -4,10 +4,10 @@ from __future__ import annotations
 from functools import partial
 from types import SimpleNamespace
 import jax.numpy as jnp
-from tud_lbm.operators.step import _multiphase_hysteresis as mh
-from tud_lbm.operators.wetting._params import WettingParams
-from tud_lbm.pipeline.state import State
-from tud_lbm.pipeline.state import WettingState
+from src.operators.step import _multiphase_hysteresis as mh
+from src.operators.wetting._params import WettingParams
+from src.pipeline.state import State
+from src.pipeline.state import WettingState
 
 
 def _make_wetting_state() -> WettingState:

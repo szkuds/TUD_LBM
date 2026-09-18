@@ -3,8 +3,8 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
-from tud_lbm.config import SimulationConfig
-from tud_lbm.io.plotting.animator import Animator
+from src.config import SimulationConfig
+from src.simulation_io.plotting.animator import Animator
 
 if TYPE_CHECKING:
     from pathlib import Path

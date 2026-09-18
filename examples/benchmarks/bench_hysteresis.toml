@@ -1,0 +1,75 @@
+# Case B — the real research workload.
+#
+# multiphase_hysteresis: every timestep runs the Adam/AD optimiser, whose
+# objective differentiates through `trial_steps` chained full-grid multiphase
+# pipeline passes. Expect this to cost one to two orders of magnitude more per
+# step than Case A on the same grid.
+#
+#   tud-lbm benchmark examples/benchmarks/bench_hysteresis.toml --breakdown \
+#       --override grid_shape=[256,64] --label hyst_256
+#   ... 512x128, 1024x256 (the largest may OOM under fp64 reverse-mode AD;
+#       record that as a result, not a failure)
+#
+# `loss_tol = 0.0` is the load-bearing line. The optimiser's while_loop exits on
+# `loss <= loss_tol` (hysteresis.py cond_fn), so with the 1e-4 default the trip
+# count — and therefore the work per step — depends on the physics state. Two
+# backends starting from different states would then do different amounts of
+# work and the comparison would be meaningless. Pinning it to 0.0 forces exactly
+# `max_iterations` every time: fixed work, clean comparison.
+#
+# For a realism check, override it back:
+#   --override hysteresis.loss_tol=1e-4 --label hyst_256_realistic
+#
+# Measured locally at 128x32, the two settings differ by ~60x per step (87.6 ms
+# vs 1.42 ms), because from a fresh droplet init the loss starts near-converged
+# and the loop exits after roughly one iteration instead of ten. Since every
+# repeat restarts from that same state, the realism check prices the optimiser at
+# t=0 only and understates a real trajectory, where a moving contact line pushes
+# the iteration count back toward the cap. Floor and ceiling, not two estimates
+# of the same thing — see docs/notes/performance.md.
+
+[simulation_type]
+simulation_name = "bench_hysteresis"
+type = "multiphase_hysteresis"
+grid_shape = [256, 64]
+lattice_type = "D2Q9"
+tau = 0.99
+nt = 500
+init_type = "multiphase_bubbles"
+
+[initialisation]
+centres = [[0.5, 0.0]]
+radii = [0.5]
+dispersed = "liquid"
+
+[multiphase]
+kappa = 0.017
+rho_l = 1.0
+rho_v = 0.33
+interface_width = 4
+eos = "double-well"
+
+[boundary_conditions]
+left = "periodic"
+right = "periodic"
+top = "bounce-back"
+bottom = "wetting"
+
+[hysteresis]
+ca_advancing = 120.0
+ca_receding = 60.0
+learning_rate = 0.01
+max_iterations = 10
+loss_tol = 0.0
+
+[gravity_masked_force]
+force_g = 5e-06
+inclination_angle_deg = 60
+
+# No plot_fields: figure generation must never be reachable from a timed path.
+# results_dir matches the TUD_LBM_DATA_DIR default; it is spelled out because
+# scripts/db_new_job.sh rewrites this key when staging a DelftBlue job and
+# errors if it is absent.
+[output]
+results_dir = "~/TUD_LBM_data"
+save_fields = ["rho", "u"]

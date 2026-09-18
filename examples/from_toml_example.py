@@ -12,10 +12,10 @@ Usage:
 
 import sys
 from pathlib import Path
-from tud_lbm import build_setup
-from tud_lbm import run
-from tud_lbm.io.readers import TomlAdapter
-from tud_lbm.pipeline.runner import init_state
+from src import build_setup
+from src import run
+from src.pipeline.runner import init_state
+from src.simulation_io.readers import TomlAdapter
 
 
 def main(config_path: str):
@@ -38,7 +38,7 @@ def main(config_path: str):
     _final_state, _trajectory = run(setup, state, nt=config.nt)
 
     # Optionally save results
-    # from tud_lbm.io.output_data import write_vtk, write_numpy
+    # from src.simulation_io.output_data import write_vtk, write_numpy
     # write_numpy(final_state, f"{config.results_dir}/final_state.npz")
 
 

@@ -20,7 +20,7 @@ class TestOptaxOptionalDependency:
         When: the lazy optax importer is called
         Then: ImportError is raised with an actionable message
         """
-        from tud_lbm.operators.wetting.hysteresis.hysteresis import _import_optax
+        from src.operators.wetting.hysteresis.hysteresis import _import_optax
 
         with pytest.raises(ImportError, match="pip install optax"):
             _import_optax()
@@ -32,7 +32,7 @@ class TestOptaxOptionalDependency:
         When: the lazy optax importer is called
         Then: the optax module is returned without error
         """
-        from tud_lbm.operators.wetting.hysteresis.hysteresis import _import_optax
+        from src.operators.wetting.hysteresis.hysteresis import _import_optax
 
         optax = _import_optax()
         assert optax is not None

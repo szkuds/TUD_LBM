@@ -3,8 +3,8 @@
 from __future__ import annotations
 from types import SimpleNamespace
 import jax.numpy as jnp
-from tud_lbm.pipeline.state.state import State
-from tud_lbm.pipeline.state.state import WettingState
+from src.pipeline.state.state import State
+from src.pipeline.state.state import WettingState
 
 
 def _state_template(*, wetting: WettingState | None) -> State:
@@ -17,15 +17,16 @@ def _state_template(*, wetting: WettingState | None) -> State:
     )
 
 
-def test_cfg_value_reads_alias_and_default():
-    from tud_lbm.operators.wetting._extra_state import _cfg_value
+def test_wetting_scalar_reads_alias_and_default():
+    from src.operators.wetting._params import wetting_scalar
 
-    assert _cfg_value({"phi_l": 1.2}, "phi_left", "phi_l", default=1.0) == 1.2
-    assert _cfg_value({}, "phi_left", "phi_l", default=1.0) == 1.0
+    assert wetting_scalar({"phi_l": 1.2}, "phi_left", "phi_l", default=1.0) == 1.2
+    assert wetting_scalar({"phi_left": None}, "phi_left", "phi_l", default=1.0) == 1.0
+    assert wetting_scalar({}, "phi_left", "phi_l", default=1.0) == 1.0
 
 
 def test_is_active_detects_wetting_or_hysteresis():
-    from tud_lbm.operators.wetting._extra_state import WettingExtraStatePlugin
+    from src.operators.wetting._extra_state import WettingExtraStatePlugin
 
     assert WettingExtraStatePlugin.is_active(SimpleNamespace(wetting_config={}))  # ty: ignore[invalid-argument-type]
     assert WettingExtraStatePlugin.is_active(SimpleNamespace(wetting_config=None, hysteresis_config={}))  # ty: ignore[invalid-argument-type]
@@ -33,19 +34,20 @@ def test_is_active_detects_wetting_or_hysteresis():
 
 
 def test_init_state_uses_defaults_when_wetting_cfg_missing(monkeypatch):
-    from tud_lbm.operators.wetting import _extra_state as mod
+    from src.operators.wetting import _extra_state as mod
 
-    monkeypatch.setattr(mod, "compute_contact_angle", lambda rho, rho_mean: (jnp.array(75.0), jnp.array(85.0)))
+    monkeypatch.setattr(mod, "compute_contact_angle", lambda rho, rho_mean, **_: (jnp.array(75.0), jnp.array(85.0)))
     monkeypatch.setattr(
         mod,
         "compute_contact_line_location",
-        lambda rho, ca_l, ca_r, rho_mean: (jnp.array(10.0), jnp.array(30.0)),
+        lambda rho, ca_l, ca_r, rho_mean, **_: (jnp.array(10.0), jnp.array(30.0)),
     )
 
     setup = SimpleNamespace(
         config=SimpleNamespace(wetting_config=None),
         initial_f_fn=lambda: jnp.ones((4, 4, 1, 9, 1)),
         multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.5),
+        wetting_edge="bottom",
     )
 
     out = mod.WettingExtraStatePlugin.init_state(setup)  # ty: ignore[invalid-argument-type]
@@ -57,7 +59,7 @@ def test_init_state_uses_defaults_when_wetting_cfg_missing(monkeypatch):
 
 
 def test_update_state_early_return_and_update_path():
-    from tud_lbm.operators.wetting._extra_state import WettingExtraStatePlugin
+    from src.operators.wetting._extra_state import WettingExtraStatePlugin
 
     new_state = _state_template(wetting=None)
     prev_state = _state_template(wetting=None)
@@ -71,8 +73,9 @@ def test_update_state_early_return_and_update_path():
 
     calls = {}
 
-    def _fake_wetting_fn(wetting, rho, setup_obj, trial_step_fn=None):
+    def _fake_wetting_fn(wetting, rho, setup_obj, trial_step_fn=None, t=None):
         calls["trial"] = trial_step_fn
+        calls["t"] = t
         return wetting._replace(phi_left=jnp.array(1.5))
 
     marker = object()
@@ -82,11 +85,14 @@ def test_update_state_early_return_and_update_path():
     assert updated.wetting is not None
     assert float(updated.wetting.phi_left) == 1.5
     assert calls["trial"] is marker
+    # The timestep is forwarded so the wetting debug trace can stamp and
+    # rate-limit its rows.
+    assert int(calls["t"]) == int(new_state.t)
 
 
 def test_init_state_raises_when_initial_f_fn_none():
     import pytest
-    from tud_lbm.operators.wetting._extra_state import WettingExtraStatePlugin
+    from src.operators.wetting._extra_state import WettingExtraStatePlugin
 
     setup = SimpleNamespace(
         config=SimpleNamespace(wetting_config=None),

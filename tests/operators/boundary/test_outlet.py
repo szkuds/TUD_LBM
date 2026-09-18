@@ -3,8 +3,8 @@
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from tud_lbm.lattice.lattice import build_lattice
-from tud_lbm.operators.boundary._outlet import apply_outlet
+from src.lattice.lattice import build_lattice
+from src.operators.boundary._outlet import apply_outlet
 
 NX, NY, NZ = 8, 6, 1
 
@@ -32,10 +32,10 @@ def test_outlet_noop_on_other_edges(lattice) -> None:
 
 
 def test_outlet_finite_after_real_step() -> None:
-    from tud_lbm.config.simulation_config import SimulationConfig
-    from tud_lbm.pipeline.runner import init_state
-    from tud_lbm.pipeline.runner import run
-    from tud_lbm.pipeline.setup import build_setup
+    from src.config.simulation_config import SimulationConfig
+    from src.pipeline.runner import init_state
+    from src.pipeline.runner import run
+    from src.pipeline.setup import build_setup
 
     cfg = SimulationConfig(
         sim_type="single_phase",
