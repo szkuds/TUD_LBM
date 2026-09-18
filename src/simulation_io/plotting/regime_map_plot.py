@@ -160,7 +160,7 @@ def _resolve_run_dir_entry(line: str, txt_path: Path, parent: Path, resolved_roo
     """Resolve one parsed line to a run directory, rejecting entries outside every allowed root.
 
     Validation follows the canonical-path pattern for SonarQube ``pythonsecurity:S6549``
-    (transform -> normalize/resolve -> sanitize -> use): the untrusted ``line`` is first
+    (transform -> normalise/resolve -> sanitise -> use): the untrusted ``line`` is first
     resolved to a canonical path, then checked with ``Path.relative_to`` against each
     trusted root inside a ``try/except ValueError`` — the exact idiom the rule's own
     compliant example uses — before the path is returned for any later filesystem use.

@@ -66,7 +66,7 @@ def array_field(
     return field(metadata=metadata, **kwargs)  # ty: ignore[no-matching-overload]
 
 
-def _normalize_sequence(value: object) -> tuple[Any, ...]:
+def _normalise_sequence(value: object) -> tuple[Any, ...]:
     """Ensure value is a tuple."""
     return tuple(value) if not isinstance(value, tuple) else value  # ty: ignore[invalid-argument-type]
 
@@ -230,8 +230,8 @@ class SimulationConfig:
     # Validation
 
     def __post_init__(self) -> None:
-        """Validate and normalize configuration after initialization."""
-        self._normalize()
+        """Validate and normalise configuration after initialisation."""
+        self._normalise()
         self._apply_defaults()
         self._make_grid_shape_3d()
         self._set_all_bcs()
@@ -240,8 +240,8 @@ class SimulationConfig:
             self._validate_multiphase()
         self._derive()
 
-    def _normalize(self) -> None:
-        object.__setattr__(self, "grid_shape", _normalize_sequence(self.grid_shape))
+    def _normalise(self) -> None:
+        object.__setattr__(self, "grid_shape", _normalise_sequence(self.grid_shape))
         object.__setattr__(self, "output_format", _first_if_list(self.output_format))
         if isinstance(self.output_format, str):
             object.__setattr__(self, "output_format", self.output_format.lower())
@@ -249,7 +249,7 @@ class SimulationConfig:
     def _derive(self) -> None:
         """Fill in fields computed from other, already-validated fields.
 
-        Runs after validation, not in ``_normalize()``: a derivation may assume
+        Runs after validation, not in ``_normalise()``: a derivation may assume
         its inputs are well formed, which is the validators' job to guarantee.
         """
         self._couple_mrt_shear_to_tau()
