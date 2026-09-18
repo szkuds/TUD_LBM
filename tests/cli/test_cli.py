@@ -167,13 +167,13 @@ class TestParseOverrideArgument:
 
 
 class TestNormaliseOverridePath:
-    """Tests for normalizing TOML section paths to field names."""
+    """Tests for normalising TOML section paths to field names."""
 
-    def test_simple_field_no_normalization(self):
+    def test_simple_field_no_normalisation(self):
         result = _normalise_override_path("tau")
         assert result == ["tau"]
 
-    def test_nested_field_no_normalization(self):
+    def test_nested_field_no_normalisation(self):
         result = _normalise_override_path("gravity_force.force_g")
         assert result == ["gravity_force", "force_g"]
 
@@ -326,7 +326,7 @@ class TestApplyOverrides:
         _apply_overrides(raw, ("gravity_force.inclination_angle_deg=50",))
         assert raw == {"gravity_force": {"force_g": 5e-7, "inclination_angle_deg": 50}}
 
-    def test_apply_overrides_with_alias_normalization(self):
+    def test_apply_overrides_with_alias_normalisation(self):
         raw = {}
         _apply_overrides(raw, ("simulation_type.tau=0.8",))
         assert raw == {"tau": 0.8}

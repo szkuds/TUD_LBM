@@ -1,6 +1,6 @@
 """TDD tests explaining unified operator factory refactoring.
 
-This test module documents the desired behavior of a unified, generic
+This test module documents the desired behaviour of a unified, generic
 operator factory that serves all operator kinds (collision, streaming,
 equilibrium, macroscopic, etc).
 

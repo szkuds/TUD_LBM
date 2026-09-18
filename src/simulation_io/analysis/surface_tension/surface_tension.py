@@ -464,7 +464,7 @@ def _sanitize_key(raw_key: str) -> str | None:
     Valid keys are the canonical JSON produced by :func:`_cache_key`: exactly
     the ``_CACHE_KEYS`` fields, with numeric or ``None`` values, a validated
     ``grid_shape``, and an EOS registered under the ``"pressure"`` kind. The returned key is
-    re-serialized from coerced primitives so nothing read from the cache file
+    re-serialised from coerced primitives so nothing read from the cache file
     is echoed back verbatim.
     """
     try:

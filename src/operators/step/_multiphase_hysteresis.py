@@ -4,7 +4,7 @@ Registered as ``update_timestep:multiphase_hysteresis`` via the operator registr
 
 This step function is used when both wetting and hysteresis are configured.
 The wetting parameters (phi_left, phi_right, d_rho_left, d_rho_right) are
-optimized every timestep by the hysteresis optimizer, using wetting parametric
+optimised every timestep by the hysteresis optimiser, using wetting parametric
 operators from setup (gradient_density_wetting, laplacian_density_wetting).
 """
 
@@ -78,7 +78,7 @@ def _trial_step(
     Called by the hysteresis optimiser to evaluate trial parameter sets.
     Runs a multiphase physics pass with the given wetting parameters,
     returning the post-step populations and density field.
-    Multiple steps can be taken per trial to strengthen the optimizer response.
+    Multiple steps can be taken per trial to strengthen the optimiser response.
 
     Args:
         setup: :class:`~src.pipeline.setup.SimulationSetup`.
@@ -133,14 +133,14 @@ def step_multiphase_hysteresis(setup: SimulationSetup, state: State) -> State:
     """Hysteresis-enabled multiphase LBM step.
 
     Used when both wetting and hysteresis are configured.
-    The wetting parameters are optimized every timestep via the hysteresis
-    optimizer using wetting parametric operators and trial steps.
+    The wetting parameters are optimised every timestep via the hysteresis
+    optimiser using wetting parametric operators and trial steps.
 
     The implementation:
     1. Compute external forces
     2. Build operators from live wetting parameters
     3. Run multiphase physics kernel
-    4. Optimize wetting parameters via hysteresis
+    4. Optimise wetting parameters via hysteresis
     5. Update extra state (plugins)
     6. Return updated state
 
@@ -150,11 +150,11 @@ def step_multiphase_hysteresis(setup: SimulationSetup, state: State) -> State:
                populated with parametric closures.
         state: Current :class:`~src.pipeline.state.state.State`.
                state.wetting is a :class:`~src.pipeline.state.state.WettingState`
-               with parameters to optimize.
+               with parameters to optimise.
 
     Returns:
         Updated :class:`~src.pipeline.state.state.State` after one time step
-        with optimized wetting parameters.
+        with optimised wetting parameters.
     """
     # 1. Compute external forces
     force_ext, state = compute_total_force_ext(setup, state, setup.forces)

@@ -1,6 +1,6 @@
 """Per-timestep droplet-metric CSV export.
 
-This module is purely a serializer: every metric it writes comes from
+This module is purely a serialiser: every metric it writes comes from
 :func:`src.simulation_io.analysis.droplet_metrics.droplet_series_for_run`. It is also
 the only place that decides whether a run gets a ``simulation_data.csv``.
 """

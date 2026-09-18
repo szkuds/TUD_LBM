@@ -3,13 +3,13 @@
 from __future__ import annotations
 import math
 from src.config import SimulationConfig
-from src.simulation_io.analysis.physical_parameters import BondNumbers
 from src.simulation_io.analysis.physical_parameters import build_overview
-from src.simulation_io.analysis.physical_parameters import compute_bond_numbers
 from src.simulation_io.analysis.physical_parameters import compute_dimensionless_numbers
 from src.simulation_io.analysis.physical_parameters import dimensionless_keys
 from src.simulation_io.analysis.physical_parameters import resolve_dimensionless_inputs
 from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessInputs
+from src.simulation_io.analysis.physical_parameters.numbers._bond import BondNumbers
+from src.simulation_io.analysis.physical_parameters.numbers._bond import compute_bond_numbers
 from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import archimedes_number
 from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import reynolds_number
 from src.simulation_io.analysis.physical_parameters.numbers._ohnesorge import ohnesorge_number

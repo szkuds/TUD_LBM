@@ -1,4 +1,4 @@
-"""Behavioral tests for optional dependency handling.
+"""Behavioural tests for optional dependency handling.
 
 Validates that the hysteresis path raises a clear, actionable ImportError
 when optax is absent, rather than an obscure AttributeError or crash.

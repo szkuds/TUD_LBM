@@ -381,7 +381,7 @@ class TestAPIIntegration:
         setup = build_setup(config)
         assert setup is not None
 
-        # Initialize state
+        # Initialise state
         state = init_state(setup)
         assert state is not None
 

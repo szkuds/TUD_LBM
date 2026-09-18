@@ -412,7 +412,7 @@ class SimulationConfig:
             raise ValueError(msg)
 
     def _validate_init(self) -> None:
-        """Validate initialization parameters."""
+        """Validate initialisation parameters."""
         if self.init_type == "init_from_file" and self.init_dir is None:
             msg = "init_dir must be provided when init_type is 'init_from_file'"
             raise ValueError(msg)

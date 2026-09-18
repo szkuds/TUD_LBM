@@ -125,7 +125,7 @@ class SnapshotOverviewPlot(AnalysisPlot):
     is_multi_panel = True
 
     def __init__(self, config: SimulationConfig | None = None) -> None:
-        """Initialize with optional config; timesteps are set by the CLI prompt."""
+        """Initialise with optional config; timesteps are set by the CLI prompt."""
         super().__init__(config)
         self.timesteps: list[int] = []
 

@@ -1,7 +1,7 @@
 """Input/Output operations for LBM simulations (public API).
 
 This module consolidates all I/O functionality: configuration readers, output
-writers, and visualization tools.
+writers, and visualisation tools.
 
 Main Classes
 ------------
@@ -39,11 +39,11 @@ readers
         config = TomlAdapter().load("config.toml")
 
 plotting
-    Visualization operators and figure builders.
+    Visualisation operators and figure builders.
 
     - FigureBuilder : Assemble multi-panel figures from simulation data
     - Animator      : Encode saved timestep frames into mp4/gif
-    - PlotOperator  : Base class for custom visualization panels
+    - PlotOperator  : Base class for custom visualisation panels
 
     Example::
 

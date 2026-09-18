@@ -110,7 +110,7 @@ class FigureBuilder:
         fields: list[str] | None = None,
         overlays: list[str] | None = None,
     ) -> None:
-        """Initialize figure builder with simulation config and output directory.
+        """Initialise figure builder with simulation config and output directory.
 
         Args:
             config: Simulation configuration object.

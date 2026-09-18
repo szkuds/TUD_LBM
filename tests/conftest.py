@@ -19,7 +19,7 @@ def mock_optax_missing(monkeypatch):
     """Fixture: Simulate optax package not being installed.
 
     This fixture removes optax from sys.modules and makes import attempts fail.
-    Use when testing behavior WITHOUT optax installed.
+    Use when testing behaviour WITHOUT optax installed.
 
     Example:
         def test_something(mock_optax_missing):
@@ -49,7 +49,7 @@ def mock_optax_present(monkeypatch):
     """Fixture: Ensure optax package can be imported.
 
     This fixture ensures optax is available for testing WITH optax installed.
-    Use when testing behavior that REQUIRES optax.
+    Use when testing behaviour that REQUIRES optax.
 
     Example:
         def test_hysteresis_works(mock_optax_present):

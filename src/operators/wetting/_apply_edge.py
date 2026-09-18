@@ -34,7 +34,7 @@ def _oriented_ghost_row(
     transposed = edge in ("left", "right")
     arr = grid_padded.T if transposed else grid_padded
 
-    # Ghost column index in the padded array and interior neighbor offset.
+    # Ghost column index in the padded array and interior neighbour offset.
     ghost_idx = 0 if edge in ("bottom", "left") else -1
     interior_offset = 1 if ghost_idx == 0 else -1
 

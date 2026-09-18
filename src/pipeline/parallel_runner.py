@@ -111,7 +111,7 @@ def run_single_simulation(
         # Build simulation setup
         setup = setup_fn(config)
 
-        # Initialize state
+        # Initialise state
         state = init_state(setup)
 
         # Create unique simulation name including parameter values

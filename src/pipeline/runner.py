@@ -117,7 +117,7 @@ def init_state(
 
     if f is None:
         if setup.initial_f_fn is None:
-            msg = "initial_f_fn is required in SimulationSetup to initialize state"
+            msg = "initial_f_fn is required in SimulationSetup to initialise state"
             raise TypeError(msg)
         f = setup.initial_f_fn(init_kwargs)
 

@@ -34,8 +34,6 @@ from src.simulation_io.analysis.physical_parameters import (
     numbers as _numbers,  # noqa: F401  (registers the dimensionless operators)
 )
 from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessInputs
-from src.simulation_io.analysis.physical_parameters.numbers._bond import BondNumbers
-from src.simulation_io.analysis.physical_parameters.numbers._bond import compute_bond_numbers
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -48,23 +46,6 @@ if TYPE_CHECKING:
 #: The config fields :func:`build_multiphase_params` requires, guarded in one
 #: place by :func:`_multiphase_params_or_none`.
 _MULTIPHASE_PARAM_FIELDS = ("eos", "kappa", "rho_l", "rho_v", "interface_width")
-
-# Re-exported so the formulas keep their historical import site while living
-# beside the operators that register them.
-__all__ = [
-    "BondNumbers",
-    "DimensionlessNumbers",
-    "build_overview",
-    "compute_bond_numbers",
-    "compute_dimensionless_numbers",
-    "dimensionless_for_inputs",
-    "dimensionless_keys",
-    "dimensionless_label",
-    "inclusion_mask_from_rho",
-    "measure_init_phase_densities",
-    "resolve_dimensionless_inputs",
-    "write_physical_parameters",
-]
 
 _CS2 = 1.0 / 3.0  # Speed of sound squared for D2Q9/D3Q19
 

@@ -8,10 +8,8 @@ is what registers them. Consumers ask for them by key -- see
 
 from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessInputs
 from src.simulation_io.analysis.physical_parameters.length_scale_figure import write_length_scale_figure
-from src.simulation_io.analysis.physical_parameters.physical_parameters import BondNumbers
 from src.simulation_io.analysis.physical_parameters.physical_parameters import DimensionlessNumbers
 from src.simulation_io.analysis.physical_parameters.physical_parameters import build_overview
-from src.simulation_io.analysis.physical_parameters.physical_parameters import compute_bond_numbers
 from src.simulation_io.analysis.physical_parameters.physical_parameters import compute_dimensionless_numbers
 from src.simulation_io.analysis.physical_parameters.physical_parameters import dimensionless_keys
 from src.simulation_io.analysis.physical_parameters.physical_parameters import dimensionless_label
@@ -21,11 +19,9 @@ from src.simulation_io.analysis.physical_parameters.physical_parameters import r
 from src.simulation_io.analysis.physical_parameters.physical_parameters import write_physical_parameters
 
 __all__ = [
-    "BondNumbers",
     "DimensionlessInputs",
     "DimensionlessNumbers",
     "build_overview",
-    "compute_bond_numbers",
     "compute_dimensionless_numbers",
     "dimensionless_keys",
     "dimensionless_label",

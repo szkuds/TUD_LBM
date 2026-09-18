@@ -9,7 +9,7 @@ Operators are organized by category:
 - differential/  : Differential operators (gradient, laplacian)
 - force/         : Force models
 - wetting/       : Wetting and contact angle
-- initialise/    : Population initialization
+- initialise/    : Population initialisation
 
 Operators are auto-discovered and registered via registry.py.
 Use registry.get_operators(category) to retrieve implementations.

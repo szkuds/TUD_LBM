@@ -162,7 +162,7 @@ def test_regions_are_jittable():
 def test_gradients_stay_finite_when_a_side_is_empty():
     """``jnp.where`` poisons gradients through a non-finite dead branch.
 
-    The hysteresis optimizer differentiates through the applicator, so the local
+    The hysteresis optimiser differentiates through the applicator, so the local
     bounds must stay finite even for an anchor the contrast floor rejected.
     """
     row = jnp.full(_N, _RHO_L)

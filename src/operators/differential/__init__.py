@@ -150,13 +150,13 @@ def build_diff_ops(
 
     * **Non-wetting**: All returned closures accept only ``(grid)``.
       ``gradient_density_wetting`` and ``laplacian_density_wetting`` are ``None``.
-    * **Fixed wetting** (wetting config but no hysteresis): Same behavior as non-wetting.
+    * **Fixed wetting** (wetting config but no hysteresis): Same behaviour as non-wetting.
       ``gradient_density`` and ``laplacian_density`` close over static wetting parameters.
       ``gradient_density_wetting`` and ``laplacian_density_wetting`` are ``None``.
     * **Hysteresis**: ``gradient_density`` and ``laplacian_density`` are initial closures
       seeded with wetting parameters (explicit or neutral defaults).
       ``gradient_density_wetting`` and ``laplacian_density_wetting`` are the parametric factories
-      used by the hysteresis optimizer to build trial-step operators.
+      used by the hysteresis optimiser to build trial-step operators.
 
     Args:
         config: Validated simulation configuration.
@@ -222,7 +222,7 @@ def build_diff_ops(
             return _lap_wetting(grid, _phi_l, _phi_r, _d_rho_l, _d_rho_r)
 
         if hysteresis_config is not None:
-            # Hysteresis: expose parametric slots for the optimizer.
+            # Hysteresis: expose parametric slots for the optimiser.
             # gradient_density / laplacian_density serve as seed-param closures for t=0.
             gradient_density_wetting = _grad_wetting
             laplacian_density_wetting = _lap_wetting

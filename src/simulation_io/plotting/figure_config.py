@@ -14,7 +14,7 @@ RED = "tab:red"
 PURPLE = "tab:purple"
 BROWN = "tab:brown"
 PINK = "tab:pink"
-GRAY = "tab:gray"
+GREY = "tab:gray"
 OLIVE = "tab:olive"
 CYAN = "tab:cyan"
 
@@ -151,5 +151,5 @@ REGIME_COLORS: dict[str, str] = {
     "Dissipative": GREEN,
     "Capillary": RED,
     "Steady": ORANGE,
-    "unknown": GRAY,
+    "unknown": GREY,
 }

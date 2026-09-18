@@ -778,7 +778,7 @@ class PlotOperator(Protocol):
     """Structural contract for Matplotlib plot operators.
 
     Plot operators render simulation snapshots onto matplotlib axes,
-    enabling flexible visualization strategies for different fields
+    enabling flexible visualisation strategies for different fields
     and use cases.
 
     Signature::

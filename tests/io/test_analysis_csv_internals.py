@@ -1,4 +1,4 @@
-"""Coverage for the shared droplet-metric layer and the CSV serializer.
+"""Coverage for the shared droplet-metric layer and the CSV serialiser.
 
 Exercises:
 - resolve_r_zero: all three paths (contact-line, init-radii, fallback 27)
