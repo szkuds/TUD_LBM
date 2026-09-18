@@ -238,12 +238,37 @@ class SimulationConfig:
         self._validate_common()
         if "multiphase" in self.sim_type:
             self._validate_multiphase()
+        self._derive()
 
     def _normalize(self) -> None:
         object.__setattr__(self, "grid_shape", _normalize_sequence(self.grid_shape))
         object.__setattr__(self, "output_format", _first_if_list(self.output_format))
         if isinstance(self.output_format, str):
             object.__setattr__(self, "output_format", self.output_format.lower())
+
+    def _derive(self) -> None:
+        """Fill in fields computed from other, already-validated fields.
+
+        Runs after validation, not in ``_normalize()``: a derivation may assume
+        its inputs are well formed, which is the validators' job to guarantee.
+        """
+        self._couple_mrt_shear_to_tau()
+
+    def _couple_mrt_shear_to_tau(self) -> None:
+        """Rewrite the shear entries of ``k_diag`` to ``1/tau``.
+
+        The MRT shear moments set the kinematic viscosity, so left free they
+        would decouple the run from ``nu = cs2*(tau - 0.5)`` — the viscosity
+        every reported ``Oh``, ``La``, ``Re`` and ``Ar`` is derived from.
+        Deriving here rather than inside the collision operator keeps a saved
+        config truthful about the rates its run actually used.
+        """
+        if self.collision_scheme != "mrt" or self.k_diag is None:
+            return
+
+        from src.operators.collision._mrt import couple_shear_to_tau
+
+        object.__setattr__(self, "k_diag", couple_shear_to_tau(self.k_diag, float(self.tau)))
 
     def _apply_defaults(self) -> None:
         if self.save_interval == 0:

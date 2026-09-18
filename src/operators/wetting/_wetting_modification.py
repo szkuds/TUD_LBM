@@ -17,10 +17,10 @@ cell was clipped to ``0.95*rho_l``, and the run diverged. Mass was exactly
 conserved and the domain-mean liquid density flat throughout — that is the steady
 state, not a transient, so no absolute threshold can work. Inclination makes it
 worse still: gravity stratifies the liquid *along* the wall too, spanning the
-full band width, so a *measured* global pair cannot separate interface from bulk
+full bandwidth, so a *measured* global pair cannot separate interface from bulk
 either.
 
-Hence the four clauses of :func:`wetting_regions`, each of which earns its place:
+Hence, the four clauses of :func:`wetting_regions`, each of which earns its place:
 
 Local phase references
     ``hi``/``lo`` are measured in a window around the contact line, so the
@@ -106,7 +106,7 @@ def _anchored_region(
     # Fill outside the window with the row's own extrema rather than +/-inf: an
     # empty window then yields a negative span that the contrast floor rejects,
     # while every bound stays finite. jnp.where with a non-finite dead branch
-    # would poison the gradients the hysteresis optimizer takes through here.
+    # would poison the gradients the hysteresis optimiser takes through here.
     hi = jnp.max(jnp.where(in_window, row, jnp.min(row)))
     lo = jnp.min(jnp.where(in_window, row, jnp.max(row)))
     span = hi - lo

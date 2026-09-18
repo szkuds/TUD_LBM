@@ -364,5 +364,10 @@ def dimensionless_operator(
     ``formula`` (for ``physical_parameters.txt``), ``order`` (display and
     choice ordering -- registry insertion order is import order, too fragile to
     display from) and ``needs_gravity`` (which provenance the row annotates).
+
+    ``annotates_scale`` is optional and defaults to ``True``. Setting it
+    ``False`` suppresses the length/contrast provenance on the row, for a number
+    built from neither -- ``hs`` reads the grid and the EOS, so claiming either
+    would be false.
     """
     return register_operator("dimensionless", name=name, **meta)
