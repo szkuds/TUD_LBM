@@ -7,6 +7,7 @@ from src.config import SimulationConfig
 from src.simulation_io.analysis.interface_contour import DEFAULT_INTERFACE_LEVELS
 from src.simulation_io.analysis.interface_contour import config_rho_mean
 from src.simulation_io.analysis.interface_contour import interface_lines
+from src.simulation_io.analysis.interface_contour import level_densities
 from src.simulation_io.analysis.interface_contour import level_value
 from src.simulation_io.analysis.interface_contour import measured_rho_mean
 from src.simulation_io.analysis.interface_contour import resolve_interface_levels
@@ -128,3 +129,15 @@ def test_unknown_level_is_rejected_with_the_choices():
         resolve_interface_levels(config)
     with pytest.raises(ValueError, match="median"):
         level_value("median", config, _droplet())
+
+
+@pytest.mark.parametrize("level", ["config", "measured"])
+def test_level_value_is_the_midpoint_of_the_level_densities(level):
+    config = _multiphase_config()
+    rho = _droplet(rho_v=0.3)
+
+    phases = level_densities(level, config, rho)
+
+    assert phases is not None
+    assert phases[0] > phases[1]
+    assert level_value(level, config, rho) == pytest.approx(0.5 * (phases[0] + phases[1]))

@@ -23,6 +23,7 @@ from .figure_config import DEFAULT_STYLE
 if TYPE_CHECKING:
     import os
     import numpy as np
+    from matplotlib.artist import Artist
     from src.config import SimulationConfig
 
 _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
@@ -41,6 +42,46 @@ _WETTING_SIM_TYPES: frozenset[str] = frozenset(
 )
 
 _ANALYSIS_PANEL_FACECOLOR = "#f5f5f5"
+
+#: Figure fractions reserved by ``tight_layout`` when there is no shared legend.
+_LAYOUT_BOTTOM = 0.03
+_LAYOUT_TOP = 0.95
+#: Height of one shared-legend row, in multiples of its font size.
+_LEGEND_ROW_EM = 1.8
+_POINTS_PER_INCH = 72.0
+
+
+def _add_shared_legend(fig: plt.Figure, axes: list[plt.Axes]) -> float:
+    """Place one legend below the panels for every labelled artist on *axes*.
+
+    Overlays label their artists but never draw a legend, because the same
+    entries recur on every panel they are drawn on. Entries are de-duplicated by
+    label in first-seen order.
+
+    Returns:
+        The figure fraction the legend occupies at the bottom, for ``tight_layout``.
+    """
+    entries: dict[str, Artist] = {}
+    for ax in axes:
+        for handle, label in zip(*ax.get_legend_handles_labels(), strict=True):
+            entries.setdefault(label, handle)
+    if not entries:
+        return _LAYOUT_BOTTOM
+
+    fontsize = DEFAULT_STYLE.shared_legend_fontsize
+    ncol = min(len(entries), DEFAULT_STYLE.shared_legend_max_columns)
+    rows = math.ceil(len(entries) / ncol)
+    fig.legend(
+        list(entries.values()),
+        list(entries),
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.0),
+        ncol=ncol,
+        fontsize=fontsize,
+        frameon=False,
+    )
+    row_inches = _LEGEND_ROW_EM * fontsize / _POINTS_PER_INCH
+    return _LAYOUT_BOTTOM + rows * row_inches / fig.get_figheight()
 
 
 def _render_error(ax: plt.Axes, name: str, exc: Exception) -> None:
@@ -145,6 +186,12 @@ class FigureBuilder:
         all_analysis_ops = get_operators("analysis")
         for name in requested:
             entry = all_ops.get(name)
+            if entry is not None and getattr(entry.target, "overlay_only", False):
+                warnings.warn(
+                    f"Plot operator '{name}' is overlay-only; name it in overlay_fields or --overlay instead.",
+                    stacklevel=2,
+                )
+                continue
             if entry is not None:
                 self._field_operators.append(entry.target(self.config, data_dir=self._data_dir))
                 continue
@@ -289,7 +336,8 @@ class FigureBuilder:
                 op(axes[row][col], data, timestep)
                 if op.accepts_overlays:
                     for overlay in self._overlay_operators:
-                        if overlay.is_available(data):
+                        # Never onto its own panel: that would draw it twice.
+                        if overlay.name != op.name and overlay.is_available(data):
                             overlay.draw_overlay(axes[row][col], data, timestep)
             except Exception as exc:  # noqa: BLE001
                 _render_error(axes[row][col], op.name, exc)
@@ -309,9 +357,12 @@ class FigureBuilder:
             row, col = divmod(idx, ncols)
             axes[row][col].set_visible(False)
 
+        field_axes = [axes[row][col] for row, col in (divmod(idx, ncols) for idx in range(len(field_ops)))]
+        bottom = _add_shared_legend(fig, field_axes)
+
         title = self.config.simulation_name or "simulation"
         fig.suptitle(f"{title} - Timestep {timestep}", fontsize=DEFAULT_STYLE.suptitle_fontsize)
-        plt.tight_layout(rect=(0, 0.03, 1, 0.95))
+        plt.tight_layout(rect=(0, bottom, 1, _LAYOUT_TOP))
 
         return fig
 

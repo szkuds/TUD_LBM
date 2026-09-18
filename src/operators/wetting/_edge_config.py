@@ -36,3 +36,13 @@ def _resolve_wetting_edges(
             ),
         )
     return edges
+
+
+def first_wetting_edge(bc_config: dict[str, str] | None) -> str | None:
+    """The wall contact angles are measured at: the first ``"wetting"`` edge, or ``None``.
+
+    Wetting BCs are applied to every ``"wetting"`` edge, but contact angles are
+    read only at this one.
+    """
+    edges = _resolve_wetting_edges(bc_config) if bc_config else []
+    return edges[0][0] if edges else None

@@ -60,36 +60,63 @@ def config_rho_mean(config: SimulationConfig) -> float | None:
     return 0.5 * (float(config.rho_l) + float(config.rho_v))
 
 
-def measured_rho_mean(rho_2d: np.ndarray, rho_mean: float) -> float | None:
-    """Midpoint of the bulk-phase median densities, split at *rho_mean*.
+def measured_phase_densities(rho_2d: np.ndarray, rho_mean: float) -> tuple[float, float] | None:
+    """``(dense, light)`` bulk-phase median densities, split at *rho_mean*.
 
-    Returns ``None`` when the field does not straddle *rho_mean* — a uniform or
-    single-phase field has no interface to mark.
+    Medians rather than ``min``/``max`` because the diffuse interface over- and
+    undershoots the bulk values. Returns ``None`` when the field does not
+    straddle *rho_mean* — a uniform or single-phase field has no two phases.
     """
     rho = np.asarray(rho_2d, dtype=float)
     dense = rho[rho > rho_mean]
     light = rho[rho < rho_mean]
     if dense.size == 0 or light.size == 0:
         return None
-    return 0.5 * (float(np.median(dense)) + float(np.median(light)))
+    return float(np.median(dense)), float(np.median(light))
 
 
-def level_value(name: str, config: SimulationConfig, rho_2d: np.ndarray) -> float | None:
-    """Density of interface marker *name* for one snapshot, or ``None`` if unavailable.
+def measured_rho_mean(rho_2d: np.ndarray, rho_mean: float) -> float | None:
+    """Midpoint of the bulk-phase median densities, split at *rho_mean*.
+
+    Returns ``None`` when the field does not straddle *rho_mean* — a uniform or
+    single-phase field has no interface to mark.
+    """
+    phases = measured_phase_densities(rho_2d, rho_mean)
+    return None if phases is None else 0.5 * (phases[0] + phases[1])
+
+
+def level_densities(name: str, config: SimulationConfig, rho_2d: np.ndarray) -> tuple[float, float] | None:
+    """``(dense, light)`` densities behind interface marker *name*, or ``None`` if unavailable.
+
+    ``config`` is the prescribed ``(rho_l, rho_v)``; ``measured`` is this
+    snapshot's bulk-phase medians. Every per-marker quantity — the contour level
+    here, the wetting band of the contact-angle overlay — is derived from this
+    pair, so the two markers mean the same thing wherever they are drawn.
 
     The ``measured`` split is seeded at the config midpoint when there is one and
     at ``(min + max) / 2`` otherwise, so a standalone snapshot with no multiphase
     config still gets a measured contour.
     """
-    from_config = config_rho_mean(config)
     if name == LEVEL_CONFIG:
-        return from_config
+        if config.rho_l is None or config.rho_v is None:
+            return None
+        return float(config.rho_l), float(config.rho_v)
     if name == LEVEL_MEASURED:
         rho = np.asarray(rho_2d, dtype=float)
+        from_config = config_rho_mean(config)
         seed = from_config if from_config is not None else 0.5 * (float(rho.min()) + float(rho.max()))
-        return measured_rho_mean(rho, seed)
+        return measured_phase_densities(rho, seed)
     msg = f"Unknown interface level {name!r}. Available: {list(INTERFACE_LEVEL_NAMES)}"
     raise ValueError(msg)
+
+
+def level_value(name: str, config: SimulationConfig, rho_2d: np.ndarray) -> float | None:
+    """Density of interface marker *name* for one snapshot, or ``None`` if unavailable.
+
+    The midpoint of :func:`level_densities`.
+    """
+    phases = level_densities(name, config, rho_2d)
+    return None if phases is None else 0.5 * (phases[0] + phases[1])
 
 
 def interface_lines(rho_2d: np.ndarray, level: float) -> list[np.ndarray]:
