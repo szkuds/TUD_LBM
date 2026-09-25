@@ -7,10 +7,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from src.config import SimulationConfig
 from src.simulation_io.plotting import FigureBuilder
-from src.simulation_io.plotting.force import ExternalForcePlotOperator
-from src.simulation_io.plotting.force import ForcePlotOperator
-from src.simulation_io.plotting.pressure import BulkPressurePlotOperator
-from src.simulation_io.plotting.pressure import TotalPressurePlotOperator
+from src.simulation_io.plotting._force import ExternalForcePlotOperator
+from src.simulation_io.plotting._force import ForcePlotOperator
+from src.simulation_io.plotting._pressure import BulkPressurePlotOperator
+from src.simulation_io.plotting._pressure import TotalPressurePlotOperator
 
 _KAPPA = 0.01
 _RHO_L = 1.0
@@ -39,7 +39,7 @@ class TestPlottingOperatorsShapeHandling:
 
     def test_density_operator_2d_shape(self):
         """Density operator should produce correct 2D array from data."""
-        from src.simulation_io.plotting.density import DensityPlotOperator
+        from src.simulation_io.plotting._density import DensityPlotOperator
 
         config = SimulationConfig(
             grid_shape=(100, 100, 1),
@@ -61,7 +61,7 @@ class TestPlottingOperatorsShapeHandling:
 
     def test_velocity_operator_2d_shape(self):
         """Velocity operator should produce correct 2D array from data."""
-        from src.simulation_io.plotting.velocity import VelocityPlotOperator
+        from src.simulation_io.plotting._velocity import VelocityPlotOperator
 
         config = SimulationConfig(
             grid_shape=(100, 100, 1),

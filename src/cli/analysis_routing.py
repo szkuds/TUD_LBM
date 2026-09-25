@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from src.config.run_config import COMPARISON_DIRNAME
 from src.config.run_config import CONFIG_FILENAME
+from src.simulation_io.plotting import build_simulation_csv
 from src.simulation_io.plotting.run_comparison import _safe_load_config
 from src.simulation_io.plotting.run_comparison import compare_runs
-from src.simulation_io.plotting.simulation_csv import build_simulation_csv
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

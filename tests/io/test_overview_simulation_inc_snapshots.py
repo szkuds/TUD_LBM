@@ -1,4 +1,4 @@
-"""Tests for src.simulation_io.plotting.overview_simulation_inc_snapshots."""
+"""Tests for src.simulation_io.plotting._overview_simulation_inc_snapshots."""
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
@@ -13,7 +13,7 @@ mpl.use("Agg")
 
 from src.config import SimulationConfig
 from src.registry import get_operators
-from src.simulation_io.plotting.overview_simulation_inc_snapshots import SnapshotOverviewPlot
+from src.simulation_io.plotting._overview_simulation_inc_snapshots import SnapshotOverviewPlot
 
 
 def _wetting_config() -> SimulationConfig:

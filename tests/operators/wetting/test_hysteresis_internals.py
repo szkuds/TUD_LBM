@@ -20,6 +20,7 @@ from src.operators.wetting.hysteresis.hysteresis import _cost_below
 from src.operators.wetting.hysteresis.hysteresis import _cost_ca
 from src.operators.wetting.hysteresis.hysteresis import _cost_cll
 from src.operators.wetting.hysteresis.hysteresis import _import_optax
+from src.operators.wetting.hysteresis.hysteresis import _initial_params
 from src.operators.wetting.hysteresis.hysteresis import _liquid_is_advancing
 from src.operators.wetting.hysteresis.hysteresis import _mask_left_d_rho
 from src.operators.wetting.hysteresis.hysteresis import _mask_left_phi
@@ -441,3 +442,44 @@ class TestUpdateWettingStateImplGuards:
                 ca_adv_right=ca_adv,
                 ca_rec_right=ca_rec,
             )
+
+
+# ---------------------------------------------------------------------------
+# _initial_params — snap vs carry of the inactive knob
+# ---------------------------------------------------------------------------
+
+
+def _accumulated_wetting():
+    from src.pipeline.state import WettingState
+
+    return WettingState(
+        phi_left=jnp.array(1.03),
+        phi_right=jnp.array(1.04),
+        d_rho_left=jnp.array(0.09),
+        d_rho_right=jnp.array(0.11),
+        ca_left=jnp.array(100.0),
+        ca_right=jnp.array(120.0),
+        cll_left=jnp.array(28.0),
+        cll_right=jnp.array(79.0),
+    )
+
+
+def test_initial_params_snaps_inactive_knob_to_neutral_by_default():
+    # Left: phi active, so d_rho is snapped; right: d_rho active, so phi is snapped.
+    p = _initial_params(_accumulated_wetting(), jnp.array(True), jnp.array(False), carry_inactive=False)
+    assert float(p.phi_left) == pytest.approx(1.03)
+    assert float(p.d_rho_left) == 0.0
+    assert float(p.phi_right) == 1.0
+    assert float(p.d_rho_right) == pytest.approx(0.11)
+
+
+@pytest.mark.parametrize("phi_active", [True, False])
+def test_initial_params_carry_keeps_both_knobs_whichever_is_active(phi_active):
+    wetting = _accumulated_wetting()
+    p = _initial_params(wetting, jnp.array(phi_active), jnp.array(phi_active), carry_inactive=True)
+    assert p == WettingParams(
+        phi_left=wetting.phi_left,
+        phi_right=wetting.phi_right,
+        d_rho_left=wetting.d_rho_left,
+        d_rho_right=wetting.d_rho_right,
+    )

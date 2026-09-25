@@ -39,9 +39,9 @@ from src.simulation_io.analysis.droplet_metrics._snapshot import inclusion_mask_
 from src.simulation_io.analysis.droplet_metrics._snapshot import interpolate_interface
 from src.simulation_io.analysis.droplet_metrics._snapshot import mean_velocity_in_inclusion
 from src.simulation_io.analysis.droplet_metrics._snapshot import parse_timestep_from_path
+from src.simulation_io.plotting._simulation_csv import SimulationCsvExport
+from src.simulation_io.plotting._simulation_csv import build_simulation_csv
 from src.simulation_io.plotting.run_comparison import _clean_dir_label
-from src.simulation_io.plotting.simulation_csv import SimulationCsvExport
-from src.simulation_io.plotting.simulation_csv import build_simulation_csv
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -1,4 +1,4 @@
-"""Tests for src.simulation_io.plotting.ca_theta_plot."""
+"""Tests for src.simulation_io.plotting._ca_theta_plot."""
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
@@ -11,8 +11,8 @@ if TYPE_CHECKING:
 
 mpl.use("Agg")
 
-from src.simulation_io.plotting.ca_theta_plot import plot_contact_angle_vs_capillary_number
-from src.simulation_io.plotting.ca_theta_plot import save_figure
+from src.simulation_io.plotting._ca_theta_plot import plot_contact_angle_vs_capillary_number
+from src.simulation_io.plotting._ca_theta_plot import save_figure
 
 _CA_TRAILING = np.array([1e-4, 5e-4, 1e-3])
 _THETA_TRAILING = np.array([100.0, 105.0, 110.0])
@@ -220,7 +220,7 @@ def _write_ca_snapshot(
 
 
 def test_ca_theta_vs_time_operator_compute(tmp_path: Path):
-    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsTimePlot
+    from src.simulation_io.plotting._ca_theta_plot import CaThetaVsTimePlot
 
     _write_ca_snapshot(tmp_path, 5, ca_left=85.0, ca_right=95.0, cll_left=3.0, cll_right=10.0)
     _write_ca_snapshot(tmp_path, 10, ca_left=86.0, ca_right=96.0, cll_left=3.5, cll_right=10.5)
@@ -247,7 +247,7 @@ def test_ca_theta_vs_time_operator_compute(tmp_path: Path):
 
 def test_ca_theta_vs_time_operator_render(tmp_path: Path):
     import matplotlib.pyplot as plt
-    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsTimePlot
+    from src.simulation_io.plotting._ca_theta_plot import CaThetaVsTimePlot
 
     _write_ca_snapshot(tmp_path, 5, ca_left=85.0, ca_right=95.0, cll_left=3.0, cll_right=10.0)
     _write_ca_snapshot(tmp_path, 10, ca_left=86.0, ca_right=96.0, cll_left=3.5, cll_right=10.5)
@@ -264,7 +264,7 @@ def test_ca_theta_vs_time_operator_render(tmp_path: Path):
 
 
 def test_ca_theta_vs_x_operator_compute(tmp_path: Path):
-    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsXPlot
+    from src.simulation_io.plotting._ca_theta_plot import CaThetaVsXPlot
 
     _write_ca_snapshot(tmp_path, 5, ca_left=85.0, ca_right=95.0, cll_left=3.0, cll_right=10.0)
     _write_ca_snapshot(tmp_path, 10, ca_left=86.0, ca_right=96.0, cll_left=3.5, cll_right=10.5)
@@ -277,7 +277,7 @@ def test_ca_theta_vs_x_operator_compute(tmp_path: Path):
 
 def test_ca_theta_vs_time_operator_no_config(tmp_path: Path):
     import matplotlib.pyplot as plt
-    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsTimePlot
+    from src.simulation_io.plotting._ca_theta_plot import CaThetaVsTimePlot
 
     _write_ca_snapshot(tmp_path, 5, ca_left=85.0, ca_right=95.0, cll_left=3.0, cll_right=10.0)
 

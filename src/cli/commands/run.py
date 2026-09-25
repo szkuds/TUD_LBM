@@ -54,6 +54,21 @@ from src.cli.wetting_init import _WETTING_INIT_NT
     "e.g. --override simulation_type.simulation_name='new name'",
 )
 @click.option(
+    "--override-phase1",
+    "override_phase1",
+    multiple=True,
+    help="Override config values for --init-wetting Phase 1 only (repeatable). "
+    "Applied after the Phase 1 config is built, so it beats the values "
+    "--init-wetting sets itself; use --init-wetting-nt for the phase length.",
+)
+@click.option(
+    "--override-phase2",
+    "override_phase2",
+    multiple=True,
+    help="Override config values for --init-wetting Phase 2 only (repeatable). "
+    "Applied after the Phase 2 config is built, so it beats init_type/init_dir.",
+)
+@click.option(
     "--overview",
     is_flag=True,
     help="Display the full physical-parameter overview in addition to the compact summary.",
@@ -183,6 +198,14 @@ def run(**cli_kwargs: object) -> None:
         # Same, but equilibrate for 20000 steps instead of the default
         tud-lbm run config.toml --init-wetting --init-wetting-nt 20000
 
+        # Override one wetting-init phase only (--override still hits both)
+        tud-lbm run config.toml --init-wetting --override tau=0.7 \
+            --override-phase1 'wetting.phi_left=0.9' \
+            --override-phase2 'gravity_force.force_g=5e-7'
+
+        # Preview both wetting-init phases without running either
+        tud-lbm run config.toml --init-wetting --dry-run
+
         # Resume from a saved snapshot
         tud-lbm run config.toml --init-dir /path/to/timestep_1000.npz
 
@@ -206,6 +229,8 @@ def run(**cli_kwargs: object) -> None:
         debug_stability=cast("bool", cli_kwargs["debug_stability"]),
         init_wetting=cast("bool", cli_kwargs["init_wetting"]),
         init_wetting_nt=cast("int", cli_kwargs["init_wetting_nt"]),
+        override_phase1=cast("tuple[str, ...]", cli_kwargs["override_phase1"]),
+        override_phase2=cast("tuple[str, ...]", cli_kwargs["override_phase2"]),
         run_compare=cast("bool", cli_kwargs["run_compare"]),
         continue_run=continue_run,
     )

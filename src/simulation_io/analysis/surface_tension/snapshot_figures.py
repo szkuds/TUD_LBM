@@ -18,10 +18,10 @@ from typing import TYPE_CHECKING
 import numpy as np
 from matplotlib.patches import Circle
 from src.simulation_io.analysis.surface_tension.surface_tension import sample_points
-from src.simulation_io.plotting.density import DensityPlotOperator
+from src.simulation_io.plotting import BulkPressurePlotOperator
+from src.simulation_io.plotting import DensityPlotOperator
+from src.simulation_io.plotting import TotalPressurePlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
-from src.simulation_io.plotting.pressure import BulkPressurePlotOperator
-from src.simulation_io.plotting.pressure import TotalPressurePlotOperator
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

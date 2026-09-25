@@ -202,6 +202,39 @@ def _side_hyperparams(
     )
 
 
+def _initial_params(
+    wetting: WettingState,
+    phi_active_left: jnp.ndarray,
+    phi_active_right: jnp.ndarray,
+    *,
+    carry_inactive: bool,
+) -> WettingParams:
+    """Starting point of this timestep's optimisation.
+
+    By default the knob that is *not* active on a side is snapped to neutral,
+    so a side that switches branch discards what it had accumulated. On an edge
+    sitting on a window bound that switch happens every few steps, and the wall
+    spends much of its time at neutral wettability rather than at the bound it
+    reports. ``carry_inactive=True`` (``hysteresis_config.carry_inactive_params``)
+    instead keeps both knobs: the gradient mask still updates only the active
+    one, the inactive one is simply left where it was. ``carry_inactive`` is a
+    Python bool read off the config, so it selects the trace, not a branch in it.
+    """
+    if carry_inactive:
+        return WettingParams(
+            phi_left=wetting.phi_left,
+            phi_right=wetting.phi_right,
+            d_rho_left=wetting.d_rho_left,
+            d_rho_right=wetting.d_rho_right,
+        )
+    return WettingParams(
+        phi_left=jnp.where(phi_active_left, wetting.phi_left, _PHI_NEUTRAL),
+        phi_right=jnp.where(phi_active_right, wetting.phi_right, _PHI_NEUTRAL),
+        d_rho_left=jnp.where(phi_active_left, _D_RHO_NEUTRAL, wetting.d_rho_left),
+        d_rho_right=jnp.where(phi_active_right, _D_RHO_NEUTRAL, wetting.d_rho_right),
+    )
+
+
 def _clamp_params(params: WettingParams, w: jnp.ndarray) -> WettingParams:
     """Clamp wetting parameters to physically reasonable, W-scaled ranges.
 
@@ -439,11 +472,11 @@ def _update_wetting_state_impl(
     lr_right, max_iter_right = _side_hyperparams(hc, above_window_right)
     loss_tol = hc.get("loss_tol", 1e-4)
 
-    params = WettingParams(
-        phi_left=jnp.where(phi_active_left, wetting.phi_left, _PHI_NEUTRAL),
-        phi_right=jnp.where(phi_active_right, wetting.phi_right, _PHI_NEUTRAL),
-        d_rho_left=jnp.where(phi_active_left, _D_RHO_NEUTRAL, wetting.d_rho_left),
-        d_rho_right=jnp.where(phi_active_right, _D_RHO_NEUTRAL, wetting.d_rho_right),
+    params = _initial_params(
+        wetting,
+        phi_active_left,
+        phi_active_right,
+        carry_inactive=bool(hc.get("carry_inactive_params", False)),
     )
 
     optax = _import_optax()

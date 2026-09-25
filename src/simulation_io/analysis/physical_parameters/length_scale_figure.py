@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     import matplotlib.axes
     from src.config.simulation_config import SimulationConfig
-    from src.simulation_io.plotting.density import DensityPlotOperator
+    from src.simulation_io.plotting import DensityPlotOperator
 
 _PANEL_FIGSIZE = (5.0, 5.0)
 _MASK_ALPHA = 0.28
@@ -104,7 +104,7 @@ def write_length_scale_figure(
 
     mpl.use("Agg")
     import matplotlib.pyplot as plt
-    from src.simulation_io.plotting.density import DensityPlotOperator
+    from src.simulation_io.plotting import DensityPlotOperator
     from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
     operator = DensityPlotOperator(config)

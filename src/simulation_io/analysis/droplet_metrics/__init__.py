@@ -2,7 +2,7 @@
 
 Invariant: :func:`compute_droplet_series` is the only place that reads ``.npz``
 snapshots for droplet metrics, and
-:func:`src.simulation_io.plotting.simulation_csv.build_simulation_csv` is the only
+:func:`src.simulation_io.plotting._simulation_csv.build_simulation_csv` is the only
 place that decides whether a run gets a ``simulation_data.csv``.
 """
 

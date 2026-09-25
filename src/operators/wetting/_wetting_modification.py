@@ -22,10 +22,32 @@ either.
 
 Hence, the four clauses of :func:`wetting_regions`, each of which earns its place:
 
-Local phase references
-    ``hi``/``lo`` are measured in a window around the contact line, so the
-    hydrostatic offset cancels — variation inside the window is ~2 % of the
-    contrast against ~8 % across the wall.
+Measured phase references, shared by both contact lines
+    ``hi``/``lo`` are measured over the *union* of the two anchor windows, so the
+    hydrostatic offset cancels — variation inside that union is a few per cent of
+    the contrast against ~8 % across the wall — while both sides are held to one
+    pair of bounds.
+
+    **Per-side references do not work, and the failure is a drift.** They were
+    tried, and the two windows generally hold different amounts of liquid, so the
+    two contact lines end up clipped to different ceilings. A bubble equilibrating
+    on a top wall at ``centres = [[0.7, 1]]`` of a 201-cell domain had its right
+    window truncated by the wall: it reached only 9.68 against the left window's
+    11.39, on bulk liquid of 11.67, for ceilings of **9.20 against 10.82**. Applied
+    to the *converged, mirror-symmetric* field an earlier build had produced
+    (contact angles 108.18° / 108.18°), that already injects ``+4.76`` of density on
+    the left against ``+4.09`` on the right — **15 % asymmetric** — which is an
+    unbalanced tangential force at the wall with no restoring term. It is also a
+    feedback loop: a depressed ceiling depresses the adjacent fluid, lowering the
+    next step's window max. That run slid 32 cells, merged into the right wall and
+    lost its right contact line, where the equivalent run before the change held
+    station at 145.2 with 108.18° on both sides. The information needed to make the
+    two sides agree is simply not present in one window — a flank with 20 cells of
+    liquid cannot see bulk when the recovery length is longer than that — so the
+    references must be shared rather than merely measured.
+
+    The union of the two windows, rather than the whole row, keeps them local: a
+    long wall's far end cannot set the band.
 Window
     Hard-bounds the region at ``2 * R`` cells, so no failure mode can return the
     whole wall.
@@ -33,6 +55,12 @@ Contiguous run at the anchor
     Excludes disconnected in-band clusters elsewhere on the wall. In the run
     above a bulk cluster ``[0, 87]`` appeared while the real regions sat at
     ``[104, 133]`` and ``[162, 187]``.
+
+    These two clauses, not the choice of bounds, are what contain the
+    hydrostatic failure: replayed over that same inclined run, the *absolute*
+    band plus this window and this run gate gives regions of 46/52/55/57/54
+    cells where the unguarded absolute band gave 46/136/122/96/56. That is why
+    sharing the references costs nothing here.
 Contrast floor
     Rejects an anchor sitting in stratified bulk rather than on an interface. A
     spurious crossing in that run had a local contrast of 5.25 against a global
@@ -52,7 +80,7 @@ from src.operators.wetting._interface_crossings import interface_crossings
 if TYPE_CHECKING:
     from jax.typing import ArrayLike
 
-#: Inset from each locally measured phase density, as a fraction of the local contrast.
+#: Inset from each measured phase density, as a fraction of the measured contrast.
 _BAND_FRAC = 0.05
 
 #: An anchor whose window spans less than this fraction of the global contrast is
@@ -68,7 +96,9 @@ class WettingRegion(NamedTuple):
     """One contact line's ghost-row cells and the density bounds they are held to.
 
     Selection and clipping come from this single object so they can never be
-    built from different bounds.
+    built from different bounds. The bounds are a property of the *wall*, not of
+    the side, so the two regions of one wall always carry the same pair — see the
+    module docstring for why a per-side pair drives the inclusion sideways.
 
     Attributes:
         mask: Boolean, shape ``(n,)`` — the ghost-row cells this side modifies.
@@ -93,25 +123,38 @@ def anchor_window_half_width(n: int) -> int:
     return max(_MIN_WINDOW, n // _WINDOW_DIVISOR)
 
 
+def _window_span(row: jnp.ndarray, in_window: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """``(lo, hi)`` of *row* over *in_window*.
+
+    Fill outside the window with the row's own extrema rather than +/-inf: an
+    empty window then yields a negative span, which the contrast floor rejects
+    and which leaves every bound finite. jnp.where with a non-finite dead branch
+    would poison the gradients the hysteresis optimiser takes through here.
+    """
+    hi = jnp.max(jnp.where(in_window, row, jnp.min(row)))
+    lo = jnp.min(jnp.where(in_window, row, jnp.max(row)))
+    return lo, hi
+
+
 def _anchored_region(
     row: jnp.ndarray,
     anchor: jnp.ndarray,
+    rho_lower: jnp.ndarray,
+    rho_upper: jnp.ndarray,
     contrast_floor: ArrayLike,
 ) -> WettingRegion:
-    """The in-band run of *row* containing *anchor*, bounded by the anchor window."""
+    """The in-band run of *row* containing *anchor*, bounded by the anchor window.
+
+    *rho_lower*/*rho_upper* are the wall's shared band bounds; the window's own
+    span is used only for the contrast floor, which asks whether *anchor* sits
+    on an interface at all — a local question, unlike the bounds.
+    """
     n = row.shape[0]
     indices = jnp.arange(n)
     in_window = jnp.abs(indices - anchor) <= anchor_window_half_width(n)
 
-    # Fill outside the window with the row's own extrema rather than +/-inf: an
-    # empty window then yields a negative span that the contrast floor rejects,
-    # while every bound stays finite. jnp.where with a non-finite dead branch
-    # would poison the gradients the hysteresis optimiser takes through here.
-    hi = jnp.max(jnp.where(in_window, row, jnp.min(row)))
-    lo = jnp.min(jnp.where(in_window, row, jnp.max(row)))
+    lo, hi = _window_span(row, in_window)
     span = hi - lo
-    rho_lower = lo + _BAND_FRAC * span
-    rho_upper = hi - _BAND_FRAC * span
 
     band = in_window & (row >= rho_lower) & (row < rho_upper)
 
@@ -133,6 +176,11 @@ def wetting_regions(
 
     This is the single definition of the modified region, shared by
     :func:`_apply_wetting_modification` and the contact-angle overlay.
+
+    Both regions carry the **same** ``rho_lower``/``rho_upper``, measured over the
+    union of the two anchor windows. With ``phi_left == phi_right`` the wall then
+    injects the same density on both contact lines of a mirror-symmetric row,
+    which is what keeps an equilibrated inclusion from drifting along the wall.
 
     **Left/right is positional**, and now by construction: the two anchors are
     the ``rho_mean`` crossings reported by
@@ -159,13 +207,21 @@ def wetting_regions(
     contrast_floor = _MIN_CONTRAST_FRAC * (liquid - vapour)
     x_left, x_right, _ = interface_crossings(edge_slice, rho_mean)
 
-    left = _anchored_region(edge_slice, x_left, contrast_floor)
-    right = _anchored_region(edge_slice, x_right, contrast_floor)
+    # One pair of bounds for the wall, measured over both anchor windows together.
+    indices = jnp.arange(edge_slice.shape[0])
+    half_width = anchor_window_half_width(edge_slice.shape[0])
+    in_either = (jnp.abs(indices - x_left) <= half_width) | (jnp.abs(indices - x_right) <= half_width)
+    lo, hi = _window_span(edge_slice, in_either)
+    span = hi - lo
+    rho_lower = lo + _BAND_FRAC * span
+    rho_upper = hi - _BAND_FRAC * span
+
+    left = _anchored_region(edge_slice, x_left, rho_lower, rho_upper, contrast_floor)
+    right = _anchored_region(edge_slice, x_right, rho_lower, rho_upper, contrast_floor)
 
     # Two contact lines close enough to share one in-band run would otherwise
     # both claim the overlap. Assigning each cell to its nearer anchor keeps the
     # sides disjoint, and is a no-op once the anchors are well separated.
-    indices = jnp.arange(edge_slice.shape[0])
     nearer_left = jnp.abs(indices - x_left) <= jnp.abs(indices - x_right)
     return (
         left._replace(mask=left.mask & nearer_left),
@@ -185,8 +241,8 @@ def _apply_wetting_modification(
     """Apply wetting density modification at the liquid-vapour interface.
 
     Only modifies ghost cells inside one of the two contact-line regions of
-    :func:`wetting_regions`, each receiving its own phi/d_rho and each clipped to
-    its own locally measured density bounds.
+    :func:`wetting_regions`, each receiving its own phi/d_rho and both clipped to
+    the wall's shared, measured density bounds.
 
     Args:
         edge_slice: Ghost-row densities, shape ``(n,)``.
@@ -202,7 +258,7 @@ def _apply_wetting_modification(
     """
     left, right = wetting_regions(edge_slice, rho_l, rho_v)
 
-    # Wetting modification: phi * rho - d_rho, clamped to that side's own bounds.
+    # Wetting modification: phi * rho - d_rho, clamped to the wall's shared bounds.
     modified_left = jnp.clip(phi_l * edge_slice - d_rho_l, left.rho_lower, left.rho_upper)
     modified_right = jnp.clip(phi_r * edge_slice - d_rho_r, right.rho_lower, right.rho_upper)
 

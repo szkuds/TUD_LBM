@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
-from rich.prompt import Prompt
+from typing import TypeAlias
 from src.cli._console import console
 from src.cli._console import success
 from src.cli.config_loading import _expand_raw_config
@@ -16,7 +16,8 @@ from src.cli.display import _display_analysis_operators
 from src.cli.display import _display_simulation_operators
 from src.cli.display import _display_summary
 from src.cli.display import _print_dry_run_message
-from src.cli.overrides import _apply_overrides
+from src.cli.overrides import _ask_confirm
+from src.cli.overrides import confirm_or_override
 from src.cli.wetting_init import _WETTING_INIT_NT
 from src.cli.wetting_init import _run_two_phase_wetting_init
 from src.config.run_config import COMPARISON_DIRNAME
@@ -24,6 +25,12 @@ from src.config.run_config import COMPARISON_DIRNAME
 if TYPE_CHECKING:
     from src.config import SimulationConfig
     from src.config.array_expansion import ArrayParameterSet
+
+#: What ``_expand_raw_config`` yields: (configs, config, sweep_metadata, parameters_list).
+#: Named so the confirm/override loop can carry the whole tuple as one value.
+_ExpandedRun: TypeAlias = (
+    "tuple[list[SimulationConfig], SimulationConfig | None, ArrayParameterSet | None, list[dict[str, Any]] | None]"
+)
 
 
 def _run_simulation(config: SimulationConfig) -> str:
@@ -127,19 +134,16 @@ def _run_parallel_sweep(
     return results
 
 
+def _confirm_prompt_text(sweep_metadata: ArrayParameterSet | None, configs: list[SimulationConfig]) -> str:
+    """The question asked before starting a single run or a sweep."""
+    if sweep_metadata is None:
+        return "[bold]Start simulation?[/bold]"
+    return f"[bold]Start parameter sweep ({len(configs)} simulations)?[/bold]"
+
+
 def _confirm_run(sweep_metadata: ArrayParameterSet | None, configs: list[SimulationConfig]) -> str:
     """Return 'yes', 'no', or 'override'."""
-    if sweep_metadata is None:
-        prompt_text = "[bold]Start simulation?[/bold]"
-    else:
-        prompt_text = f"[bold]Start parameter sweep ({len(configs)} simulations)?[/bold]"
-    choice = Prompt.ask(
-        f"{prompt_text} [[green]y[/green]/[red]n[/red]/[cyan]o[/cyan]=override]",
-        choices=["y", "n", "o"],
-        default="y",
-        show_choices=False,
-    )
-    return {"y": "yes", "n": "no", "o": "override"}[choice]
+    return _ask_confirm(_confirm_prompt_text(sweep_metadata, configs))
 
 
 def _check_sweep_errors(results: list[Any]) -> None:
@@ -222,24 +226,21 @@ def _run_with_optional_overrides(
     if no_prompt:
         return configs, config, sweep_metadata, parameters_list
 
-    while True:
-        decision = _confirm_run(sweep_metadata, configs)
-        if decision == "no":
-            console.print("[yellow]Simulation cancelled.[/yellow]")
-            return [], None, None, None
-        if decision == "yes":
-            return configs, config, sweep_metadata, parameters_list
-        if raw_config is None:
-            console.print("[yellow]Inline overrides require a config file.[/yellow]")
-            continue
-        raw_expr = Prompt.ask("[cyan]Enter override[/cyan] [dim](e.g. tau=0.7)[/dim]")
-        try:
-            _apply_overrides(raw_config, (raw_expr,))
-        except (ValueError, TypeError) as exc:
-            console.print(f"[red]Invalid override: {exc}[/red]")
-            continue
-        configs, config, sweep_metadata, parameters_list = _expand_raw_config(raw_config)
-        _display_summary(config, sweep_metadata, configs, overview=overview)
+    def rebuild(raw: dict[str, Any]) -> _ExpandedRun:
+        expanded = _expand_raw_config(raw)
+        _display_summary(expanded[1], expanded[2], expanded[0], overview=overview)
+        return expanded
+
+    confirmed = confirm_or_override(
+        raw_config,
+        (configs, config, sweep_metadata, parameters_list),
+        prompt=lambda expanded: _confirm_prompt_text(expanded[2], expanded[0]),
+        rebuild=rebuild,
+    )
+    if confirmed is None:
+        console.print("[yellow]Simulation cancelled.[/yellow]")
+        return [], None, None, None
+    return confirmed
 
 
 def _enable_debug_flags(*, debug_wetting: bool, debug_wetting_interval: int, debug_stability: bool) -> None:
@@ -267,8 +268,10 @@ class RunFlags:
 
     All boolean but `debug_wetting_interval`, which carries the
     `--debug-wetting-interval` value through to `_enable_debug_flags`, and
-    `init_wetting_nt`, which carries `--init-wetting-nt` through to
-    `_run_two_phase_wetting_init`.
+    `init_wetting_nt`, `override_phase1` and `override_phase2`, which carry
+    `--init-wetting-nt` and the two phase-scoped override lists through to
+    `_run_two_phase_wetting_init`. The override tuples ride here rather than on
+    `_run_impl`'s signature, which is already at PLR0913's five-argument limit.
     """
 
     no_prompt: bool = False
@@ -282,6 +285,8 @@ class RunFlags:
     debug_stability: bool = False
     init_wetting: bool = False
     init_wetting_nt: int = _WETTING_INIT_NT
+    override_phase1: tuple[str, ...] = ()
+    override_phase2: tuple[str, ...] = ()
     run_compare: bool = False
     continue_run: bool = False
 
@@ -313,6 +318,8 @@ def _run_impl(
         init_wetting=flags.init_wetting,
         init_dir=init_dir,
         continue_run=flags.continue_run,
+        override_phase1=flags.override_phase1,
+        override_phase2=flags.override_phase2,
     )
 
     if flags.init_wetting:
@@ -325,8 +332,12 @@ def _run_impl(
             no_prompt=flags.no_prompt,
             overview=flags.overview,
             init_nt=flags.init_wetting_nt,
+            override_phase1=flags.override_phase1,
+            override_phase2=flags.override_phase2,
+            dry_run=flags.dry_run,
         )
-        success("Wetting initialisation complete!")
+        if not flags.dry_run:
+            success("Wetting initialisation complete!")
         return False
 
     if config_path:

@@ -737,36 +737,40 @@ def _dimensionless_rows(config: SimulationConfig) -> list[str]:
     return rows
 
 
+_CRITICAL_ANGLE_LABEL = "Critical Inclination Angle: "  # wider than _row's 26-column pad
+
+
 def _format_critical_inclination_angle_row(config: SimulationConfig, gamma: float) -> str:
+    """The inclination at which the pre-step hysteresis window can no longer hold the inclusion.
+
+    In 2D per unit depth the static balance ``drho*g*A*sin(alpha) = gamma*H``, with
+    ``H = cos(ca_rec) - cos(ca_adv)``, is exact, so onset is ``Bo_parallel = H``.
+    ``A`` and ``drho`` are resolved exactly as the Bond number resolves them, so
+    this row and the ``Bo_parallel`` row describe the same inclusion. The drive is
+    the *net* buoyancy, hence the density contrast rather than ``rho_l`` —
+    identical for a bubble and a droplet.
+    """
     g_val = _resolve_gravity_value(config)
-    if config.chemical_step_config is None or g_val is None or config.rho_l is None or config.rho_v is None:
-        msg = "chemical_step_config, a gravity force, rho_l, and rho_v must be set"
+    if config.chemical_step_config is None or g_val is None:
+        msg = "chemical_step_config and a gravity force must be set"
         raise RuntimeError(msg)
     ca_adv = math.radians(float(config.chemical_step_config["ca_advancing_pre_step"]))
     ca_rec = math.radians(float(config.chemical_step_config["ca_receding_pre_step"]))
-    g = g_val
-    radius = float(config.initialisation["radii"][0])
-    nx = int(config.grid_shape[0])
-    # The drive per unit area is the *net* buoyancy of the inclusion, so it
-    # scales with the density contrast, not with rho_l — identical for a bubble
-    # and a droplet. The body force itself now sits on the liquid rather than
-    # being injected into the inclusion, but the reaction it produces is the
-    # same drho*g*a, so this balance is unchanged.
-    drho = abs(float(config.rho_l) - float(config.rho_v))
+    hysteresis = math.cos(ca_rec) - math.cos(ca_adv)
 
-    a = (np.pi * (radius * nx) ** 2) / 2  # Assuming perfectly spherical cap
-    hysteresis_force = (np.cos(ca_rec) - np.cos(ca_adv)) * gamma
-    sina = hysteresis_force / (g * a * drho)
-    a_rad = np.arcsin(sina)
-    a_deg = math.degrees(a_rad)
+    area_resolved = _get_droplet_area(config)
+    drho_resolved = _resolve_buoyancy_delta_rho(config)
+    if area_resolved is None or drho_resolved is None:
+        return _row(_CRITICAL_ANGLE_LABEL, f"unresolved (no inclusion area or density contrast)  [H={hysteresis:.4g}]")
+    area, area_source = area_resolved
+    drho, drho_source = drho_resolved
 
-    if -1 <= sina <= 1:
-        return _row(
-            "Critical Inclination Angle",
-            f"{a_deg:.6g}  [arcsin((cos(ca_rec)-cos(ca_adv))*gamma / (g*a*drho))]",
-        )
-
-    return _row("Critical Inclination Angle", "This droplet will remain pinned")
+    provenance = f"H={hysteresis:.4g}, A={area:.6g} ({area_source}), Δρ {drho_source}"
+    sina = hysteresis * gamma / (g_val * area * drho)
+    if not -1.0 <= sina <= 1.0:
+        return _row(_CRITICAL_ANGLE_LABEL, f"none, pinned at any inclination  [{provenance}]")
+    alpha_deg = math.degrees(math.asin(sina))
+    return _row(_CRITICAL_ANGLE_LABEL, f"{alpha_deg:.6g} deg  [arcsin(H*gamma/(Δρ*g*A)), {provenance}]")
 
 
 def _add_measured_density_rows(lines: list[str], config: SimulationConfig) -> None:

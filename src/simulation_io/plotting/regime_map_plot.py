@@ -33,12 +33,12 @@ from src.simulation_io.analysis.accelerations import save_diagnostic_plot
 from src.simulation_io.analysis.droplet_metrics import droplet_series_for_run
 from src.simulation_io.analysis.physical_parameters import compute_dimensionless_numbers
 from src.simulation_io.analysis.physical_parameters import dimensionless_label
+from src.simulation_io.plotting._simulation_csv import build_simulation_csv
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 from src.simulation_io.plotting.figure_config import REGIME_COLORS
 from src.simulation_io.plotting.figure_config import REGIME_MARKERS
 from src.simulation_io.plotting.run_comparison import _clean_dir_label
 from src.simulation_io.plotting.run_comparison import _safe_load_config
-from src.simulation_io.plotting.simulation_csv import build_simulation_csv
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

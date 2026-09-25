@@ -7,14 +7,15 @@ from typing import TYPE_CHECKING
 from typing import Any
 import numpy as np
 from rich.panel import Panel
-from rich.prompt import Confirm
 from rich.prompt import Prompt
 from src.cli._console import console
 from src.cli.config_loading import _expand_single_phase
 from src.cli.config_loading import _latest_snapshot_in
 from src.cli.display import _display_config_summary
 from src.cli.display import _display_full_overview
+from src.cli.display import _print_dry_run_message
 from src.cli.overrides import _apply_overrides
+from src.cli.overrides import confirm_or_override
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
@@ -32,6 +33,12 @@ _CONVERGENCE_FIELD = "max_velocity"
 #: Relative max|u| change across the last saved interval above which Phase 1
 #: is reported as still evolving.
 _EQUILIBRIUM_REL_TOL = 0.01
+
+#: Stands in for Phase 1's final snapshot when ``--dry-run`` previews Phase 2:
+#: that file is only written by the run the preview is declining to start.
+#: ``physical_parameters._resolve_npz_path`` returns ``None`` for a path that
+#: does not exist, so ``--overview`` degrades rather than raising.
+_DRY_RUN_SNAPSHOT = "<Phase 1 final snapshot>"
 
 _WETTING_PARAM_DEFAULTS: dict[str, float] = {
     "phi_left": 1.0,
@@ -132,8 +139,8 @@ def _plot_wetting_init_convergence(init_config: SimulationConfig, data_dir: str)
     The equilibration run is only useful if it actually settled, and a single
     end-state snapshot cannot show that — this reads the saved history instead.
     """
+    from src.simulation_io.plotting import MaxVelocityPlot
     from src.simulation_io.plotting.figure_builder import FigureBuilder
-    from src.simulation_io.plotting.scalar_history_plot import MaxVelocityPlot
 
     run_dir = Path(data_dir).parent
     builder = FigureBuilder(init_config, run_dir, fields=[_CONVERGENCE_FIELD])
@@ -151,6 +158,63 @@ def _plot_wetting_init_convergence(init_config: SimulationConfig, data_dir: str)
         _report_equilibrium(series["iters"], series["values"])
 
 
+def _warn_if_phase1_saves_nothing(init_raw: dict[str, Any]) -> None:
+    """Warn when Phase 1's spacing is wider than its length, so it writes no snapshot.
+
+    ``_build_wetting_init_raw`` derives ``save_interval`` from ``--init-wetting-nt``,
+    so an ``--override-phase1 nt=...`` shortens the run without rescaling the
+    spacing. Phase 2 seeds from Phase 1's last snapshot, so the failure is a
+    ``FileNotFoundError`` an hour into the equilibration rather than at setup.
+    """
+    nt = init_raw.get("nt")
+    save_interval = init_raw.get("save_interval")
+    if not isinstance(nt, int) or not isinstance(save_interval, int) or save_interval <= nt:
+        return
+    console.print(
+        f"[yellow]Phase 1 saves every {save_interval} steps but only runs {nt}: "
+        f"no snapshot would be written and Phase 2 could not seed from it. "
+        f"Use --init-wetting-nt {nt}, or add --override-phase1 "
+        f"save_interval={_wetting_init_save_interval(nt)}.[/yellow]",
+    )
+    console.print()
+
+
+def _present_phase(
+    raw: dict[str, Any],
+    phase_name: str,
+    title: str,
+    *,
+    no_prompt: bool,
+    overview: bool,
+    confirm: bool,
+) -> SimulationConfig | None:
+    """Expand and display one phase, then confirm it or override it in place.
+
+    *raw* is that phase's own raw dict, so an override typed at the prompt is
+    scoped to this phase alone — the interactive counterpart of
+    ``--override-phase1`` / ``--override-phase2``. Returns ``None`` when the
+    operator declines to start it.
+    """
+
+    def rebuild(candidate: dict[str, Any]) -> SimulationConfig:
+        config = _expand_single_phase(candidate, phase_name)
+        _display_config_summary(config)
+        if overview:
+            _display_full_overview(config)
+        return config
+
+    console.print(Panel.fit(title))
+    config = rebuild(raw)
+    if no_prompt or not confirm:
+        return config
+    return confirm_or_override(
+        raw,
+        config,
+        prompt=lambda _: f"[bold]Start {phase_name}?[/bold]",
+        rebuild=rebuild,
+    )
+
+
 def _run_two_phase_wetting_init(
     config_path: str,
     overrides: tuple[str, ...],
@@ -158,6 +222,9 @@ def _run_two_phase_wetting_init(
     no_prompt: bool,
     overview: bool,
     init_nt: int = _WETTING_INIT_NT,
+    override_phase1: tuple[str, ...] = (),
+    override_phase2: tuple[str, ...] = (),
+    dry_run: bool = False,
 ) -> None:
     """Two-phase wetting initialisation.
 
@@ -165,6 +232,13 @@ def _run_two_phase_wetting_init(
     saving ``_WETTING_INIT_SNAPSHOTS`` snapshots so max|u| can be plotted
     against time as an equilibrium check. Phase 2 then runs with gravity,
     initialised from Phase 1's last snapshot.
+
+    *overrides* apply to both phases, being folded into the base config before
+    either is built. *override_phase1* / *override_phase2* apply to one phase
+    each and are folded in **after** that phase's raw dict is built, so they
+    beat the values this module sets itself — ``_build_wetting_init_raw``
+    rewrites ``sim_type``, ``nt``, ``save_interval`` and the rest, which would
+    otherwise silently discard a matching ``--override``.
     """
     # Imported here rather than at module scope: execution.py imports this
     # module for _run_impl, so a top-level import would close a cycle.
@@ -177,35 +251,49 @@ def _run_two_phase_wetting_init(
 
     wetting_params = _prompt_wetting_params(base_raw, no_prompt=no_prompt)
     init_raw = _build_wetting_init_raw(base_raw, wetting_params, init_nt)
-    init_config = _expand_single_phase(init_raw, "Phase 1")
+    _apply_overrides(init_raw, override_phase1)
+    _warn_if_phase1_saves_nothing(init_raw)
 
-    console.print(Panel.fit("[bold cyan]Phase 1 - wetting equilibration (no gravity)[/bold cyan]"))
-    _display_config_summary(init_config)
-    if overview:
-        _display_full_overview(init_config)
-
-    if not no_prompt and not Confirm.ask("[bold]Start Phase 1?[/bold]", default=True):
+    init_config = _present_phase(
+        init_raw,
+        "Phase 1",
+        "[bold cyan]Phase 1 - wetting equilibration (no gravity)[/bold cyan]",
+        no_prompt=no_prompt,
+        overview=overview,
+        confirm=not dry_run,
+    )
+    if init_config is None:
         console.print("[yellow]Cancelled.[/yellow]")
         return
 
-    init_data_dir = _run_simulation(init_config)
-    _plot_wetting_init_convergence(init_config, init_data_dir)
-    # The last snapshot on disk, not ``timestep_{init_nt}``: an nt that is not a
-    # multiple of the save interval never writes a snapshot at nt itself.
-    init_snapshot = str(_latest_snapshot_in(Path(init_data_dir), context="--init-wetting Phase 2"))
+    if dry_run:
+        init_snapshot = _DRY_RUN_SNAPSHOT
+    else:
+        init_data_dir = _run_simulation(init_config)
+        _plot_wetting_init_convergence(init_config, init_data_dir)
+        # The last snapshot on disk, not ``timestep_{init_nt}``: an nt that is not a
+        # multiple of the save interval never writes a snapshot at nt itself.
+        init_snapshot = str(_latest_snapshot_in(Path(init_data_dir), context="--init-wetting Phase 2"))
     console.print(f"  Init snapshot     : {init_snapshot}")
     console.print()
 
     gravity_raw = _build_wetting_gravity_raw(base_raw, wetting_params, init_snapshot)
-    gravity_config = _expand_single_phase(gravity_raw, "Phase 2")
+    _apply_overrides(gravity_raw, override_phase2)
 
-    console.print(Panel.fit("[bold cyan]Phase 2 - full simulation with gravity[/bold cyan]"))
-    _display_config_summary(gravity_config)
-    if overview:
-        _display_full_overview(gravity_config)
-
-    if not no_prompt and not Confirm.ask("[bold]Start Phase 2?[/bold]", default=True):
+    gravity_config = _present_phase(
+        gravity_raw,
+        "Phase 2",
+        "[bold cyan]Phase 2 - full simulation with gravity[/bold cyan]",
+        no_prompt=no_prompt,
+        overview=overview,
+        confirm=not dry_run,
+    )
+    if gravity_config is None:
         console.print("[yellow]Phase 2 cancelled.[/yellow]")
+        return
+
+    if dry_run:
+        _print_dry_run_message(None)
         return
 
     _run_simulation(gravity_config)

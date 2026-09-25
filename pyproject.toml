@@ -196,7 +196,7 @@ extend-immutable-calls = ["array_field"]
 "src/simulation_io/__init__.py"                      = ["A005"]
 "src/simulation_io/plotting/run_comparison.py"   = ["T201"]
 "src/cli/analysis_routing.py"          = ["T201"]
-"src/simulation_io/plotting/simulation_csv.py"   = ["T201"]
+"src/simulation_io/plotting/_simulation_csv.py"   = ["T201"]
 "src/simulation_io/plotting/regime_map_plot.py"  = ["T201"]
 
 [tool.ruff.lint.isort]
