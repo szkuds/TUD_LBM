@@ -904,6 +904,60 @@ class TestClickCommandPaths:
         assert result.exit_code in (0, 1)
 
 
+class TestInitWettingOption:
+    """`--init-wetting` takes the equilibration length as an optional value."""
+
+    @staticmethod
+    def _invoke(tmp_path: Path, *args: str) -> tuple[int, RunFlags | None]:
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("", encoding="utf-8")
+        with patch("src.cli.commands.run._run_impl", return_value=False) as mock_impl:
+            result = CliRunner().invoke(cli, ["run", str(cfg_toml), *args])
+        flags = mock_impl.call_args.args[-1] if mock_impl.called else None
+        return result.exit_code, flags
+
+    def test_bare_flag_uses_default_length(self, tmp_path):
+        from src.cli.wetting_init import _WETTING_INIT_NT
+
+        exit_code, flags = self._invoke(tmp_path, "--init-wetting")
+        assert exit_code == 0
+        assert flags is not None
+        assert flags.init_wetting is True
+        assert flags.init_wetting_nt == _WETTING_INIT_NT
+
+    def test_value_sets_length(self, tmp_path):
+        exit_code, flags = self._invoke(tmp_path, "--init-wetting", "1234")
+        assert exit_code == 0
+        assert flags is not None
+        assert flags.init_wetting is True
+        assert flags.init_wetting_nt == 1234
+
+    def test_bare_flag_before_another_option(self, tmp_path):
+        from src.cli.wetting_init import _WETTING_INIT_NT
+
+        exit_code, flags = self._invoke(tmp_path, "--init-wetting", "--dry-run")
+        assert exit_code == 0
+        assert flags is not None
+        assert flags.init_wetting_nt == _WETTING_INIT_NT
+        assert flags.dry_run is True
+
+    def test_absent_disables_init_wetting(self, tmp_path):
+        exit_code, flags = self._invoke(tmp_path)
+        assert exit_code == 0
+        assert flags is not None
+        assert flags.init_wetting is False
+
+    def test_old_length_option_is_gone(self, tmp_path):
+        exit_code, flags = self._invoke(tmp_path, "--init-wetting-nt", "5")
+        assert exit_code == 2
+        assert flags is None
+
+    def test_non_positive_length_rejected(self, tmp_path):
+        exit_code, flags = self._invoke(tmp_path, "--init-wetting", "0")
+        assert exit_code == 2
+        assert flags is None
+
+
 class TestValidateCliArgs:
     """Tests for _validate_cli_args argument validation."""
 

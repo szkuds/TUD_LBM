@@ -269,7 +269,7 @@ class RunFlags:
     All boolean but `debug_wetting_interval`, which carries the
     `--debug-wetting-interval` value through to `_enable_debug_flags`, and
     `init_wetting_nt`, `override_phase1` and `override_phase2`, which carry
-    `--init-wetting-nt` and the two phase-scoped override lists through to
+    the `--init-wetting NT` length and the two phase-scoped override lists through to
     `_run_two_phase_wetting_init`. The override tuples ride here rather than on
     `_run_impl`'s signature, which is already at PLR0913's five-argument limit.
     """

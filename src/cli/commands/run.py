@@ -59,7 +59,7 @@ from src.cli.wetting_init import _WETTING_INIT_NT
     multiple=True,
     help="Override config values for --init-wetting Phase 1 only (repeatable). "
     "Applied after the Phase 1 config is built, so it beats the values "
-    "--init-wetting sets itself; use --init-wetting-nt for the phase length.",
+    "--init-wetting sets itself; use --init-wetting NT for the phase length.",
 )
 @click.option(
     "--override-phase2",
@@ -100,20 +100,18 @@ from src.cli.wetting_init import _WETTING_INIT_NT
 )
 @click.option(
     "--init-wetting",
-    is_flag=True,
+    "init_wetting",
+    type=click.IntRange(min=1),
+    is_flag=False,
+    flag_value=_WETTING_INIT_NT,
+    default=None,
+    metavar="[NT]",
     help=(
         "Two-phase wetting initialisation: run without gravity to equilibrate the droplet "
-        "(length set by --init-wetting-nt), then run the full config using the final "
-        "snapshot as the initial condition. Phase 1 saves a max|u| convergence plot"
+        f"for NT timesteps (default {_WETTING_INIT_NT}), then run the full config using the "
+        "final snapshot as the initial condition. Phase 1 saves a max|u| convergence plot. "
+        "Place after CONFIG_PATH, or write --init-wetting=NT"
     ),
-)
-@click.option(
-    "--init-wetting-nt",
-    "init_wetting_nt",
-    default=_WETTING_INIT_NT,
-    show_default=True,
-    type=click.IntRange(min=1),
-    help="Number of timesteps for the --init-wetting equilibration phase.",
 )
 @click.option(
     "--init-dir",
@@ -196,7 +194,7 @@ def run(**cli_kwargs: object) -> None:
         tud-lbm run config.toml --init-wetting
 
         # Same, but equilibrate for 20000 steps instead of the default
-        tud-lbm run config.toml --init-wetting --init-wetting-nt 20000
+        tud-lbm run config.toml --init-wetting 20000
 
         # Override one wetting-init phase only (--override still hits both)
         tud-lbm run config.toml --init-wetting --override tau=0.7 \
@@ -217,6 +215,7 @@ def run(**cli_kwargs: object) -> None:
     overrides = cast("tuple[str, ...]", cli_kwargs["overrides"])
     init_dir = cast("str | None", cli_kwargs["init_dir"])
     continue_run = cast("bool", cli_kwargs["continue_run"])
+    init_wetting_nt = cast("int | None", cli_kwargs["init_wetting"])
     flags = RunFlags(
         no_prompt=cast("bool", cli_kwargs["no_prompt"]),
         dry_run=cast("bool", cli_kwargs["dry_run"]),
@@ -227,8 +226,8 @@ def run(**cli_kwargs: object) -> None:
         debug_wetting=cast("bool", cli_kwargs["debug_wetting"]),
         debug_wetting_interval=cast("int", cli_kwargs["debug_wetting_interval"]),
         debug_stability=cast("bool", cli_kwargs["debug_stability"]),
-        init_wetting=cast("bool", cli_kwargs["init_wetting"]),
-        init_wetting_nt=cast("int", cli_kwargs["init_wetting_nt"]),
+        init_wetting=init_wetting_nt is not None,
+        init_wetting_nt=init_wetting_nt or _WETTING_INIT_NT,
         override_phase1=cast("tuple[str, ...]", cli_kwargs["override_phase1"]),
         override_phase2=cast("tuple[str, ...]", cli_kwargs["override_phase2"]),
         run_compare=cast("bool", cli_kwargs["run_compare"]),

@@ -20,7 +20,7 @@ from src.cli.overrides import confirm_or_override
 if TYPE_CHECKING:
     from src.config import SimulationConfig
 
-#: Default length of the Phase 1 equilibration run (``--init-wetting-nt``).
+#: Default length of the Phase 1 equilibration run (``--init-wetting NT``).
 _WETTING_INIT_NT = 50_000
 
 #: Phase 1 saves this many snapshots so max|u| can be plotted against time.
@@ -130,7 +130,7 @@ def _report_equilibrium(iters: np.ndarray, values: np.ndarray) -> None:
     change = (final - previous) / previous
     console.print(f"    last interval   : {change:+.1%}")
     if abs(change) > _EQUILIBRIUM_REL_TOL:
-        console.print("[yellow]    max|u| is still changing; consider a longer --init-wetting-nt.[/yellow]")
+        console.print("[yellow]    max|u| is still changing; consider a longer --init-wetting NT.[/yellow]")
 
 
 def _plot_wetting_init_convergence(init_config: SimulationConfig, data_dir: str) -> None:
@@ -161,7 +161,7 @@ def _plot_wetting_init_convergence(init_config: SimulationConfig, data_dir: str)
 def _warn_if_phase1_saves_nothing(init_raw: dict[str, Any]) -> None:
     """Warn when Phase 1's spacing is wider than its length, so it writes no snapshot.
 
-    ``_build_wetting_init_raw`` derives ``save_interval`` from ``--init-wetting-nt``,
+    ``_build_wetting_init_raw`` derives ``save_interval`` from ``--init-wetting NT``,
     so an ``--override-phase1 nt=...`` shortens the run without rescaling the
     spacing. Phase 2 seeds from Phase 1's last snapshot, so the failure is a
     ``FileNotFoundError`` an hour into the equilibration rather than at setup.
@@ -173,7 +173,7 @@ def _warn_if_phase1_saves_nothing(init_raw: dict[str, Any]) -> None:
     console.print(
         f"[yellow]Phase 1 saves every {save_interval} steps but only runs {nt}: "
         f"no snapshot would be written and Phase 2 could not seed from it. "
-        f"Use --init-wetting-nt {nt}, or add --override-phase1 "
+        f"Use --init-wetting {nt}, or add --override-phase1 "
         f"save_interval={_wetting_init_save_interval(nt)}.[/yellow]",
     )
     console.print()

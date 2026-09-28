@@ -450,8 +450,8 @@ Frequently used `run` options:
 | `--max-workers N`             | Parallel workers for a sweep.                                           |
 | `--compare`                   | Build cross-run comparison plots after a sweep.                         |
 | `--continue`                  | Resume from a previous run directory.                                   |
-| `--init-dir` / `--init-wetting` | Seed initialisation from saved data / wetting initialisation.         |
-| `--init-wetting-nt N`         | Length of the `--init-wetting` equilibration phase (default 50000).     |
+| `--init-dir`                  | Seed initialisation from saved data.                                    |
+| `--init-wetting [NT]`         | Wetting initialisation; NT sets the equilibration length (default 50000). |
 | `--debug-stability`           | Enable NaN and checkerboard diagnostics.                                |
 | `--debug-wetting`             | Enable wetting-optimiser diagnostics.                                   |
 | `--debug-wetting-interval N`  | Timesteps between logged wetting rows (default 100; 1 logs every step).  |
