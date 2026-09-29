@@ -113,7 +113,7 @@ class TestInitState:
         for setup in (_single_phase_setup(), _mp_setup()):
             state = init_state(setup)
             assert state.pressure is not None
-            assert state.pressure.shape == (NX, NY, NZ, 1, 1)
+            assert state.pressure.shape == (*setup.grid_shape, 1, 1)
             np.testing.assert_array_equal(np.asarray(state.pressure), 0.0)
 
     def test_single_phase_step_writes_ideal_gas_pressure(self):

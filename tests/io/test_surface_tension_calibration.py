@@ -534,7 +534,7 @@ def _cs_config(**overrides):
 def test_calibration_config_isolates_single_droplet():
     cfg = _cs_config(
         simulation_name="drop",
-        gravity_force={"g": 1e-6},
+        gravity_force={"force_g": 1e-6},
         save_fields=["rho"],
         save_interval=10,
     )
