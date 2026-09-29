@@ -242,3 +242,36 @@ def test_gradients_stay_finite_when_a_side_is_empty():
 
     grad = jax.grad(total)(jnp.asarray(1.1))
     assert np.isfinite(float(grad))
+
+
+# ---------------------------------------------------------------------------
+# Surface split on a stepped wall
+# ---------------------------------------------------------------------------
+
+
+def test_band_cells_across_the_step_keep_their_own_surface():
+    """A line's phi never reaches the pre surface, and the post surface always pulls."""
+    import numpy as np
+    from src.config.chemical_step import ChemicalStepWall
+    from src.operators.wetting._wetting_modification import _apply_wetting_modification
+    from src.operators.wetting._wetting_modification import wetting_regions
+
+    n, rho_l, rho_v = 64, 1.0, 0.001
+    x = np.arange(n)
+    # A droplet spanning [20, 44]: tanh walls at both ends, liquid inside.
+    row = jnp.asarray(rho_v + (rho_l - rho_v) * 0.25 * (1 + np.tanh((x - 20) / 2)) * (1 - np.tanh((x - 44) / 2)))
+    left, _ = wetting_regions(row, rho_l, rho_v)
+    band = np.flatnonzero(np.asarray(left.mask))
+    step_x = float(left.anchor) - 1.0  # the step cuts the left band just behind the line: it is on post
+    wall = ChemicalStepWall("bottom", step_x, 1.0, 1.0, 0.07, 0.07, post_phi=2.0, post_d_rho=0.0)
+
+    out = np.asarray(_apply_wetting_modification(row, rho_l, rho_v, 1.3, 1.0, 0.0, 0.0, wall))
+    lower, upper = float(left.rho_lower), float(left.rho_upper)
+    pre = band[band < step_x]
+    post = band[band >= step_x]
+    assert pre.size
+    assert post.size
+    # Pre-step cells across the step: the configured hydrophobic push, not the line's phi.
+    np.testing.assert_allclose(out[pre], np.clip(1.0 * np.asarray(row)[pre] - 0.07, lower, upper))
+    # Post-step cells on the line's own side: its live phi.
+    np.testing.assert_allclose(out[post], np.clip(1.3 * np.asarray(row)[post], lower, upper))

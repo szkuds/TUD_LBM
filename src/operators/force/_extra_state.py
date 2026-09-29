@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Any
 import jax.numpy as jnp
+from src.operators.force._electric import ElectricForceModule
 from src.operators.force._electric import ElectricParams
 from src.operators.force._electric import _equilibrium_h
 from src.operators.force._electric import _rho_to_phi
@@ -16,12 +17,8 @@ if TYPE_CHECKING:
 
 
 def _get_electric_params(setup: SimulationSetup) -> ElectricParams | None:
-    if setup.forces is None:
-        return None
-    for spec in setup.forces.specs:
-        if spec.name == "electric_force":
-            return spec.precomputed
-    return None
+    """The bound electric force's parameters, or ``None`` when the run has none."""
+    return next((force.params for force in setup.forces if isinstance(force, ElectricForceModule)), None)
 
 
 @extra_state_plugin(name="electric")

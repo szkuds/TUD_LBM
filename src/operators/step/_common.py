@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 
 if TYPE_CHECKING:
-    from src.operators.protocols import BoundDifferentialOperator
+    from src.operators.protocols import DifferentialOperator
     from src.pipeline.setup import SimulationSetup
     from src.pipeline.state.state import State
 
@@ -18,15 +18,15 @@ def _multiphase_pipeline(
     setup: SimulationSetup,
     f_t: jnp.ndarray,
     force_ext: jnp.ndarray | None,
-    gradient_density: BoundDifferentialOperator,
-    laplacian_density: BoundDifferentialOperator,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    gradient_density: DifferentialOperator,
+    laplacian_density: DifferentialOperator,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray]:
     """Run one multiphase physics pass — the single canonical implementation.
 
     This function encapsulates the core multiphase LBM pipeline:
-    1. Compute macroscopic fields (rho, u) from populations
+    1. Compute macroscopic fields (rho, u, force) from populations
     2. Apply common step (equilibrium → collision → streaming → BCs)
-    3. Recompute macroscopic fields from updated populations
+    3. Recompute macroscopic fields (rho, u, pressure) from updated populations
 
     This is the single place where multiphase physics runs. All step functions
     and trial steps (hysteresis, etc.) route through here.
@@ -35,17 +35,18 @@ def _multiphase_pipeline(
         setup: Closed-over :class:`~src.pipeline.setup.SimulationSetup`.
         f_t: Current population distribution, shape ``(nx, ny, nz, q, 1)``.
         force_ext: External force field, shape ``(nx, ny, nz, 1, 2)`` or ``None``.
-        gradient_density: Density gradient closure ``(grid) -> result``.
+        gradient_density: Density gradient operator ``(grid) -> result``.
             Used in source term and passed to common step.
-        laplacian_density: Laplacian of density closure ``(grid) -> result``.
+        laplacian_density: Laplacian of density operator ``(grid) -> result``.
             Used in macroscopic computation.
 
     Returns:
-        ``(f_out, rho, u, force_tot)`` where:
+        ``(f_out, rho, u, force_tot, pressure)`` where:
         - ``f_out``: Post-BC populations, shape ``(nx, ny, nz, q, 1)``
         - ``rho``: Updated density field
         - ``u``: Updated velocity field
         - ``force_tot``: Total interaction force (or None if no forces)
+        - ``pressure``: Bulk pressure of the updated density field
     """
     from src.pipeline.state.state import State
 
@@ -62,7 +63,7 @@ def _multiphase_pipeline(
     lattice = setup.lattice
 
     # 1. Compute macroscopic fields from current populations
-    rho, u, force_tot = setup.macroscopic_fn(
+    rho, u, force_tot, _ = setup.macroscopic_fn(
         f_t,
         lattice,
         setup.multiphase_params,
@@ -84,7 +85,7 @@ def _multiphase_pipeline(
     next_state = _apply_common_step(setup, temp_state, rho, u, force_tot, gradient_density=gradient_density)
 
     # 4. Recompute macroscopic fields from updated populations (for next step)
-    rho_next, u_next, _ = setup.macroscopic_fn(
+    rho_next, u_next, _, pressure_next = setup.macroscopic_fn(
         next_state.f,
         lattice,
         setup.multiphase_params,
@@ -93,7 +94,7 @@ def _multiphase_pipeline(
         laplacian_density=laplacian_density,
     )
 
-    return next_state.f, rho_next, u_next, force_tot
+    return next_state.f, rho_next, u_next, force_tot, pressure_next
 
 
 def _apply_common_step(
@@ -102,7 +103,7 @@ def _apply_common_step(
     rho: jnp.ndarray,
     u: jnp.ndarray,
     force_tot: jnp.ndarray | None,
-    gradient_density: BoundDifferentialOperator | None = None,
+    gradient_density: DifferentialOperator | None = None,
 ) -> State:
     """Apply equilibrium → collision (+source) → streaming → BCs.
 
@@ -141,12 +142,15 @@ def _apply_common_step(
 
     # 4. Collision (with or without source term)
     if force_tot is not None:
-        if setup.forces is None:
-            msg = "forces is required when force_tot is active"
+        if setup.source_fn is None:
+            msg = "source_fn is required when force_tot is active"
             raise TypeError(msg)
         # Use provided gradient_density if available (for wetting), else use setup default
         grad = gradient_density if gradient_density is not None else setup.gradient_density
-        src = setup.forces.source_term(rho, u, force_tot, lattice, gradient=grad)
+        if grad is None:
+            msg = "gradient_density is required when force_tot is active"
+            raise TypeError(msg)
+        src = setup.source_fn(rho, u, force_tot, lattice, gradient=grad)
         f_col = setup.collision_fn(state.f, feq, setup.tau, src)
     else:
         f_col = setup.collision_fn(state.f, feq, setup.tau)
@@ -159,7 +163,7 @@ def _apply_common_step(
         f_stream = setup.obstacle_fn(f_stream, f_col)
 
     # 6. Boundary conditions
-    f_bc = setup.bc_fn(f_stream, f_col, setup.bc_masks)
+    f_bc = setup.bc_fn(f_stream, f_col)
 
     return state._replace(
         f=f_bc,

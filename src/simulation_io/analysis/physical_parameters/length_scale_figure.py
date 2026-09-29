@@ -26,6 +26,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 import numpy as np
+from src.config.init_field import load_init_field
+from src.config.init_field import measure_field
 from src.config.run_config import ANALYSIS_DIRNAME
 from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import LENGTH_SCALE_PLOT_FILENAME
@@ -34,8 +36,6 @@ from src.config.run_config import SNAPSHOT_GLOB
 from src.simulation_io.analysis.droplet_metrics._snapshot import extract_rho_2d
 from src.simulation_io.analysis.droplet_metrics._snapshot import parse_timestep_from_path
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _get_droplet_area
-from src.simulation_io.analysis.physical_parameters.physical_parameters import _load_init_rho
-from src.simulation_io.analysis.physical_parameters.physical_parameters import _measure_field
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_buoyancy_delta_rho
 from src.simulation_io.analysis.physical_parameters.physical_parameters import dimensionless_for_inputs
 from src.simulation_io.analysis.physical_parameters.physical_parameters import inclusion_mask_from_rho
@@ -143,7 +143,7 @@ def _counted_panel(config: SimulationConfig) -> _Panel | None:
     buoyancy = _resolve_buoyancy_delta_rho(config)
     drho = None if buoyancy is None else buoyancy[0]
 
-    field = _load_init_rho(config) if config.init_type == "init_from_file" else None
+    field = load_init_field(config) if config.init_type == "init_from_file" else None
     if field is not None:
         return _Panel(
             title="as counted  (init NPZ)",
@@ -196,7 +196,7 @@ def _snapshot_panel(path: Path) -> _Panel | None:
         return None
 
     rho = np.asarray(rho_2d)[:, :, None, None, None]
-    field = _measure_field(rho)
+    field = measure_field(rho)
     if field is None:
         return None
     mask = inclusion_mask_from_rho(rho, field.rho_mean)

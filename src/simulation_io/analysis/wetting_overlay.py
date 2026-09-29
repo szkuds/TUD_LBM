@@ -130,11 +130,10 @@ def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
 
     import jax.numpy as jnp
     from src.operators.differential._pad_utils import _apply_stencil_padding
-    from src.operators.differential._pad_utils import determine_pad_modes
     from src.operators.wetting._apply_edge import wetting_edge_regions
     from src.operators.wetting._edge_config import _resolve_wetting_edges
 
-    grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), tuple(determine_pad_modes(config.bc_config)))
+    grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), config.pad_modes)
     bands: list[WallBand] = []
     for edge, perp_start_periodic, perp_end_periodic in _resolve_wetting_edges(config.bc_config):
         regions = wetting_edge_regions(grid_padded, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v)

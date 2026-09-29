@@ -66,7 +66,7 @@ from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import PHYSICAL_PARAMETERS_FILENAME
 from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import SNAPSHOTS_DIRNAME
-from src.operators.macroscopic.eos import build_pressure_fn  # also registers the pressure operators
+from src.operators.macroscopic import eos as _eos  # noqa: F401  registers the pressure operators
 from src.operators.macroscopic.eos import has_analytical_surface_tension
 from src.registry import get_operator_names
 
@@ -277,7 +277,6 @@ def _measure_pressure_jumps(
     so the fields entering the Young-Laplace fit can be inspected afterwards.
     """
     from src.operators.initialise import build_initialise_fn
-    from src.operators.macroscopic import build_multiphase_params
     from src.pipeline.runner import init_state
     from src.pipeline.setup import build_setup
 
@@ -294,9 +293,6 @@ def _measure_pressure_jumps(
     radii = np.linspace(min_dim * _RADIUS_MIN_FRACTION, min_dim * _RADIUS_MAX_FRACTION, _N_RADII)
     width = int(config.interface_width)
     rho_l, rho_v = float(config.rho_l), float(config.rho_v)
-
-    mp = build_multiphase_params(calib_config)
-    pressure_fn = build_pressure_fn(mp)
 
     setup = build_setup(calib_config)
     grid_shape = cast("tuple[int, int, int]", setup.grid_shape)
@@ -327,7 +323,7 @@ def _measure_pressure_jumps(
             _save_state(states_dir / f"radius_{radius:.2f}_final.npz", final_state)
         rho_2d = _density_2d(final_state)
         densities.append(rho_2d)
-        delta_p[i] = _pressure_jump(pressure_fn(rho_2d))
+        delta_p[i] = _pressure_jump(_pressure_2d(final_state))
 
     return radii, delta_p, densities
 
@@ -395,6 +391,14 @@ def _density_2d(state: State) -> np.ndarray:
 
     rho = state.rho if state.rho is not None else jnp.sum(state.f, axis=3, keepdims=True)
     return np.asarray(rho)[:, :, 0, 0, 0]
+
+
+def _pressure_2d(state: State) -> np.ndarray:
+    """Extract the 2-D bulk-pressure slice the macroscopic operator wrote into *state*."""
+    if state.pressure is None:
+        msg = "the final state carries no pressure; the macroscopic operator should always return one"
+        raise ValueError(msg)
+    return np.asarray(state.pressure)[:, :, 0, 0, 0]
 
 
 def sample_points(nx: int, ny: int) -> tuple[tuple[int, int], list[tuple[int, int]]]:

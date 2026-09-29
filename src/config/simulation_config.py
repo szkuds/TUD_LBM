@@ -19,16 +19,35 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
 from dataclasses import field
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Literal
+from typing import NamedTuple
 from typing import cast
+from src.config.boundary_edges import BoundaryEdge
+from src.config.boundary_edges import build_boundary_edges
+from src.config.boundary_edges import pad_modes
+from src.config.boundary_edges import parameter_section_key
+from src.config.boundary_edges import periodic_axes
+from src.config.chemical_step import ChemicalStepWall
+from src.config.chemical_step import build_chemical_step_wall
 from src.config.config_overview import BASE_RESULTS_DIR
+from src.config.init_field import load_init_wetting
+from src.config.init_field import measure_init_phase_densities
+from src.config.multiphase_params import MultiphaseParams
+from src.config.obstacle_mask import build_obstacle_mask
+from src.config.wetting_defaults import NEUTRAL_WETTING_CONFIG
+from src.config.wetting_defaults import resolve_wetting_defaults
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
 
 CONFIG_SECTION: str = "config_section"
 ARRAY_ELIGIBLE: str = "array_eligible"
 NESTED_SWEEPABLE: str = "nested_sweepable"
 MIN_GRID_DIMENSIONS: int = 2
 MIN_TAU_VALUE: float = 0.5
+_BC_EDGES: tuple[str, ...] = ("top", "bottom", "left", "right", "front", "back")
 
 
 def array_field(
@@ -78,6 +97,28 @@ def _first_if_list(value: object) -> object:
     return value
 
 
+#: Optimiser settings of ``[hysteresis]``, filled in by ``_apply_defaults``.
+_HYSTERESIS_DEFAULTS: dict[str, Any] = {
+    "learning_rate": 0.01,
+    "learning_rate_above": 0.05,
+    "max_iterations": 50,
+    "loss_tol": 1e-4,
+    "trial_steps": 2,
+    "carry_inactive_params": False,
+    # Chemical-step runs: degrees from its bound past which a line on (or held
+    # at) the post surface skips the optimiser and takes its knob's clamp limit.
+    "saturation_gap": 1.0,
+}
+#: Every key the hysteresis operators read. ``max_iterations_above`` defaults to
+#: the run's own ``max_iterations``, so it is filled in separately.
+_HYSTERESIS_KEYS: frozenset[str] = frozenset(
+    {"ca_advancing", "ca_receding", "max_iterations_above", *_HYSTERESIS_DEFAULTS}
+)
+#: Distance (lattice units) either side of a contact line at which the chemical
+#: step's surfaces are probed for its advancing and receding bounds.
+_CHEMICAL_STEP_DEFAULTS: dict[str, Any] = {"edge_width": 1.0, "chemical_step_edge": "bottom"}
+
+
 def _validate_positive(value: object, name: str) -> None:
     """Validate that value is positive."""
     if value is not None and value <= 0:  # ty: ignore[unsupported-operator]
@@ -123,6 +164,62 @@ def _valid_lattices() -> set[str]:
         return get_operator_names("lattice")
     except (ImportError, KeyError):
         return set()  # Operators not yet loaded - skip validation
+
+
+def _valid_boundary_conditions() -> set[str]:
+    """Get valid boundary-condition names. Returns empty set if operators not loaded."""
+    try:
+        import src.operators.boundary  # noqa: F401
+        from src.registry import get_operator_names
+
+        return get_operator_names("boundary_condition")
+    except (ImportError, KeyError):
+        return set()  # Operators not yet loaded - skip validation
+
+
+def _valid_init_types() -> set[str]:
+    """Get valid init_type names. Returns empty set if operators not loaded."""
+    try:
+        import src.operators.initialise  # noqa: F401
+        from src.registry import get_operator_names
+
+        return get_operator_names("initialise")
+    except (ImportError, KeyError):
+        return set()  # Operators not yet loaded - skip validation
+
+
+def _valid_obstacle_shapes() -> set[str]:
+    """Get valid obstacle shape names. Returns empty set if operators not loaded."""
+    try:
+        import src.operators.obstacle  # noqa: F401
+        from src.registry import get_operator_names
+
+        return get_operator_names("obstacle")
+    except (ImportError, KeyError):
+        return set()  # Operators not yet loaded - skip validation
+
+
+class _ForceSchema(NamedTuple):
+    """What a force needs from its config section, declared at its registration."""
+
+    required: tuple[str, ...]
+    defaults: dict[str, Any]
+    optional: tuple[str, ...]
+    positive: tuple[str, ...]
+
+
+def _force_schema(name: str) -> _ForceSchema:
+    """Read the parameter schema a force module registered under *name*."""
+    import src.operators.force  # noqa: F401
+    from src.registry import get_operators
+
+    meta: dict[str, Any] = get_operators("force")[name].metadata or {}
+    return _ForceSchema(
+        required=tuple(meta.get("required", ())),
+        defaults=dict(meta.get("defaults", {})),
+        optional=tuple(meta.get("optional", ())),
+        positive=tuple(meta.get("positive", ())),
+    )
 
 
 @dataclass(frozen=True)
@@ -245,6 +342,8 @@ class SimulationConfig:
         object.__setattr__(self, "output_format", _first_if_list(self.output_format))
         if isinstance(self.output_format, str):
             object.__setattr__(self, "output_format", self.output_format.lower())
+        if self.save_fields is not None and "f" not in self.save_fields:
+            object.__setattr__(self, "save_fields", ["f", *self.save_fields])
 
     def _derive(self) -> None:
         """Fill in fields computed from other, already-validated fields.
@@ -271,32 +370,27 @@ class SimulationConfig:
         object.__setattr__(self, "k_diag", couple_shear_to_tau(self.k_diag, float(self.tau)))
 
     def _apply_defaults(self) -> None:
+        self._apply_force_defaults()
         if self.save_interval == 0:
             object.__setattr__(self, "save_interval", self.nt // 10)
         if self.bc_config is None:
             object.__setattr__(
                 self,
                 "bc_config",
-                {
-                    "top": "periodic",
-                    "bottom": "periodic",
-                    "left": "periodic",
-                    "right": "periodic",
-                    "front": "periodic",
-                    "back": "periodic",
-                },
+                dict.fromkeys(_BC_EDGES, "periodic"),
             )
         if self.hysteresis_config is not None and self.wetting_config is None:
             object.__setattr__(
                 self,
                 "wetting_config",
-                {
-                    "phi_left": 1.0,
-                    "phi_right": 1.0,
-                    "d_rho_left": 0.0,
-                    "d_rho_right": 0.0,
-                },
+                dict(NEUTRAL_WETTING_CONFIG),
             )
+        if self.hysteresis_config is not None:
+            hysteresis = {**_HYSTERESIS_DEFAULTS, **self.hysteresis_config}
+            hysteresis.setdefault("max_iterations_above", hysteresis["max_iterations"])
+            object.__setattr__(self, "hysteresis_config", hysteresis)
+        if self.chemical_step_config is not None:
+            object.__setattr__(self, "chemical_step_config", {**_CHEMICAL_STEP_DEFAULTS, **self.chemical_step_config})
 
     def _make_grid_shape_3d(self) -> None:
         """Promote grid_shape to 3D by adding a singleton z-dimension."""
@@ -305,10 +399,15 @@ class SimulationConfig:
             object.__setattr__(self, "grid_shape", self.grid_shape + (1,) * (_target_dims - len(self.grid_shape)))
 
     def _set_all_bcs(self) -> None:
-        """Set missing BCs in bc_config to 'periodic'."""
+        """Complete bc_config so the boundary builder only looks up and binds.
+
+        Every edge missing a BC becomes ``"periodic"``. A BC without its
+        ``{edge}_{name}`` parameter section runs on the operator's own
+        defaults (see :attr:`boundary_edges`).
+        """
         if self.bc_config is None:
             return
-        for edge in ("top", "bottom", "left", "right", "front", "back"):
+        for edge in _BC_EDGES:
             if edge not in self.bc_config:
                 self.bc_config[edge] = "periodic"
 
@@ -322,18 +421,62 @@ class SimulationConfig:
         self._validate_forces()
         self._validate_init()
         self._validate_save_fields()
+        self._validate_boundary_conditions()
         self._validate_obstacle()
+        self._validate_hysteresis()
+
+    def _validate_hysteresis(self) -> None:
+        """Reject ``[hysteresis]`` keys the optimiser does not read.
+
+        The section is free-form TOML, so a misspelled key would otherwise be
+        ignored without a word.
+        """
+        if self.hysteresis_config is None:
+            return
+        unknown = set(self.hysteresis_config) - _HYSTERESIS_KEYS
+        if unknown:
+            msg = f"Unknown [hysteresis] keys {sorted(unknown)}; allowed: {sorted(_HYSTERESIS_KEYS)}"
+            raise ValueError(msg)
+
+    def _apply_force_defaults(self) -> None:
+        """Fill every configured force section with its registered defaults."""
+        for name, params in self.active_forces.items():
+            object.__setattr__(self, name, {**_force_schema(name).defaults, **params})
 
     def _validate_forces(self) -> None:
-        """Validate force configuration consistency."""
+        """Check every configured force section against the schema its module registered.
+
+        After this, a force's ``build`` reads its section with ``params[key]``
+        and never checks it again.
+        """
         if self.gravity_force is not None and self.gravity_masked_force is not None:
             msg = "Only one gravity force can be applied: set either gravity_force or gravity_masked_force, not both."
             raise ValueError(msg)
+
+        for name, params in self.active_forces.items():
+            schema = _force_schema(name)
+            missing = [key for key in schema.required if key not in params]
+            if missing:
+                msg = f"[{name}] is missing required key(s): {', '.join(missing)}"
+                raise ValueError(msg)
+            allowed = {*schema.required, *schema.defaults, *schema.optional}
+            unknown = sorted(set(params) - allowed)
+            if unknown:
+                msg = f"[{name}] has unknown key(s): {', '.join(unknown)}. Allowed: {', '.join(sorted(allowed))}"
+                raise ValueError(msg)
+            for key in schema.positive:
+                _validate_positive(params.get(key), f"[{name}] {key}")
 
     def _validate_obstacle(self) -> None:
         """Validate interior-obstacle geometry against the grid and BC topology."""
         if self.obstacle_config is None:
             return
+
+        self.obstacle_config.setdefault("shape", "circle")
+        valid_shapes = _valid_obstacle_shapes()
+        if self.obstacle_config["shape"] not in valid_shapes:
+            msg = f"obstacle shape must be one of {sorted(valid_shapes)}, got '{self.obstacle_config['shape']}'"
+            raise ValueError(msg)
 
         nx, ny, nz = self.grid_shape[:3]
         if nz > 1:
@@ -356,19 +499,26 @@ class SimulationConfig:
             )
             raise ValueError(msg)
 
-        if self.bc_config is not None:
-            left_bc = self.bc_config.get("left", "periodic")
-            right_bc = self.bc_config.get("right", "periodic")
-            if left_bc != "periodic" and cx - radius <= 1:
-                msg = (
-                    f"obstacle must keep >1 cell clearance from a non-periodic left edge, got cx={cx}, radius={radius}"
-                )
+        assert self.bc_config is not None  # noqa: S101 - guaranteed by _apply_defaults
+        if self.bc_config["left"] != "periodic" and cx - radius <= 1:
+            msg = f"obstacle must keep >1 cell clearance from a non-periodic left edge, got cx={cx}, radius={radius}"
+            raise ValueError(msg)
+        if self.bc_config["right"] != "periodic" and cx + radius >= nx - 2:
+            msg = f"obstacle must keep >1 cell clearance from a non-periodic right edge, got cx={cx}, radius={radius}"
+            raise ValueError(msg)
+
+    def _validate_boundary_conditions(self) -> None:
+        """Reject an unregistered BC type, and a parameter section no edge's BC reads."""
+        assert self.bc_config is not None  # noqa: S101 - guaranteed by _apply_defaults
+        valid_bcs = _valid_boundary_conditions()
+        for edge in _BC_EDGES:
+            if self.bc_config[edge] not in valid_bcs:
+                msg = f"bc_config['{edge}'] must be one of {sorted(valid_bcs)}, got '{self.bc_config[edge]}'"
                 raise ValueError(msg)
-            if right_bc != "periodic" and cx + radius >= nx - 2:
-                msg = (
-                    f"obstacle must keep >1 cell clearance from a non-periodic right edge, got cx={cx}, radius={radius}"
-                )
-                raise ValueError(msg)
+        sections = {parameter_section_key(edge, self.bc_config[edge]) for edge in _BC_EDGES}
+        for key in sorted(self.bc_config.keys() - set(_BC_EDGES) - sections):
+            msg = f"bc_config['{key}'] is not the parameter section of any edge's boundary condition"
+            raise ValueError(msg)
 
     def _validate_grid_shape(self) -> None:
         """Validate grid_shape dimensions."""
@@ -413,6 +563,10 @@ class SimulationConfig:
 
     def _validate_init(self) -> None:
         """Validate initialisation parameters."""
+        valid_init_types = _valid_init_types()
+        if self.init_type not in valid_init_types:
+            msg = f"init_type must be one of {sorted(valid_init_types)}, got '{self.init_type}'"
+            raise ValueError(msg)
         if self.init_type == "init_from_file" and self.init_dir is None:
             msg = "init_dir must be provided when init_type is 'init_from_file'"
             raise ValueError(msg)
@@ -420,7 +574,7 @@ class SimulationConfig:
     def _validate_save_fields(self) -> None:
         """Validate save_fields are valid."""
         if self.save_fields is not None:
-            valid_fields = {"f", "rho", "u", "force", "force_ext", "h"}
+            valid_fields = {"f", "rho", "u", "force", "force_ext", "pressure", "h"}
             invalid = set(self.save_fields) - valid_fields
             if invalid:
                 msg = f"Invalid save_fields: {invalid}. Valid fields: {valid_fields}"
@@ -463,9 +617,125 @@ class SimulationConfig:
         return "multiphase" in self.sim_type
 
     @property
+    def multiphase_params(self) -> MultiphaseParams | None:
+        """The multiphase parameters, or ``None`` for a non-multiphase run.
+
+        ``_validate_multiphase`` has already rejected any multiphase config
+        missing a required field, so this is the single place the parameters
+        are built and no consumer guards them again. The asserts only narrow
+        the optional field types.
+        """
+        if not self.is_multiphase:
+            return None
+        assert self.eos is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        assert self.kappa is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        assert self.rho_l is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        assert self.rho_v is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        assert self.interface_width is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        return MultiphaseParams(
+            eos=self.eos,
+            kappa=self.kappa,
+            rho_l=self.rho_l,
+            rho_v=self.rho_v,
+            interface_width=self.interface_width,
+            g=self.g,
+            a_eos=self.a_eos,
+            b_eos=self.b_eos,
+            r_eos=self.r_eos,
+            t_eos=self.t_eos,
+        )
+
+    @property
+    def boundary_edges(self) -> tuple[BoundaryEdge, ...]:
+        """Each edge's boundary condition and its parameters, in application order.
+
+        Static for the whole run, so resolved here rather than by the boundary
+        operator package.
+        """
+        assert self.bc_config is not None  # noqa: S101 - guaranteed by _apply_defaults
+        return build_boundary_edges(self.bc_config)
+
+    @property
+    def obstacle_mask(self) -> jnp.ndarray | None:
+        """The interior-obstacle solid-cell mask; ``None`` without an obstacle."""
+        nx, ny, nz = self.grid_shape[:3]
+        return build_obstacle_mask(self.obstacle_config, (nx, ny, nz))
+
+    @property
+    def wetting_defaults(self) -> dict[str, float] | None:
+        """The four wetting scalars by canonical name; ``None`` without wetting.
+
+        Every hysteresis run has a (neutral) ``wetting_config`` from
+        ``_apply_defaults``, so this is ``None`` only for a run with no wetting.
+        """
+        if self.wetting_config is None:
+            return None
+        return resolve_wetting_defaults(self.wetting_config)
+
+    @property
+    def pad_modes(self) -> tuple[str, str, str, str]:
+        """Stencil pad mode per edge, ``(top, bottom, right, left)``, from each BC's registration."""
+        assert self.bc_config is not None  # noqa: S101 - guaranteed by _apply_defaults
+        return pad_modes(self.bc_config)
+
+    @property
+    def periodic_axes(self) -> tuple[bool, bool]:
+        """Per-axis periodicity ``(x, y)``: both edges of the axis are periodic."""
+        assert self.bc_config is not None  # noqa: S101 - guaranteed by _apply_defaults
+        return periodic_axes(self.bc_config)
+
+    @property
+    def active_forces(self) -> dict[str, dict[str, Any]]:
+        """The configured ``*_force`` sections, keyed by field (= registry) name.
+
+        The single place that decides which forces a run has, so the force
+        factory only looks up and binds.
+        """
+        return {
+            f.name: params
+            for f in dataclasses.fields(self)
+            if f.name.endswith("_force") and (params := getattr(self, f.name)) is not None
+        }
+
+    @property
+    def phase_references(self) -> tuple[float, float] | None:
+        """``(rho_lo, rho_hi)`` the run's phases actually sit at, or ``None`` without two phases.
+
+        Measured off the init field for ``init_from_file`` — an equilibrated
+        field relaxes away from the prescribed coexistence densities — else the
+        configured ``(rho_v, rho_l)``. ``physical_parameters`` measures the same
+        field through the same reader, so the buoyancy contrast a run injects
+        and the one its Bond number reports cannot diverge.
+        """
+        if self.rho_l is None or self.rho_v is None:
+            return None
+        measured = measure_init_phase_densities(self) if self.init_type == "init_from_file" else None
+        return measured or (float(self.rho_v), float(self.rho_l))
+
+    @property
+    def chemical_step_wall(self) -> ChemicalStepWall | None:
+        """The stepped wall the wetting applicator splits by surface; ``None`` without a step."""
+        return build_chemical_step_wall(self)
+
+    @property
+    def restored_wetting(self) -> dict[str, float] | None:
+        """Wetting state a hysteresis restart resumes from, or ``None`` for a fresh start.
+
+        The hysteresis optimiser accumulates ``phi``/``d_rho`` and moves the
+        contact-line anchors over a run; restarting ``init_from_file`` from one of
+        its snapshots must continue from those values. Seeding them from
+        ``wetting_config`` instead dropped a wall at ``phi`` ≈ 1.7 back to 1.0 on
+        restart, and the contact angle ran up past its advancing bound. Only for
+        hysteresis runs: a fixed-wetting run's parameters are its configuration.
+        """
+        if self.hysteresis_config is None or self.init_type != "init_from_file":
+            return None
+        return load_init_wetting(self)
+
+    @property
     def force_enabled(self) -> bool:
         """Check if any force field is populated."""
-        return any(getattr(self, f.name) is not None for f in dataclasses.fields(self) if f.name.endswith("_force"))
+        return bool(self.active_forces)
 
     # Serialisation
 

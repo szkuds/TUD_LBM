@@ -9,8 +9,10 @@ values enter the Laplace jump. Seeing them makes it obvious whether the
 which is the failure mode the fit alone cannot show.
 
 The panels are the registered plotting operators (``density``, ``pressure``,
-``pressure_total``) called directly, so the pressure shown here is by
-construction the pressure the calibration measured.
+``pressure_total``) called directly. Only the density is cached per droplet, so
+the bulk pressure is re-evaluated from it with :func:`build_pressure_fn` — the
+same EOS function the multiphase macroscopic operator evaluates for the
+``pressure`` the calibration measured.
 """
 
 from __future__ import annotations
@@ -61,7 +63,15 @@ def save_snapshot_figures(
     import matplotlib as mpl
 
     mpl.use("Agg")
+    import jax.numpy as jnp
     import matplotlib.pyplot as plt
+    from src.operators.macroscopic.eos import build_pressure_fn
+
+    mp = config.multiphase_params
+    if mp is None:
+        msg = "snapshot figures need the multiphase calibration config"
+        raise ValueError(msg)
+    pressure_fn = build_pressure_fn(mp)
 
     # Built once for the whole sweep: each operator caches its EOS parameters
     # and differential closures on first use, so the lattice and diff-op
@@ -74,7 +84,8 @@ def save_snapshot_figures(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for radius, jump, rho_2d in zip(radii, delta_p, densities, strict=True):
-        data = {"rho": np.asarray(rho_2d)[:, :, None, None, None]}
+        rho = np.asarray(rho_2d)[:, :, None, None, None]
+        data = {"rho": rho, "pressure": np.asarray(pressure_fn(jnp.asarray(rho)))}
         panels = [op for op in operators if op.is_available(data)]
         if not panels:
             continue

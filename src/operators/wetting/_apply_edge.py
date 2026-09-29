@@ -13,6 +13,7 @@ from src.operators.wetting._wetting_modification import wetting_regions
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
+    from src.config.chemical_step import ChemicalStepWall
     from src.operators.wetting._wetting_modification import WettingRegion
 
 
@@ -59,11 +60,14 @@ def _apply_wetting_edge(
     phi_r: jnp.ndarray,
     d_rho_l: jnp.ndarray,
     d_rho_r: jnp.ndarray,
+    step: ChemicalStepWall | None = None,
 ) -> jnp.ndarray:
     """Apply wetting to a single edge of the padded array.
 
     Reconstructs the edge's ghost row from the interior, then applies the
     wetting modification to its interior portion (excluding padding corners).
+    *step* splits the modification by surface when this edge carries the
+    chemical step.
     """
     arr, ghost_idx, transposed = _oriented_ghost_row(grid_padded, edge, perp_start_periodic, perp_end_periodic)
 
@@ -75,6 +79,7 @@ def _apply_wetting_edge(
         phi_r,
         d_rho_l,
         d_rho_r,
+        step if step is not None and step.edge == edge else None,
     )
     arr = arr.at[1:-1, ghost_idx].set(modified)
 

@@ -14,13 +14,10 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from typing import cast
 from src.operators._loader import auto_load_operators
-from src.operators.factory import build_operator
+from src.registry import get_operators
 
 if TYPE_CHECKING:
-    import jax.numpy as jnp
-    from src.lattice.lattice import Lattice
     from src.operators.protocols import InitialiserOperator
 
 # Auto-discover and import private operator modules for registry registration.
@@ -38,25 +35,12 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
         A callable satisfying the InitialiserOperator protocol.
         Call form: ``operator(grid_shape, lattice, **kwargs) -> f``.
 
-    Raises:
-        ValueError: If scheme is not registered.
-
     Examples:
         >>> from operators.initialise import build_initialise_fn
         >>> init = build_initialise_fn("standard")
         >>> f = init((64, 64, 1), lattice, density=1.0)
     """
-    op = build_operator("initialise", scheme)
-
-    def _initialise(
-        grid_shape: tuple[int, int, int],
-        lattice: Lattice,
-        **kwargs: object,
-    ) -> jnp.ndarray:
-        nx, ny, nz = map(int, grid_shape)
-        return cast("jnp.ndarray", op(nx, ny, nz, lattice, **kwargs))
-
-    return _initialise
+    return get_operators("initialise")[scheme].target
 
 
 __all__ = ["build_initialise_fn"]

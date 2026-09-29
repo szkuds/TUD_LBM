@@ -11,7 +11,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
-from src.operators.force import compute_total_force_ext
+from src.operators.force._force_aggregator import compute_total_force_ext
 from src.operators.step._common import _multiphase_pipeline
 from src.operators.step._multiphase_hysteresis import _make_wetting_ops
 from src.operators.step._multiphase_hysteresis import _trial_step
@@ -32,8 +32,8 @@ def step_multiphase_hysteresis_chemical_step(setup: SimulationSetup, state: Stat
     location against the chemical step position.
 
     Args:
-        setup: SimulationSetup carrying gradient_density_wetting,
-               laplacian_density_wetting, and chemical_step_config.
+        setup: SimulationSetup carrying wetting-aware gradient_density,
+               laplacian_density, and chemical_step_config.
         state: Current State. state.wetting is a WettingState.
 
     Returns:
@@ -49,7 +49,7 @@ def step_multiphase_hysteresis_chemical_step(setup: SimulationSetup, state: Stat
     grad, lap = _make_wetting_ops(setup, state.wetting)
 
     # 3. Run multiphase physics kernel
-    f_out, rho, u, force_tot = _multiphase_pipeline(setup, state.f, force_ext, grad, lap)
+    f_out, rho, u, force_tot, pressure = _multiphase_pipeline(setup, state.f, force_ext, grad, lap)
 
     # 4. Assemble new state (wetting updated by plugin via setup.wetting_fn)
     new_state = state._replace(
@@ -58,6 +58,7 @@ def step_multiphase_hysteresis_chemical_step(setup: SimulationSetup, state: Stat
         u=u,
         force=force_tot,
         force_ext=force_ext,
+        pressure=pressure,
         t=state.t + 1,
     )
 

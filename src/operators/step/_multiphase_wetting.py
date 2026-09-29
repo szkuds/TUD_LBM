@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import cast
 import jax.numpy as jnp
-from src.operators.force import compute_total_force_ext
+from src.operators.force._force_aggregator import compute_total_force_ext
 from src.operators.step._common import _multiphase_pipeline
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
@@ -60,7 +60,7 @@ def step_multiphase_wetting(setup: SimulationSetup, state: State) -> State:
 
     # 2. Run multiphase physics kernel
     # (gradient_density and laplacian_density already include wetting correction)
-    f_out, rho, u, force_tot = _multiphase_pipeline(
+    f_out, rho, u, force_tot, pressure = _multiphase_pipeline(
         setup,
         state.f,
         force_ext,
@@ -96,6 +96,7 @@ def step_multiphase_wetting(setup: SimulationSetup, state: State) -> State:
         u=u,
         force=force_tot,
         force_ext=force_ext,
+        pressure=pressure,
         t=state.t + 1,
         wetting=updated_wetting,
     )

@@ -6,7 +6,7 @@ Registered as ``update_timestep:single_phase`` via the operator registry.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
-from src.operators.force import compute_total_force_ext
+from src.operators.force._force_aggregator import compute_total_force_ext
 from src.operators.step._common import _apply_common_step
 from src.pipeline.state import update_extra_state
 from src.registry import update_timestep_operator
@@ -35,11 +35,11 @@ def step_single_phase(setup: SimulationSetup, state: State) -> State:
     force_ext, state = compute_total_force_ext(setup, state, setup.forces)
 
     # 2. Macroscopic fields
-    rho, u, force_tot = setup.macroscopic_fn(state.f, setup.lattice, force=force_ext)
+    rho, u, force_tot, pressure = setup.macroscopic_fn(state.f, setup.lattice, force=force_ext)
 
     # 3-6. Equilibrium → collision → streaming → BCs (shared)
     new_state = _apply_common_step(setup, state, rho, u, force_tot)
-    new_state = new_state._replace(force=force_tot, force_ext=force_ext)
+    new_state = new_state._replace(force=force_tot, force_ext=force_ext, pressure=pressure)
 
     # Zero velocity inside the obstacle for diagnostic/plotting purposes only —
     # f and next-step dynamics are unaffected, since only state.u (not state.f) is touched here.

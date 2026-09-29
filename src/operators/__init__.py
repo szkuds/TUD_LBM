@@ -21,11 +21,12 @@ from src.operators._loader import auto_load_operators
 from src.operators.protocols import BoundaryOperator
 from src.operators.protocols import CollisionOperator
 from src.operators.protocols import DifferentialOperator
-from src.operators.protocols import EOSFunction
+from src.operators.protocols import EosOperator
 from src.operators.protocols import EquilibriumOperator
 from src.operators.protocols import ForceOperator
 from src.operators.protocols import InitialiserOperator
 from src.operators.protocols import MacroscopicOperator
+from src.operators.protocols import SourceTermOperator
 from src.operators.protocols import StreamingOperator
 
 
@@ -42,10 +43,11 @@ __all__ = [
     "BoundaryOperator",
     "CollisionOperator",
     "DifferentialOperator",
-    "EOSFunction",
+    "EosOperator",
     "EquilibriumOperator",
     "ForceOperator",
     "InitialiserOperator",
     "MacroscopicOperator",
+    "SourceTermOperator",
     "StreamingOperator",
 ]

@@ -125,7 +125,7 @@ def init_state(
     u = jnp.zeros((nx, ny, nz, 1, lattice.d))
     t = _t_from_snapshot(setup.config)
 
-    force, force_ext = build_optional_fields(setup, nx, ny, nz, lattice.d)
+    force, force_ext, pressure = build_optional_fields(setup, nx, ny, nz, lattice.d)
     extra_state = build_extra_state(setup)
 
     return State(
@@ -135,6 +135,7 @@ def init_state(
         t=t,
         force=force,
         force_ext=force_ext,
+        pressure=pressure,
         **extra_state,
     )
 

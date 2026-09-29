@@ -18,13 +18,11 @@ from dataclasses import dataclass
 from dataclasses import field
 from datetime import UTC
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
-from typing import NamedTuple
 from typing import cast
 import numpy as np
-from src.operators.macroscopic import build_multiphase_params
+from src.config.init_field import load_init_field
 from src.operators.macroscopic.eos import analytical_surface_tension
 from src.operators.macroscopic.eos import build_pressure_fn
 from src.operators.macroscopic.eos import has_analytical_surface_tension
@@ -39,56 +37,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Mapping
     from src.config.simulation_config import SimulationConfig
-    from src.operators.macroscopic import MultiphaseParams
     from src.registry import OperatorEntry
     from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessNumberOperator
 
-#: The config fields :func:`build_multiphase_params` requires, guarded in one
-#: place by :func:`_multiphase_params_or_none`.
-_MULTIPHASE_PARAM_FIELDS = ("eos", "kappa", "rho_l", "rho_v", "interface_width")
-
 _CS2 = 1.0 / 3.0  # Speed of sound squared for D2Q9/D3Q19
-
-# Prefix remaps for analysing runs whose init NPZ is no longer where the config
-# recorded it. Tried in order, first existing file wins:
-#
-# * Runs downloaded off DelftBlue: data stored under /scratch/<user>/LBM/26_TUD_LBM/
-#   on the cluster lives under ~/ locally, so .../TUD_LBM_data/<run>/ resolves to
-#   ~/TUD_LBM_data/<run>/.
-# * Runs since archived: finished sweeps are moved into ~/TUD_LBM_data/old/ (with
-#   the DelftBlue ones under old/DB/), which leaves every init_dir in their configs
-#   pointing one or two levels above where the file now is. Without these, an
-#   archived run silently falls back to the nominal config radius and the
-#   prescribed rho_l - rho_v, i.e. a different Bo/Oh than the run was measured with.
-_ARCHIVE_ROOTS: tuple[str, ...] = (
-    f"{Path.home()}/TUD_LBM_data/old/DB/",
-    f"{Path.home()}/TUD_LBM_data/old/",
-)
-_INIT_PATH_REMAPS: tuple[tuple[str, str], ...] = (
-    ("/scratch/sbszkudlarek/LBM/26_TUD_LBM/", f"{Path.home()}/"),
-    *((f"{Path.home()}/TUD_LBM_data/DB/", root) for root in _ARCHIVE_ROOTS),
-    *(("/scratch/sbszkudlarek/LBM/26_TUD_LBM/TUD_LBM_data/", root) for root in _ARCHIVE_ROOTS),
-    *((f"{Path.home()}/TUD_LBM_data/", root) for root in _ARCHIVE_ROOTS),
-)
-
-
-def _resolve_npz_path(path: str | None) -> str | None:
-    """Return an existing path for an init NPZ, remapping known prefixes.
-
-    Falls back to the remapped location when the literal path is absent, so
-    downloaded DelftBlue runs read their real init file instead of defaulting
-    to the nominal config radius. Returns None when no existing file is found.
-    """
-    if not path:
-        return None
-    if Path(path).exists():
-        return path
-    for old, new in _INIT_PATH_REMAPS:
-        if path.startswith(old):
-            remapped = new + path[len(old) :]
-            if Path(remapped).exists():
-                return remapped
-    return None
 
 
 def _nu(tau: float) -> float:
@@ -248,105 +200,9 @@ def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float, wall_edge: s
         return None
 
 
-class _InitField(NamedTuple):
-    """An init density field with the phase densities measured off it.
-
-    ``rho_mean`` and ``drho`` come from the field's own extrema rather than from
-    ``config.rho_l``/``rho_v``: an equilibrated droplet relaxes away from the
-    prescribed coexistence densities, so the config midpoint is not the
-    mid-interface contour of the field and the config contrast is not the
-    buoyancy contrast the run actually has.
-    """
-
-    rho: np.ndarray
-    rho_min: float
-    rho_max: float
-    rho_mean: float
-    drho: float
-
-
-def _load_init_rho(config: SimulationConfig) -> _InitField | None:
-    """Load the init rho field from NPZ and measure its densities, for init_from_file.
-
-    Returns ``None`` when no file resolves, it holds no ``rho``, or the field is
-    empty or non-finite.
-    """
-    npz_path = _resolve_npz_path(config.init_dir or config.initialisation.get("npz_path"))
-    if not npz_path:
-        return None
-
-    try:
-        stat = Path(npz_path).stat()
-    except OSError:
-        return None
-    return _load_field_cached(npz_path, (stat.st_mtime_ns, stat.st_size))
-
-
-#: Init fields held at once. Sized for a *set* of runs, not one: ``compare``
-#: and ``regime-map`` walk N run directories, and each run's numbers are
-#: resolved after every run's CSV has already read the same field, so a cache
-#: that only spans one run re-reads a multi-megabyte NPZ per run. Matches
-#: ``droplet_metrics._MAX_CACHED_RUNS``, which bounds the parallel snapshot
-#: cache for the same walk.
-_MAX_CACHED_INIT_FIELDS = 8
-
-
-@lru_cache(maxsize=_MAX_CACHED_INIT_FIELDS)
-def _load_field_cached(npz_path: str, _stat_key: tuple[int, int]) -> _InitField | None:
-    """Read and measure an init NPZ, memoized on the file's identity.
-
-    Several resolvers (area, buoyancy contrast, contact-line spacing) each need
-    the same multi-megabyte field, so it is read once. ``_stat_key`` carries the
-    file's mtime and size purely so that rewriting a path invalidates the entry.
-    """
-    try:
-        with np.load(npz_path) as data:
-            if "rho" not in data:
-                return None
-            rho = np.asarray(data["rho"])
-    except (KeyError, OSError, TypeError, ValueError):
-        return None
-
-    return _measure_field(rho)
-
-
-def _measure_field(rho: np.ndarray) -> _InitField | None:
-    """Return *rho* with its extrema, midpoint and contrast, or None when unusable."""
-    try:
-        values = np.asarray(rho, dtype=float)
-        if values.size == 0 or not np.all(np.isfinite(values)):
-            return None
-        rho_min = float(np.min(values))
-        rho_max = float(np.max(values))
-    except (TypeError, ValueError):
-        return None
-    return _InitField(
-        rho=rho,
-        rho_min=rho_min,
-        rho_max=rho_max,
-        rho_mean=0.5 * (rho_max + rho_min),
-        drho=rho_max - rho_min,
-    )
-
-
-def measure_init_phase_densities(config: SimulationConfig) -> tuple[float, float] | None:
-    """Return ``(rho_min, rho_max)`` measured off the run's init NPZ, or None.
-
-    The public face of :func:`_load_init_rho` for callers outside this module —
-    :mod:`src.operators.force._gravity_masked` bands its phase indicator on the
-    same measured densities this file reports the buoyancy contrast with, so the
-    contrast a run injects and the one its Bond number quotes cannot diverge.
-    Returns None when the run has no init file, or it holds no usable ``rho``.
-    """
-    field = _load_init_rho(config)
-    if field is None:
-        return None
-    return field.rho_min, field.rho_max
-
-
 def _get_contact_line_length_from_file(config: SimulationConfig) -> float | None:
     """Load rho from NPZ and estimate setup contact-line spacing for init_from_file."""
-    field = _load_init_rho(config)
+    field = load_init_field(config)
     if field is None:
         return None
     return _contact_line_length_from_rho(field.rho, field.rho_mean, resolve_wall_edge(config))
@@ -418,7 +274,7 @@ def _inclusion_area_from_rho(rho: np.ndarray, rho_mean: float) -> float | None:
 def _get_droplet_area(config: SimulationConfig) -> tuple[float, str] | None:
     """Return ``(area, source)`` for the setup droplet, or None when unavailable."""
     if config.init_type == "init_from_file":
-        field = _load_init_rho(config)
+        field = load_init_field(config)
         area = _inclusion_area_from_rho(field.rho, field.rho_mean) if field is not None else None
         return (area, "init_from_file") if area is not None else None
 
@@ -458,28 +314,16 @@ def _resolve_gravity_inclination(config: SimulationConfig) -> float:
     return 0.0
 
 
-def _multiphase_params_or_none(config: SimulationConfig) -> MultiphaseParams | None:
-    """``build_multiphase_params(config)``, or ``None`` if its preconditions are unmet.
-
-    One copy of that precondition, so a caller cannot guard a subset of the
-    fields the builder actually requires and turn a missing one into a
-    ``ValueError`` where every other caller gets ``None``.
-    """
-    if any(getattr(config, name, None) is None for name in _MULTIPHASE_PARAM_FIELDS):
-        return None
-    return build_multiphase_params(config)
-
-
 def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, float] | None:
     """Return ``(delta_rho_phases, gamma)`` from the EOS's own closed-form surface tension.
 
     ``gamma`` comes from the ``"surface_tension"`` registry kind, so an EOS
     that has no closed form returns ``None`` here simply by not being
     registered — that absence is what used to be spelled out as a list of EOS
-    names in this module. ``None`` likewise when a multiphase parameter is
-    missing or the interface width cannot define an interface.
+    names in this module. ``None`` likewise for a non-multiphase run, or when
+    the interface width cannot define an interface.
     """
-    params = _multiphase_params_or_none(config)
+    params = config.multiphase_params
     if params is None:
         return None
 
@@ -524,7 +368,7 @@ def _resolve_buoyancy_delta_rho(config: SimulationConfig) -> tuple[float, str] |
     of the field, so it is measured wherever a field exists.
     """
     if config.init_type == "init_from_file":
-        field = _load_init_rho(config)
+        field = load_init_field(config)
         if field is not None:
             return field.drho, "measured"
     if config.rho_l is not None and config.rho_v is not None:
@@ -535,16 +379,29 @@ def _resolve_buoyancy_delta_rho(config: SimulationConfig) -> tuple[float, str] |
 def _resolve_bulk_pressure(config: SimulationConfig) -> Callable[[np.ndarray], np.ndarray] | None:
     """The EOS bulk pressure ``p_0(rho)``, or ``None`` when this EOS has none.
 
-    Membership of the ``"pressure"`` registry kind *is* the capability check —
-    the same gate the pressure panels and the surface-tension calibration use,
-    rather than a hand-kept list of EOS names. Importing
+    Membership of the ``"pressure"`` registry kind *is* the capability check,
+    rather than a hand-kept list of EOS names. It is the same ``p_0`` the
+    multiphase macroscopic operator reports as a run's ``pressure`` field. Importing
     :func:`build_pressure_fn` above performs the registration side-effect import
     that query needs.
     """
     if config.eos is None or config.eos not in get_operator_names("pressure"):
         return None
-    params = _multiphase_params_or_none(config)
-    return None if params is None else build_pressure_fn(params)
+    params = config.multiphase_params
+    if params is None:
+        return None
+    import jax
+    import jax.numpy as jnp
+
+    pressure_fn = build_pressure_fn(params)
+
+    def bulk_pressure(rho: np.ndarray) -> np.ndarray:
+        # The hydrostatic-load number differentiates p_0 numerically, so the
+        # sample must stay float64 whatever the process-wide x64 setting.
+        with jax.enable_x64(True):
+            return np.asarray(pressure_fn(jnp.asarray(rho)))
+
+    return bulk_pressure
 
 
 def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple[float, str]:
@@ -781,7 +638,7 @@ def _add_measured_density_rows(lines: list[str], config: SimulationConfig) -> No
     """
     if config.init_type != "init_from_file":
         return
-    field = _load_init_rho(config)
+    field = load_init_field(config)
     if field is None:
         return
     lines.append(_row("rho_min / rho_max:", f"{field.rho_min:.6g} / {field.rho_max:.6g}  [measured, init NPZ]"))

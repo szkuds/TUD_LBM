@@ -20,15 +20,15 @@ import sys
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from src.config.boundary_edges import pad_modes
 from src.lattice.lattice import build_lattice
 from src.operators.differential._gradient import compute_gradient
 from src.operators.differential._laplacian import compute_laplacian
 from src.operators.differential._pad_utils import _apply_stencil_padding
-from src.operators.differential._pad_utils import determine_pad_modes
 
 _NX, _NY = 13, 11
 
-#: ``(top, bottom, right, left)`` — the order ``determine_pad_modes`` returns.
+#: ``(top, bottom, right, left)`` — the order ``pad_modes`` returns.
 _ALL_PERIODIC = ("wrap", "wrap", "wrap", "wrap")
 _PERIODIC_X = ("edge", "edge", "wrap", "wrap")
 _ALL_WALLED = ("edge", "edge", "edge", "edge")
@@ -115,28 +115,28 @@ def test_laplacian_commutes_with_a_roll_along_a_periodic_axis(field, lattice, pa
 def test_pad_modes_resolve_without_the_caller_importing_the_boundary_package():
     """The per-edge fallback is ``edge``, so an empty registry pads silently wrong.
 
-    ``simulation_io.analysis.wetting_overlay`` reaches ``determine_pad_modes``
+    ``simulation_io.analysis.wetting_overlay`` reaches ``pad_modes``
     without importing ``src.operators.boundary``, and would otherwise draw a
     contact-angle band built from padding the solver never used. A subprocess is
     the only honest check — in-process another test may already have populated
     the registry.
     """
     source = (
-        "from src.operators.differential._pad_utils import determine_pad_modes;"
-        "print(determine_pad_modes({'left': 'periodic', 'right': 'periodic',"
+        "from src.config.boundary_edges import pad_modes;"
+        "print(pad_modes({'left': 'periodic', 'right': 'periodic',"
         " 'top': 'wetting', 'bottom': 'bounce-back'}))"
     )
     result = subprocess.run(  # noqa: S603 - the argv is this module's own literal, not input
         [sys.executable, "-c", source], capture_output=True, text=True, check=True
     )
 
-    assert result.stdout.strip() == "['edge', 'edge', 'wrap', 'wrap']"
+    assert result.stdout.strip() == "('edge', 'edge', 'wrap', 'wrap')"
 
 
 def test_pad_modes_are_returned_in_the_order_the_padding_expects(field):
-    """``[top, bottom, right, left]`` — wrapping x must pad axis 0, not axis 1."""
-    modes = determine_pad_modes({"left": "periodic", "right": "periodic", "top": "symmetry", "bottom": "bounce-back"})
-    padded = _apply_stencil_padding(field, tuple(modes))
+    """``(top, bottom, right, left)`` — wrapping x must pad axis 0, not axis 1."""
+    modes = pad_modes({"left": "periodic", "right": "periodic", "top": "symmetry", "bottom": "bounce-back"})
+    padded = _apply_stencil_padding(field, modes)
 
     np.testing.assert_array_equal(np.asarray(padded[0, 1:-1]), np.asarray(field[-1]))
     np.testing.assert_array_equal(np.asarray(padded[1:-1, 0]), np.asarray(field[:, 0]))

@@ -58,7 +58,7 @@ Kind                        Decorator                       Resolved by
 ``stream``                  ``@stream_operator``            fixed (``"standard"``)
 ``differential``            ``@differential_operator``      built by ``build_diff_ops()``
 ``initialise``              ``@initialise_operator``        ``config.init_type``
-``wetting``                 ``@wetting_operator``           ``config.hysteresis_config``
+``wetting``                 ``@hysteresis_operator``       ``config.hysteresis_config``
 ``obstacle``                ``@obstacle_operator``          ``config.obstacle_config``
 ``lattice``                 ``@lattice_operator``           ``config.lattice_type``
 ``update_timestep``         ``@update_timestep_operator``   ``config.sim_type``
@@ -84,23 +84,23 @@ Each operator subpackage calls
 
     # src/operators/collision/__init__.py
     from src.operators._loader import auto_load_operators
-    from src.operators.factory import build_operator
+    from src.registry import get_operators
 
     auto_load_operators("src.operators.collision")
 
     def build_collision_fn(scheme: str) -> CollisionOperator:
-        return cast("CollisionOperator", build_operator("collision_models", scheme))
+        return get_operators("collision_models")[scheme].target
 
 The loader imports every ``_*.py`` module in the package directory, which
 fires the decorators.  Sub-packages and public modules are skipped, so
 implementation files must be named with a leading underscore to be
 discovered.
 
-All per-kind factories delegate to one generic
-:func:`~src.operators.factory.build_operator`, which raises ``ValueError``
-listing the valid names when a lookup fails.  Because
-``build_operator`` returns ``Callable[..., object] | type``, callers cast to
-the relevant protocol from :mod:`src.operators.protocols`.
+Every per-kind factory looks up ``get_operators(kind)[name].target`` and is
+annotated with the relevant protocol from :mod:`src.operators.protocols`; no
+cast is needed. Names are validated by :class:`~src.config.simulation_config.SimulationConfig`
+before a factory sees them, so an unknown name reaching a factory is a bare
+``KeyError``.
 
 Registered operators
 --------------------
@@ -329,28 +329,45 @@ Selected by ``init_type``; keyword arguments come from the
 Wetting — ``wetting``
 ~~~~~~~~~~~~~~~~~~~~~
 
-``contact_angle``
-    Measures left and right contact angles from the density field.
-
-``contact_line_location``
-    Locates the contact lines along the wetting wall.
-
-``applicator``
-    A *builder*: given ``rho_l``, ``rho_v``, and ``bc_config`` it returns a
-    closure that applies the wetting ghost-cell correction to a padded
-    density array, with the edge resolution baked in.
+The ``wetting`` kind holds only the hysteresis updates, the one place
+configuration selects between wetting implementations; build one with
+``build_hysteresis_fn(scheme)``. The fixed-name helpers are imported directly
+from their modules: ``compute_contact_angle`` (``_contact_angle``),
+``compute_contact_line_location`` (``_contact_line``) and
+``build_wetting_applicator`` (``_applicator``), the builder that returns the
+wetting ghost-cell correction for a padded density array.
 
 ``hysteresis``
     Per-step solve for the wetting parameters ``phi``/``d_rho`` against a
     global advancing/receding angle window, using ``jax.lax.while_loop``
-    around an Adam optimiser.  Configured by ``[hysteresis]``
-    (``ca_advancing``, ``ca_receding``, ``learning_rate``,
-    ``max_iterations``).
+    around an Adam optimiser.  A side is pinned to its anchor
+    (``cll_left``/``cll_right``) unless its angle is outside the window and its
+    contact line is not moving the wrong way for the exceeded bound; only then
+    does it target that bound and its anchor follow the line.  Configured by
+    ``[hysteresis]`` (``ca_advancing``, ``ca_receding``, ``learning_rate``,
+    ``learning_rate_above``, ``max_iterations``, ``max_iterations_above``,
+    ``loss_tol``, ``trial_steps``, ``carry_inactive_params``); any other key is
+    rejected.
 
 ``chemical_step_hysteresis``
-    Same machinery, but each side's target angles are chosen from the
-    contact line's position relative to a chemical step defined in
-    ``[chemical_step]``.
+    Same machinery, with each contact line's window taken from the surface it
+    is on: the post-step window once the line is within ``edge_width``
+    (default 1 cell) of the step or past it.  The step itself is a property
+    of the wall: a line's band cells across the step keep their own surface's
+    wettability (pre-step at the ``[wetting]`` values, post-step at the clamp
+    limit toward the post surface).  A line receding onto the more wetting
+    surface is held at the step, pinned to its position, and the post surface
+    starts at the bound: until the angle is within ``saturation_gap`` (1°) of
+    it, the optimiser is skipped and the wall takes its clamp limit.
+    Configured by ``[chemical_step]``.
+
+``trial_steps`` sets the horizon the optimiser sees, and the default of 2 is
+too short to resolve the contact angle's response to the wall.  Replayed on a
+chemical-step droplet (double-well, post-step window [30, 50]), varying ``phi``
+from 1 to 2 moved the angle by 0.2° over 2 steps, with a gradient that changed
+sign above ``phi`` ≈ 1.8, against 6° over 20 steps and 32° over 200 steps.
+Over 2 steps the optimiser random-walks ``phi``.  Use tens of steps where the
+angle must actually reach its bound; the cost is linear in ``trial_steps``.
 
 Contact-angle bookkeeping lives on
 :class:`~src.pipeline.state.state.WettingState`, which is carried through

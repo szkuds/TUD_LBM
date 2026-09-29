@@ -21,6 +21,7 @@ import src.operators.equilibrium
 import src.operators.force
 import src.operators.initialise
 import src.operators.macroscopic
+import src.operators.source_term
 import src.operators.streaming
 import src.operators.wetting
 from src.registry import OPERATOR_REGISTRY
@@ -153,7 +154,12 @@ class TestRegistryPopulated:
 
     def test_force_registered(self):
         names = get_operator_names("force")
-        assert names >= {"source_term_wb", "gravity_force", "electric_force"}
+        assert names >= {"gravity_masked_force", "gravity_force", "electric_force"}
+
+    def test_source_term_registered(self):
+        """The source term couples forces into the populations; it is not a force."""
+        assert "wb" in get_operator_names("source_term")
+        assert "source_term_wb" not in get_operator_names("force")
 
     def test_initialise_registered(self):
         names = get_operator_names("initialise")
@@ -167,12 +173,8 @@ class TestRegistryPopulated:
         assert names >= expected
 
     def test_wetting_registered(self):
-        names = get_operator_names("wetting")
-        assert names >= {"contact_angle", "contact_line_location", "hysteresis"}
-
-    def test_differential_registered(self):
-        names = get_operator_names("differential")
-        assert names >= {"gradient", "laplacian"}
+        """The ``wetting`` kind holds the hysteresis updates and nothing else."""
+        assert get_operator_names("wetting") == {"hysteresis", "chemical_step_hysteresis"}
 
     def test_lattice_registered(self):
         names = get_operator_names("lattice")
@@ -235,12 +237,6 @@ class TestCollisionFactoryViaRegistry:
 
         fn = build_collision_fn("mrt")
         assert callable(fn)
-
-    def test_unknown_raises(self):
-        from src.operators.collision import build_collision_fn
-
-        with pytest.raises(ValueError, match="Unknown collision"):
-            build_collision_fn("nonexistent")
 
 
 # =====================================================================

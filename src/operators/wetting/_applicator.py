@@ -11,17 +11,17 @@ from typing import Any
 import jax.numpy as jnp
 from src.operators.wetting._apply_edge import _apply_wetting_edge
 from src.operators.wetting._edge_config import _resolve_wetting_edges
-from src.registry import wetting_operator
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from src.config.chemical_step import ChemicalStepWall
 
 
-@wetting_operator(name="applicator")
 def build_wetting_applicator(
     rho_l: float,
     rho_v: float,
     bc_config: dict[str, Any] | None = None,
+    step: ChemicalStepWall | None = None,
 ) -> Callable[..., jnp.ndarray]:
     """Build a wetting ghost-cell applicator with baked-in static parameters.
 
@@ -31,6 +31,8 @@ def build_wetting_applicator(
         bc_config: Boundary-condition config dict, e.g.
             ``{"bottom": "wetting", "top": "bounce-back", ...}``.
             ``None`` defaults to bottom-only wetting.
+        step: The chemical-step wall (``SimulationConfig.chemical_step_wall``),
+            or ``None``. Splits the modification on its edge by surface.
 
     Returns:
         ``(grid_padded, phi_l, phi_r, d_rho_l, d_rho_r) → grid_padded``
@@ -73,6 +75,7 @@ def build_wetting_applicator(
                 phi_r,
                 d_rho_l,
                 d_rho_r,
+                step,
             )
         return grid_padded
 

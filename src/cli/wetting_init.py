@@ -36,7 +36,7 @@ _EQUILIBRIUM_REL_TOL = 0.01
 
 #: Stands in for Phase 1's final snapshot when ``--dry-run`` previews Phase 2:
 #: that file is only written by the run the preview is declining to start.
-#: ``physical_parameters._resolve_npz_path`` returns ``None`` for a path that
+#: ``src.config.init_field.resolve_npz_path`` returns ``None`` for a path that
 #: does not exist, so ``--overview`` degrades rather than raising.
 _DRY_RUN_SNAPSHOT = "<Phase 1 final snapshot>"
 

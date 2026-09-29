@@ -31,8 +31,8 @@ __all__ = [
 
 def build_optional_fields(
     setup: SimulationSetup, nx: int, ny: int, nz: int, d: int
-) -> tuple[jnp.ndarray | None, jnp.ndarray | None]:
-    """Build the optional ``force`` and ``force_ext`` fields.
+) -> tuple[jnp.ndarray | None, jnp.ndarray | None, jnp.ndarray]:
+    """Build the optional ``force`` and ``force_ext`` fields and the ``pressure`` seed.
 
     Returns zero-filled arrays for fields that will be written by the
     step function, and ``None`` for fields that remain unused.
@@ -48,12 +48,13 @@ def build_optional_fields(
         d: Lattice dimension (e.g. 2 for D2Q9).
 
     Returns:
-        A tuple ``(force, force_ext)``:
+        A tuple ``(force, force_ext, pressure)``:
 
         * ``force``: Zeros ``(nx, ny, nz, 1, d)`` for multiphase runs,
           ``None`` otherwise.
         * ``force_ext``: Zeros ``(nx, ny, nz, 1, d)`` when forces are active,
           ``None`` otherwise.
+        * ``pressure``: Zeros ``(nx, ny, nz, 1, 1)``, always.
 
     See Also:
         :func:`state._optional_fields._build_optional_fields`

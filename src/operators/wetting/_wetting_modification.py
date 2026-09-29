@@ -79,6 +79,7 @@ from src.operators.wetting._interface_crossings import interface_crossings
 
 if TYPE_CHECKING:
     from jax.typing import ArrayLike
+    from src.config.chemical_step import ChemicalStepWall
 
 #: Inset from each measured phase density, as a fraction of the measured contrast.
 _BAND_FRAC = 0.05
@@ -229,6 +230,29 @@ def wetting_regions(
     )
 
 
+def _surface_params(
+    region: WettingRegion,
+    phi: ArrayLike,
+    d_rho: ArrayLike,
+    step: ChemicalStepWall,
+    *,
+    pre_phi: float,
+    pre_d_rho: float,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Per-cell ``(phi, d_rho)`` for one side's band on a stepped wall.
+
+    Cells on the contact line's own side of the step take the line's live
+    parameters; cells across the step keep their own surface's fixed values
+    (:class:`~src.config.chemical_step.ChemicalStepWall`), so a line can never
+    make the other surface wet like its own.
+    """
+    post_cell = jnp.arange(region.mask.shape[0]) >= step.step_x
+    across = post_cell != (region.anchor >= step.step_x)
+    fixed_phi = jnp.where(post_cell, step.post_phi, pre_phi)
+    fixed_d_rho = jnp.where(post_cell, step.post_d_rho, pre_d_rho)
+    return jnp.where(across, fixed_phi, phi), jnp.where(across, fixed_d_rho, d_rho)
+
+
 def _apply_wetting_modification(
     edge_slice: jnp.ndarray,
     rho_l: ArrayLike,
@@ -237,6 +261,7 @@ def _apply_wetting_modification(
     phi_r: ArrayLike,
     d_rho_l: ArrayLike,
     d_rho_r: ArrayLike,
+    step: ChemicalStepWall | None = None,
 ) -> jnp.ndarray:
     """Apply wetting density modification at the liquid-vapour interface.
 
@@ -252,11 +277,21 @@ def _apply_wetting_modification(
         phi_r: Wetting potential for the right contact line.
         d_rho_l: Density offset for the left contact line.
         d_rho_r: Density offset for the right contact line.
+        step: The stepped wall, or ``None``. With one, band cells across the
+            step from their contact line keep their surface's fixed values
+            (:func:`_surface_params`).
 
     Returns:
         Modified edge slice.
     """
     left, right = wetting_regions(edge_slice, rho_l, rho_v)
+    if step is not None:
+        phi_l, d_rho_l = _surface_params(
+            left, phi_l, d_rho_l, step, pre_phi=step.pre_phi_left, pre_d_rho=step.pre_d_rho_left
+        )
+        phi_r, d_rho_r = _surface_params(
+            right, phi_r, d_rho_r, step, pre_phi=step.pre_phi_right, pre_d_rho=step.pre_d_rho_right
+        )
 
     # Wetting modification: phi * rho - d_rho, clamped to the wall's shared bounds.
     modified_left = jnp.clip(phi_l * edge_slice - d_rho_l, left.rho_lower, left.rho_upper)

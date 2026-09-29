@@ -80,10 +80,9 @@ class TestApplyCommonStepGuards:
             "equilibrium_fn": lambda _rho, _u, _lat: feq,
             "collision_fn": lambda f, _feq, _tau, _src=None: f,
             "streaming_fn": lambda f, _lat: f,
-            "bc_fn": lambda f_s, _f_c, _masks: f_s,
+            "bc_fn": lambda f_s, _f_c: f_s,
             "forces": None,
             "tau": 1.0,
-            "bc_masks": None,
             "gradient_density": lambda g: g,
             "lattice": lattice,
         }

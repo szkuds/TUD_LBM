@@ -436,7 +436,7 @@ def test_save_state_writes_array_fields_and_skips_none(tmp_path):
 
 def _multiphase_params(**overrides):
     from typing import Any
-    from src.operators.macroscopic import MultiphaseParams
+    from src.config.multiphase_params import MultiphaseParams
 
     base: dict[str, Any] = {
         "eos": "carnahan-starling",
@@ -454,28 +454,49 @@ def _multiphase_params(**overrides):
 
 
 def test_bulk_pressure_fn_carnahan_starling_matches_reference():
+    import jax.numpy as jnp
     from src.operators.macroscopic.eos import build_pressure_fn
     from src.operators.macroscopic.eos._carnahan_starling import _pressure_carnahan_starling
 
     mp = _multiphase_params()
+    assert mp.a_eos is not None
+    assert mp.b_eos is not None
+    assert mp.r_eos is not None
+    assert mp.t_eos is not None
     pressure_fn = build_pressure_fn(mp)
-    rho = np.linspace(mp.rho_v, mp.rho_l, 20)
+    rho = jnp.linspace(mp.rho_v, mp.rho_l, 20)
 
     expected = _pressure_carnahan_starling(rho, mp.a_eos, mp.b_eos, mp.r_eos, mp.t_eos)
-    np.testing.assert_allclose(pressure_fn(rho), np.asarray(expected))
+    np.testing.assert_allclose(np.asarray(pressure_fn(rho)), np.asarray(expected))
 
 
 def test_bulk_pressure_fn_double_well_matches_reference():
+    import jax.numpy as jnp
     from src.operators.macroscopic.eos import build_pressure_fn
     from src.operators.macroscopic.eos._double_well import _pressure_double_well
 
     mp = _multiphase_params(eos="double-well", a_eos=None, b_eos=None, r_eos=None, t_eos=None)
     pressure_fn = build_pressure_fn(mp)
-    rho = np.linspace(mp.rho_v, mp.rho_l, 20)
+    rho = jnp.linspace(mp.rho_v, mp.rho_l, 20)
 
     beta = 8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
     expected = _pressure_double_well(rho, beta, mp.rho_l, mp.rho_v)
-    np.testing.assert_allclose(pressure_fn(rho), np.asarray(expected))
+    np.testing.assert_allclose(np.asarray(pressure_fn(rho)), np.asarray(expected))
+
+
+def test_pressure_2d_reads_the_pressure_the_state_carries():
+    """The Laplace jump reads the pressure the macroscopic operator wrote, never recomputes it."""
+    import jax.numpy as jnp
+    from src.pipeline.state import State
+
+    pressure = jnp.arange(20.0).reshape(4, 5, 1, 1, 1)
+    state = State(f=jnp.ones((4, 5, 1, 9, 1)), rho=jnp.ones((4, 5, 1, 1, 1)), u=jnp.zeros(1), t=jnp.asarray(0))
+
+    np.testing.assert_array_equal(
+        st._pressure_2d(state._replace(pressure=pressure)), np.asarray(pressure)[:, :, 0, 0, 0]
+    )
+    with pytest.raises(ValueError, match="carries no pressure"):
+        st._pressure_2d(state)
 
 
 def test_bulk_pressure_fn_cs_missing_params_raises():
@@ -483,14 +504,6 @@ def test_bulk_pressure_fn_cs_missing_params_raises():
 
     mp = _multiphase_params(a_eos=None)
     with pytest.raises(ValueError, match="required for Carnahan-Starling"):
-        build_pressure_fn(mp)
-
-
-def test_bulk_pressure_fn_unknown_eos_raises():
-    from src.operators.macroscopic.eos import build_pressure_fn
-
-    mp = _multiphase_params(eos="not-an-eos")
-    with pytest.raises(ValueError, match="Unknown pressure scheme 'not-an-eos'"):
         build_pressure_fn(mp)
 
 

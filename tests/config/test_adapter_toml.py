@@ -58,18 +58,6 @@ MULTIPHASE_TOML = textwrap.dedent("""\
     top = "symmetry"
     bottom = "wetting"
 
-    [boundary_conditions.wetting_params]
-    phi_left = 1.0
-    phi_right = 1.0
-    d_rho_left = 0.0
-    d_rho_right = 0.0
-
-    [boundary_conditions.hysteresis_params]
-    ca_advancing = 90.0
-    ca_receding = 80.0
-    learning_rate = 0.05
-    max_iterations = 10
-
     [output]
     results_dir = "~/TUD_LBM_data/results"
 """)
@@ -248,23 +236,25 @@ class TestTomlAdapterMultiphase:
         assert bc["bottom"] == "wetting"
         assert bc["top"] == "symmetry"
 
-    def test_wetting_params_nested(self, multiphase_toml_file):
-        bundle = TomlAdapter().load(multiphase_toml_file)
-        bc = bundle.bc_config
-        assert bc is not None
-        assert "wetting_params" in bc
-        wp = bc["wetting_params"]
-        assert wp["phi_left"] == 1.0
-        assert wp["d_rho_left"] == 0.0
+    def test_boundary_parameter_section_nested(self, tmp_path):
+        p = tmp_path / "config_inlet.toml"
+        p.write_text(
+            textwrap.dedent("""\
+                [simulation_type]
+                type = "single_phase"
+                grid_shape = [20, 10]
 
-    def test_hysteresis_params_nested(self, multiphase_toml_file):
-        bundle = TomlAdapter().load(multiphase_toml_file)
-        bc = bundle.bc_config
-        assert bc is not None
-        assert "hysteresis_params" in bc
-        hp = bc["hysteresis_params"]
-        assert hp["ca_advancing"] == 90.0
-        assert hp["ca_receding"] == 80.0
+                [boundary_conditions]
+                left = "velocity-inlet"
+                right = "outlet"
+
+                [boundary_conditions.left_velocity_inlet]
+                u0 = 0.02
+            """),
+        )
+        bundle = TomlAdapter().load(str(p))
+        assert bundle.bc_config is not None
+        assert bundle.bc_config["left_velocity_inlet"] == {"u0": 0.02}
 
 
 # ── TomlAdapter: multiphase with forces ──────────────────────────────
