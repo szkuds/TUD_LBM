@@ -1,0 +1,52 @@
+# Rising bubble of Zhang, Guo & Wang, Phys. Fluids 34, 012110 (2022), Sec. III D.
+# Eo = 1, Mo = 1e-5 (Re = 17.8), R = 30 at (4R, 3R) in 8R x 14R, T = 0.8 Tc,
+# kappa = 0.01, rho_g nu_g / (rho_l nu_l) = 0.01, rho_0 = rho_l, lambda_v = 0.78.
+# Values derived in run_case.py:bubble_case (sigma = 0.08489, d_e = 2R).
+#
+# nt = 9500 stops just short of the blow-up at t ~ 10000: the 2-cell density
+# stripe grows along the gas jet inside the bubble (no filter applied).
+
+[simulation_type]
+simulation_name = "zhang2022_rising_bubble_stripe"
+type = "multiphase"
+grid_shape = [240, 420]
+lattice_type = "D2Q9"
+tau = 0.6463886130621317          # liquid: nu_l = cs2 (tau - 1/2) = 0.0488
+nt = 9500
+collision_scheme = "mrt"
+k_diag = [0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0]
+init_type = "multiphase_bubbles"
+
+[multiphase]
+eos = "van-der-waals"
+a_eos = 0.02295918367346939        # 9/392
+b_eos = 0.09523809523809523        # 2/21
+r_eos = 1.0
+t_eos = 0.05714285714285715        # 0.8 Tc, Tc = 1/14
+kappa = 0.01
+rho_l = 6.7645
+rho_v = 0.8388
+interface_width = 2
+lambda_v = 0.78
+tau_gas = 0.5118055051628373       # gas: nu_g = 0.00394
+
+[initialisation]
+centres = [[0.5, 0.21479713603818615]]   # (4R, 3R)
+radii = [0.125]                          # R = 30 = 0.125 * 240
+dispersed = "vapour"
+
+[boundary_conditions]
+top = "bounce-back"
+bottom = "bounce-back"
+left = "periodic"
+right = "periodic"
+
+[gravity_force]
+force_g = 3.979370463498921e-06
+reference_density = 6.7645
+
+[output]
+results_dir = "~/TUD_LBM_data/zhang2022"
+save_interval = 500
+save_fields = ["rho", "u"]
+plot_fields = ["density", "velocity"]

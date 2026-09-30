@@ -26,9 +26,11 @@ Usage::
 """
 
 from __future__ import annotations
+import functools
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 from typing import cast
+import jax.numpy as jnp
 from src.lattice.lattice import Lattice
 from src.lattice.lattice import build_lattice
 from src.operators.differential import build_diff_ops
@@ -36,9 +38,10 @@ from src.operators.force import build_forces
 from src.operators.source_term import build_source_fn
 
 if TYPE_CHECKING:
-    import jax.numpy as jnp
     from src.config.multiphase_params import MultiphaseParams
+    from src.config.reference_pressure import ReferencePressure
     from src.config.simulation_config import SimulationConfig
+    from src.config.viscosity_params import ViscosityParams
     from src.operators.protocols import BoundaryOperator
     from src.operators.protocols import CollisionOperator
     from src.operators.protocols import DifferentialOperator
@@ -68,9 +71,15 @@ class SimulationSetup(NamedTuple):
             and any metadata that does not enter the JIT boundary.
         lattice: The :class:`~setup.lattice.Lattice` pytree.
         grid_shape: Spatial dimensions, e.g. ``(64, 64)``.
-        tau: Relaxation time (> 0.5).
+        tau: Relaxation time of the shear moments (> 0.5) passed to the
+            collision: ``lambda_v`` when configured, else the config's ``tau``.
         collision_scheme: Name of the collision model (``"bgk"`` / ``"mrt"``).
-        k_diag: MRT relaxation rates (``None`` for BGK).
+        k_diag: MRT relaxation rates (``None`` for BGK); already bound into
+            ``collision_fn``.
+        viscosity_params: Viscous-stress parameters of the decoupled-viscosity
+            equilibrium; ``None`` when the term is off.
+        reference_pressure: Hydrostatic reference pressure ``p_g`` of a
+            buoyancy-referenced gravity; ``None`` without one.
         forces: The configured forces, each a bound
             :class:`~src.operators.protocols.ForceOperator`; empty when none are active.
         source_fn: Couples the total force into the populations
@@ -121,6 +130,8 @@ class SimulationSetup(NamedTuple):
     forces: tuple[ForceOperator, ...] = ()
     source_fn: SourceTermOperator | None = None
     multiphase_params: MultiphaseParams | None = None
+    viscosity_params: ViscosityParams | None = None
+    reference_pressure: ReferencePressure | None = None
     obstacle_mask: jnp.ndarray | None = None
     obstacle_fn: ObstacleOperator | None = None
 
@@ -213,6 +224,10 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
 
     # Build operator closures (pre-resolved at setup time)
     collision_fn = build_collision_fn(config.collision_scheme)
+    if config.k_diag is not None:
+        # A keyword the protocol lacks is bound, not typed: the configured rates
+        # (shear entries already coupled to the relaxation time) reach collide_mrt.
+        collision_fn = functools.partial(collision_fn, k_diag=jnp.asarray(config.k_diag))
     equilibrium_fn = build_equilibrium_fn("wb")
     streaming_fn = build_streaming_fn(config.periodic_axes)
     macroscopic_fn = (
@@ -259,12 +274,14 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         config=config,
         lattice=lattice,
         grid_shape=tuple(config.grid_shape),
-        tau=config.tau,
+        tau=config.relaxation_time,
         collision_scheme=config.collision_scheme,
         k_diag=config.k_diag,
         forces=forces,
         source_fn=build_source_fn(),
         multiphase_params=mp_params,
+        viscosity_params=config.viscosity_params,
+        reference_pressure=config.reference_pressure,
         obstacle_mask=obstacle_mask,
         obstacle_fn=obstacle_fn,
         gradient_standard=gradient_standard,

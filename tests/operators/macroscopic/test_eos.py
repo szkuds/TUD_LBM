@@ -475,7 +475,7 @@ class TestPressureRegistry:
         """The ``pressure`` kind is the capability set consumers query for availability."""
         from src.registry import get_operator_names
 
-        assert get_operator_names("pressure") == {"double-well", "carnahan-starling"}
+        assert get_operator_names("pressure") == {"double-well", "carnahan-starling", "van-der-waals"}
         assert get_operator_names("pressure") <= get_operator_names("eos")
 
 
@@ -553,3 +553,145 @@ class TestSurfaceTensionRegistry:
 # ---------------------------------------------------------------------------
 # build_macroscopic_fn
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Van der Waals (Zhang, Guo & Wang 2022): a = 9/392, b = 2/21, R = 1 -> T_c = 1/14
+# ---------------------------------------------------------------------------
+
+_VDW_A = 9.0 / 392.0
+_VDW_B = 2.0 / 21.0
+_VDW_TC = 1.0 / 14.0
+
+
+def _vdw_mp(t: float):
+    from src.config.multiphase_params import MultiphaseParams
+
+    return MultiphaseParams(
+        eos="van-der-waals",
+        kappa=0.01,
+        rho_l=6.7645,
+        rho_v=0.8388,
+        interface_width=4,
+        a_eos=_VDW_A,
+        b_eos=_VDW_B,
+        r_eos=1.0,
+        t_eos=t,
+    )
+
+
+class TestVanDerWaals:
+    """Bulk ``mu_0`` / ``p_0`` of one free energy, and the Maxwell construction."""
+
+    @pytest.mark.parametrize(
+        ("t_ratio", "rho_v", "rho_l"),
+        [(0.8, 0.8388, 6.7645)],
+    )
+    def test_coexistence_matches_the_paper(self, t_ratio, rho_v, rho_l):
+        from src.operators.macroscopic.eos._van_der_waals import coexistence_densities
+
+        measured = coexistence_densities(_VDW_A, _VDW_B, 1.0, t_ratio * _VDW_TC)
+
+        assert measured == pytest.approx((rho_v, rho_l), abs=1e-4)
+
+    @pytest.mark.parametrize("t_ratio", [0.6, 0.7, 0.8, 0.95])
+    def test_coexistence_equalises_pressure_and_chemical_potential(self, t_ratio):
+        from src.operators.macroscopic.eos._van_der_waals import _eos_van_der_waals
+        from src.operators.macroscopic.eos._van_der_waals import _pressure_van_der_waals
+        from src.operators.macroscopic.eos._van_der_waals import coexistence_densities
+
+        t = t_ratio * _VDW_TC
+        rho_v, rho_l = coexistence_densities(_VDW_A, _VDW_B, 1.0, t)
+        params = (_VDW_A, _VDW_B, 1.0, t)
+
+        assert rho_v < 1.0 / (3.0 * _VDW_B) < rho_l
+        assert float(_pressure_van_der_waals(jnp.asarray(rho_v), *params)) == pytest.approx(
+            float(_pressure_van_der_waals(jnp.asarray(rho_l), *params)), rel=1e-8
+        )
+        assert float(_eos_van_der_waals(jnp.asarray(rho_v), *params)) == pytest.approx(
+            float(_eos_van_der_waals(jnp.asarray(rho_l), *params)), rel=1e-8
+        )
+
+    def test_supercritical_temperature_is_rejected(self):
+        from src.operators.macroscopic.eos._van_der_waals import coexistence_densities
+
+        with pytest.raises(ValueError, match="critical temperature"):
+            coexistence_densities(_VDW_A, _VDW_B, 1.0, 1.05 * _VDW_TC)
+
+    def test_pressure_is_the_thermodynamic_partner_of_mu(self):
+        """``dp_0/drho = rho * dmu_0/drho`` — the Gibbs-Duhem relation of one free energy."""
+        from src.operators.macroscopic.eos import build_eos_fn
+        from src.operators.macroscopic.eos import build_pressure_fn
+
+        mp = _vdw_mp(0.8 * _VDW_TC)
+        mu = build_eos_fn("van-der-waals", mp)
+        p = build_pressure_fn(mp)
+        rho = jnp.linspace(0.5, 7.5, 29)
+
+        dp = jax.vmap(jax.grad(p))(rho)
+        dmu = jax.vmap(jax.grad(mu))(rho)
+
+        np.testing.assert_allclose(np.asarray(dp), np.asarray(rho * dmu), rtol=1e-4, atol=1e-6)
+
+    def test_config_requires_the_eos_parameters(self):
+        from src.config import DictAdapter
+
+        with pytest.raises(ValueError, match="'t_eos' is required when eos = 'van-der-waals'"):
+            DictAdapter().load(
+                {
+                    "sim_type": "multiphase",
+                    "grid_shape": (16, 16),
+                    "eos": "van-der-waals",
+                    "kappa": 0.01,
+                    "rho_l": 6.7645,
+                    "rho_v": 0.8388,
+                    "interface_width": 4,
+                    "a_eos": _VDW_A,
+                    "b_eos": _VDW_B,
+                    "r_eos": 1.0,
+                }
+            )
+
+
+class TestCarnahanStarlingCoexistence:
+    """Maxwell construction for CS, keyed on ``(a, b, r, t)`` like the vdW module."""
+
+    def test_shipped_parameters(self):
+        """The shipped ``rho_l = 12.18`` is right to 0.03%; ``rho_v = 0.015`` is 10.7% low."""
+        from src.operators.macroscopic.eos._carnahan_starling import coexistence_densities
+
+        rho_v, rho_l = coexistence_densities(_A, _B, _R, _T)
+
+        assert rho_v == pytest.approx(0.01680446, rel=1e-6)
+        assert rho_l == pytest.approx(12.18327187, rel=1e-6)
+
+    @pytest.mark.parametrize("t_scale", [0.7, 1.0, 1.3])
+    def test_coexistence_equalises_pressure_and_chemical_potential(self, t_scale):
+        from src.operators.macroscopic.eos._carnahan_starling import _cs_mu_float
+        from src.operators.macroscopic.eos._carnahan_starling import _cs_pressure_float
+        from src.operators.macroscopic.eos._carnahan_starling import coexistence_densities
+
+        params = (_A, _B, _R, t_scale * _T)
+        rho_v, rho_l = coexistence_densities(*params)
+
+        assert rho_v < rho_l
+        assert _cs_pressure_float(rho_v, *params) == pytest.approx(_cs_pressure_float(rho_l, *params), rel=1e-8)
+        assert _cs_mu_float(rho_v, *params) == pytest.approx(_cs_mu_float(rho_l, *params), rel=1e-8)
+
+    def test_analytic_pressure_derivative_matches_numerical(self):
+        from src.operators.macroscopic.eos._carnahan_starling import _cs_dp_drho
+        from src.operators.macroscopic.eos._carnahan_starling import _cs_pressure_float
+
+        h = 1e-6
+        for rho in (0.01, 0.5, 3.5, 9.0, 12.2):
+            numerical = (
+                _cs_pressure_float(rho * (1 + h), _A, _B, _R, _T) - _cs_pressure_float(rho * (1 - h), _A, _B, _R, _T)
+            ) / (2 * rho * h)
+            assert _cs_dp_drho(rho, _A, _B, _R, _T) == pytest.approx(numerical, rel=1e-6, abs=1e-12)
+
+    def test_supercritical_temperature_is_rejected(self):
+        from src.operators.macroscopic.eos._carnahan_starling import coexistence_densities
+
+        t_critical = 0.3773 * _A / (_B * _R)
+        with pytest.raises(ValueError, match="critical temperature"):
+            coexistence_densities(_A, _B, _R, 2.0 * t_critical)

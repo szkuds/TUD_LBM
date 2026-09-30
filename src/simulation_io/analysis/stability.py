@@ -11,6 +11,11 @@ on-device metrics and ships it to a host callback:
 * ``min rho`` / ``max rho`` — density range
 * checkerboard amplitude — L2 norm of ``rho - 3x3-smoothed rho``
   restricted to the droplet wake (vapor phase, interface excluded)
+* stripe amplitude — relative RMS of the 1-D two-cell ``(-1)**k`` mode along
+  x or y in the wake, which the 3x3 checkerboard residual under-reports
+* vapour Mach — ``max |u| / c_s`` in the wake, with ``c_s**2 = dp_0/drho`` of
+  the run's EOS: the ``wb`` equilibrium carries no lattice pressure, so this
+  is the only sound speed the vapour has
 
 The host callback appends one row per sample to ``stability_log.csv``
 (flushed per write, so the curve survives a crash), prints a fixed-width
@@ -35,16 +40,17 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from src.config.multiphase_params import MultiphaseParams
     from src.operators.protocols import DifferentialOperator
+    from src.operators.protocols import EosOperator
     from src.pipeline.state.state import State
 
 logger = logging.getLogger(__name__)
 
 _CSV_NAME = "stability_log.csv"
-_CSV_HEADER = "t,max_u,max_grad_mu,rho_min,rho_max,checkerboard_amp,n_wake_cells\n"
+_CSV_HEADER = "t,max_u,max_grad_mu,rho_min,rho_max,checkerboard_amp,n_wake_cells,stripe_amp,vapour_mach\n"
 _METRIC_NAMES = ("max_u", "max_grad_mu", "rho_min", "rho_max", "checkerboard_amp")
 
-#: 60 characters — one line on any terminal, so consecutive samples stay
-#: column-aligned and a drifting metric is visible in place.
+#: One line per sample, so consecutive samples stay column-aligned and a
+#: drifting metric is visible in place.
 _TABLE = DebugTable(
     (
         Column("t", "t", 8, fmt("d")),
@@ -54,6 +60,8 @@ _TABLE = DebugTable(
         Column("rho_max", "rho_max", 8, fmt(".5f")),
         Column("checkerboard_amp", "cb", 8, fmt(".2e")),
         Column("n_wake_cells", "n_wake", 8, fmt("d")),
+        Column("stripe_amp", "stripe", 8, fmt(".2e")),
+        Column("vapour_mach", "Ma_vap", 8, fmt(".3f")),
     )
 )
 
@@ -80,6 +88,60 @@ def checkerboard_amplitude(rho: jnp.ndarray, mask: jnp.ndarray) -> jnp.ndarray:
     sx = (jnp.roll(rho, 1, axis=0) + rho + jnp.roll(rho, -1, axis=0)) / 3.0
     smooth = (jnp.roll(sx, 1, axis=1) + sx + jnp.roll(sx, -1, axis=1)) / 3.0
     return jnp.sqrt(jnp.sum(jnp.where(mask, (rho - smooth) ** 2, 0.0)))
+
+
+def stripe_amplitude(rho: jnp.ndarray, mask: jnp.ndarray, axis: int) -> jnp.ndarray:
+    """Relative RMS zig-zag amplitude of the two-cell ``(-1)**k`` mode along *axis*, on *mask*.
+
+    With ``d_k = rho[k+1] - rho[k]``, a node is a zig-zag node when ``d_k`` and
+    ``d_{k-1}`` have opposite signs, and its amplitude is ``min(|d_k|, |d_{k-1}|) / 2``:
+    exactly ``eps * rho0`` for a pure stripe ``rho0 * (1 + eps * (-1)**k)`` and exactly
+    zero on any monotone profile. That exactness is the point. A filter residual such
+    as ``rho - (rho[k-1] + 2 rho[k] + rho[k+1]) / 4`` also isolates the Nyquist mode, but
+    it reads ``(cosh(1/lambda) - 1) / 2`` on an exponential of decay length ``lambda``,
+    and the vapour-side tail of a high-ratio interface is exactly such an exponential
+    (``lambda ~ 1`` cell): about 0.17 with no oscillation present.
+
+    The amplitude is divided by the local density because the mode matters relative
+    to the phase it grows in: a 1e-4 stripe is noise on the liquid but a 10%
+    perturbation of a ``rho_v = 1e-3`` vapour. Rolls wrap, as in
+    :func:`checkerboard_amplitude`.
+
+    Args:
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
+        mask: Boolean mask, broadcastable to ``rho``.
+        axis: Spatial axis, ``0`` (x) or ``1`` (y).
+
+    Returns:
+        Scalar ``sqrt(mean_mask((amplitude / rho)**2))``; ``0`` on an empty mask.
+    """
+    d_fwd = jnp.roll(rho, -1, axis=axis) - rho
+    d_bwd = rho - jnp.roll(rho, 1, axis=axis)
+    zigzag = jnp.where(d_fwd * d_bwd < 0.0, 0.5 * jnp.minimum(jnp.abs(d_fwd), jnp.abs(d_bwd)), 0.0)
+    rel = zigzag / jnp.maximum(jnp.abs(rho), 1e-30)
+    count = jnp.maximum(jnp.sum(mask), 1)
+    return jnp.sqrt(jnp.sum(jnp.where(mask, rel**2, 0.0)) / count)
+
+
+def local_mach(rho: jnp.ndarray, u: jnp.ndarray, pressure_fn: EosOperator) -> jnp.ndarray:
+    """Per-node ``|u| / c_s`` with ``c_s**2 = dp_0/drho`` of the bulk pressure.
+
+    ``dp_0/drho`` is the forward-mode derivative of the elementwise *pressure_fn*,
+    so it is exact rather than a finite difference. Nodes inside the spinodal
+    (``dp_0/drho <= 0``, the diffuse interface) have no sound speed and report
+    ``0``; mask them out rather than reading them.
+
+    Args:
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
+        u: Velocity field, shape ``(nx, ny, nz, 1, d)``.
+        pressure_fn: Bulk pressure ``p_0(rho)`` from ``build_pressure_fn(mp)``.
+
+    Returns:
+        Mach number field, shape ``(nx, ny, nz, 1, 1)``.
+    """
+    _, c2 = jax.jvp(pressure_fn, (rho,), (jnp.ones_like(rho),))
+    speed = jnp.sqrt(jnp.sum(u**2, axis=-1, keepdims=True))
+    return jnp.where(c2 > 0.0, speed / jnp.sqrt(jnp.where(c2 > 0.0, c2, 1.0)), 0.0)
 
 
 def wake_mask(
@@ -121,6 +183,7 @@ def compute_stability_metrics(
     *,
     gradient_density: DifferentialOperator | None = None,
     mp: MultiphaseParams | None = None,
+    pressure_fn: EosOperator | None = None,
     vapor_frac: float = 0.2,
     grad_frac: float = 0.05,
 ) -> jnp.ndarray:
@@ -133,11 +196,12 @@ def compute_stability_metrics(
     None``) report 0.
 
     Without multiphase parameters the checkerboard mask falls back to
-    the whole domain.
+    the whole domain. Without *pressure_fn* the vapour Mach number is 0.
 
     Returns:
         Flat vector ``[max_u, max_grad_mu, rho_min, rho_max,
-        checkerboard_amp, n_wake_cells]``.
+        checkerboard_amp, n_wake_cells, stripe_amp, vapour_mach]``, where
+        ``stripe_amp`` is the larger of the x and y :func:`stripe_amplitude`.
     """
     max_u = jnp.max(jnp.sqrt(jnp.sum(state.u**2, axis=-1)))
 
@@ -158,8 +222,13 @@ def compute_stability_metrics(
 
     cb_amp = checkerboard_amplitude(state.rho, mask)
     n_wake = jnp.sum(mask).astype(state.rho.dtype)
+    stripe = jnp.maximum(stripe_amplitude(state.rho, mask, 0), stripe_amplitude(state.rho, mask, 1))
+    if pressure_fn is not None:
+        vapour_mach = jnp.max(jnp.where(mask, local_mach(state.rho, state.u, pressure_fn), 0.0))
+    else:
+        vapour_mach = jnp.zeros(())
 
-    return jnp.stack([max_u, max_grad_mu, rho_min, rho_max, cb_amp, n_wake])
+    return jnp.stack([max_u, max_grad_mu, rho_min, rho_max, cb_amp, n_wake, stripe, vapour_mach])
 
 
 def _host_check(out_dir: Path, metrics: np.ndarray, t: int) -> None:
@@ -180,7 +249,7 @@ def _host_check(out_dir: Path, metrics: np.ndarray, t: int) -> None:
     with csv_path.open("a", encoding="utf-8") as fh:
         if write_header:
             fh.write(_CSV_HEADER)
-        fh.write(f"{it},{m[0]:.8e},{m[1]:.8e},{m[2]:.8e},{m[3]:.8e},{m[4]:.8e},{int(m[5])}\n")
+        fh.write(f"{it},{m[0]:.8e},{m[1]:.8e},{m[2]:.8e},{m[3]:.8e},{m[4]:.8e},{int(m[5])},{m[6]:.8e},{m[7]:.8e}\n")
 
     _TABLE.emit(
         {
@@ -191,6 +260,8 @@ def _host_check(out_dir: Path, metrics: np.ndarray, t: int) -> None:
             "rho_max": m[3],
             "checkerboard_amp": m[4],
             "n_wake_cells": int(m[5]),
+            "stripe_amp": m[6],
+            "vapour_mach": m[7],
         }
     )
 
@@ -230,6 +301,13 @@ def make_stability_callback(
         and aborts the scan on NaN.
     """
     out_path = Path(out_dir)
+    pressure_fn = None
+    if mp is not None:
+        from src.operators.macroscopic.eos import build_pressure_fn
+        from src.registry import get_operator_names
+
+        if mp.eos in get_operator_names("pressure"):
+            pressure_fn = build_pressure_fn(mp)
     # A fresh run reprints the column header rather than continuing the
     # cadence of the previous run in the same interpreter (sweeps, tests).
     _TABLE.reset()
@@ -242,6 +320,7 @@ def make_stability_callback(
             state,
             gradient_density=gradient_density,
             mp=mp,
+            pressure_fn=pressure_fn,
             vapor_frac=vapor_frac,
             grad_frac=grad_frac,
         )

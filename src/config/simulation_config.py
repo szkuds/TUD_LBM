@@ -36,6 +36,10 @@ from src.config.init_field import load_init_wetting
 from src.config.init_field import measure_init_phase_densities
 from src.config.multiphase_params import MultiphaseParams
 from src.config.obstacle_mask import build_obstacle_mask
+from src.config.reference_pressure import ReferencePressure
+from src.config.reference_pressure import build_reference_pressure
+from src.config.viscosity_params import ViscosityParams
+from src.config.viscosity_params import build_viscosity_params
 from src.config.wetting_defaults import NEUTRAL_WETTING_CONFIG
 from src.config.wetting_defaults import resolve_wetting_defaults
 
@@ -320,6 +324,13 @@ class SimulationConfig:
     b_eos: float | None = array_field(default=None, section="multiphase")
     r_eos: float | None = array_field(default=None, section="multiphase")
     t_eos: float | None = array_field(default=None, section="multiphase")
+    # Shear relaxation time decoupled from the viscosity (Zhang, Guo & Wang 2022):
+    # tau keeps setting the liquid viscosity, lambda_v the MRT/BGK shear rate, and
+    # the equilibrium's viscous-stress term A*S makes up the difference.
+    lambda_v: float | None = array_field(default=None, section="multiphase")
+    # Gas viscosity nu_v = cs2*(tau_gas - 0.5); the viscosity is interpolated
+    # linearly in rho between the phases. Unset means tau (uniform viscosity).
+    tau_gas: float | None = array_field(default=None, section="multiphase")
 
     # ── Extra / extensible ───────────────────────────────────────
     extra: dict[str, Any] = field(default_factory=dict, metadata={CONFIG_SECTION: "extra"})
@@ -354,20 +365,22 @@ class SimulationConfig:
         self._couple_mrt_shear_to_tau()
 
     def _couple_mrt_shear_to_tau(self) -> None:
-        """Rewrite the shear entries of ``k_diag`` to ``1/tau``.
+        """Rewrite the shear entries of ``k_diag`` to ``1/relaxation_time``.
 
         The MRT shear moments set the kinematic viscosity, so left free they
         would decouple the run from ``nu = cs2*(tau - 0.5)`` — the viscosity
         every reported ``Oh``, ``La``, ``Re`` and ``Ar`` is derived from.
-        Deriving here rather than inside the collision operator keeps a saved
-        config truthful about the rates its run actually used.
+        With ``lambda_v`` set the shear rate is ``1/lambda_v`` and the
+        viscous-stress term restores ``nu``. Deriving here rather than inside
+        the collision operator keeps a saved config truthful about the rates
+        its run actually used.
         """
         if self.collision_scheme != "mrt" or self.k_diag is None:
             return
 
         from src.operators.collision._mrt import couple_shear_to_tau
 
-        object.__setattr__(self, "k_diag", couple_shear_to_tau(self.k_diag, float(self.tau)))
+        object.__setattr__(self, "k_diag", couple_shear_to_tau(self.k_diag, self.relaxation_time))
 
     def _apply_defaults(self) -> None:
         self._apply_force_defaults()
@@ -424,6 +437,7 @@ class SimulationConfig:
         self._validate_boundary_conditions()
         self._validate_obstacle()
         self._validate_hysteresis()
+        self._validate_viscosity()
 
     def _validate_hysteresis(self) -> None:
         """Reject ``[hysteresis]`` keys the optimiser does not read.
@@ -542,6 +556,34 @@ class SimulationConfig:
             msg = f"tau must be > {MIN_TAU_VALUE} for stability, got {self.tau}"
             raise ValueError(msg)
 
+    def _validate_viscosity(self) -> None:
+        """Validate ``lambda_v`` / ``tau_gas`` and the positivity bound on ``A``.
+
+        The viscous-stress parameter ``A = lambda_v - 1/2 - nu/cs2`` needs the
+        density interpolation between the phases, so it is multiphase-only.
+        ``|A| < lambda_v - 1/2`` keeps the scheme stable (Zhang, Guo & Wang 2022);
+        ``A`` is linear in ``rho``, so checking both phase endpoints bounds it.
+        """
+        if self.lambda_v is None and self.tau_gas is None:
+            return
+        if not self.is_multiphase:
+            msg = "lambda_v and tau_gas require a multiphase sim_type"
+            raise ValueError(msg)
+        for name in ("lambda_v", "tau_gas"):
+            value = getattr(self, name)
+            if value is not None and value <= MIN_TAU_VALUE:
+                msg = f"{name} must be > {MIN_TAU_VALUE}, got {value}"
+                raise ValueError(msg)
+        margin = self.relaxation_time - MIN_TAU_VALUE
+        for name, tau_phase in (("tau", self.tau), ("tau_gas", self.tau_gas or self.tau)):
+            a_phase = self.relaxation_time - tau_phase
+            if abs(a_phase) >= margin:
+                msg = (
+                    f"|A| = |lambda_v - {name}| = {abs(a_phase):.6g} must be < lambda_v - 0.5 = {margin:.6g}; "
+                    f"raise lambda_v or bring {name} closer to it"
+                )
+                raise ValueError(msg)
+
     def _validate_time_steps(self) -> None:
         """Validate time stepping parameters."""
         if self.nt <= 0:
@@ -600,10 +642,10 @@ class SimulationConfig:
             msg = f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'"
             raise ValueError(msg)
 
-        if self.eos == "carnahan-starling":
+        if self.eos in {"carnahan-starling", "van-der-waals"}:
             for name in ("a_eos", "b_eos", "r_eos", "t_eos"):
                 if getattr(self, name) is None:
-                    msg = f"'{name}' is required when eos = 'carnahan-starling'"
+                    msg = f"'{name}' is required when eos = '{self.eos}'"
                     raise ValueError(msg)
 
     @property
@@ -644,6 +686,36 @@ class SimulationConfig:
             r_eos=self.r_eos,
             t_eos=self.t_eos,
         )
+
+    @property
+    def relaxation_time(self) -> float:
+        """Relaxation time of the shear moments: ``lambda_v`` when set, else ``tau``."""
+        return float(self.tau if self.lambda_v is None else self.lambda_v)
+
+    @property
+    def viscosity_params(self) -> ViscosityParams | None:
+        """The viscous-stress parameters, or ``None`` when the term is off.
+
+        Off unless ``lambda_v`` or ``tau_gas`` is configured; with neither the
+        shear rate is ``1/tau`` and ``A`` is identically zero.
+        ``_validate_viscosity`` has already restricted these to multiphase runs.
+        """
+        if self.lambda_v is None and self.tau_gas is None:
+            return None
+        assert self.rho_l is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        assert self.rho_v is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        return build_viscosity_params(
+            relaxation_time=self.relaxation_time,
+            tau_liquid=float(self.tau),
+            tau_gas=float(self.tau if self.tau_gas is None else self.tau_gas),
+            rho_l=float(self.rho_l),
+            rho_v=float(self.rho_v),
+        )
+
+    @property
+    def reference_pressure(self) -> ReferencePressure | None:
+        """``p_g = rho_0 g.x`` of a ``[gravity_force]`` with ``reference_density``, else ``None``."""
+        return build_reference_pressure(self.gravity_force, self.grid_shape)
 
     @property
     def boundary_edges(self) -> tuple[BoundaryEdge, ...]:

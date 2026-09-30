@@ -21,6 +21,7 @@ The *rest direction* (``i = 0``) is computed via mass conservation:
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
+from src.operators.equilibrium._viscous_stress import viscous_stress_term
 from src.registry import equilibrium_operator
 
 if TYPE_CHECKING:
@@ -32,6 +33,8 @@ def compute_equilibrium(
     rho: jnp.ndarray,
     u: jnp.ndarray,
     lattice: Lattice,
+    viscous_stress: jnp.ndarray | None = None,
+    reference_pressure: jnp.ndarray | None = None,
 ) -> jnp.ndarray:
     """Compute the well-balanced equilibrium distribution.
 
@@ -40,6 +43,10 @@ def compute_equilibrium(
         u: Velocity field, shape ``(nx, ny, nz, 1, 2)``.
         lattice: :class:`~setup.lattice.Lattice` with weights ``w``
             and velocity vectors ``c``.
+        viscous_stress: Optional ``A*S``, shape ``(nx, ny, nz, 1, d, d)``;
+            adds ``cs2*rho*A*S`` to the second moment.
+        reference_pressure: Optional ``p_g``, shape ``(nx, ny, nz, 1, 1)``;
+            adds ``p_g I`` to the second moment at unchanged mass.
 
     Returns:
         Equilibrium populations ``feq``, shape ``(nx, ny, nz, q, 1)``.
@@ -48,4 +55,11 @@ def compute_equilibrium(
 
     cu = jnp.sum(u * lattice.c, axis=-1, keepdims=True)  # (nx, ny, nz, 1, d)
 
-    return lattice.w * rho * (1.0 + 3.0 * cu + 4.5 * cu**2 - 1.5 * u2)  # (nx, ny, nz, q, 1)
+    feq = lattice.w * rho * (1.0 + 3.0 * cu + 4.5 * cu**2 - 1.5 * u2)  # (nx, ny, nz, q, 1)
+    if viscous_stress is not None:
+        feq = feq + viscous_stress_term(rho, viscous_stress, lattice)
+    if reference_pressure is not None:
+        # w_i p_g / cs2 on the moving populations, -(1 - w_0) p_g / cs2 at rest.
+        rest = jnp.zeros_like(lattice.w).at[..., 0, :].set(1.0)
+        feq = feq + (lattice.w - rest) * reference_pressure * 3.0
+    return feq

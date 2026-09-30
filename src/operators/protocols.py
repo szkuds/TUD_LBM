@@ -120,7 +120,7 @@ class EquilibriumOperator(Protocol):
 
     Signature::
 
-        def compute_equilibrium(rho, u, lattice) -> feq
+        def compute_equilibrium(rho, u, lattice, viscous_stress=None, reference_pressure=None) -> feq
     """
 
     def __call__(
@@ -128,6 +128,8 @@ class EquilibriumOperator(Protocol):
         rho: jnp.ndarray,
         u: jnp.ndarray,
         lattice: Lattice,
+        viscous_stress: jnp.ndarray | None = None,
+        reference_pressure: jnp.ndarray | None = None,
     ) -> jnp.ndarray:
         """Compute the equilibrium distribution.
 
@@ -136,6 +138,10 @@ class EquilibriumOperator(Protocol):
             u: Velocity field, shape ``(nx, ny, nz, 1, d)`` where d ∈ {2, 3}.
             lattice: :class:`~setup.lattice.Lattice` with weights ``w``
                 and velocity vectors ``c``.
+            viscous_stress: ``A*S`` of the decoupled-viscosity model, shape
+                ``(nx, ny, nz, 1, d, d)``; ``None`` leaves the equilibrium plain.
+            reference_pressure: Hydrostatic reference pressure ``p_g``, shape
+                ``(nx, ny, nz, 1, 1)``, added as ``p_g I`` to the second moment.
 
         Returns:
             Equilibrium distribution ``feq``, shape ``(nx, ny, nz, q, 1)``.
@@ -419,7 +425,7 @@ class SourceTermOperator(Protocol):
 
     Signature::
 
-        def source(rho, u, force, lattice, *, gradient) -> src   # (nx, ny, nz, q, 1)
+        def source(rho, u, force, lattice, *, gradient, reference_gradient=None) -> src   # (nx, ny, nz, q, 1)
     """
 
     def __call__(
@@ -430,8 +436,9 @@ class SourceTermOperator(Protocol):
         lattice: Lattice,
         *,
         gradient: DifferentialOperator,
+        reference_gradient: jnp.ndarray | None = None,
     ) -> jnp.ndarray:
-        """Compute the source term."""
+        """Compute the source term; ``reference_gradient`` is ``grad p_g`` when a reference pressure is active."""
         ...
 
 
