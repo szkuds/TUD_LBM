@@ -8,6 +8,7 @@ as one with the plain ``gravity_force``.
 """
 
 from __future__ import annotations
+import functools
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -15,9 +16,8 @@ import pytest
 from src.config import DictAdapter
 from src.lattice.lattice import build_lattice
 from src.operators.equilibrium import build_equilibrium_fn
-from src.operators.equilibrium._equilibrium_improved_well_balanced import build_improved_equilibrium
 from src.operators.source_term import build_source_fn
-from src.operators.source_term._source_well_balanced_referenced import build_referenced_source
+from src.registry import get_operators
 
 NX, NY = 6, 8
 _G = 1e-4
@@ -117,7 +117,12 @@ def test_equilibrium_adds_p_g_to_the_second_moment_only(lattice):
     rho = jnp.asarray(rng.uniform(0.5, 2.0, (NX, NY, 1, 1, 1)))
     u = jnp.asarray(rng.uniform(-0.05, 0.05, (NX, NY, 1, 1, 2)))
     p_g = jnp.asarray(rng.uniform(-0.01, 0.01, (NX, NY, 1, 1, 1)))
-    improved = build_improved_equilibrium(viscosity=None, reference_pressure=p_g, gradient=_gradient(lattice))
+    improved = functools.partial(
+        get_operators("equilibrium")["wb_improved"].target,
+        viscosity=None,
+        reference_pressure=p_g,
+        gradient=_gradient(lattice),
+    )
 
     plain = _moments(build_equilibrium_fn("wb")(rho, u, lattice), lattice)
     shifted = _moments(improved(rho, u, lattice), lattice)
@@ -138,7 +143,8 @@ def test_source_subtracts_grad_p_g_from_the_velocity_force_product(lattice):
     gradient = _gradient(lattice)
 
     plain = _moments(build_source_fn()(rho, u, force, lattice, gradient=gradient), lattice)
-    shifted = _moments(build_referenced_source(grad_p)(rho, u, force, lattice, gradient=gradient), lattice)
+    referenced = functools.partial(get_operators("source_term")["wb_referenced"].target, reference_gradient=grad_p)
+    shifted = _moments(referenced(rho, u, force, lattice, gradient=gradient), lattice)
 
     np.testing.assert_allclose(shifted[0], 0.0, atol=1e-10)
     np.testing.assert_allclose(shifted[1], plain[1], atol=1e-10)

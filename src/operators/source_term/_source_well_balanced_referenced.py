@@ -1,8 +1,8 @@
 """Well-balanced source term with a hydrostatic reference pressure (Zhang, Guo & Wang 2022).
 
-Registers nothing: :func:`build_referenced_source` is bound at setup time to
-``grad p_g`` and imported directly by ``build_setup``; the package ``__init__`` is
-not extended for it.
+Registered as ``"wb_referenced"``. ``reference_gradient`` is a keyword-only parameter
+the ``SourceTermOperator`` protocol lacks, so ``build_setup`` binds it with
+``functools.partial``.
 
 Eq. 26 puts ``F - grad p_g + cs2 grad rho`` in the velocity-force product
 ``u (.) : (c_i c_i - cs2 I) / cs4`` while the first-moment term keeps ``F``. The
@@ -18,36 +18,39 @@ which carries no mass and no momentum and shifts the second moment by
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
-from src.operators.source_term._source_well_balanced import compute_source
+from src.operators.source_term._source_well_balanced import compute_source as compute_source_wb
+from src.registry import source_term_operator
 
 if TYPE_CHECKING:
     from src.lattice.lattice import Lattice
     from src.operators.protocols import DifferentialOperator
-    from src.operators.protocols import SourceTermOperator
 
 
-def build_referenced_source(reference_gradient: jnp.ndarray) -> SourceTermOperator:
-    """Return ``source(rho, u, force, lattice, *, gradient)`` with ``grad p_g`` bound in.
+@source_term_operator(name="wb_referenced")
+def compute_source(
+    rho: jnp.ndarray,
+    u: jnp.ndarray,
+    force: jnp.ndarray,
+    lattice: Lattice,
+    *,
+    gradient: DifferentialOperator,
+    reference_gradient: jnp.ndarray,
+) -> jnp.ndarray:
+    """Compute the well-balanced source term with the ``-grad p_g`` correction.
 
     Args:
+        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
+        u: Velocity field, shape ``(nx, ny, nz, 1, 2)``.
+        force: Total force, shape ``(nx, ny, nz, 1, 2)``.
+        lattice: :class:`~src.lattice.lattice.Lattice`.
+        gradient: Density gradient operator, as for ``wb``.
         reference_gradient: ``grad p_g``, shape ``(nx, ny, nz, 1, 2)``.
 
     Returns:
-        A :class:`~src.operators.protocols.SourceTermOperator`.
+        Source term, shape ``(nx, ny, nz, q, 1)``.
     """
-
-    def source(
-        rho: jnp.ndarray,
-        u: jnp.ndarray,
-        force: jnp.ndarray,
-        lattice: Lattice,
-        *,
-        gradient: DifferentialOperator,
-    ) -> jnp.ndarray:
-        cu = jnp.sum(lattice.c * u, axis=-1, keepdims=True)  # (nx, ny, nz, q, 1)
-        cg = jnp.sum(lattice.c * reference_gradient, axis=-1, keepdims=True)  # (nx, ny, nz, q, 1)
-        ug = jnp.sum(u * reference_gradient, axis=-1, keepdims=True)  # (nx, ny, nz, 1, 1)
-        correction = -lattice.w * (9.0 * cu * cg - 3.0 * ug)
-        return compute_source(rho, u, force, lattice, gradient=gradient) + correction
-
-    return source
+    cu = jnp.sum(lattice.c * u, axis=-1, keepdims=True)  # (nx, ny, nz, q, 1)
+    cg = jnp.sum(lattice.c * reference_gradient, axis=-1, keepdims=True)  # (nx, ny, nz, q, 1)
+    ug = jnp.sum(u * reference_gradient, axis=-1, keepdims=True)  # (nx, ny, nz, 1, 1)
+    correction = -lattice.w * (9.0 * cu * cg - 3.0 * ug)
+    return compute_source_wb(rho, u, force, lattice, gradient=gradient) + correction

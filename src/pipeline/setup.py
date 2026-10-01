@@ -36,7 +36,6 @@ from src.lattice.lattice import build_lattice
 from src.operators.differential import build_diff_ops
 from src.operators.force import build_forces
 from src.operators.source_term import build_source_fn
-from src.operators.source_term._source_well_balanced_referenced import build_referenced_source
 
 if TYPE_CHECKING:
     from src.config.multiphase_params import MultiphaseParams
@@ -158,23 +157,33 @@ def _build_equilibrium_and_source(
 ) -> tuple[EquilibriumOperator, SourceTermOperator]:
     """The ``wb`` pair, or the improved well-balanced pair of Zhang, Guo & Wang (2022).
 
-    The improved model is a separate equilibrium/source pair bound to its inputs
-    here: the viscous-stress parameters of the config and the reference pressure
-    carried by a ``gravity_referenced_force``. ``wb`` itself is never altered.
+    The improved model is the separately registered ``"wb_improved"`` equilibrium
+    and ``"wb_referenced"`` source; their model inputs (the config's viscous-stress
+    parameters, the reference pressure carried by a ``gravity_referenced_force``)
+    are keywords the protocols lack, so they are bound here. They are bound on the
+    raw registry entries, as ``build_bc`` does: the package factories are annotated
+    with the protocols, which do not name those keywords.
     """
     from src.operators.equilibrium import build_equilibrium_fn
-    from src.operators.equilibrium._equilibrium_improved_well_balanced import build_improved_equilibrium
     from src.operators.force._gravity_referenced import GravityReferencedForceModule
+    from src.registry import get_operators
 
     referenced = next((f for f in forces if isinstance(f, GravityReferencedForceModule)), None)
     if config.viscosity_params is None and referenced is None:
-        return build_equilibrium_fn("wb"), build_source_fn()
-    equilibrium_fn = build_improved_equilibrium(
+        return build_equilibrium_fn("wb"), build_source_fn("wb")
+    equilibrium_fn = functools.partial(
+        get_operators("equilibrium")["wb_improved"].target,
         viscosity=config.viscosity_params,
         reference_pressure=None if referenced is None else referenced.pressure,
         gradient=gradient_standard,
     )
-    source_fn = build_source_fn() if referenced is None else build_referenced_source(referenced.pressure_gradient)
+    source_fn = (
+        build_source_fn("wb")
+        if referenced is None
+        else functools.partial(
+            get_operators("source_term")["wb_referenced"].target, reference_gradient=referenced.pressure_gradient
+        )
+    )
     return equilibrium_fn, source_fn
 
 
