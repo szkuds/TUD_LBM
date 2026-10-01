@@ -80,6 +80,20 @@ def _clear_droplet_series_cache():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_surface_tension_cache(tmp_path, monkeypatch):
+    """Point the surface-tension cache at an empty per-test file.
+
+    Sigma is resolved from that cache whenever a config is analysed, and the
+    real file is git-tracked: without this, committing a measurement could
+    change what an unrelated test computes, and a test that collects a sweep
+    would write into the checkout.
+    """
+    from src.simulation_io.analysis.surface_tension import surface_tension
+
+    monkeypatch.setattr(surface_tension, "_SHARED_CACHE_PATH", tmp_path / surface_tension._CACHE_FILENAME)
+
+
+@pytest.fixture(autouse=True)
 def _close_figures():
     """Close all matplotlib figures after each test to avoid the
     'More than 20 figures' RuntimeWarning from accumulating across the suite.

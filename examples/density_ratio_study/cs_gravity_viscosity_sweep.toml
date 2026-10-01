@@ -1,0 +1,60 @@
+# Limits of the chem-step Carnahan-Starling configuration: gravity x viscosity sweep.
+#
+# EOS from bubble_chem_step/2026-09-25/07-40-05_bubble_chem_step (kappa = 0.01), in the
+# 256 x 256 rising-bubble box that kept a healthy bubble for 100k steps (density-ratio
+# study, report section 2d). R = 64 is above the free-energy threshold (43.7) below which
+# the bubble condenses into the liquid in this closed box.
+#
+#   Bo = drho g R^2 / sigma ~ 0.70 * (g / 1e-6)   (sigma = 0.0714, drho = 12.165)
+#   nu = (tau - 0.5) / 3; the MRT shear rates are coupled to tau by the config.
+#   The 256-cell CS liquid column is expected to reach its spinodal near g ~ 3e-6.
+#
+# Run: tud-lbm run examples/density_ratio_study/cs_gravity_viscosity_sweep.toml \
+#          --max-workers 4 --debug-stability --no-prompt
+
+[simulation_type]
+simulation_name = "cs_limits"
+lattice_type = "D2Q9"
+grid_shape = [256, 256, 1]
+nt = 60000
+tau = [0.6, 0.8, 0.99, 1.3]
+collision_scheme = "mrt"
+k_diag = [0.0, 0.5, 0.6, 0.0, 1.2, 0.0, 1.2, 1.0, 1.0]
+init_type = "multiphase_bubbles"
+save_interval = 2000
+skip_interval = 0
+type = "multiphase"
+
+[boundary_conditions]
+left = "periodic"
+right = "periodic"
+top = "bounce-back"
+bottom = "bounce-back"
+front = "periodic"
+back = "periodic"
+
+[gravity_force]
+inclination_angle_deg = 0.0
+force_g = [1e-7, 2.5e-7, 5e-7, 1e-6, 2e-6, 3e-6, 5e-6, 1e-5]
+
+[initialisation]
+centres = [[0.5, 0.35]]
+radii = [0.25]
+dispersed = "vapour"
+
+[multiphase]
+eos = "carnahan-starling"
+kappa = 0.01
+rho_l = 12.18
+rho_v = 0.015
+interface_width = 5
+a_eos = 0.00031459670905604266
+b_eos = 0.1490857142857143
+r_eos = 1.0
+t_eos = 0.00039808421247983624
+
+[output]
+results_dir = "~/TUD_LBM_data/cs_limits"
+save_fields = ["f", "rho", "u"]
+plot_fields = ["density", "velocity"]
+output_format = "numpy"

@@ -43,7 +43,7 @@ def test_build_overview_uses_droplet_area_length_when_available():
     assert "gamma (surface tension):" in text
     assert "Oh (Ohnesorge number):" in text
     assert "Bo (Bond number):" in text
-    assert "sqrt(A/pi), init geometry" in text
+    assert "sqrt(A), init geometry" in text
 
 
 def test_build_overview_falls_back_to_grid_x_length_when_droplet_missing():
@@ -90,9 +90,9 @@ def test_build_overview_uses_init_from_file_length_scale(tmp_path):
     cfg = _mp_config(init_type="init_from_file", init_dir=str(npz_path), initialisation={})
     text = build_overview(cfg)
 
-    # 20 liquid cells -> L_eff = sqrt(20/pi) ~= 2.523
-    expected = math.sqrt(20.0 / math.pi)
-    assert f"L_eff={expected:.4g} (sqrt(A/pi), init_from_file)" in text
+    # 20 liquid cells -> L_eff = sqrt(20) ~= 4.472
+    expected = math.sqrt(20.0)
+    assert f"L_eff={expected:.4g} (sqrt(A), init_from_file)" in text
 
 
 def test_build_overview_falls_back_when_init_from_file_rho_missing(tmp_path):
@@ -233,7 +233,7 @@ def test_bond_number_uses_the_measured_delta_rho(tmp_path):
     numbers = compute_dimensionless_numbers(cfg)
 
     gamma = (2.0 / 3.0) * (0.02 / 2) * (0.5**2)  # prescribed drho, unchanged
-    length = math.sqrt(20.0 * 5.0 / math.pi)  # the 100-cell inclusion
+    length = math.sqrt(20.0 * 5.0)  # the 100-cell inclusion
     expected_bo = (0.36 * length**2 * 1e-6) / gamma  # measured drho
     assert numbers.get("bo") == pytest.approx(expected_bo)
 

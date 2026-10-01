@@ -2785,6 +2785,17 @@ class TestAnalyseCommand:
         assert config_arg.sim_type == "multiphase"
         assert out_dir_arg == Path(cfg_toml).resolve().parent
 
+    def test_uncalibrated_fluid_reports_no_sigma(self, tmp_path):
+        """A cache miss is not an error: the calibration prints how to stage the sweep."""
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        with patch(
+            "src.simulation_io.analysis.surface_tension.calibrate_surface_tension",
+            return_value=None,
+        ):
+            result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+        assert result.exit_code == 0
+        assert "Surface tension:" not in result.output
+
     def test_out_dir_option_overrides_default(self, tmp_path):
         cfg_toml = self._write_multiphase_toml(tmp_path)
         out_dir = tmp_path / "analysis_out"

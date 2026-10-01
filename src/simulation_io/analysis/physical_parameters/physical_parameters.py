@@ -348,9 +348,11 @@ def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, st
         return None
     drho = float(config.rho_l) - float(config.rho_v)
 
-    measured = config.extra.get("surface_tension")
+    from src.simulation_io.analysis.surface_tension import cached_surface_tension
+
+    measured = cached_surface_tension(config)
     if measured is not None:
-        return drho, float(measured), "measured"
+        return drho, measured, "measured"
     derived = _derive_multiphase_parameters(config)
     if derived is None:
         return None
@@ -407,14 +409,14 @@ def _resolve_bulk_pressure(config: SimulationConfig) -> Callable[[np.ndarray], n
 def _resolve_length_for_dimensionless_numbers(config: SimulationConfig) -> tuple[float, str]:
     """Resolve shared length scale and annotation for Oh/Bo rows.
 
-    Uses the effective dispersed phase radius L_eff = sqrt(Area/pi) from the setup
+    Uses the dispersed phase length scale L_eff = sqrt(Area) from the setup
     dispersed phase area, falling back to grid_x when no dispersed area can be resolved.
     """
     dispersed_phase_resolved = _get_droplet_area(config)
     if dispersed_phase_resolved is not None:
         area, source = dispersed_phase_resolved
-        l_eff = math.sqrt(area / math.pi)
-        return l_eff, f"L_eff={l_eff:.4g} (sqrt(A/pi), {source})"
+        l_eff = math.sqrt(area)
+        return l_eff, f"L_eff={l_eff:.4g} (sqrt(A), {source})"
 
     length = float(config.grid_shape[0])
     return length, f"L={length} (grid_x)"

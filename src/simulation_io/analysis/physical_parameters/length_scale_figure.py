@@ -1,6 +1,6 @@
 """Diagnostic figure for the region behind the Bo/Oh length scale.
 
-``L_eff = sqrt(A/pi)`` and ``Bo ∝ L^2 ∝ A``, so an area error passes straight
+``L_eff = sqrt(A)`` and ``Bo ∝ L^2 ∝ A``, so an area error passes straight
 into every dimensionless number. The area itself is never shown anywhere, which
 makes an overestimate invisible: the counted region is thresholded at
 ``rho_mean`` on the *setup* field, while the droplet the run actually evolves
@@ -341,7 +341,7 @@ def _caption_builder(config: SimulationConfig) -> Callable[[_Panel], str]:
             rows.append("A = -")
             return "\n".join(rows)
 
-        length = math.sqrt(panel.area / math.pi)
+        length = math.sqrt(panel.area)
         rows.append(f"A = {panel.area:.6g}")
         rows.append(f"L_eff = {length:.4g}")
         if inputs is not None and panel.drho is not None:

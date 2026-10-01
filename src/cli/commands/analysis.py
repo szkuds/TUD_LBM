@@ -185,7 +185,7 @@ def regime_map(
 
 
 def _analyse_surface_tension(config: SimulationConfig, out_dir: Path) -> None:
-    """Run the Young-Laplace calibration for *config* and report sigma."""
+    """Write the Young-Laplace calibration artefacts for *config* and report sigma."""
     if not config.is_multiphase:
         msg = f"surface tension requires a multiphase configuration; got sim_type='{config.sim_type}'"
         raise ValueError(msg)
@@ -198,6 +198,8 @@ def _analyse_surface_tension(config: SimulationConfig, out_dir: Path) -> None:
     from src.simulation_io.analysis.surface_tension import surface_tension_dir
 
     sigma = calibrate_surface_tension(config, out_dir)
+    if sigma is None:
+        return
 
     success(f"Surface tension: σ = {sigma:.6g}")
     console.print(f"[bold green]Calibration outputs saved to:[/bold green] {surface_tension_dir(out_dir)}")
@@ -232,8 +234,8 @@ def _analyse_length_scale(config: SimulationConfig, config_toml: str, out_dir: P
     "--surface-tension",
     "surface_tension",
     is_flag=True,
-    help="Measure the lattice surface tension via the Young-Laplace droplet sweep for the configured "
-    "EOS (cached results are reused; a cache miss runs the full droplet sweep).",
+    help="Report the measured lattice surface tension of the configured fluid and write its "
+    "Young-Laplace calibration figures (a fluid not yet measured prints how to stage the droplet sweep).",
 )
 @click.option(
     "--length-scale",
@@ -253,12 +255,12 @@ def _analyse_length_scale(config: SimulationConfig, config_toml: str, out_dir: P
 def analyse(config_toml: str, surface_tension: bool, length_scale: bool, out_dir: str | None) -> None:
     """Run standalone analyses for the configuration in CONFIG_TOML.
 
-    Unlike the automatic calibration during `tud-lbm run` (which only
-    triggers for EOS without a closed-form sigma), --surface-tension forces
-    the Young-Laplace measurement for any supported multiphase EOS.
+    --surface-tension reads the calibration cache for any multiphase EOS,
+    including one with a closed-form sigma that was measured for verification.
+    The droplet sweep itself is staged with `tud-lbm calibration stage`.
 
     Examples:
-        # Measure surface tension for the configured EOS
+        # Report the measured surface tension for the configured fluid
         tud-lbm analyse config.toml --surface-tension
 
         # Check the droplet region the Bond number is built from

@@ -1,18 +1,20 @@
 """Tests for numerical surface-tension calibration.
 
-These cover the pure logic — fitting, caching, plot output, and the cache-hit
-path — without running the expensive droplet sweep (that is exercised by the
-physics integration tests, not here).
+These cover the pure logic — fitting, caching, plot output, staging the sweep
+as run configs and collecting finished sweep runs — on synthetic run
+directories. No droplet is equilibrated here: the sweep is a set of ordinary
+runs, so the solver side is covered by the run pipeline's own tests.
 """
 
 from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import NamedTuple
 import numpy as np
 import pytest
+from src.config.adapter_toml import TomlAdapter
 from src.config.config_overview import BASE_RESULTS_DIR
+from src.config.run_config import CONFIG_FILENAME
 from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import SNAPSHOTS_DIRNAME
@@ -29,7 +31,8 @@ def _isolate_field_cache(tmp_path, monkeypatch):
 
     ``_FIELDS_CACHE_DIR`` resolves to ``$TUD_LBM_DATA_DIR`` at import time, so
     without this every test that measures would leave multi-megabyte archives
-    in the user's actual results directory.
+    in the user's actual results directory. (The JSON cache is redirected for
+    every test by ``tests/conftest.py``.)
     """
     monkeypatch.setattr(st, "_FIELDS_CACHE_DIR", tmp_path / "field_cache")
 
@@ -121,32 +124,19 @@ def test_cache_key_changes_with_eos_params(tmp_path):
     assert st._cache_key(base) != st._cache_key(changed)
 
 
-def test_cache_key_changes_with_the_calibration_box():
-    """Not with the run's own grid — sigma is a property of the fluid."""
-    base = _stub_config(grid_shape=(64, 64, 1))
-    bigger_box = _stub_config(grid_shape=(2 * st._MIN_CALIBRATION_SIDE, 2 * st._MIN_CALIBRATION_SIDE, 1))
-    assert st._cache_key(base) != st._cache_key(bigger_box)
+def test_cache_key_does_not_depend_on_the_run_grid():
+    """Sigma is a property of the fluid, so every grid of one fluid shares an entry.
 
-
-def test_cache_key_is_shared_by_runs_with_the_same_calibration_box():
-    """Two grids below the minimum square calibrate identically, so they share an entry.
-
-    Before the sweep was decoupled from the run's grid, a 201x101 run measured
-    sigma in its own 201x101 box — an aspect ratio Young-Laplace does not
-    survive — and cached the result under a key nothing else could reuse.
+    The box used to grow with the run's grid, so a 401x101 run missed the entry
+    a 201x101 run of the same fluid had measured.
     """
-    small = _stub_config(grid_shape=(64, 64, 1))
-    oblong = _stub_config(grid_shape=(201, 101, 1))
-    assert st._calibration_grid_shape(small) == st._calibration_grid_shape(oblong)
-    assert st._cache_key(small) == st._cache_key(oblong)
+    keys = {
+        st._cache_key(_stub_config(grid_shape=grid))
+        for grid in [(64, 64, 1), (201, 101, 1), (401, 101, 1), (701, 701, 1)]
+    }
 
-
-def test_calibration_box_is_square_and_at_least_the_minimum_side():
-    for grid in [(64, 64, 1), (201, 101, 1), (701, 701, 1), (201, 901, 1)]:
-        nx, ny, _ = st._calibration_grid_shape(_stub_config(grid_shape=grid))
-        assert nx == ny, f"{grid} gave a non-square calibration box"
-        assert nx >= st._MIN_CALIBRATION_SIDE
-        assert nx >= max(grid[0], grid[1])
+    assert len(keys) == 1
+    assert json.loads(keys.pop())["grid_shape"] == [st._CALIBRATION_SIDE, st._CALIBRATION_SIDE, 1]
 
 
 def test_load_cache_drops_malformed_entries(tmp_path):
@@ -211,82 +201,56 @@ def _droplet_field(config, radius):
     return np.where(inside, config.rho_l, config.rho_v).astype(float)
 
 
-def test_calibrate_uses_cache_and_writes_plot(tmp_path, monkeypatch):
+_SEED_RADII = np.array([10.0, 20.0, 30.0])
+_SEED_SIGMA = 0.02
+
+
+def _seed_cache(config, *, fields: bool = True) -> None:
+    """Store a measurement for *config*'s fluid, as a collected sweep would."""
+    key = st._cache_key(config)
+    st._store_cache(key, _SEED_RADII, _SEED_SIGMA / _SEED_RADII, _SEED_SIGMA, st._CALIBRATION_GRID_SHAPE)
+    if fields:
+        st._store_fields(key, [_droplet_field(config, r) for r in _SEED_RADII])
+
+
+def test_calibrate_reads_cache_and_writes_plot(tmp_path):
     config = _cs_config()
+    _seed_cache(config)
+    run_dir = tmp_path / "run"
 
-    calls = {"n": 0}
-    seen_states_dirs: list[Path | None] = []
+    sigma = st.calibrate_surface_tension(config, run_dir)
 
-    def fake_measure(_config, states_dir=None):
-        calls["n"] += 1
-        seen_states_dirs.append(states_dir)
-        radii = np.array([10.0, 20.0, 30.0])
-        densities = [_droplet_field(config, r) for r in radii]
-        return radii, 0.02 / radii, densities
-
-    monkeypatch.setattr(st, "_measure_pressure_jumps", fake_measure)
-    monkeypatch.setattr(st, "_SHARED_CACHE_PATH", tmp_path / st._CACHE_FILENAME)
-
-    run_dir_a = tmp_path / "run_a"
-    run_dir_b = tmp_path / "run_b"
-
-    sigma_a = st.calibrate_surface_tension(config, run_dir_a)
-    sigma_b = st.calibrate_surface_tension(config, run_dir_b)
-
-    assert sigma_a == pytest.approx(0.02, rel=1e-9)
-    assert sigma_b == pytest.approx(sigma_a)
-    assert calls["n"] == 1  # second call served from cache
-    assert seen_states_dirs == [st.surface_tension_data_dir(run_dir_a)]
-    for run_dir in (run_dir_a, run_dir_b):
-        # Plot and data are written on a cache hit too.
-        assert (st.surface_tension_plots_dir(run_dir) / st._PLOT_FILENAME).exists()
-    data_a = json.loads((st.surface_tension_data_dir(run_dir_a) / st._DATA_FILENAME).read_text())
-    data_b = json.loads((st.surface_tension_data_dir(run_dir_b) / st._DATA_FILENAME).read_text())
-    assert data_a["sigma"] == pytest.approx(0.02, rel=1e-9)
-    assert data_a["radii"] == [10.0, 20.0, 30.0]
-    assert data_b == data_a
-
-    # Snapshot figures come from the cached density fields on the second run,
-    # which ran no droplets at all.
-    expected_figures = ["R_10.00.png", "R_20.00.png", "R_30.00.png"]
-    for run_dir in (run_dir_a, run_dir_b):
-        snapshots = st.surface_tension_plots_dir(run_dir) / SNAPSHOTS_DIRNAME
-        assert sorted(p.name for p in snapshots.iterdir()) == expected_figures
+    assert sigma == pytest.approx(_SEED_SIGMA, rel=1e-9)
+    assert (st.surface_tension_plots_dir(run_dir) / st._PLOT_FILENAME).exists()
+    data = json.loads((st.surface_tension_data_dir(run_dir) / st._DATA_FILENAME).read_text())
+    assert data["sigma"] == pytest.approx(_SEED_SIGMA, rel=1e-9)
+    assert data["radii"] == [10.0, 20.0, 30.0]
+    snapshots = st.surface_tension_plots_dir(run_dir) / SNAPSHOTS_DIRNAME
+    assert sorted(p.name for p in snapshots.iterdir()) == ["R_10.00.png", "R_20.00.png", "R_30.00.png"]
 
 
-def test_calibrate_skips_snapshots_without_cached_fields(tmp_path, monkeypatch):
-    """A cache entry predating the field cache still calibrates, minus the figures."""
+def test_calibrate_skips_snapshots_without_cached_fields(tmp_path):
+    """An entry measured on another machine still calibrates, minus the figures."""
     config = _cs_config()
-    monkeypatch.setattr(st, "_SHARED_CACHE_PATH", tmp_path / st._CACHE_FILENAME)
-    radii = np.array([10.0, 20.0, 30.0])
-    st._store_cache(st._cache_key(config), radii, 0.02 / radii, sigma=0.02, grid_shape=config.grid_shape)
+    _seed_cache(config, fields=False)
 
     run_dir = tmp_path / "run"
     sigma = st.calibrate_surface_tension(config, run_dir)
 
-    assert sigma == pytest.approx(0.02, rel=1e-9)
+    assert sigma == pytest.approx(_SEED_SIGMA, rel=1e-9)
     plots_dir = st.surface_tension_plots_dir(run_dir)
     assert (plots_dir / st._PLOT_FILENAME).exists()
     assert not (plots_dir / SNAPSHOTS_DIRNAME).exists()
 
 
-def test_calibrate_nests_all_outputs_in_subdirectory(tmp_path, monkeypatch):
+def test_calibrate_nests_all_outputs_in_subdirectory(tmp_path):
     """No artefact is dumped flat into the run directory, or flat into its own.
 
-    The tree mirrors a run directory: arrays and fitted numbers under ``data/``,
-    figures under ``plots/``.
+    The tree mirrors a run directory: fitted numbers under ``data/``, figures
+    under ``plots/``.
     """
     config = _cs_config()
-
-    def fake_measure(_config, states_dir=None):
-        if states_dir is not None:
-            states_dir.mkdir(parents=True, exist_ok=True)
-            (states_dir / "radius_10.00_final.npz").touch()
-        radii = np.array([10.0, 20.0, 30.0])
-        return radii, 0.02 / radii, [_droplet_field(config, r) for r in radii]
-
-    monkeypatch.setattr(st, "_measure_pressure_jumps", fake_measure)
-    monkeypatch.setattr(st, "_SHARED_CACHE_PATH", tmp_path / st._CACHE_FILENAME)
+    _seed_cache(config)
 
     run_dir = tmp_path / "run"
     st.calibrate_surface_tension(config, run_dir)
@@ -294,47 +258,173 @@ def test_calibrate_nests_all_outputs_in_subdirectory(tmp_path, monkeypatch):
     assert sorted(p.name for p in run_dir.iterdir()) == [st._OUTPUT_DIRNAME]
     out_dir = st.surface_tension_dir(run_dir)
     assert sorted(p.name for p in out_dir.iterdir()) == [DATA_DIRNAME, PLOTS_DIRNAME]
-    assert sorted(p.name for p in st.surface_tension_data_dir(run_dir).iterdir()) == [
-        st._DATA_FILENAME,
-        "radius_10.00_final.npz",
-    ]
+    assert sorted(p.name for p in st.surface_tension_data_dir(run_dir).iterdir()) == [st._DATA_FILENAME]
     assert sorted(p.name for p in st.surface_tension_plots_dir(run_dir).iterdir()) == [
         st._PLOT_FILENAME,
         SNAPSHOTS_DIRNAME,
     ]
 
 
-def test_calibrate_cache_is_keyed_on_the_calibration_box(tmp_path, monkeypatch):
-    """Runs sharing a calibration box measure once; a different box measures again."""
-    side = st._MIN_CALIBRATION_SIDE
-    config_a = _cs_config(grid_shape=(32, 32))  # -> the minimum square
-    config_b = _cs_config(grid_shape=(48, 48))  # -> the same minimum square
-    config_c = _cs_config(grid_shape=(2 * side, 2 * side))  # -> a larger square
+def test_calibrate_miss_measures_nothing_and_writes_nothing(tmp_path):
+    """An uncalibrated fluid no longer equilibrates five droplets before the run starts."""
+    config = _cs_config()
+    run_dir = tmp_path / "run"
 
-    # `_measure_pressure_jumps` is stubbed out, so it is handed the run's own
-    # config; the box it *would* have swept in is `_calibration_grid_shape`.
-    seen_boxes: list[tuple[int, ...]] = []
+    assert st.calibrate_surface_tension(config, run_dir) is None
+    assert not run_dir.exists()
+    assert st._load_cache(st._cache_path()) == {}
 
-    def fake_measure(config, states_dir=None):
-        del states_dir
-        box = st._calibration_grid_shape(config)
-        seen_boxes.append(box)
-        radii = np.array([10.0, 20.0, 30.0])
-        sigma = 0.02 if box == (side, side, 1) else 0.03
-        return radii, sigma / radii, [_droplet_field(config, r) for r in radii]
 
-    monkeypatch.setattr(st, "_measure_pressure_jumps", fake_measure)
-    monkeypatch.setattr(st, "_SHARED_CACHE_PATH", tmp_path / st._CACHE_FILENAME)
+def test_record_returns_the_config_unchanged_on_a_miss(tmp_path):
+    config = _cs_config()
 
-    sigma_a = st.calibrate_surface_tension(config_a, tmp_path / "run_a")
-    sigma_b = st.calibrate_surface_tension(config_b, tmp_path / "run_b")
-    sigma_c = st.calibrate_surface_tension(config_c, tmp_path / "run_c")
+    assert st.record_surface_tension(config, tmp_path / "run") is config
 
-    assert sigma_a == pytest.approx(0.02, rel=1e-9)
-    assert sigma_b == pytest.approx(sigma_a), "same calibration box must reuse the cached value"
-    assert sigma_c == pytest.approx(0.03, rel=1e-9)
-    # Two measurements, not three: config_b was a cache hit on config_a's entry.
-    assert seen_boxes == [(side, side, 1), (2 * side, 2 * side, 1)]
+
+def test_record_attaches_cached_sigma_and_rewrites_the_overview(tmp_path):
+    config = _cs_config()
+    _seed_cache(config, fields=False)
+    run_dir = tmp_path / "run"
+
+    updated = st.record_surface_tension(config, run_dir)
+
+    assert updated.extra["surface_tension"] == pytest.approx(_SEED_SIGMA, rel=1e-9)
+    assert "measured, Young–Laplace" in (run_dir / "physical_parameters.txt").read_text()
+
+
+def test_cached_surface_tension_links_a_config_to_the_cache():
+    """A run's config.toml never stores sigma; the cache is looked up by the fluid."""
+    config = _cs_config(grid_shape=(48, 32))
+    assert st.cached_surface_tension(config) is None
+
+    _seed_cache(_cs_config(grid_shape=(32, 32)))
+
+    assert st.cached_surface_tension(config) == pytest.approx(_SEED_SIGMA, rel=1e-9)
+    assert st.is_calibrated(config)
+
+
+def test_cached_surface_tension_ignores_the_cache_for_a_closed_form_eos():
+    """A double-well entry is a verification measurement, never the run's sigma."""
+    config = _cs_config(eos="double-well", a_eos=None, b_eos=None, r_eos=None, t_eos=None)
+    _seed_cache(config)
+
+    assert st.is_calibrated(config)
+    assert not st.needs_calibration(config)
+    assert st.cached_surface_tension(config) is None
+
+
+# ── The sweep as ordinary runs ────────────────────────────────────────
+
+
+def test_calibration_configs_are_one_plain_run_per_radius():
+    config = _cs_config(
+        sim_type="multiphase_wetting",
+        grid_shape=(64, 48),
+        bc_config={"top": "wetting", "bottom": "bounce-back"},
+        gravity_force={"force_g": 1e-6, "inclination_angle_deg": 0.0},
+        results_dir="/somewhere/else",
+    )
+
+    sweep = st.calibration_configs(config)
+
+    digest = st.sweep_digest(config)
+    assert [c.simulation_name for c in sweep] == [f"st_{digest}_r{i}" for i in range(st._N_RADII)]
+    radii = [c.initialisation["radii"][0] * st._CALIBRATION_SIDE for c in sweep]
+    np.testing.assert_allclose(radii, st.sweep_radii())
+    for calib in sweep:
+        assert calib.sim_type == "multiphase"
+        assert tuple(calib.grid_shape) == st._CALIBRATION_GRID_SHAPE
+        assert calib.gravity_force is None
+        assert calib.bc_config is not None
+        assert calib.bc_config["top"] == "periodic"
+        assert calib.nt == st._N_ITERATIONS
+        assert calib.save_interval == st._N_ITERATIONS
+        assert calib.save_fields is not None
+        assert {"rho", "pressure"} <= set(calib.save_fields)
+        assert calib.results_dir == BASE_RESULTS_DIR
+        # The whole point: the sweep's result lands where the source config looks.
+        assert st._cache_key(calib) == st._cache_key(config)
+
+
+def _write_sweep_run(root: Path, sweep_config, sigma: float, *, stamp: str = "2026-01-01/00-00-00") -> Path:
+    """A finished sweep run directory: its config.toml and one final snapshot."""
+    run_dir = root / f"{stamp}_{sweep_config.simulation_name}"
+    data_dir = run_dir / DATA_DIRNAME
+    data_dir.mkdir(parents=True)
+    TomlAdapter().save(sweep_config, str(run_dir / CONFIG_FILENAME))
+
+    side = st._CALIBRATION_SIDE
+    radius = sweep_config.initialisation["radii"][0] * side
+    offsets = np.arange(side) - side // 2
+    inside = np.hypot(offsets[:, None], offsets[None, :]) <= radius
+    pressure = np.where(inside, sigma / radius, 0.0)
+    rho = np.where(inside, sweep_config.rho_l, sweep_config.rho_v)
+    np.savez(
+        data_dir / f"timestep_{sweep_config.nt}.npz",
+        pressure=pressure[:, :, None, None, None],
+        rho=rho[:, :, None, None, None],
+    )
+    return run_dir
+
+
+def test_collect_fits_sigma_from_finished_sweep_runs(tmp_path):
+    config = _cs_config()
+    sigma_true = 0.0123
+    for sweep_config in st.calibration_configs(config):
+        _write_sweep_run(tmp_path, sweep_config, sigma_true)
+
+    groups = st.find_sweep_runs(tmp_path)
+    assert list(groups) == [st.sweep_digest(config)]
+    sigma = st.collect_calibration(groups[st.sweep_digest(config)])
+
+    assert sigma == pytest.approx(sigma_true, rel=1e-9)
+    # Stored under the key the *source* config resolves, with the fields.
+    assert st.cached_surface_tension(config) == pytest.approx(sigma_true, rel=1e-9)
+    fields = st._load_fields(st._cache_key(config), st._N_RADII)
+    assert fields is not None
+    assert fields[0].shape == (st._CALIBRATION_SIDE, st._CALIBRATION_SIDE)
+
+
+def test_collect_waits_for_every_radius(tmp_path):
+    config = _cs_config()
+    for sweep_config in st.calibration_configs(config)[:-1]:
+        _write_sweep_run(tmp_path, sweep_config, 0.0123)
+
+    assert st.collect_calibration(st.find_sweep_runs(tmp_path)[st.sweep_digest(config)]) is None
+    assert st._load_cache(st._cache_path()) == {}
+
+
+def test_collect_ignores_a_run_cut_short(tmp_path):
+    """A snapshot from before the last step is not an equilibrated droplet."""
+    config = _cs_config()
+    sweep = st.calibration_configs(config)
+    for sweep_config in sweep:
+        run_dir = _write_sweep_run(tmp_path, sweep_config, 0.0123)
+    final = run_dir / DATA_DIRNAME / f"timestep_{sweep[-1].nt}.npz"
+    final.rename(final.with_name("timestep_100.npz"))
+
+    assert st.collect_calibration(st.find_sweep_runs(tmp_path)[st.sweep_digest(config)]) is None
+
+
+def test_collect_prefers_the_newest_run_of_a_radius(tmp_path):
+    config = _cs_config()
+    sweep = st.calibration_configs(config)
+    for sweep_config in sweep:
+        _write_sweep_run(tmp_path, sweep_config, 0.5, stamp="2026-01-01/00-00-00")
+        _write_sweep_run(tmp_path, sweep_config, 0.0123, stamp="2026-01-02/00-00-00")
+
+    sigma = st.collect_calibration(st.find_sweep_runs(tmp_path)[st.sweep_digest(config)])
+
+    assert sigma == pytest.approx(0.0123, rel=1e-9)
+
+
+def test_collect_rejects_runs_of_different_fluids(tmp_path):
+    first = st.calibration_configs(_cs_config())
+    second = st.calibration_configs(_cs_config(kappa=0.02))
+    run_dirs = [_write_sweep_run(tmp_path, c, 0.0123) for c in (first[0], second[1])]
+
+    with pytest.raises(ValueError, match="one fluid at a time"):
+        st.collect_calibration(run_dirs)
 
 
 def test_field_cache_never_lands_in_the_checkout():
@@ -407,33 +497,6 @@ def test_save_snapshot_figures_writes_one_per_radius(tmp_path):
     assert all(p.stat().st_size > 0 for p in tmp_path.iterdir())
 
 
-def test_save_state_writes_array_fields_and_skips_none(tmp_path):
-    from typing import NamedTuple
-
-    class FakeState(NamedTuple):
-        f: np.ndarray
-        rho: np.ndarray
-        t: np.ndarray
-        force: np.ndarray | None
-        wetting: object | None
-
-    state = FakeState(
-        f=np.ones((4, 4, 1, 9, 1)),
-        rho=np.full((4, 4, 1, 1, 1), 0.4),
-        t=np.asarray(7),
-        force=None,
-        wetting=None,
-    )
-    path = tmp_path / "radius_10.00_final.npz"
-
-    st._save_state(path, state)  # ty: ignore[invalid-argument-type]
-
-    saved = np.load(path)
-    assert set(saved.files) == {"f", "rho", "t"}
-    np.testing.assert_array_equal(saved["rho"], state.rho)
-    assert int(saved["t"]) == 7
-
-
 def _multiphase_params(**overrides):
     from typing import Any
     from src.config.multiphase_params import MultiphaseParams
@@ -482,21 +545,6 @@ def test_bulk_pressure_fn_double_well_matches_reference():
     beta = 8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
     expected = _pressure_double_well(rho, beta, mp.rho_l, mp.rho_v)
     np.testing.assert_allclose(np.asarray(pressure_fn(rho)), np.asarray(expected))
-
-
-def test_pressure_2d_reads_the_pressure_the_state_carries():
-    """The Laplace jump reads the pressure the macroscopic operator wrote, never recomputes it."""
-    import jax.numpy as jnp
-    from src.pipeline.state import State
-
-    pressure = jnp.arange(20.0).reshape(4, 5, 1, 1, 1)
-    state = State(f=jnp.ones((4, 5, 1, 9, 1)), rho=jnp.ones((4, 5, 1, 1, 1)), u=jnp.zeros(1), t=jnp.asarray(0))
-
-    np.testing.assert_array_equal(
-        st._pressure_2d(state._replace(pressure=pressure)), np.asarray(pressure)[:, :, 0, 0, 0]
-    )
-    with pytest.raises(ValueError, match="carries no pressure"):
-        st._pressure_2d(state)
 
 
 def test_bulk_pressure_fn_cs_missing_params_raises():
@@ -566,86 +614,7 @@ def test_calibration_config_isolates_single_droplet():
     assert calib.init_type == "multiphase_bubbles"
     assert calib.initialisation == {"centres": [[0.5, 0.5]], "radii": [0.2], "dispersed": "liquid"}
     assert calib.simulation_name == "drop_surface_tension"
+    assert calib.init_dir is None
     # Thermodynamic parameters that determine sigma are preserved.
     for name in ("eos", "kappa", "rho_l", "rho_v", "interface_width", "a_eos", "b_eos", "r_eos", "t_eos"):
         assert getattr(calib, name) == getattr(cfg, name), name
-
-
-class _DensityState(NamedTuple):
-    f: np.ndarray
-    rho: np.ndarray | None
-
-
-def test_density_2d_uses_rho_field():
-    rho = np.arange(20.0).reshape(4, 5, 1, 1, 1)
-    state = _DensityState(f=np.ones((4, 5, 1, 9, 1)), rho=rho)
-
-    result = st._density_2d(state)  # ty: ignore[invalid-argument-type]
-
-    assert result.shape == (4, 5)
-    np.testing.assert_array_equal(result, rho[:, :, 0, 0, 0])
-
-
-def test_density_2d_falls_back_to_population_sum():
-    state = _DensityState(f=np.full((4, 5, 1, 9, 1), 0.5), rho=None)
-
-    result = st._density_2d(state)  # ty: ignore[invalid-argument-type]
-
-    assert result.shape == (4, 5)
-    np.testing.assert_allclose(result, 4.5)  # 9 populations of 0.5
-
-
-class _MiniState(NamedTuple):
-    t: object
-
-
-def test_run_to_final_state_advances_nt_steps():
-    import jax.numpy as jnp
-
-    def step_fn(_setup, state):
-        return _MiniState(t=state.t + 1)
-
-    setup = SimpleNamespace(step_fn=step_fn)
-    final = st._run_to_final_state(setup, _MiniState(t=jnp.asarray(0)), nt=7)  # ty: ignore[invalid-argument-type]
-
-    assert int(final.t) == 7
-
-
-def test_run_to_final_state_requires_step_fn():
-    setup = SimpleNamespace(step_fn=None)
-    with pytest.raises(TypeError, match="step_fn is required"):
-        st._run_to_final_state(setup, _MiniState(t=0), nt=1)  # ty: ignore[invalid-argument-type]
-
-
-def test_measure_pressure_jumps_missing_params_raises():
-    config = _stub_config(interface_width=None)
-    with pytest.raises(ValueError, match="required for surface-tension calibration"):
-        st._measure_pressure_jumps(config)
-
-
-def test_measure_pressure_jumps_small_sweep(tmp_path, monkeypatch):
-    monkeypatch.setattr(st, "_N_RADII", 2)
-    monkeypatch.setattr(st, "_N_ITERATIONS", 2)
-    # The sweep runs in its own square box, not the run's grid; shrink the
-    # minimum so this stays a unit test rather than a 301x301 simulation.
-    monkeypatch.setattr(st, "_MIN_CALIBRATION_SIDE", 32)
-    config = _cs_config()
-    states_dir = tmp_path / "states"
-
-    radii, delta_p, densities = st._measure_pressure_jumps(config, states_dir=states_dir)
-
-    # The calibration box is 32x32 → radii span [8.0, 10.67], fractions of the
-    # *calibration* side, not of the run's grid.
-    np.testing.assert_allclose(radii, [8.0, 10.666666666666666])
-    assert delta_p.shape == (2,)
-    assert np.all(np.isfinite(delta_p))
-    assert [rho.shape for rho in densities] == [(32, 32), (32, 32)]
-    saved = sorted(p.name for p in states_dir.glob("*.npz"))
-    assert saved == [
-        "radius_10.67_final.npz",
-        "radius_10.67_init.npz",
-        "radius_8.00_final.npz",
-        "radius_8.00_init.npz",
-    ]
-    snapshot = np.load(states_dir / "radius_8.00_final.npz")
-    assert snapshot["f"].shape == (32, 32, 1, 9, 1)
