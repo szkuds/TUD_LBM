@@ -2,7 +2,7 @@
 
 Reference: ``~/TUD_LBM_data/bubble_simulation/2026-09-30/11-02-52_rising_bubble``
 (128 x 256, double-well ``kappa = 0.04``, ``W = 5``, ``rho_l = 1``, BGK ``tau = 0.99``,
-``g = 1e-6``) diverges at t ~ 21000. The study in ``examples/density_ratio_study/``
+``g = 1e-6``) diverges at t ~ 21000. The study in ``.claude/density_ratio_study/``
 traced it to a two-cell ``(-1)**k`` density zig-zag on the vapour side of the
 interface, which grows until the vapour density reaches zero and ``u = j / rho``
 blows up. It decays at ratio 100 and grows at 300 and 1000. Of the collision and
