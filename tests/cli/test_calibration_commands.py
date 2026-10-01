@@ -110,7 +110,8 @@ def test_stage_ignores_configs_that_are_themselves_sweep_runs(runner: CliRunner,
     result = runner.invoke(cli, ["calibration", "stage", *map(str, staged), "--manifest", str(manifest)])
 
     assert result.exit_code == 0, result.output
-    assert "nothing staged" in result.output
+    assert "Nothing staged" in result.output
+    assert "5 of the configs are sweep runs themselves" in result.output
     assert manifest.read_text() == ""
 
 
@@ -124,7 +125,7 @@ def test_stage_skips_a_calibrated_fluid_and_a_closed_form_eos(runner: CliRunner,
     result = runner.invoke(cli, ["calibration", "stage", *map(str, paths)])
 
     assert result.exit_code == 0, result.output
-    assert "nothing staged" in result.output
+    assert "Nothing staged" in result.output
     assert not st.SURFACE_TENSION_ROOT.exists()
 
 

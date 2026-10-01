@@ -127,7 +127,7 @@ def stage(config_tomls: tuple[str, ...], manifest: str | None, closed_form: bool
             "so no further sweep is staged for them.[/dim]"
         )
     if not staged:
-        console.print("[dim]No other fluid needs a sweep (already calibrated, or closed-form); nothing staged.[/dim]")
+        console.print("[dim]Nothing staged: no other fluid needs a sweep (already calibrated, or closed-form).[/dim]")
         return
     folders = sorted({path.parent for path in staged})
     for folder in folders:
