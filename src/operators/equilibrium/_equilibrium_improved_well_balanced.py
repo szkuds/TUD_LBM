@@ -1,7 +1,8 @@
 r"""Improved well-balanced equilibrium of Zhang, Guo & Wang (Phys. Fluids 34, 012110, 2022).
 
-Built by :func:`~src.operators.equilibrium.build_improved_equilibrium_fn`; registers
-nothing, because it is bound at setup time to its model inputs.
+Registers nothing: :func:`build_improved_equilibrium` is bound at setup time to its
+model inputs and imported directly by ``build_setup``; the package ``__init__`` is
+not extended for it.
 
 The equilibrium is the ``wb`` one (:mod:`._equilibrium_well_balanced`, called, never
 edited) plus two second-moment terms of Eq. 25 on the moving populations:

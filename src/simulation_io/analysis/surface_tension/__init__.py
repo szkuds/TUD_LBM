@@ -13,26 +13,30 @@ Public API::
     from src.simulation_io.analysis.surface_tension import record_surface_tension
 """
 
+from src.simulation_io.analysis.surface_tension.surface_tension import SURFACE_TENSION_ROOT
 from src.simulation_io.analysis.surface_tension.surface_tension import cached_surface_tension
 from src.simulation_io.analysis.surface_tension.surface_tension import calibrate_surface_tension
-from src.simulation_io.analysis.surface_tension.surface_tension import calibrated_digests
 from src.simulation_io.analysis.surface_tension.surface_tension import calibration_configs
 from src.simulation_io.analysis.surface_tension.surface_tension import collect_calibration
 from src.simulation_io.analysis.surface_tension.surface_tension import find_sweep_runs
 from src.simulation_io.analysis.surface_tension.surface_tension import is_calibrated
+from src.simulation_io.analysis.surface_tension.surface_tension import is_sweep_config
 from src.simulation_io.analysis.surface_tension.surface_tension import needs_calibration
 from src.simulation_io.analysis.surface_tension.surface_tension import record_surface_tension
 from src.simulation_io.analysis.surface_tension.surface_tension import surface_tension_dir
+from src.simulation_io.analysis.surface_tension.surface_tension import sweep_config_path
 
 __all__ = [
+    "SURFACE_TENSION_ROOT",
     "cached_surface_tension",
     "calibrate_surface_tension",
-    "calibrated_digests",
     "calibration_configs",
     "collect_calibration",
     "find_sweep_runs",
     "is_calibrated",
+    "is_sweep_config",
     "needs_calibration",
     "record_surface_tension",
     "surface_tension_dir",
+    "sweep_config_path",
 ]

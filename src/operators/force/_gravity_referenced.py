@@ -4,9 +4,9 @@
 over a reference density ``rho_0`` (Eq. 26). The ``rho_0 g`` part is carried
 instead by the reference pressure ``p_g = rho_0 g.x`` in the second moment of the
 equilibrium and as ``-grad p_g`` in the source term's velocity-force product, which
-this force's payload supplies to
-:func:`~src.operators.equilibrium.build_improved_equilibrium_fn` and
-:func:`~src.operators.source_term.build_referenced_source_fn`. The total momentum
+this force's payload supplies to ``build_improved_equilibrium``
+(``equilibrium/_equilibrium_improved_well_balanced.py``) and ``build_referenced_source``
+(``source_term/_source_well_balanced_referenced.py``). The total momentum
 source is unchanged, ``-grad p_g - (rho - rho_0) g = -rho g``, so a bulk phase at
 ``rho_0`` feels no body force.
 

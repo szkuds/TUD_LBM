@@ -1,7 +1,8 @@
 """Well-balanced source term with a hydrostatic reference pressure (Zhang, Guo & Wang 2022).
 
-Built by :func:`~src.operators.source_term.build_referenced_source_fn`; registers
-nothing, because it is bound at setup time to ``grad p_g``.
+Registers nothing: :func:`build_referenced_source` is bound at setup time to
+``grad p_g`` and imported directly by ``build_setup``; the package ``__init__`` is
+not extended for it.
 
 Eq. 26 puts ``F - grad p_g + cs2 grad rho`` in the velocity-force product
 ``u (.) : (c_i c_i - cs2 I) / cs4`` while the first-moment term keeps ``F``. The

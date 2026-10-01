@@ -20,7 +20,6 @@ calibrated number to a real run.
 
 from __future__ import annotations
 import json
-from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from typing import Any
@@ -97,12 +96,13 @@ def calibration(tmp_path_factory) -> SimpleNamespace:
     from src.cli.execution import _run_simulation
 
     tmp = tmp_path_factory.mktemp("surface_tension_e2e")
-    results = tmp / "results"
+    root = tmp / "surface_tension"
     config = _cs_config()
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(st, "_SHARED_CACHE_PATH", tmp / st._CACHE_FILENAME)
         mp.setattr(st, "_FIELDS_CACHE_DIR", tmp / "field_cache")
+        mp.setattr(st, "SURFACE_TENSION_ROOT", root)
         mp.setattr(st, "_N_RADII", _N_RADII)
         mp.setattr(st, "_N_ITERATIONS", _N_ITERATIONS)
         # Production equilibrates 301x301 droplets; the confinement problem the
@@ -115,14 +115,15 @@ def calibration(tmp_path_factory) -> SimpleNamespace:
         miss_dir = tmp / "miss"
         unchanged = st.record_surface_tension(config, miss_dir)
 
-        sweep = [replace(c, results_dir=str(results)) for c in st.calibration_configs(config)]
+        sweep = st.calibration_configs(config)
         initial_masses = [_initial_mass(c) for c in sweep]
         for sweep_config in sweep:
             _run_simulation(sweep_config)
 
         # Read inside the patch context, where the box is the test grid.
-        sweep_run_dirs = st.find_sweep_runs(results)[st.sweep_digest(config)]
-        sigma = st.collect_calibration(sweep_run_dirs)
+        fluid_dir = root / st.fluid_label(config)
+        sweep_run_dirs = st.find_sweep_runs(root)[fluid_dir]
+        sigma = st.collect_calibration(sweep_run_dirs, out_dir=fluid_dir)
 
         # After: a run of the same fluid, on its own grid, resolves it.
         run_dir = tmp / "run"

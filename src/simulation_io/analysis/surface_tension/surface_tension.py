@@ -8,7 +8,8 @@ fitted to ``dP = sigma / R`` (2-D Young-Laplace).
 
 The droplets are **ordinary simulations**, not something this module runs.
 :func:`calibration_configs` turns a config into one run config per radius
-(``tud-lbm calibration stage`` writes them as TOMLs); they are run like any
+(``tud-lbm calibration stage`` writes them as TOMLs, under
+``$TUD_LBM_DATA_DIR/surface_tension/<fluid>/configs/``); they are run like any
 other config — in practice on DelftBlue through ``scripts/db_pipeline.sh`` —
 and :func:`collect_calibration` assembles their final snapshots into sigma
 (``tud-lbm calibration collect``). Nothing here advances a simulation, so a
@@ -24,7 +25,7 @@ cache is split in two by size, and only the small half lives in the repo:
     purpose, so a measured sigma is shared with the team via the normal git
     workflow rather than re-measured by everyone individually (commit it after
     adding a new entry).
-``$TUD_LBM_DATA_DIR/surface_tension_cache/fields/<digest>.npz``
+``$TUD_LBM_DATA_DIR/surface_tension/fields/<digest>.npz``
     The equilibrated density field of every droplet, ~4 MB per entry. This is
     simulation output, so it is written under the user data root
     (:data:`~src.config.config_overview.BASE_RESULTS_DIR`) and never inside
@@ -110,11 +111,19 @@ _SAMPLE_MARGIN_FRACTION = 1.0 / 8.0
 _CALIBRATION_SIDE = 301
 _CALIBRATION_GRID_SHAPE = (_CALIBRATION_SIDE, _CALIBRATION_SIDE, 1)
 
-# Sweep runs are named ``st_<digest>_r<i>``: the digest of the cache key groups
-# the radii of one fluid, the index orders them. The run directory is that name
-# behind a timestamp, which is what :func:`find_sweep_runs` matches.
-_SWEEP_NAME_PREFIX = "st"
-_SWEEP_RUN_PATTERN = re.compile(rf"_{_SWEEP_NAME_PREFIX}_(?P<digest>[0-9a-f]+)_r(?P<index>\d+)$")
+# Everything a calibration leaves on disk lives under one directory of the
+# results root: a folder per fluid holding its staged sweep configs, the sweep's
+# run directories and the fitted result, plus the density-field cache.
+SURFACE_TENSION_ROOT = Path(BASE_RESULTS_DIR) / "surface_tension"
+_SWEEP_CONFIGS_DIRNAME = "configs"
+
+# A sweep run is named ``surface_tension_<fluid>_R<radius>``. The name is what
+# marks a config as a sweep run -- here, and in ``scripts/db_new_job.sh``, which
+# keys the job command on the same prefix -- but it is a label, not an identity:
+# a run's fluid is its cache key and its place in the sweep is its radius, both
+# read from its own ``config.toml``.
+_SWEEP_NAME_PREFIX = "surface_tension"
+_SWEEP_NAME_PATTERN = re.compile(rf"(?:^|_){_SWEEP_NAME_PREFIX}_.+_R\d+$")
 
 
 _PERIODIC_BC = {"top": "periodic", "bottom": "periodic", "left": "periodic", "right": "periodic"}
@@ -147,7 +156,7 @@ _SHARED_CACHE_PATH = Path(__file__).resolve().parent / "data" / _CACHE_FILENAME
 # — the same ``$TUD_LBM_DATA_DIR`` (default ``~/TUD_LBM_data``) that run
 # directories default to — and never into the checkout. Machine-local by
 # design: an absent field cache costs snapshot figures, never sigma.
-_FIELDS_CACHE_DIR = Path(BASE_RESULTS_DIR) / "surface_tension_cache" / "fields"
+_FIELDS_CACHE_DIR = SURFACE_TENSION_ROOT / "fields"
 
 # Anything at or below the import root is the checkout; a calibration writing
 # there would dirty the working tree. Guards :func:`_store_fields`.
@@ -224,7 +233,8 @@ def record_surface_tension(config: SimulationConfig, run_dir: str | Path) -> Sim
     ``config.extra['surface_tension']``, and ``physical_parameters.txt`` is
     rewritten in *run_dir* with the measured value.
     """
-    if not needs_calibration(config):
+    # A sweep run *is* the measurement; it has no sigma to look up yet.
+    if not needs_calibration(config) or is_sweep_config(config):
         return config
 
     sigma = calibrate_surface_tension(config, run_dir)
@@ -279,55 +289,72 @@ def sweep_radii() -> np.ndarray:
     return np.linspace(_CALIBRATION_SIDE * _RADIUS_MIN_FRACTION, _CALIBRATION_SIDE * _RADIUS_MAX_FRACTION, _N_RADII)
 
 
-def sweep_digest(config: SimulationConfig) -> str:
-    """The identifier shared by every sweep run of *config*'s fluid."""
-    return _key_digest(_cache_key(config))
+def fluid_label(config: SimulationConfig) -> str:
+    """Readable name of *config*'s fluid: EOS initials, kappa and the density pair.
+
+    ``cs_kappa0.015_rho12.18_0.015`` for a Carnahan-Starling fluid. It names the
+    fluid's folder and its sweep runs; two fluids differing only in parameters
+    the label leaves out share it, which is why nothing reads identity off it.
+    """
+    initials = "".join(word[0] for word in str(config.eos).split("-"))
+    return f"{initials}_kappa{config.kappa:g}_rho{config.rho_l:g}_{config.rho_v:g}"
+
+
+def sweep_run_name(config: SimulationConfig, radius: float) -> str:
+    """The ``simulation_name`` of the sweep run of *config*'s fluid at *radius*."""
+    return f"{_SWEEP_NAME_PREFIX}_{fluid_label(config)}_R{round(radius)}"
+
+
+def is_sweep_config(config: SimulationConfig) -> bool:
+    """Whether *config* is itself a run of a calibration sweep."""
+    return _SWEEP_NAME_PATTERN.search(str(config.simulation_name)) is not None
+
+
+def sweep_config_path(sweep_config: SimulationConfig) -> Path:
+    """Where the staged TOML of *sweep_config* lives: ``<fluid dir>/configs/R<radius>.toml``."""
+    radius_tag = str(sweep_config.simulation_name).rsplit("_", maxsplit=1)[-1]
+    return Path(sweep_config.results_dir) / _SWEEP_CONFIGS_DIRNAME / f"{radius_tag}.toml"
 
 
 def calibration_configs(config: SimulationConfig) -> list[SimulationConfig]:
     """One run config per sweep radius, for the fluid of *config*.
 
     Each is a plain ``multiphase`` run — periodic, force-free, a single liquid
-    droplet — that saves only its final state, named ``st_<digest>_r<i>`` so
-    :func:`find_sweep_runs` can gather the finished run directories. Every one
-    of them, and *config* itself, has the same cache key: that is what lets
+    droplet — that saves only its final state and writes into the fluid's own
+    folder under :data:`SURFACE_TENSION_ROOT`, where :func:`find_sweep_runs`
+    gathers the finished run directories. Every one of them, and *config*
+    itself, has the same cache key: that is what lets
     :func:`collect_calibration` file the result where *config* will look.
     """
     base = _calibration_config(config)
-    digest = sweep_digest(config)
+    fluid_dir = SURFACE_TENSION_ROOT / fluid_label(config)
     return [
         replace(
             base,
-            # The results root itself, whatever subdirectory the source config
-            # writes to: that is where `find_sweep_runs` looks by default.
-            results_dir=BASE_RESULTS_DIR,
+            results_dir=str(fluid_dir),
             # Only the final state enters the fit, and `pressure` is the very
             # field the macroscopic operator computed it from.
             save_interval=_N_ITERATIONS,
             save_fields=["rho", "pressure"],
             initialisation={**base.initialisation, "radii": [float(radius) / _CALIBRATION_SIDE]},
-            simulation_name=f"{_SWEEP_NAME_PREFIX}_{digest}_r{index}",
+            simulation_name=sweep_run_name(config, radius),
         )
-        for index, radius in enumerate(sweep_radii())
+        for radius in sweep_radii()
     ]
 
 
-def calibrated_digests() -> set[str]:
-    """The sweep digests of every fluid the cache already holds."""
-    return {_key_digest(key) for key in _load_cache(_cache_path())}
+def find_sweep_runs(root: str | Path) -> dict[Path, list[Path]]:
+    """Sweep run directories under *root*, grouped by their fluid folder.
 
-
-def find_sweep_runs(root: str | Path) -> dict[str, list[Path]]:
-    """Sweep run directories under the results *root*, grouped by fluid digest.
-
-    Run directories sit at ``<root>/<date>/<time>_<simulation_name>``. Each
+    A sweep run sits at ``<root>/<fluid>/<date>/<time>_<sweep name>``. Each
     group is sorted, so a later run of the same radius follows an earlier one.
+    Run directories placed directly under *root* (``<root>/<date>/<run>``) are
+    one level too shallow to match, whatever they are named.
     """
-    groups: dict[str, list[Path]] = {}
-    for run_dir in sorted(Path(root).glob("*/*")):
-        match = _SWEEP_RUN_PATTERN.search(run_dir.name)
-        if match is not None and run_dir.is_dir():
-            groups.setdefault(match["digest"], []).append(run_dir)
+    groups: dict[Path, list[Path]] = {}
+    for run_dir in sorted(Path(root).glob("*/*/*")):
+        if _SWEEP_NAME_PATTERN.search(run_dir.name) is not None and (run_dir / CONFIG_FILENAME).is_file():
+            groups.setdefault(run_dir.parent.parent, []).append(run_dir)
     return groups
 
 
@@ -341,14 +368,17 @@ class _SweepSample(NamedTuple):
     density: np.ndarray
 
 
-def collect_calibration(run_dirs: Iterable[str | Path]) -> float | None:
+def collect_calibration(run_dirs: Iterable[str | Path], out_dir: str | Path | None = None) -> float | None:
     """Fit sigma from the finished sweep runs of one fluid and cache it.
 
     Reads the final snapshot of each run, takes the Laplace jump from its
     ``pressure`` field and fits ``dP = sigma / R`` over the radii. The cache
     key is recomputed from the runs' own ``config.toml``, so the entry lands
-    exactly where the originating config looks it up. When a radius was run
-    more than once the last directory in sorted order — the newest — wins.
+    exactly where the originating config looks it up, and a run's place in the
+    sweep is its configured radius — neither is read off the directory name.
+    When a radius was run more than once the last directory in sorted order —
+    the newest — wins. With *out_dir* (the fluid's folder) the fit figure and
+    its data are written there too.
 
     Returns ``None``, storing nothing, until every radius of the sweep has a
     finished run.
@@ -377,6 +407,9 @@ def collect_calibration(run_dirs: Iterable[str | Path]) -> float | None:
     sigma = _fit_sigma(radii, delta_p)
     _store_cache(key, radii, delta_p, sigma, _CALIBRATION_GRID_SHAPE)
     _store_fields(key, [sample.density for sample in ordered])
+    if out_dir is not None:
+        _save_plot(Path(out_dir) / _PLOT_FILENAME, radii, delta_p, sigma)
+        _save_data(Path(out_dir) / _DATA_FILENAME, radii, delta_p, sigma)
     console.print(f"[bold green]Surface tension calibrated: σ = {sigma:.6g}[/bold green]")
     return sigma
 
@@ -386,13 +419,17 @@ def _read_sweep_run(run_dir: Path) -> _SweepSample | None:
     from src.config.adapter_toml import TomlAdapter
     from src.simulation_io.analysis.droplet_metrics import parse_timestep_from_path
 
-    match = _SWEEP_RUN_PATTERN.search(run_dir.name)
     config_path = run_dir / CONFIG_FILENAME
     snapshots = sorted((run_dir / DATA_DIRNAME).glob(SNAPSHOT_GLOB), key=parse_timestep_from_path)
-    if match is None or not config_path.is_file() or not snapshots:
+    if not config_path.is_file() or not snapshots:
         return None
 
     config = TomlAdapter().load(str(config_path))
+    nx, ny = int(config.grid_shape[0]), int(config.grid_shape[1])
+    radius = float(config.initialisation["radii"][0]) * min(nx, ny)
+    matches = np.flatnonzero(np.isclose(sweep_radii(), radius))
+    if matches.size != 1:
+        return None
     # A run cut short by its time limit has snapshots, but not an equilibrated one.
     if parse_timestep_from_path(snapshots[-1]) < config.nt:
         return None
@@ -400,11 +437,10 @@ def _read_sweep_run(run_dir: Path) -> _SweepSample | None:
         pressure = _field_2d(snapshot["pressure"])
         density = _field_2d(snapshot["rho"])
 
-    nx, ny = int(config.grid_shape[0]), int(config.grid_shape[1])
     return _SweepSample(
         key=_cache_key(config),
-        index=int(match["index"]),
-        radius=float(config.initialisation["radii"][0]) * min(nx, ny),
+        index=int(matches[0]),
+        radius=radius,
         delta_p=_pressure_jump(pressure),
         density=density,
     )

@@ -35,8 +35,8 @@ from src.lattice.lattice import Lattice
 from src.lattice.lattice import build_lattice
 from src.operators.differential import build_diff_ops
 from src.operators.force import build_forces
-from src.operators.source_term import build_referenced_source_fn
 from src.operators.source_term import build_source_fn
+from src.operators.source_term._source_well_balanced_referenced import build_referenced_source
 
 if TYPE_CHECKING:
     from src.config.multiphase_params import MultiphaseParams
@@ -163,18 +163,18 @@ def _build_equilibrium_and_source(
     carried by a ``gravity_referenced_force``. ``wb`` itself is never altered.
     """
     from src.operators.equilibrium import build_equilibrium_fn
-    from src.operators.equilibrium import build_improved_equilibrium_fn
+    from src.operators.equilibrium._equilibrium_improved_well_balanced import build_improved_equilibrium
     from src.operators.force._gravity_referenced import GravityReferencedForceModule
 
     referenced = next((f for f in forces if isinstance(f, GravityReferencedForceModule)), None)
     if config.viscosity_params is None and referenced is None:
         return build_equilibrium_fn("wb"), build_source_fn()
-    equilibrium_fn = build_improved_equilibrium_fn(
+    equilibrium_fn = build_improved_equilibrium(
         viscosity=config.viscosity_params,
         reference_pressure=None if referenced is None else referenced.pressure,
         gradient=gradient_standard,
     )
-    source_fn = build_source_fn() if referenced is None else build_referenced_source_fn(referenced.pressure_gradient)
+    source_fn = build_source_fn() if referenced is None else build_referenced_source(referenced.pressure_gradient)
     return equilibrium_fn, source_fn
 
 

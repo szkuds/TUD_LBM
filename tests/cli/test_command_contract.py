@@ -42,7 +42,7 @@ def _args(name: str, tmp_path) -> list[str]:
     if name == "calibration":
         cfg = tmp_path / "config.toml"
         cfg.write_text("", encoding="utf-8")
-        return [name, "stage", str(cfg), "--out-dir", str(tmp_path / "staged")]
+        return [name, "stage", str(cfg)]
     if name == "analyse":
         cfg = tmp_path / "config.toml"
         cfg.write_text("", encoding="utf-8")

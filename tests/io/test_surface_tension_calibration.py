@@ -316,6 +316,22 @@ def test_cached_surface_tension_ignores_the_cache_for_a_closed_form_eos():
 # ── The sweep as ordinary runs ────────────────────────────────────────
 
 
+_FLUID = "cs_kappa0.01_rho0.4_0.02"
+_RADIUS_TAGS = ["R75", "R82", "R88", "R94", "R100"]
+
+
+def test_fluid_label_and_run_names_are_readable():
+    config = _cs_config()
+
+    assert st.fluid_label(config) == _FLUID
+    assert (
+        st.fluid_label(_cs_config(eos="double-well", kappa=0.04, rho_l=1.0, rho_v=0.001)) == "dw_kappa0.04_rho1_0.001"
+    )
+    assert [c.simulation_name for c in st.calibration_configs(config)] == [
+        f"surface_tension_{_FLUID}_{tag}" for tag in _RADIUS_TAGS
+    ]
+
+
 def test_calibration_configs_are_one_plain_run_per_radius():
     config = _cs_config(
         sim_type="multiphase_wetting",
@@ -327,10 +343,10 @@ def test_calibration_configs_are_one_plain_run_per_radius():
 
     sweep = st.calibration_configs(config)
 
-    digest = st.sweep_digest(config)
-    assert [c.simulation_name for c in sweep] == [f"st_{digest}_r{i}" for i in range(st._N_RADII)]
     radii = [c.initialisation["radii"][0] * st._CALIBRATION_SIDE for c in sweep]
     np.testing.assert_allclose(radii, st.sweep_radii())
+    fluid_dir = st.SURFACE_TENSION_ROOT / _FLUID
+    assert [st.sweep_config_path(c) for c in sweep] == [fluid_dir / "configs" / f"{tag}.toml" for tag in _RADIUS_TAGS]
     for calib in sweep:
         assert calib.sim_type == "multiphase"
         assert tuple(calib.grid_shape) == st._CALIBRATION_GRID_SHAPE
@@ -341,14 +357,32 @@ def test_calibration_configs_are_one_plain_run_per_radius():
         assert calib.save_interval == st._N_ITERATIONS
         assert calib.save_fields is not None
         assert {"rho", "pressure"} <= set(calib.save_fields)
-        assert calib.results_dir == BASE_RESULTS_DIR
+        # Every run of a fluid writes into that fluid's own folder.
+        assert calib.results_dir == str(fluid_dir)
         # The whole point: the sweep's result lands where the source config looks.
         assert st._cache_key(calib) == st._cache_key(config)
 
 
-def _write_sweep_run(root: Path, sweep_config, sigma: float, *, stamp: str = "2026-01-01/00-00-00") -> Path:
-    """A finished sweep run directory: its config.toml and one final snapshot."""
-    run_dir = root / f"{stamp}_{sweep_config.simulation_name}"
+def test_a_sweep_config_is_recognised_by_its_name():
+    config = _cs_config(simulation_name="surface_tension_notes")
+
+    assert not st.is_sweep_config(config)
+    assert not st.is_sweep_config(_cs_config())
+    assert all(st.is_sweep_config(c) for c in st.calibration_configs(config))
+
+
+def test_a_sweep_run_does_not_ask_for_its_own_calibration(tmp_path):
+    """It *is* the measurement: no cache lookup, no "stage a sweep" hint."""
+    sweep_config = st.calibration_configs(_cs_config())[0]
+    _seed_cache(sweep_config, fields=False)
+
+    assert st.record_surface_tension(sweep_config, tmp_path / "run") is sweep_config
+    assert not (tmp_path / "run").exists()
+
+
+def _write_sweep_run(sweep_config, sigma: float, *, stamp: str = "2026-01-01/00-00-00") -> Path:
+    """A finished sweep run directory in its fluid folder: config.toml and one final snapshot."""
+    run_dir = Path(sweep_config.results_dir) / f"{stamp}_{sweep_config.simulation_name}"
     data_dir = run_dir / DATA_DIRNAME
     data_dir.mkdir(parents=True)
     TomlAdapter().save(sweep_config, str(run_dir / CONFIG_FILENAME))
@@ -367,15 +401,36 @@ def _write_sweep_run(root: Path, sweep_config, sigma: float, *, stamp: str = "20
     return run_dir
 
 
-def test_collect_fits_sigma_from_finished_sweep_runs(tmp_path):
+def _sweep_runs() -> list[Path]:
+    """The run directories of the one fluid these tests stage."""
+    groups = st.find_sweep_runs(st.SURFACE_TENSION_ROOT)
+    assert list(groups) == [st.SURFACE_TENSION_ROOT / _FLUID]
+    return groups[st.SURFACE_TENSION_ROOT / _FLUID]
+
+
+def test_find_sweep_runs_groups_by_fluid_folder_and_skips_other_runs():
+    for kappa in (0.01, 0.02):
+        for sweep_config in st.calibration_configs(_cs_config(kappa=kappa))[:2]:
+            _write_sweep_run(sweep_config, 0.0123)
+    # An ordinary run kept directly under the root, like the cs_eos_test runs.
+    plain = st.SURFACE_TENSION_ROOT / "2026-08-05" / "10-08-21_cs_eos_test"
+    plain.mkdir(parents=True)
+    TomlAdapter().save(_cs_config(), str(plain / CONFIG_FILENAME))
+
+    groups = st.find_sweep_runs(st.SURFACE_TENSION_ROOT)
+
+    assert sorted(d.name for d in groups) == ["cs_kappa0.01_rho0.4_0.02", "cs_kappa0.02_rho0.4_0.02"]
+    assert all(len(runs) == 2 for runs in groups.values())
+
+
+def test_collect_fits_sigma_from_finished_sweep_runs():
     config = _cs_config()
     sigma_true = 0.0123
     for sweep_config in st.calibration_configs(config):
-        _write_sweep_run(tmp_path, sweep_config, sigma_true)
+        _write_sweep_run(sweep_config, sigma_true)
+    fluid_dir = st.SURFACE_TENSION_ROOT / _FLUID
 
-    groups = st.find_sweep_runs(tmp_path)
-    assert list(groups) == [st.sweep_digest(config)]
-    sigma = st.collect_calibration(groups[st.sweep_digest(config)])
+    sigma = st.collect_calibration(_sweep_runs(), out_dir=fluid_dir)
 
     assert sigma == pytest.approx(sigma_true, rel=1e-9)
     # Stored under the key the *source* config resolves, with the fields.
@@ -383,48 +438,69 @@ def test_collect_fits_sigma_from_finished_sweep_runs(tmp_path):
     fields = st._load_fields(st._cache_key(config), st._N_RADII)
     assert fields is not None
     assert fields[0].shape == (st._CALIBRATION_SIDE, st._CALIBRATION_SIDE)
+    # The fit sits beside the runs it came from.
+    assert (fluid_dir / st._PLOT_FILENAME).stat().st_size > 0
+    data = json.loads((fluid_dir / st._DATA_FILENAME).read_text())
+    assert data["sigma"] == pytest.approx(sigma_true, rel=1e-9)
+    np.testing.assert_allclose(data["radii"], st.sweep_radii())
 
 
-def test_collect_waits_for_every_radius(tmp_path):
+def test_collect_orders_runs_by_radius_not_by_directory_name():
+    """R100 sorts before R75 as a string; the fit must not care."""
+    config = _cs_config()
+    for sweep_config in st.calibration_configs(config):
+        _write_sweep_run(sweep_config, 0.0123)
+
+    st.collect_calibration(_sweep_runs())
+
+    stored = st._load_cache(st._cache_path())[st._cache_key(config)]
+    np.testing.assert_allclose(stored["radii"], st.sweep_radii())
+    np.testing.assert_allclose(stored["delta_p"], 0.0123 / st.sweep_radii())
+
+
+def test_collect_waits_for_every_radius():
     config = _cs_config()
     for sweep_config in st.calibration_configs(config)[:-1]:
-        _write_sweep_run(tmp_path, sweep_config, 0.0123)
+        _write_sweep_run(sweep_config, 0.0123)
 
-    assert st.collect_calibration(st.find_sweep_runs(tmp_path)[st.sweep_digest(config)]) is None
+    assert st.collect_calibration(_sweep_runs(), out_dir=st.SURFACE_TENSION_ROOT / _FLUID) is None
     assert st._load_cache(st._cache_path()) == {}
+    assert not (st.SURFACE_TENSION_ROOT / _FLUID / st._PLOT_FILENAME).exists()
 
 
-def test_collect_ignores_a_run_cut_short(tmp_path):
+def test_collect_ignores_a_run_cut_short():
     """A snapshot from before the last step is not an equilibrated droplet."""
     config = _cs_config()
     sweep = st.calibration_configs(config)
     for sweep_config in sweep:
-        run_dir = _write_sweep_run(tmp_path, sweep_config, 0.0123)
+        run_dir = _write_sweep_run(sweep_config, 0.0123)
     final = run_dir / DATA_DIRNAME / f"timestep_{sweep[-1].nt}.npz"
     final.rename(final.with_name("timestep_100.npz"))
 
-    assert st.collect_calibration(st.find_sweep_runs(tmp_path)[st.sweep_digest(config)]) is None
+    assert st.collect_calibration(_sweep_runs()) is None
 
 
-def test_collect_prefers_the_newest_run_of_a_radius(tmp_path):
+def test_collect_prefers_the_newest_run_of_a_radius():
     config = _cs_config()
-    sweep = st.calibration_configs(config)
-    for sweep_config in sweep:
-        _write_sweep_run(tmp_path, sweep_config, 0.5, stamp="2026-01-01/00-00-00")
-        _write_sweep_run(tmp_path, sweep_config, 0.0123, stamp="2026-01-02/00-00-00")
+    for sweep_config in st.calibration_configs(config):
+        _write_sweep_run(sweep_config, 0.5, stamp="2026-01-01/00-00-00")
+        _write_sweep_run(sweep_config, 0.0123, stamp="2026-01-02/00-00-00")
 
-    sigma = st.collect_calibration(st.find_sweep_runs(tmp_path)[st.sweep_digest(config)])
+    sigma = st.collect_calibration(_sweep_runs())
 
     assert sigma == pytest.approx(0.0123, rel=1e-9)
 
 
-def test_collect_rejects_runs_of_different_fluids(tmp_path):
+def test_collect_rejects_two_fluids_sharing_one_label():
+    """The folder name leaves parameters out; identity comes from the configs."""
     first = st.calibration_configs(_cs_config())
-    second = st.calibration_configs(_cs_config(kappa=0.02))
-    run_dirs = [_write_sweep_run(tmp_path, c, 0.0123) for c in (first[0], second[1])]
+    second = st.calibration_configs(_cs_config(a_eos=0.6))
+    assert st.fluid_label(first[0]) == st.fluid_label(second[0])
+    for sweep_config in (first[0], second[1]):
+        _write_sweep_run(sweep_config, 0.0123)
 
     with pytest.raises(ValueError, match="one fluid at a time"):
-        st.collect_calibration(run_dirs)
+        st.collect_calibration(_sweep_runs())
 
 
 def test_field_cache_never_lands_in_the_checkout():

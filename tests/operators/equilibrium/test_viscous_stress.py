@@ -1,6 +1,6 @@
 """The viscous-stress term of the decoupled-viscosity model (Zhang, Guo & Wang 2022).
 
-The improved equilibrium (``build_improved_equilibrium_fn``, built on the untouched
+The improved equilibrium (``build_improved_equilibrium``, built on the untouched
 ``wb``) carries ``cs2*rho*A*S`` in its second moment, so the shear
 moments can relax at ``1/lambda_v`` while ``nu = cs2*(lambda_v - 1/2 - A)``.
 Asserted through the moments (Appendix C, Eq. C8/C9) rather than the PDF's
@@ -58,9 +58,9 @@ def _moments(feq, lattice):
 
 
 def _improved(lattice, params):
-    from src.operators.equilibrium import build_improved_equilibrium_fn
+    from src.operators.equilibrium._equilibrium_improved_well_balanced import build_improved_equilibrium
 
-    return build_improved_equilibrium_fn(
+    return build_improved_equilibrium(
         viscosity=params, reference_pressure=None, gradient=build_gradient(lattice, _PERIODIC)
     )
 

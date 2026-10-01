@@ -130,10 +130,10 @@ class TestEquilibriumProtocol:
         import src.pipeline  # noqa: F401 - enter through the pipeline (differential import cycle)
         from src.config.viscosity_params import build_viscosity_params
         from src.operators.differential import build_gradient_fn
-        from src.operators.equilibrium import build_improved_equilibrium_fn
+        from src.operators.equilibrium._equilibrium_improved_well_balanced import build_improved_equilibrium
 
         nx, ny = grid_shape
-        equilibrium = build_improved_equilibrium_fn(
+        equilibrium = build_improved_equilibrium(
             viscosity=build_viscosity_params(relaxation_time=1.0, tau_liquid=0.75, tau_gas=0.6, rho_l=2.0, rho_v=0.5),
             reference_pressure=jnp.zeros((nx, ny, 1, 1, 1)),
             gradient=build_gradient_fn(lattice_d2q9, ("wrap", "wrap", "wrap", "wrap")),
@@ -154,11 +154,11 @@ class TestSourceTermProtocol:
         """The ``wb`` source and its reference-pressure variant carry no mass."""
         import src.pipeline  # noqa: F401 - enter through the pipeline (differential import cycle)
         from src.operators.differential import build_gradient_fn
-        from src.operators.source_term import build_referenced_source_fn
         from src.operators.source_term import build_source_fn
+        from src.operators.source_term._source_well_balanced_referenced import build_referenced_source
 
         nx, ny = grid_shape
-        source_fn = build_referenced_source_fn(jnp.full((nx, ny, 1, 1, 2), 1e-4)) if referenced else build_source_fn()
+        source_fn = build_referenced_source(jnp.full((nx, ny, 1, 1, 2), 1e-4)) if referenced else build_source_fn()
         _, rho, u = test_state
         force = jnp.full((nx, ny, 1, 1, 2), 1e-4)
 
