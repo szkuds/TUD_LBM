@@ -53,6 +53,32 @@ def _stageable(config: SimulationConfig, *, closed_form: bool) -> bool:
     return not is_calibrated(config)
 
 
+def _plan_sweeps(config_tomls: tuple[str, ...], *, closed_form: bool) -> tuple[dict[Path, SimulationConfig], int]:
+    """The sweep configs to write for *config_tomls*, by path, and how many inputs were sweep runs."""
+    from src.simulation_io.analysis.surface_tension import calibration_configs
+    from src.simulation_io.analysis.surface_tension import is_sweep_config
+    from src.simulation_io.analysis.surface_tension import sweep_config_path
+
+    staged: dict[Path, SimulationConfig] = {}
+    sweep_runs = 0
+    for config_toml in config_tomls:
+        configs, *_ = _expand_raw_config(_load_raw_config(config_toml, ()))
+        for config in configs:
+            sweep_runs += is_sweep_config(config)
+            if not _stageable(config, closed_form=closed_form):
+                continue
+            for sweep_config in calibration_configs(config):
+                path = sweep_config_path(sweep_config)
+                # The folder name is a readable label, not the fluid's identity.
+                if staged.setdefault(path, sweep_config) != sweep_config:
+                    msg = (
+                        f"two different fluids share the folder {path.parent.parent.name!r} "
+                        "(same EOS, kappa and densities, other parameters differ); stage them one at a time"
+                    )
+                    raise ValueError(msg)
+    return staged, sweep_runs
+
+
 @calibration.command()
 @click.argument("config_tomls", nargs=-1, required=True, type=click.Path(exists=True, dir_okay=False))
 @click.option(
@@ -87,35 +113,21 @@ def stage(config_tomls: tuple[str, ...], manifest: str | None, closed_form: bool
         tud-lbm calibration stage batch/*.toml
     """
     from src.config.adapter_toml import TomlAdapter
-    from src.simulation_io.analysis.surface_tension import calibration_configs
-    from src.simulation_io.analysis.surface_tension import sweep_config_path
 
+    staged, sweep_runs = _plan_sweeps(config_tomls, closed_form=closed_form)
     adapter = TomlAdapter()
-    staged: dict[Path, SimulationConfig] = {}
-    for config_toml in config_tomls:
-        configs, *_ = _expand_raw_config(_load_raw_config(config_toml, ()))
-        for config in configs:
-            if not _stageable(config, closed_form=closed_form):
-                continue
-            for sweep_config in calibration_configs(config):
-                path = sweep_config_path(sweep_config)
-                # The folder name is a readable label, not the fluid's identity.
-                if staged.setdefault(path, sweep_config) != sweep_config:
-                    msg = (
-                        f"two different fluids share the folder {path.parent.parent.name!r} "
-                        "(same EOS, kappa and densities, other parameters differ); stage them one at a time"
-                    )
-                    raise ValueError(msg)
-
     for path, sweep_config in staged.items():
         adapter.save(sweep_config, str(path))
     if manifest is not None:
         Path(manifest).write_text("".join(f"{path}\n" for path in staged), encoding="utf-8")
 
-    if not staged:
+    if sweep_runs:
         console.print(
-            "[dim]No fluid here needs a sweep (calibrated, closed-form, or a sweep run itself); nothing staged.[/dim]"
+            f"[dim]{sweep_runs} of the configs are sweep runs themselves: they are the measurement, "
+            "so no further sweep is staged for them.[/dim]"
         )
+    if not staged:
+        console.print("[dim]No other fluid needs a sweep (already calibrated, or closed-form); nothing staged.[/dim]")
         return
     folders = sorted({path.parent for path in staged})
     for folder in folders:
