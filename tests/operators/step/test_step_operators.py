@@ -77,13 +77,11 @@ class TestApplyCommonStepGuards:
     def _setup_with(self, lattice, **overrides):
         feq = jnp.ones((NX, NY, NZ, lattice.q, 1)) / lattice.q
         base = {
-            "equilibrium_fn": lambda _rho, _u, _lat, viscous_stress=None, reference_pressure=None: feq,
+            "equilibrium_fn": lambda _rho, _u, _lat: feq,
             "collision_fn": lambda f, _feq, _tau, _src=None: f,
             "streaming_fn": lambda f, _lat: f,
             "bc_fn": lambda f_s, _f_c: f_s,
             "source_fn": None,
-            "viscosity_params": None,
-            "reference_pressure": None,
             "tau": 1.0,
             "gradient_density": lambda g: g,
             "lattice": lattice,

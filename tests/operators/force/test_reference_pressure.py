@@ -1,9 +1,10 @@
-"""Buoyancy-referenced gravity: ``F_g = -(rho - rho_0) g`` plus ``p_g = rho_0 g.x`` (Zhang, Guo & Wang 2022).
+"""``gravity_referenced_force``: ``F_g = -(rho - rho_0) g`` plus ``p_g = rho_0 g.x`` (Zhang, Guo & Wang 2022).
 
 The reference density moves the weight of ``rho_0`` out of the force and into
-the equilibrium (``p_g I`` in the second moment) and the source term
-(``-grad p_g`` in the velocity-force product). The total momentum source stays
-``-rho g``, so a run with and without it must reach the same hydrostatic state.
+the improved equilibrium (``p_g I`` in the second moment) and the referenced
+source term (``-grad p_g`` in the velocity-force product). The total momentum
+source stays ``-rho g``, so a run with it must reach the same hydrostatic state
+as one with the plain ``gravity_force``.
 """
 
 from __future__ import annotations
@@ -14,17 +15,27 @@ import pytest
 from src.config import DictAdapter
 from src.lattice.lattice import build_lattice
 from src.operators.equilibrium import build_equilibrium_fn
+from src.operators.equilibrium import build_improved_equilibrium_fn
+from src.operators.source_term import build_referenced_source_fn
 from src.operators.source_term import build_source_fn
 
-CS2 = 1.0 / 3.0
 NX, NY = 6, 8
 _G = 1e-4
 _RHO_0 = 2.0
+_PERIODIC = ("wrap", "wrap", "wrap", "wrap")
 
 
 @pytest.fixture(scope="module")
 def lattice():
     return build_lattice("D2Q9")
+
+
+def _gradient(lattice):
+    """The pipeline's gradient, entered through ``src.pipeline`` (differential import cycle)."""
+    import src.pipeline  # noqa: F401
+    from src.operators.differential import build_gradient_fn
+
+    return build_gradient_fn(lattice, _PERIODIC)
 
 
 def _moments(f, lattice):
@@ -37,67 +48,79 @@ def _moments(f, lattice):
     )
 
 
-def _config(gravity: dict[str, object], **overrides: object):
-    base: dict[str, object] = {
-        "sim_type": "multiphase",
-        "grid_shape": (NX, NY),
-        "eos": "double-well",
-        "kappa": 0.01,
-        "rho_l": _RHO_0,
-        "rho_v": 0.5,
-        "interface_width": 4,
-        "gravity_force": gravity,
-    }
-    base.update(overrides)
-    return DictAdapter().load(base)
+def _config(**forces: object):
+    return DictAdapter().load(
+        {
+            "sim_type": "multiphase",
+            "grid_shape": (NX, NY),
+            "eos": "double-well",
+            "kappa": 0.01,
+            "rho_l": _RHO_0,
+            "rho_v": 0.5,
+            "interface_width": 4,
+            **forces,
+        }
+    )
 
 
-def test_no_reference_density_means_no_reference_pressure():
-    assert _config({"force_g": _G}).reference_pressure is None
+def _referenced_force(angle: float = 0.0):
+    from src.operators.force import build_forces
+
+    config = _config(
+        gravity_referenced_force={"force_g": _G, "reference_density": _RHO_0, "inclination_angle_deg": angle}
+    )
+    (force,) = build_forces(config, tuple(config.grid_shape), build_lattice("D2Q9"))
+    return force
+
+
+def test_only_one_gravity_force_is_accepted():
+    with pytest.raises(ValueError, match="Only one gravity force"):
+        _config(gravity_force={"force_g": _G}, gravity_referenced_force={"force_g": _G, "reference_density": _RHO_0})
+
+
+def test_reference_density_is_required():
+    with pytest.raises(ValueError, match="reference_density"):
+        _config(gravity_referenced_force={"force_g": _G})
 
 
 @pytest.mark.parametrize("angle", [0.0, 30.0])
 def test_reference_pressure_is_rho0_times_the_gravity_potential(angle):
-    reference = _config({"force_g": _G, "reference_density": _RHO_0, "inclination_angle_deg": angle}).reference_pressure
+    force = _referenced_force(angle)
 
-    assert reference is not None
     g_vec = np.array([-_G * np.sin(np.radians(angle)), _G * np.cos(np.radians(angle))])
-    gradient = np.asarray(reference.gradient)
+    gradient = np.asarray(force.pressure_gradient)
     assert gradient.shape == (NX, NY, 1, 1, 2)
     np.testing.assert_allclose(gradient, np.broadcast_to(_RHO_0 * g_vec, gradient.shape), rtol=1e-12)
-    field = np.asarray(reference.field)[:, :, 0, 0, 0]
+    field = np.asarray(force.pressure)
+    assert field.shape == (NX, NY, 1, 1, 1)
+    field = field[:, :, 0, 0, 0]
     np.testing.assert_allclose(np.diff(field, axis=1), _RHO_0 * g_vec[1], rtol=1e-9, atol=1e-18)
     np.testing.assert_allclose(np.diff(field, axis=0), _RHO_0 * g_vec[0], rtol=1e-9, atol=1e-18)
     assert abs(field.mean()) < 1e-12
 
 
-def test_gravity_force_is_only_the_excess_over_the_reference():
-    from src.operators.force import build_forces
+def test_force_is_only_the_excess_over_the_reference():
     from src.pipeline.state.state import State
 
     lattice = build_lattice("D2Q9")
-    config = _config({"force_g": _G, "reference_density": _RHO_0})
-    (gravity,) = build_forces(config, tuple(config.grid_shape), lattice)
     rho = jnp.linspace(0.5, 3.0, NX * NY).reshape(NX, NY, 1, 1, 1)
-    f = lattice.w * rho
-    state = State(f=f, rho=rho, u=jnp.zeros((NX, NY, 1, 1, 2)), t=jnp.array(0))
+    state = State(f=lattice.w * rho, rho=rho, u=jnp.zeros((NX, NY, 1, 1, 2)), t=jnp.array(0))
 
-    force = np.asarray(gravity.compute(state))
+    force = np.asarray(_referenced_force().compute(state))
 
     np.testing.assert_allclose(force[..., 0], 0.0, atol=1e-15)
     np.testing.assert_allclose(force[..., 1], -(np.asarray(rho)[..., 0] - _RHO_0) * _G, rtol=1e-6, atol=1e-12)
 
 
-@pytest.mark.parametrize("scheme", ["wb", "standard_equilibrium"])
-def test_equilibrium_adds_p_g_to_the_second_moment_only(lattice, scheme):
+def test_equilibrium_adds_p_g_to_the_second_moment_only(lattice):
     rng = np.random.default_rng(0)
     rho = jnp.asarray(rng.uniform(0.5, 2.0, (NX, NY, 1, 1, 1)))
     u = jnp.asarray(rng.uniform(-0.05, 0.05, (NX, NY, 1, 1, 2)))
     p_g = jnp.asarray(rng.uniform(-0.01, 0.01, (NX, NY, 1, 1, 1)))
-    equilibrium = build_equilibrium_fn(scheme)
+    improved = build_improved_equilibrium_fn(viscosity=None, reference_pressure=p_g, gradient=_gradient(lattice))
 
-    plain = _moments(equilibrium(rho, u, lattice), lattice)
-    shifted = _moments(equilibrium(rho, u, lattice, reference_pressure=p_g), lattice)
+    plain = _moments(build_equilibrium_fn("wb")(rho, u, lattice), lattice)
+    shifted = _moments(improved(rho, u, lattice), lattice)
 
     np.testing.assert_allclose(shifted[0], plain[0], atol=1e-7)
     np.testing.assert_allclose(shifted[1], plain[1], atol=1e-7)
@@ -107,19 +130,15 @@ def test_equilibrium_adds_p_g_to_the_second_moment_only(lattice, scheme):
 
 def test_source_subtracts_grad_p_g_from_the_velocity_force_product(lattice):
     """``sum F_i`` and ``sum c F_i`` are unchanged; ``sum cc F_i`` changes by ``-(u grad p_g + grad p_g u)``."""
-    import src.pipeline  # noqa: F401 - enter through the pipeline (differential import cycle)
-    from src.operators.differential import build_gradient_fn
-
     rng = np.random.default_rng(1)
     rho = jnp.asarray(rng.uniform(0.5, 2.0, (NX, NY, 1, 1, 1)))
     u = jnp.asarray(rng.uniform(-0.05, 0.05, (NX, NY, 1, 1, 2)))
     force = jnp.asarray(rng.uniform(-1e-3, 1e-3, (NX, NY, 1, 1, 2)))
     grad_p = jnp.broadcast_to(jnp.asarray([3e-4, -7e-4]), (NX, NY, 1, 1, 2))
-    gradient = build_gradient_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))
-    source = build_source_fn()
+    gradient = _gradient(lattice)
 
-    plain = _moments(source(rho, u, force, lattice, gradient=gradient), lattice)
-    shifted = _moments(source(rho, u, force, lattice, gradient=gradient, reference_gradient=grad_p), lattice)
+    plain = _moments(build_source_fn()(rho, u, force, lattice, gradient=gradient), lattice)
+    shifted = _moments(build_referenced_source_fn(grad_p)(rho, u, force, lattice, gradient=gradient), lattice)
 
     np.testing.assert_allclose(shifted[0], 0.0, atol=1e-10)
     np.testing.assert_allclose(shifted[1], plain[1], atol=1e-10)
@@ -128,8 +147,8 @@ def test_source_subtracts_grad_p_g_from_the_velocity_force_product(lattice):
     np.testing.assert_allclose(shifted[2] - plain[2], expected, atol=1e-10)
 
 
-def test_hydrostatic_state_does_not_depend_on_the_reference_density():
-    """Walled liquid column: with or without ``rho_0`` the fluid settles to the same stratification.
+def test_hydrostatic_state_matches_the_plain_gravity_force():
+    """Walled liquid column: ``gravity_referenced_force`` settles to ``gravity_force``'s stratification.
 
     ``rho_0`` only moves ``rho_0 g`` between the force and the equilibrium, so
     the momentum source ``-rho g`` — and hence the rest state — is the same.
@@ -140,10 +159,10 @@ def test_hydrostatic_state_does_not_depend_on_the_reference_density():
     a, b, t = 9.0 / 392.0, 2.0 / 21.0, 0.8 / 14.0
     rho_l, rho_v = 6.7645, 0.8388
     finals = []
-    for reference in (None, rho_l):
-        gravity: dict[str, object] = {"force_g": 1e-4}
-        if reference is not None:
-            gravity["reference_density"] = reference
+    for forces in (
+        {"gravity_force": {"force_g": 1e-4}},
+        {"gravity_referenced_force": {"force_g": 1e-4, "reference_density": rho_l}},
+    ):
         config = DictAdapter().load(
             {
                 "sim_type": "multiphase",
@@ -165,7 +184,7 @@ def test_hydrostatic_state_does_not_depend_on_the_reference_density():
                 "init_type": "multiphase_bubbles",
                 "initialisation": {"centres": [[0.5, 0.5]], "radii": [20.0], "dispersed": "liquid"},
                 "bc_config": {"top": "bounce-back", "bottom": "bounce-back", "left": "periodic", "right": "periodic"},
-                "gravity_force": gravity,
+                **forces,
             }
         )
         setup = build_setup(config)

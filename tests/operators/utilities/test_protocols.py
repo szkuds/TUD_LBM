@@ -125,6 +125,50 @@ class TestEquilibriumProtocol:
         # Equilibrium should conserve mass
         assert jnp.allclose(jnp.sum(feq), jnp.sum(rho))
 
+    def test_improved_equilibrium_conformance(self, lattice_d2q9, grid_shape, test_state):
+        """The improved well-balanced equilibrium (Zhang, Guo & Wang 2022) satisfies the same protocol."""
+        import src.pipeline  # noqa: F401 - enter through the pipeline (differential import cycle)
+        from src.config.viscosity_params import build_viscosity_params
+        from src.operators.differential import build_gradient_fn
+        from src.operators.equilibrium import build_improved_equilibrium_fn
+
+        nx, ny = grid_shape
+        equilibrium = build_improved_equilibrium_fn(
+            viscosity=build_viscosity_params(relaxation_time=1.0, tau_liquid=0.75, tau_gas=0.6, rho_l=2.0, rho_v=0.5),
+            reference_pressure=jnp.zeros((nx, ny, 1, 1, 1)),
+            gradient=build_gradient_fn(lattice_d2q9, ("wrap", "wrap", "wrap", "wrap")),
+        )
+
+        _, rho, u = test_state
+        feq = equilibrium(rho, u, lattice_d2q9)
+
+        assert feq.shape == (nx, ny, 1, lattice_d2q9.q, 1)
+        assert jnp.allclose(jnp.sum(feq), jnp.sum(rho))
+
+
+class TestSourceTermProtocol:
+    """Verify source-term operators conform to SourceTermOperator."""
+
+    @pytest.mark.parametrize("referenced", [False, True])
+    def test_source_conformance(self, lattice_d2q9, grid_shape, test_state, referenced):
+        """The ``wb`` source and its reference-pressure variant carry no mass."""
+        import src.pipeline  # noqa: F401 - enter through the pipeline (differential import cycle)
+        from src.operators.differential import build_gradient_fn
+        from src.operators.source_term import build_referenced_source_fn
+        from src.operators.source_term import build_source_fn
+
+        nx, ny = grid_shape
+        source_fn = build_referenced_source_fn(jnp.full((nx, ny, 1, 1, 2), 1e-4)) if referenced else build_source_fn()
+        _, rho, u = test_state
+        force = jnp.full((nx, ny, 1, 1, 2), 1e-4)
+
+        source = source_fn(
+            rho, u, force, lattice_d2q9, gradient=build_gradient_fn(lattice_d2q9, ("wrap", "wrap", "wrap", "wrap"))
+        )
+
+        assert source.shape == (nx, ny, 1, lattice_d2q9.q, 1)
+        assert jnp.allclose(jnp.sum(source, axis=-2), 0.0, atol=1e-12)
+
 
 # ── Macroscopic Operator Tests ───────────────────────────────────────────────
 

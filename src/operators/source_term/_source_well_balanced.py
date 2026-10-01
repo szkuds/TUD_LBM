@@ -26,7 +26,6 @@ def compute_source(
     lattice: Lattice,
     *,
     gradient: DifferentialOperator,
-    reference_gradient: jnp.ndarray | None = None,
 ) -> jnp.ndarray:
     """Compute the well-balanced forcing source term.
 
@@ -37,11 +36,6 @@ def compute_source(
         lattice: :class:`~setup.lattice.Lattice`.
         gradient: Standard LBM-stencil gradient callable
             (grid) → gradient. Used for density gradient.
-        reference_gradient: ``grad p_g`` of the hydrostatic reference
-            pressure, shape ``(nx, ny, nz, 1, 2)``, or ``None``.
-            It enters only the velocity-force product
-            ``u (F - grad p_g + cs2 grad rho)`` (Zhang, Guo & Wang 2022, Eq. 26);
-            the first moment stays ``F``.
 
     Returns:
         Source term, shape ``(nx, ny, nz, q, 1)``.
@@ -73,9 +67,6 @@ def compute_source(
     # Corrected force
     fx_cor = fx + grad_rho_x / 3.0
     fy_cor = fy + grad_rho_y / 3.0
-    if reference_gradient is not None:
-        fx_cor = fx_cor - reference_gradient[..., 0, 0, 0]
-        fy_cor = fy_cor - reference_gradient[..., 0, 0, 1]
 
     nx_grid, ny_grid = rho_2d.shape
     source_3d = jnp.zeros((nx_grid, ny_grid, q))

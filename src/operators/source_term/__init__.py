@@ -1,6 +1,6 @@
 """Source-term operators — implementations of SourceTermOperator protocol.
 
-Public API: build_source_fn()
+Public API: build_source_fn(), build_referenced_source_fn()
 
 Implementation modules (_source_well_balanced.py) are internal; use the factory to access.
 
@@ -14,9 +14,11 @@ Example:
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from src.operators._loader import auto_load_operators
+from src.operators.source_term._source_well_balanced_referenced import build_referenced_source
 from src.registry import get_operators
 
 if TYPE_CHECKING:
+    import jax.numpy as jnp
     from src.operators.protocols import SourceTermOperator
 
 # Auto-discover and import private operator modules for registry registration
@@ -41,6 +43,17 @@ def build_source_fn(scheme: str = "wb") -> SourceTermOperator:
     return get_operators("source_term")[scheme].target
 
 
+def build_referenced_source_fn(reference_gradient: jnp.ndarray) -> SourceTermOperator:
+    """Return the ``wb`` source with the ``-grad p_g`` term of a reference pressure bound in.
+
+    Example:
+        >>> source_fn = build_referenced_source_fn(force.pressure_gradient)
+        >>> src = source_fn(rho, u, force_total, lattice, gradient=gradient_density)
+    """
+    return build_referenced_source(reference_gradient)
+
+
 __all__ = [
+    "build_referenced_source_fn",
     "build_source_fn",
 ]

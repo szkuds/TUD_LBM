@@ -36,8 +36,6 @@ from src.config.init_field import load_init_wetting
 from src.config.init_field import measure_init_phase_densities
 from src.config.multiphase_params import MultiphaseParams
 from src.config.obstacle_mask import build_obstacle_mask
-from src.config.reference_pressure import ReferencePressure
-from src.config.reference_pressure import build_reference_pressure
 from src.config.viscosity_params import ViscosityParams
 from src.config.viscosity_params import build_viscosity_params
 from src.config.wetting_defaults import NEUTRAL_WETTING_CONFIG
@@ -290,6 +288,9 @@ class SimulationConfig:
     gravity_masked_force: dict[str, Any] | None = array_field(
         default=None, section="gravity_masked_force", nested_sweepable=True
     )
+    gravity_referenced_force: dict[str, Any] | None = array_field(
+        default=None, section="gravity_referenced_force", nested_sweepable=True
+    )
     # ── Initialisation ───────────────────────────────────────────
     init_type: str = "standard"
     init_dir: str | None = None
@@ -463,8 +464,9 @@ class SimulationConfig:
         After this, a force's ``build`` reads its section with ``params[key]``
         and never checks it again.
         """
-        if self.gravity_force is not None and self.gravity_masked_force is not None:
-            msg = "Only one gravity force can be applied: set either gravity_force or gravity_masked_force, not both."
+        gravities = sorted(name for name in self.active_forces if name.startswith("gravity"))
+        if len(gravities) > 1:
+            msg = f"Only one gravity force can be applied, got {', '.join(gravities)}."
             raise ValueError(msg)
 
         for name, params in self.active_forces.items():
@@ -711,11 +713,6 @@ class SimulationConfig:
             rho_l=float(self.rho_l),
             rho_v=float(self.rho_v),
         )
-
-    @property
-    def reference_pressure(self) -> ReferencePressure | None:
-        """``p_g = rho_0 g.x`` of a ``[gravity_force]`` with ``reference_density``, else ``None``."""
-        return build_reference_pressure(self.gravity_force, self.grid_shape)
 
     @property
     def boundary_edges(self) -> tuple[BoundaryEdge, ...]:

@@ -89,14 +89,25 @@ def test_a_beyond_the_positivity_bound_is_rejected(overrides, phase):
         _config(**overrides)
 
 
-def test_setup_relaxes_at_lambda_v_and_carries_the_parameters():
+def test_setup_relaxes_at_lambda_v_and_uses_the_improved_equilibrium():
+    """Shear rate ``1/lambda_v``; on a sheared field the equilibrium departs from ``wb``."""
+    from src.lattice.lattice import build_lattice
+    from src.operators.equilibrium import build_equilibrium_fn
     from src.pipeline.setup import build_setup
 
-    config = _config(lambda_v=1.0, tau_gas=0.6)
-    setup = build_setup(config)
+    setup = build_setup(_config(lambda_v=1.0, tau_gas=0.6))
+    plain = build_setup(_config())
+    lattice = build_lattice("D2Q9")
+    y = jnp.arange(16, dtype=float)[None, :, None, None, None] * jnp.ones((16, 1, 1, 1, 1))
+    u = jnp.concatenate([0.01 * jnp.sin(2 * jnp.pi * y / 16), jnp.zeros_like(y)], axis=-1)
+    rho = jnp.full((16, 16, 1, 1, 1), 1.2)
 
     assert setup.tau == pytest.approx(1.0)
-    assert setup.viscosity_params == config.viscosity_params
+    assert setup.equilibrium_fn is not None
+    assert plain.equilibrium_fn is build_equilibrium_fn("wb")
+    assert not np.allclose(
+        np.asarray(setup.equilibrium_fn(rho, u, lattice)), np.asarray(build_equilibrium_fn("wb")(rho, u, lattice))
+    )
 
 
 def test_configured_k_diag_reaches_the_collision():

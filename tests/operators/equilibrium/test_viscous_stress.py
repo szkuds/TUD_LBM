@@ -1,6 +1,7 @@
 """The viscous-stress term of the decoupled-viscosity model (Zhang, Guo & Wang 2022).
 
-The equilibrium carries ``cs2*rho*A*S`` in its second moment, so the shear
+The improved equilibrium (``build_improved_equilibrium_fn``, built on the untouched
+``wb``) carries ``cs2*rho*A*S`` in its second moment, so the shear
 moments can relax at ``1/lambda_v`` while ``nu = cs2*(lambda_v - 1/2 - A)``.
 Asserted through the moments (Appendix C, Eq. C8/C9) rather than the PDF's
 explicit populations, whose rest-population sign is a transcription error.
@@ -13,8 +14,8 @@ import pytest
 from src.config.viscosity_params import build_viscosity_params
 from src.lattice.lattice import build_lattice
 from src.operators.equilibrium import build_equilibrium_fn
-from src.operators.equilibrium._viscous_stress import strain_rate
-from src.operators.equilibrium._viscous_stress import viscous_stress
+from src.operators.equilibrium._equilibrium_improved_well_balanced import strain_rate
+from src.operators.equilibrium._equilibrium_improved_well_balanced import viscous_stress
 from src.operators.source_term import build_source_fn
 
 CS2 = 1.0 / 3.0
@@ -44,9 +45,7 @@ def _fields(seed: int = 0):
     rng = np.random.default_rng(seed)
     rho = jnp.asarray(rng.uniform(0.5, 2.0, (NX, NY, 1, 1, 1)))
     u = jnp.asarray(rng.uniform(-0.05, 0.05, (NX, NY, 1, 1, 2)))
-    raw = rng.uniform(-0.1, 0.1, (NX, NY, 1, 1, 2, 2))
-    stress = jnp.asarray(raw + np.swapaxes(raw, -1, -2))
-    return rho, u, stress
+    return rho, u
 
 
 def _moments(feq, lattice):
@@ -58,47 +57,58 @@ def _moments(feq, lattice):
     return zeroth, first, second
 
 
-@pytest.mark.parametrize("scheme", ["wb", "standard_equilibrium"])
-def test_stress_adds_cs2_rho_stress_to_the_second_moment_only(lattice, scheme):
-    rho, u, stress = _fields()
-    equilibrium = build_equilibrium_fn(scheme)
+def _improved(lattice, params):
+    from src.operators.equilibrium import build_improved_equilibrium_fn
 
-    plain = _moments(equilibrium(rho, u, lattice), lattice)
-    stressed = _moments(equilibrium(rho, u, lattice, viscous_stress=stress), lattice)
+    return build_improved_equilibrium_fn(
+        viscosity=params, reference_pressure=None, gradient=build_gradient(lattice, _PERIODIC)
+    )
 
-    np.testing.assert_allclose(stressed[0], plain[0], atol=1e-6)
-    np.testing.assert_allclose(stressed[1], plain[1], atol=1e-6)
+
+_PARAMS = build_viscosity_params(relaxation_time=1.0, tau_liquid=0.75, tau_gas=0.6, rho_l=2.0, rho_v=0.5)
+
+
+def test_improved_equilibrium_adds_cs2_rho_a_s_to_the_second_moment_only(lattice):
+    """Against the untouched ``wb``: mass and momentum equal, second moment shifted by ``cs2 rho A S``."""
+    rho, u = _fields()
+    stress = viscous_stress(rho, u, build_gradient(lattice, _PERIODIC), _PARAMS)
+
+    plain = _moments(build_equilibrium_fn("wb")(rho, u, lattice), lattice)
+    improved = _moments(_improved(lattice, _PARAMS)(rho, u, lattice), lattice)
+
+    np.testing.assert_allclose(improved[0], plain[0], atol=1e-6)
+    np.testing.assert_allclose(improved[1], plain[1], atol=1e-6)
     expected = np.asarray(CS2 * rho[..., None] * stress)[..., 0, :, :]
-    np.testing.assert_allclose(stressed[2] - plain[2], expected, atol=1e-6)
+    np.testing.assert_allclose(improved[2] - plain[2], expected, atol=1e-6)
 
 
-def test_wb_equilibrium_moments_match_eq_c8(lattice):
+def test_improved_equilibrium_moments_match_eq_c8(lattice):
     """``sum feq = rho``, ``sum c feq = rho u``, ``sum cc feq = rho uu + cs2 rho A S`` (p_g = 0)."""
-    rho, u, stress = _fields(1)
+    rho, u = _fields(1)
+    stress = np.asarray(viscous_stress(rho, u, build_gradient(lattice, _PERIODIC), _PARAMS))
 
-    zeroth, first, second = _moments(build_equilibrium_fn("wb")(rho, u, lattice, viscous_stress=stress), lattice)
+    zeroth, first, second = _moments(_improved(lattice, _PARAMS)(rho, u, lattice), lattice)
 
-    rho_np, u_np, stress_np = np.asarray(rho), np.asarray(u), np.asarray(stress)
+    rho_np, u_np = np.asarray(rho), np.asarray(u)
     np.testing.assert_allclose(zeroth, rho_np[..., 0, 0], atol=1e-6)
     np.testing.assert_allclose(first, (rho_np * u_np)[..., 0, :], atol=1e-6)
     uu = u_np[..., 0, :, None] * u_np[..., 0, None, :]
-    expected = rho_np[..., 0, :, None] * (uu + CS2 * stress_np[..., 0, :, :])
+    expected = rho_np[..., 0, :, None] * (uu + CS2 * stress[..., 0, :, :])
     np.testing.assert_allclose(second, expected, atol=1e-6)
 
 
-def test_no_stress_is_the_plain_equilibrium(lattice):
-    rho, u, _ = _fields(2)
-    equilibrium = build_equilibrium_fn("wb")
+def test_without_its_terms_the_improved_equilibrium_is_wb(lattice):
+    rho, u = _fields(2)
 
     np.testing.assert_array_equal(
-        np.asarray(equilibrium(rho, u, lattice, viscous_stress=None)),
-        np.asarray(equilibrium(rho, u, lattice)),
+        np.asarray(_improved(lattice, None)(rho, u, lattice)),
+        np.asarray(build_equilibrium_fn("wb")(rho, u, lattice)),
     )
 
 
 def test_wb_source_moments_match_eq_c9(lattice):
     """The unchanged ``wb`` source carries no mass and exactly the force: ``sum F_i = 0``, ``sum c F_i = F``."""
-    rho, u, _ = _fields(3)
+    rho, u = _fields(3)
     force = jnp.asarray(np.random.default_rng(3).uniform(-1e-3, 1e-3, (NX, NY, 1, 1, 2)))
     gradient = build_gradient(lattice, _PERIODIC)
 

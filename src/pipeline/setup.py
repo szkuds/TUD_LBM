@@ -35,13 +35,12 @@ from src.lattice.lattice import Lattice
 from src.lattice.lattice import build_lattice
 from src.operators.differential import build_diff_ops
 from src.operators.force import build_forces
+from src.operators.source_term import build_referenced_source_fn
 from src.operators.source_term import build_source_fn
 
 if TYPE_CHECKING:
     from src.config.multiphase_params import MultiphaseParams
-    from src.config.reference_pressure import ReferencePressure
     from src.config.simulation_config import SimulationConfig
-    from src.config.viscosity_params import ViscosityParams
     from src.operators.protocols import BoundaryOperator
     from src.operators.protocols import CollisionOperator
     from src.operators.protocols import DifferentialOperator
@@ -76,10 +75,6 @@ class SimulationSetup(NamedTuple):
         collision_scheme: Name of the collision model (``"bgk"`` / ``"mrt"``).
         k_diag: MRT relaxation rates (``None`` for BGK); already bound into
             ``collision_fn``.
-        viscosity_params: Viscous-stress parameters of the decoupled-viscosity
-            equilibrium; ``None`` when the term is off.
-        reference_pressure: Hydrostatic reference pressure ``p_g`` of a
-            buoyancy-referenced gravity; ``None`` without one.
         forces: The configured forces, each a bound
             :class:`~src.operators.protocols.ForceOperator`; empty when none are active.
         source_fn: Couples the total force into the populations
@@ -130,8 +125,6 @@ class SimulationSetup(NamedTuple):
     forces: tuple[ForceOperator, ...] = ()
     source_fn: SourceTermOperator | None = None
     multiphase_params: MultiphaseParams | None = None
-    viscosity_params: ViscosityParams | None = None
-    reference_pressure: ReferencePressure | None = None
     obstacle_mask: jnp.ndarray | None = None
     obstacle_fn: ObstacleOperator | None = None
 
@@ -156,6 +149,33 @@ class SimulationSetup(NamedTuple):
 
 
 # ── Main factory ─────────────────────────────────────────────────────
+
+
+def _build_equilibrium_and_source(
+    config: SimulationConfig,
+    forces: tuple[ForceOperator, ...],
+    gradient_standard: DifferentialOperator,
+) -> tuple[EquilibriumOperator, SourceTermOperator]:
+    """The ``wb`` pair, or the improved well-balanced pair of Zhang, Guo & Wang (2022).
+
+    The improved model is a separate equilibrium/source pair bound to its inputs
+    here: the viscous-stress parameters of the config and the reference pressure
+    carried by a ``gravity_referenced_force``. ``wb`` itself is never altered.
+    """
+    from src.operators.equilibrium import build_equilibrium_fn
+    from src.operators.equilibrium import build_improved_equilibrium_fn
+    from src.operators.force._gravity_referenced import GravityReferencedForceModule
+
+    referenced = next((f for f in forces if isinstance(f, GravityReferencedForceModule)), None)
+    if config.viscosity_params is None and referenced is None:
+        return build_equilibrium_fn("wb"), build_source_fn()
+    equilibrium_fn = build_improved_equilibrium_fn(
+        viscosity=config.viscosity_params,
+        reference_pressure=None if referenced is None else referenced.pressure,
+        gradient=gradient_standard,
+    )
+    source_fn = build_source_fn() if referenced is None else build_referenced_source_fn(referenced.pressure_gradient)
+    return equilibrium_fn, source_fn
 
 
 def build_setup(config: SimulationConfig) -> SimulationSetup:
@@ -200,7 +220,6 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     # Import here to avoid circular import issues at module level
     from src.operators.boundary import build_bc
     from src.operators.collision import build_collision_fn
-    from src.operators.equilibrium import build_equilibrium_fn
     from src.operators.initialise import build_initialise_fn
     from src.operators.macroscopic import build_macroscopic_fn
     from src.operators.obstacle import build_obstacle_fn
@@ -228,7 +247,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         # A keyword the protocol lacks is bound, not typed: the configured rates
         # (shear entries already coupled to the relaxation time) reach collide_mrt.
         collision_fn = functools.partial(collision_fn, k_diag=jnp.asarray(config.k_diag))
-    equilibrium_fn = build_equilibrium_fn("wb")
+    equilibrium_fn, source_fn = _build_equilibrium_and_source(config, forces, gradient_standard)
     streaming_fn = build_streaming_fn(config.periodic_axes)
     macroscopic_fn = (
         build_macroscopic_fn("multiphase")  # unified multiphase op; EOS selected from mp.eos
@@ -278,10 +297,8 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         collision_scheme=config.collision_scheme,
         k_diag=config.k_diag,
         forces=forces,
-        source_fn=build_source_fn(),
+        source_fn=source_fn,
         multiphase_params=mp_params,
-        viscosity_params=config.viscosity_params,
-        reference_pressure=config.reference_pressure,
         obstacle_mask=obstacle_mask,
         obstacle_fn=obstacle_fn,
         gradient_standard=gradient_standard,

@@ -2,13 +2,6 @@
 
 Provides a constant-body-force implementation with no auxiliary state.
 
-With the optional ``reference_density`` ``rho_0`` the force is only the excess
-``-(rho - rho_0) g`` (Zhang, Guo & Wang 2022, Eq. 26): the ``rho_0 g`` part is
-carried by the hydrostatic reference pressure ``p_g = rho_0 g.x`` in the
-equilibrium and source term instead (``SimulationConfig.reference_pressure``),
-so a bulk phase at ``rho_0`` feels no body force at all. The total
-momentum source is unchanged, ``-grad p_g - (rho - rho_0) g = -rho g``.
-
 Usage::
 
     from src.operators.force import build_forces
@@ -18,7 +11,6 @@ Usage::
 """
 
 from __future__ import annotations
-import math
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
@@ -30,16 +22,6 @@ if TYPE_CHECKING:
     from src.config.simulation_config import SimulationConfig
     from src.lattice.lattice import Lattice
     from src.pipeline.state import State
-
-
-def gravity_vector(params: dict[str, Any]) -> tuple[float, float]:
-    """``(g_x, g_y)`` such that the gravitational acceleration is ``-(g_x, g_y)``.
-
-    The single statement of the inclination convention, shared by the force
-    template and the reference pressure.
-    """
-    angle_rad = math.radians(params["inclination_angle_deg"])
-    return -params["force_g"] * math.sin(angle_rad), params["force_g"] * math.cos(angle_rad)
 
 
 def _build_gravity_template(
@@ -55,7 +37,9 @@ def _build_gravity_template(
     d = lattice.d
     nx, ny, nz = grid_shape[0], grid_shape[1], grid_shape[2] if len(grid_shape) > 2 else 1  # noqa: PLR2004
 
-    force_x, force_y = gravity_vector(params)
+    angle_rad = jnp.deg2rad(params["inclination_angle_deg"])
+    force_x = params["force_g"] * (-jnp.sin(angle_rad))
+    force_y = params["force_g"] * jnp.cos(angle_rad)
 
     template = jnp.zeros((nx, ny, nz, 1, d))
     template = template.at[:, :, :, 0, 0].set(force_x)
@@ -67,13 +51,7 @@ def _build_gravity_template(
 # ══════════════════════════════════════════════════════════════════════
 
 
-@force_model(
-    name="gravity_force",
-    required=("force_g",),
-    defaults={"inclination_angle_deg": 0.0},
-    optional=("reference_density",),
-    positive=("reference_density",),
-)
+@force_model(name="gravity_force", required=("force_g",), defaults={"inclination_angle_deg": 0.0})
 class GravityForceModule(NamedTuple):
     """Constant gravity force, bound to its template (:class:`ForceOperator`).
 
@@ -81,12 +59,9 @@ class GravityForceModule(NamedTuple):
 
     Attributes:
         template: Constant force per unit density, shape ``(nx, ny, nz, 1, d)``.
-        reference_density: ``rho_0`` whose weight the reference pressure
-            carries; ``0.0`` without one, which is the plain ``-rho g``.
     """
 
     template: jnp.ndarray
-    reference_density: float = 0.0
 
     @classmethod
     def build(
@@ -100,9 +75,8 @@ class GravityForceModule(NamedTuple):
         """Build the constant gravity template.
 
         Args:
-            params: The validated ``[gravity_force]`` section: ``force_g``,
-                ``inclination_angle_deg`` (defaulted by the config) and the
-                optional ``reference_density``.
+            params: The validated ``[gravity_force]`` section: ``force_g`` and
+                ``inclination_angle_deg`` (defaulted by the config).
             grid_shape: Spatial dimensions ``(nx, ny, nz, ...)``.
             config: Full simulation configuration (unused).
             lattice: The simulation lattice (for the velocity dimension).
@@ -110,10 +84,7 @@ class GravityForceModule(NamedTuple):
         Returns:
             The force bound to its template.
         """
-        return cls(
-            template=_build_gravity_template(params, grid_shape, lattice),
-            reference_density=float(params.get("reference_density", 0.0)),
-        )
+        return cls(template=_build_gravity_template(params, grid_shape, lattice))
 
     def compute(self, state: State, **_kwargs: object) -> jnp.ndarray:
         """Compute gravity force (step-time, jittable).
@@ -127,4 +98,4 @@ class GravityForceModule(NamedTuple):
             Gravity force field, shape ``(nx, ny, nz, 1, d)``.
         """
         rho = jnp.sum(state.f, axis=-2, keepdims=True)
-        return -self.template * (rho - self.reference_density)
+        return -self.template * rho

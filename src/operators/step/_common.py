@@ -7,7 +7,6 @@ Not registered in the operator registry; imported directly by siblings.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
-from src.operators.equilibrium._viscous_stress import viscous_stress
 
 if TYPE_CHECKING:
     from src.operators.protocols import DifferentialOperator
@@ -98,16 +97,6 @@ def _multiphase_pipeline(
     return next_state.f, rho_next, u_next, force_tot, pressure_next
 
 
-def _viscous_stress(setup: SimulationSetup, rho: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray | None:
-    """``A*S`` for the equilibrium, or ``None`` when the viscosity is not decoupled."""
-    if setup.viscosity_params is None:
-        return None
-    if setup.gradient_standard is None:
-        msg = "gradient_standard is required for the viscous-stress term"
-        raise TypeError(msg)
-    return viscous_stress(rho, u, setup.gradient_standard, setup.viscosity_params)
-
-
 def _apply_common_step(
     setup: SimulationSetup,
     state: State,
@@ -148,15 +137,8 @@ def _apply_common_step(
 
     lattice = setup.lattice
 
-    # 3. Equilibrium (+ the viscous-stress term A*S when the viscosity is decoupled)
-    reference = setup.reference_pressure
-    feq = setup.equilibrium_fn(
-        rho,
-        u,
-        lattice,
-        viscous_stress=_viscous_stress(setup, rho, u),
-        reference_pressure=None if reference is None else reference.field,
-    )
+    # 3. Equilibrium
+    feq = setup.equilibrium_fn(rho, u, lattice)
 
     # 4. Collision (with or without source term)
     if force_tot is not None:
@@ -168,14 +150,7 @@ def _apply_common_step(
         if grad is None:
             msg = "gradient_density is required when force_tot is active"
             raise TypeError(msg)
-        src = setup.source_fn(
-            rho,
-            u,
-            force_tot,
-            lattice,
-            gradient=grad,
-            reference_gradient=None if reference is None else reference.gradient,
-        )
+        src = setup.source_fn(rho, u, force_tot, lattice, gradient=grad)
         f_col = setup.collision_fn(state.f, feq, setup.tau, src)
     else:
         f_col = setup.collision_fn(state.f, feq, setup.tau)
