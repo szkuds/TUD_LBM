@@ -33,7 +33,6 @@ from typing import cast
 import jax.numpy as jnp
 from src.lattice.lattice import Lattice
 from src.lattice.lattice import build_lattice
-from src.operators.differential import build_diff_ops
 from src.operators.force import build_forces
 from src.operators.source_term import build_source_fn
 
@@ -229,6 +228,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     # Import here to avoid circular import issues at module level
     from src.operators.boundary import build_bc
     from src.operators.collision import build_collision_fn
+    from src.operators.differential import build_diff_ops
     from src.operators.initialise import build_initialise_fn
     from src.operators.macroscopic import build_macroscopic_fn
     from src.operators.obstacle import build_obstacle_fn
