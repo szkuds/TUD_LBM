@@ -13,6 +13,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from src.config.boundary_edges import build_boundary_edges
+from src.config.boundary_edges import periodic_axes
 from src.lattice.lattice import build_lattice
 from src.operators.boundary import build_bc
 from src.operators.streaming import build_streaming_fn
@@ -30,13 +32,13 @@ def lattice():
 
 
 def _total_mass_after(bc_config, lattice, steps=25):
-    stream = build_streaming_fn("standard", bc_config)
-    bc_fn = build_bc(bc_config, lattice)
+    stream = build_streaming_fn(periodic_axes(bc_config))
+    bc_fn = build_bc(build_boundary_edges(bc_config), lattice)
 
     f = jax.random.uniform(jax.random.PRNGKey(0), (NX, NY, NZ, lattice.q, 1))
     masses = [float(jnp.sum(f))]
     for _ in range(steps):
-        f = bc_fn(stream(f, lattice), f, None)
+        f = bc_fn(stream(f, lattice), f)
         masses.append(float(jnp.sum(f)))
     return np.array(masses)
 

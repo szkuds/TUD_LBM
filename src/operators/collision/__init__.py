@@ -13,9 +13,8 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from typing import cast
 from src.operators._loader import auto_load_operators
-from src.operators.factory import build_operator
+from src.registry import get_operators
 
 if TYPE_CHECKING:
     from src.operators.protocols import CollisionOperator
@@ -39,15 +38,12 @@ def build_collision_fn(scheme: str) -> CollisionOperator:
 
         Type-checkers will verify any use of op matches the protocol.
 
-    Raises:
-        ValueError: If scheme is not registered.
-
     Examples:
         >>> from operators.collision import build_collision_fn
         >>> bgk = build_collision_fn("bgk")
         >>> f_col = bgk(f, feq, tau)
     """
-    return cast("CollisionOperator", build_operator("collision_models", scheme))
+    return get_operators("collision_models")[scheme].target
 
 
 __all__ = [

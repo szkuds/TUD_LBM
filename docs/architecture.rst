@@ -48,7 +48,6 @@ only the import package was renamed.
     │   ├── force/      initialise/   obstacle/
     │   ├── wetting/    step/
     │   ├── protocols.py     ← structural contracts
-    │   ├── factory.py       ← generic build_operator()
     │   └── _loader.py       ← auto_load_operators()
     ├── pipeline/            ← setup, runner, state
     ├── simulation_io/       ← writers, plotting, analysis, callbacks
@@ -198,7 +197,7 @@ State management
 :class:`~src.pipeline.state.state.WettingState` is a nested ``NamedTuple``
 carrying the hysteresis parameters — ``phi_left``/``phi_right``,
 ``d_rho_left``/``d_rho_right``, the measured angles ``ca_left``/``ca_right``,
-and the contact-line locations ``cll_left``/``cll_right``.  Being part of the
+and the contact-line anchors ``cll_left``/``cll_right``.  Being part of the
 carry is what lets the optimiser's result persist from step to step.
 
 Because ``NamedTuple`` is a pytree, the whole state maps cleanly through

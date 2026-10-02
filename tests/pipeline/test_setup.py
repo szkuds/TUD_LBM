@@ -91,7 +91,7 @@ def test_build_setup_config_variants(cfg_kwargs: dict, expected: dict) -> None:
     assert setup.streaming_fn is not None
     assert setup.equilibrium_fn is not None
 
-    has_forces = setup.forces is not None and len(setup.forces.specs) > 0
+    has_forces = len(setup.forces) > 0
     assert has_forces == expected["has_forces"], (
         f"Force mismatch for {cfg_kwargs}: expected has_forces={expected['has_forces']}"
     )

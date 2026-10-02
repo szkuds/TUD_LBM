@@ -477,57 +477,6 @@ class TestBuildSetup:
         assert setup.config.bc_config["top"] == "symmetry"
         assert setup.config.bc_config["bottom"] == "bounce-back"
 
-    def test_bc_masks_present(self):
-        """build_setup produces BCMasks on the setup."""
-        from src.config.simulation_config import SimulationConfig
-        from src.pipeline.setup import build_setup
-
-        cfg = SimulationConfig(grid_shape=(8, 8))
-        setup = build_setup(cfg)
-
-        assert setup.bc_masks is not None
-        assert setup.bc_masks.top.shape == (8, 8, 1, 1, 1)
-        assert setup.bc_masks.bottom.shape == (8, 8, 1, 1, 1)
-        assert setup.bc_masks.left.shape == (8, 8, 1, 1, 1)
-        assert setup.bc_masks.right.shape == (8, 8, 1, 1, 1)
-
-    def test_bc_masks_correct_edges(self):
-        """BCMasks mark the correct boundary rows/columns."""
-        from src.config.simulation_config import SimulationConfig
-        from src.pipeline.setup import build_setup
-
-        cfg = SimulationConfig(grid_shape=(8, 8))
-        setup = build_setup(cfg)
-
-        assert setup.bc_masks is not None
-        # Top mask: y = ny-1 (index 7)
-        assert bool(setup.bc_masks.top[0, 7, 0, 0]) is True
-        assert bool(setup.bc_masks.top[0, 0, 0, 0]) is False
-        # Bottom mask: y = 0
-        assert bool(setup.bc_masks.bottom[0, 0, 0, 0]) is True
-        assert bool(setup.bc_masks.bottom[0, 7, 0, 0]) is False
-        # Left mask: x = 0
-        assert bool(setup.bc_masks.left[0, 3, 0, 0]) is True
-        assert bool(setup.bc_masks.left[7, 3, 0, 0]) is False
-        # Right mask: x = nx-1 (index 7)
-        assert bool(setup.bc_masks.right[7, 3, 0, 0]) is True
-        assert bool(setup.bc_masks.right[0, 3, 0, 0]) is False
-
-    def test_bc_masks_are_jax_arrays(self):
-        from src.operators.boundary import build_bc_masks
-
-        masks = build_bc_masks((16, 16))
-        for arr in (masks.top, masks.bottom, masks.left, masks.right):
-            assert isinstance(arr, jax.Array)
-
-    def test_bc_masks_pytree_round_trip(self):
-        from src.operators.boundary import build_bc_masks
-
-        masks = build_bc_masks((8, 8))
-        leaves, treedef = jax.tree_util.tree_flatten(masks)
-        masks2 = treedef.unflatten(leaves)
-        np.testing.assert_array_equal(np.array(masks2.top), np.array(masks.top))
-
     def test_operator_closures_present_single_phase(self):
         """build_setup must attach all five operator closures for single-phase."""
         from src.config.simulation_config import SimulationConfig
@@ -586,48 +535,15 @@ class TestBuildSetup:
 
 
 # =====================================================================
-# --- build_bc_masks (standalone) ---
+# --- SimulationConfig.multiphase_params ---
 # =====================================================================
 
 
-class TestBuildBCMasks:
-    """Standalone ``build_bc_masks`` factory."""
-
-    def test_shapes(self):
-        from src.operators.boundary import build_bc_masks
-
-        masks = build_bc_masks((16, 32))
-        assert masks.top.shape == (16, 32, 1, 1, 1)
-        assert masks.bottom.shape == (16, 32, 1, 1, 1)
-        assert masks.left.shape == (16, 32, 1, 1, 1)
-        assert masks.right.shape == (16, 32, 1, 1, 1)
-
-    def test_mask_counts(self):
-        """Each edge mask should have exactly one row/column of True."""
-        from src.operators.boundary import build_bc_masks
-
-        masks = build_bc_masks((10, 20))
-        # top: entire row y=19 → 10 True cells
-        assert int(jnp.sum(masks.top)) == 10
-        # bottom: entire row y=0 → 10 True cells
-        assert int(jnp.sum(masks.bottom)) == 10
-        # left: entire col x=0 → 20 True cells
-        assert int(jnp.sum(masks.left)) == 20
-        # right: entire col x=9 → 20 True cells
-        assert int(jnp.sum(masks.right)) == 20
-
-
-# =====================================================================
-# --- build_multiphase_params (standalone) ---
-# =====================================================================
-
-
-class TestBuildMultiphaseParams:
-    """Standalone ``build_multiphase_params`` factory."""
+class TestConfigMultiphaseParams:
+    """The config builds the multiphase parameters; its validation is the only guard."""
 
     def test_from_config(self):
         from src.config.simulation_config import SimulationConfig
-        from src.operators.macroscopic import build_multiphase_params
 
         cfg = SimulationConfig(
             sim_type="multiphase",
@@ -639,31 +555,58 @@ class TestBuildMultiphaseParams:
             rho_v=0.33,
             interface_width=4,
         )
-        mp = build_multiphase_params(cfg)
+        mp = cfg.multiphase_params
+        assert mp is not None
         assert mp.eos == "double-well"
         assert mp.kappa == 0.017
         assert mp.rho_l == 1.0
         assert mp.rho_v == 0.33
         assert mp.interface_width == 4
 
-    def test_missing_field_raises(self):
-        from dataclasses import dataclass
-        from src.operators.macroscopic import build_multiphase_params
+    def test_carries_the_carnahan_starling_constants(self):
+        from src.config.simulation_config import SimulationConfig
 
-        @dataclass
-        class Incomplete:
-            eos: str = "double-well"
-            kappa: float = 0.1
-            rho_l: float = 1.0
-            rho_v: float = None  # ty: ignore[invalid-assignment]
-            interface_width: int = 4
+        cfg = SimulationConfig(
+            sim_type="multiphase",
+            grid_shape=(8, 8),
+            tau=0.99,
+            eos="carnahan-starling",
+            kappa=0.01,
+            rho_l=12.18,
+            rho_v=0.015,
+            interface_width=5,
+            a_eos=0.1,
+            b_eos=0.2,
+            r_eos=1.0,
+            t_eos=0.3,
+        )
+        mp = cfg.multiphase_params
+        assert mp is not None
+        assert (mp.a_eos, mp.b_eos, mp.r_eos, mp.t_eos) == (0.1, 0.2, 1.0, 0.3)
 
-        incomplete = Incomplete()
+    def test_none_for_single_phase(self):
+        from src.config.simulation_config import SimulationConfig
+
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.99, kappa=0.017, rho_l=1.0, rho_v=0.33)
+        assert cfg.multiphase_params is None
+
+    def test_missing_field_is_rejected_by_the_config(self):
+        """A multiphase config without a required field never exists, so nothing else guards it."""
+        from src.config.simulation_config import SimulationConfig
+
         with pytest.raises(ValueError, match="'rho_v' is required"):
-            build_multiphase_params(incomplete)  # ty: ignore[invalid-argument-type]
+            SimulationConfig(
+                sim_type="multiphase",
+                grid_shape=(8, 8),
+                tau=0.99,
+                eos="double-well",
+                kappa=0.017,
+                rho_l=1.0,
+                interface_width=4,
+            )
 
     def test_multiphase_params_is_pytree(self):
-        from src.operators.macroscopic import MultiphaseParams
+        from src.config.multiphase_params import MultiphaseParams
 
         mp = MultiphaseParams(
             eos="double-well",

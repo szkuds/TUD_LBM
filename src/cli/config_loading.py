@@ -25,6 +25,8 @@ def _validate_cli_args(
     init_wetting: bool = False,
     init_dir: str | None = None,
     continue_run: bool = False,
+    override_phase1: tuple[str, ...] = (),
+    override_phase2: tuple[str, ...] = (),
 ) -> None:
     """Reject option combinations that need a CONFIG_PATH but were given none.
 
@@ -34,6 +36,14 @@ def _validate_cli_args(
     if continue_run and init_dir is not None:
         msg = "--continue cannot be used with --init-dir"
         raise click.UsageError(msg)
+    # The phase overrides name the two --init-wetting phases, so without it
+    # there is no phase to apply them to; silently dropping them would look
+    # like an override that had no effect.
+    if not init_wetting:
+        for option, given in (("--override-phase1", override_phase1), ("--override-phase2", override_phase2)):
+            if given:
+                msg = f"{option} requires --init-wetting; use --override for a single-phase run"
+                raise click.UsageError(msg)
     if config_path:
         return
     requires_config = (
@@ -42,6 +52,8 @@ def _validate_cli_args(
         ("--init-dir", init_dir),
         ("--continue", continue_run),
     )
+    # The phase overrides need no entry here: they already require
+    # --init-wetting, which requires CONFIG_PATH just above.
     for option, given in requires_config:
         if given:
             msg = f"{option} requires CONFIG_PATH"

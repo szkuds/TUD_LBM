@@ -23,12 +23,15 @@ from src.cli.display import _print_dry_run_message
 from src.cli.execution import RunFlags
 from src.cli.execution import _check_sweep_errors
 from src.cli.execution import _run_impl
+from src.cli.wetting_init import _WETTING_INIT_NT
 from src.cli.wetting_init import _WETTING_PARAM_DEFAULTS
 from src.cli.wetting_init import _build_wetting_gravity_raw
 from src.cli.wetting_init import _build_wetting_init_raw
 from src.cli.wetting_init import _prompt_wetting_params
 from src.config import SimulationConfig
 from src.config.array_expansion import ArrayParameterSet
+from src.config.config_overview import DEBUG_STABILITY_INTERVAL
+from src.config.config_overview import DEBUG_WETTING_INTERVAL
 from src.pipeline.parallel_runner import SimulationResult
 
 try:
@@ -57,6 +60,7 @@ from src.cli.execution import _run_with_optional_overrides
 from src.cli.field_select import _parse_field_tokens
 from src.cli.field_select import _resolve_token
 from src.cli.field_select import prompt_fields_marked
+from src.cli.overrides import confirm_or_override
 from src.cli.wetting_init import _run_two_phase_wetting_init
 
 
@@ -167,13 +171,13 @@ class TestParseOverrideArgument:
 
 
 class TestNormaliseOverridePath:
-    """Tests for normalizing TOML section paths to field names."""
+    """Tests for normalising TOML section paths to field names."""
 
-    def test_simple_field_no_normalization(self):
+    def test_simple_field_no_normalisation(self):
         result = _normalise_override_path("tau")
         assert result == ["tau"]
 
-    def test_nested_field_no_normalization(self):
+    def test_nested_field_no_normalisation(self):
         result = _normalise_override_path("gravity_force.force_g")
         assert result == ["gravity_force", "force_g"]
 
@@ -326,15 +330,15 @@ class TestApplyOverrides:
         _apply_overrides(raw, ("gravity_force.inclination_angle_deg=50",))
         assert raw == {"gravity_force": {"force_g": 5e-7, "inclination_angle_deg": 50}}
 
-    def test_apply_overrides_with_alias_normalization(self):
+    def test_apply_overrides_with_alias_normalisation(self):
         raw = {}
         _apply_overrides(raw, ("simulation_type.tau=0.8",))
         assert raw == {"tau": 0.8}
 
     def test_apply_mixed_scalar_and_array_overrides(self):
         raw = {"tau": 0.6}
-        _apply_overrides(raw, ("nt=500", 'fields=["rho_t_plus1", "u"]'))
-        assert raw == {"tau": 0.6, "nt": 500, "fields": ["rho_t_plus1", "u"]}
+        _apply_overrides(raw, ("nt=500", 'save_fields=["rho", "u"]'))
+        assert raw == {"tau": 0.6, "nt": 500, "save_fields": ["rho", "u"]}
 
     def test_apply_overrides_reject_invalid_value(self):
         raw = {}
@@ -342,9 +346,9 @@ class TestApplyOverrides:
             _apply_overrides(raw, ("tau=not_toml",))
 
     def test_apply_overrides_reject_invalid_path(self):
-        raw = {"some_scalar": 123}
+        raw = {"tau": 123}
         with pytest.raises(TypeError, match="is not a table"):
-            _apply_overrides(raw, ("some_scalar.nested=456",))
+            _apply_overrides(raw, ("tau.nested=456",))
 
 
 # =========================================================================
@@ -445,6 +449,18 @@ class TestDisplayConfigSummary:
         _display_config_summary(cfg)
         out = capsys.readouterr().out
         assert "gravity" in out.lower() or "Forces" in out or "enabled" in out
+
+    def test_boundary_conditions_row_is_rendered(self, capsys):
+        """The compact table names each configured face, not only --overview."""
+        cfg = SimulationConfig(
+            grid_shape=(16, 16),
+            bc_config={"top": "periodic", "bottom": "bounce-back"},
+        )
+        _display_config_summary(cfg)
+        out = capsys.readouterr().out.replace("\n", "")
+        assert "Boundary" in out
+        assert "top=periodic" in out
+        assert "bottom=bounce-back" in out
 
 
 class TestDisplayFullOverview:
@@ -601,52 +617,38 @@ class TestRunImplFlags:
         assert called["n"] == 1
         assert result is False
 
-    def test_debug_wetting_sets_flag_and_interval(self, tmp_path):
+    @pytest.mark.parametrize(
+        ("flags", "enabled_attr", "interval_attr"),
+        [
+            (RunFlags(no_prompt=True, dry_run=True, debug_wetting=25), "DEBUG_FLAG_WETTING", "DEBUG_WETTING_INTERVAL"),
+            (
+                RunFlags(no_prompt=True, dry_run=True, debug_stability=25),
+                "DEBUG_FLAG_STABILITY",
+                "DEBUG_STABILITY_INTERVAL",
+            ),
+        ],
+    )
+    def test_debug_flag_sets_flag_and_interval(self, tmp_path, monkeypatch, flags, enabled_attr, interval_attr):
         import src.config.config_overview as _flags
 
-        original = _flags.DEBUG_FLAG_WETTING
-        original_interval = _flags.DEBUG_WETTING_INTERVAL
+        # Registers both globals for restoration; _run_impl overwrites them.
+        monkeypatch.setattr(_flags, enabled_attr, False)
+        monkeypatch.setattr(_flags, interval_attr, getattr(_flags, interval_attr))
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
-        try:
-            with (
-                patch("src.cli.execution._load_raw_config", return_value={}),
-                patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
-            ):
-                _run_impl(
-                    config_path=str(cfg_toml),
-                    overrides=(),
-                    max_workers=None,
-                    init_dir=None,
-                    flags=RunFlags(no_prompt=True, dry_run=True, debug_wetting=True, debug_wetting_interval=25),
-                )
-            assert _flags.DEBUG_FLAG_WETTING is True
-            assert _flags.DEBUG_WETTING_INTERVAL == 25
-        finally:
-            _flags.DEBUG_FLAG_WETTING = original
-            _flags.DEBUG_WETTING_INTERVAL = original_interval
-
-    def test_debug_stability_sets_flag(self, tmp_path):
-        import src.config.config_overview as _flags
-
-        original = _flags.DEBUG_FLAG_STABILITY
-        cfg_toml = tmp_path / "config.toml"
-        cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
-        try:
-            with (
-                patch("src.cli.execution._load_raw_config", return_value={}),
-                patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
-            ):
-                _run_impl(
-                    config_path=str(cfg_toml),
-                    overrides=(),
-                    max_workers=None,
-                    init_dir=None,
-                    flags=RunFlags(no_prompt=True, dry_run=True, debug_stability=True),
-                )
-            assert _flags.DEBUG_FLAG_STABILITY is True
-        finally:
-            _flags.DEBUG_FLAG_STABILITY = original
+        with (
+            patch("src.cli.execution._load_raw_config", return_value={}),
+            patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
+        ):
+            _run_impl(
+                config_path=str(cfg_toml),
+                overrides=(),
+                max_workers=None,
+                init_dir=None,
+                flags=flags,
+            )
+        assert getattr(_flags, enabled_attr) is True
+        assert getattr(_flags, interval_attr) == 25
 
 
 class TestClickCommandPaths:
@@ -665,7 +667,7 @@ class TestClickCommandPaths:
         with patch("src.cli.commands.run._run_impl", return_value=False) as mock_impl:
             result = runner.invoke(cli, ["run", str(cfg_toml), "--debug-stability", "--dry-run"])
         assert result.exit_code == 0
-        assert mock_impl.call_args.args[-1].debug_stability is True
+        assert mock_impl.call_args.args[-1].debug_stability == DEBUG_STABILITY_INTERVAL
 
     def test_run_continue_option_forwards(self, tmp_path):
         cfg_toml = tmp_path / "config.toml"
@@ -891,6 +893,61 @@ class TestClickCommandPaths:
         assert result.exit_code in (0, 1)
 
 
+def _invoke_run(tmp_path: Path, *args: str) -> tuple[int, RunFlags | None]:
+    """Invoke `run` on an empty config with `_run_impl` mocked; return (exit code, flags)."""
+    cfg_toml = tmp_path / "config.toml"
+    cfg_toml.write_text("", encoding="utf-8")
+    with patch("src.cli.commands.run._run_impl", return_value=False) as mock_impl:
+        result = CliRunner().invoke(cli, ["run", str(cfg_toml), *args])
+    flags = mock_impl.call_args.args[-1] if mock_impl.called else None
+    return result.exit_code, flags
+
+
+@pytest.mark.parametrize(
+    ("option", "attr", "default", "old_option"),
+    [
+        ("--init-wetting", "init_wetting", _WETTING_INIT_NT, "--init-wetting-nt"),
+        ("--debug-wetting", "debug_wetting", DEBUG_WETTING_INTERVAL, "--debug-wetting-interval"),
+        ("--debug-stability", "debug_stability", DEBUG_STABILITY_INTERVAL, "--debug-stability-interval"),
+    ],
+)
+class TestOptionalIntOptions:
+    """`--init-wetting`, `--debug-wetting` and `--debug-stability` take an optional number."""
+
+    def test_bare_flag_uses_default(self, tmp_path, option, attr, default, old_option):
+        exit_code, flags = _invoke_run(tmp_path, option)
+        assert exit_code == 0
+        assert getattr(flags, attr) == default
+
+    def test_value_sets_number(self, tmp_path, option, attr, default, old_option):
+        exit_code, flags = _invoke_run(tmp_path, option, "1234")
+        assert exit_code == 0
+        assert getattr(flags, attr) == 1234
+
+    def test_bare_flag_before_another_option(self, tmp_path, option, attr, default, old_option):
+        exit_code, flags = _invoke_run(tmp_path, option, "--dry-run")
+        assert exit_code == 0
+        assert flags is not None
+        assert getattr(flags, attr) == default
+        assert flags.dry_run is True
+
+    def test_absent_is_none(self, tmp_path, option, attr, default, old_option):
+        exit_code, flags = _invoke_run(tmp_path)
+        assert exit_code == 0
+        assert flags is not None
+        assert getattr(flags, attr) is None
+
+    def test_separate_value_option_is_gone(self, tmp_path, option, attr, default, old_option):
+        exit_code, flags = _invoke_run(tmp_path, old_option, "5")
+        assert exit_code == 2
+        assert flags is None
+
+    def test_non_positive_value_rejected(self, tmp_path, option, attr, default, old_option):
+        exit_code, flags = _invoke_run(tmp_path, option, "0")
+        assert exit_code == 2
+        assert flags is None
+
+
 class TestValidateCliArgs:
     """Tests for _validate_cli_args argument validation."""
 
@@ -905,6 +962,19 @@ class TestValidateCliArgs:
     def test_init_dir_without_config_raises(self):
         with pytest.raises(click.UsageError, match="--init-dir requires"):
             _validate_cli_args((), None, init_dir="/some/path.npz")
+
+    def test_override_phase1_without_config_raises(self):
+        """Transitively: a phase override needs --init-wetting, which needs CONFIG_PATH."""
+        with pytest.raises(click.UsageError, match="requires CONFIG_PATH"):
+            _validate_cli_args((), None, init_wetting=True, override_phase1=("tau=0.8",))
+
+    def test_override_phase2_without_init_wetting_raises(self):
+        """A phase override names a --init-wetting phase; without one it has nothing to hit."""
+        with pytest.raises(click.UsageError, match="--override-phase2 requires --init-wetting"):
+            _validate_cli_args((), "config.toml", override_phase2=("tau=0.8",))
+
+    def test_override_phase1_with_init_wetting_and_config_ok(self):
+        _validate_cli_args((), "config.toml", init_wetting=True, override_phase1=("tau=0.8",))
 
     def test_valid_args_do_not_raise(self):
         _validate_cli_args(("tau=0.8",), "config.toml")
@@ -1757,6 +1827,132 @@ class TestConfirmRun:
 
 
 # =========================================================================
+# override path validation
+# =========================================================================
+
+
+class TestOverrideFieldValidation:
+    """An override naming nothing must say so, at the point it was typed."""
+
+    def test_unknown_field_raises_with_suggestion(self):
+        """The singular section name is the near-miss that motivated this check."""
+        with pytest.raises(ValueError, match="boundary_conditions"):
+            _apply_overrides({}, ('boundary_condition.left="periodic"',))
+
+    def test_unknown_field_names_the_offending_segment(self):
+        with pytest.raises(ValueError, match="unknown override field 'nonsense'"):
+            _apply_overrides({}, ("nonsense.left=1",))
+
+    def test_bare_unknown_top_level_field_raises(self):
+        """Previously swept into config.extra by the adapter, silently."""
+        with pytest.raises(ValueError, match="unknown override field 'taau'"):
+            _apply_overrides({}, ("taau=0.7",))
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            'boundary_conditions.left="periodic"',
+            'bc_config.left="periodic"',
+            "simulation_type.tau=0.7",
+            "tau=0.7",
+            "gravity_force.force_g=5e-07",
+            "wetting.phi_left=0.9",
+            "obstacle.radius=4",
+        ],
+        ids=["bc-alias", "bc-field", "sim-alias", "bare", "force", "wetting-alias", "obstacle-alias"],
+    )
+    def test_valid_paths_are_accepted(self, path):
+        _apply_overrides({}, (path,))
+
+
+class TestSectionAliasMap:
+    """Pin the alias map to the sections ``_merge_sections`` actually flattens.
+
+    The map is a hand-written mirror of that method; ``obstacle`` was missing
+    from it, so ``--override obstacle.x=1`` built a top-level key no config
+    field ever reads.
+    """
+
+    #: The section names ``ConfigAdapter._merge_sections`` consumes.
+    _MERGED_SECTIONS = (
+        "simulation_type",
+        "multiphase",
+        "output",
+        "boundary_conditions",
+        "wetting",
+        "hysteresis",
+        "chemical_step",
+        "obstacle",
+        "initialisation",
+    )
+
+    @pytest.mark.parametrize("section", _MERGED_SECTIONS)
+    def test_every_merged_section_normalises_to_a_real_field(self, section):
+        parts = _normalise_override_path(f"{section}.tau")
+        assert parts[0] in SimulationConfig.__dataclass_fields__
+
+    def test_every_alias_target_is_a_real_field(self):
+        from src.cli.overrides import _SECTION_ALIAS_MAP
+
+        targets = {t for t in _SECTION_ALIAS_MAP.values() if t}
+        assert targets <= set(SimulationConfig.__dataclass_fields__)
+
+
+# =========================================================================
+# confirm_or_override
+# =========================================================================
+
+
+class TestConfirmOrOverride:
+    """Tests for the shared confirm/override loop behind both call sites."""
+
+    def test_yes_returns_value_unchanged(self):
+        with _patch("rich.prompt.Prompt.ask", return_value="y"):
+            result = confirm_or_override({}, "value", prompt=lambda _: "go?", rebuild=lambda _: "rebuilt")
+        assert result == "value"
+
+    def test_no_returns_none(self):
+        with _patch("rich.prompt.Prompt.ask", return_value="n"):
+            result = confirm_or_override({}, "value", prompt=lambda _: "go?", rebuild=lambda _: "rebuilt")
+        assert result is None
+
+    def test_override_applies_rebuilds_and_commits(self):
+        raw = {"tau": 0.8}
+        with _patch("rich.prompt.Prompt.ask", side_effect=["o", "tau=0.7", "y"]):
+            result = confirm_or_override(raw, raw["tau"], prompt=lambda _: "go?", rebuild=lambda r: r["tau"])
+        assert result == pytest.approx(0.7)
+        assert raw["tau"] == pytest.approx(0.7)
+
+    def test_rejected_override_leaves_raw_config_unmutated(self):
+        """A failed rebuild must not leave its override behind for the next round."""
+        raw = {"tau": 0.8}
+
+        def _rebuild(candidate):
+            if candidate["tau"] < 0.5:
+                msg = "tau too small"
+                raise click.UsageError(msg)
+            return candidate["tau"]
+
+        with _patch("rich.prompt.Prompt.ask", side_effect=["o", "tau=0.1", "y"]):
+            result = confirm_or_override(raw, raw["tau"], prompt=lambda _: "go?", rebuild=_rebuild)
+        assert result == pytest.approx(0.8)
+        assert raw["tau"] == pytest.approx(0.8)
+
+    def test_invalid_expression_reprompts(self, capsys):
+        raw = {"tau": 0.8}
+        with _patch("rich.prompt.Prompt.ask", side_effect=["o", "not an override", "y"]):
+            result = confirm_or_override(raw, raw["tau"], prompt=lambda _: "go?", rebuild=lambda r: r["tau"])
+        assert result == pytest.approx(0.8)
+        assert "Invalid override" in capsys.readouterr().out
+
+    def test_override_without_raw_config_warns_and_reasks(self, capsys):
+        with _patch("rich.prompt.Prompt.ask", side_effect=["o", "y"]):
+            result = confirm_or_override(None, "value", prompt=lambda _: "go?", rebuild=lambda _: "rebuilt")
+        assert result == "value"
+        assert "require a config file" in capsys.readouterr().out
+
+
+# =========================================================================
 # _run_with_optional_overrides
 # =========================================================================
 
@@ -2008,7 +2204,7 @@ class TestRunTwoPhaseWettingInit:
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
             _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
             _patch("src.cli.wetting_init._prompt_wetting_params", return_value=wetting_params),
-            _patch("rich.prompt.Confirm.ask", return_value=False),
+            _patch("rich.prompt.Prompt.ask", return_value="n"),
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=False, overview=False)
 
@@ -2110,6 +2306,112 @@ class TestRunTwoPhaseWettingInit:
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False, init_nt=20_000)
         assert seen[0] == ("Phase 1", 20_000)
 
+    def _phase_configs(self, tmp_path, **kwargs):
+        """Run both phases with a stub expander; return the raw dict seen per phase."""
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = self._data_dir_with_snapshots(tmp_path)
+        seen = {}
+
+        def _expand(raw, phase_name):
+            seen[phase_name] = dict(raw)
+            return cfg
+
+        with (
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", _expand),
+            _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False, **kwargs)
+        return seen
+
+    def test_override_phase1_reaches_phase1_only(self, tmp_path):
+        seen = self._phase_configs(tmp_path, override_phase1=("tau=0.55",))
+        assert seen["Phase 1"]["tau"] == pytest.approx(0.55)
+        assert seen["Phase 2"].get("tau") != pytest.approx(0.55)
+
+    def test_override_phase2_reaches_phase2_only(self, tmp_path):
+        seen = self._phase_configs(tmp_path, override_phase2=("gravity_force.force_g=5e-07",))
+        assert "gravity_force" not in seen["Phase 1"]
+        assert seen["Phase 2"]["gravity_force"]["force_g"] == pytest.approx(5e-07)
+
+    def test_override_phase1_beats_the_values_init_wetting_forces(self, tmp_path):
+        """Phase overrides are applied after the phase raw dict is built, so they win."""
+        seen = self._phase_configs(tmp_path, override_phase1=('sim_type="multiphase"', "nt=77"))
+        assert seen["Phase 1"]["sim_type"] == "multiphase"
+        assert seen["Phase 1"]["nt"] == 77
+
+    def test_shared_override_still_reaches_both_phases(self, tmp_path):
+        """--override keeps its meaning: it is folded into the base config."""
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = self._data_dir_with_snapshots(tmp_path)
+        seen = {}
+
+        def _expand(raw, phase_name):
+            seen[phase_name] = dict(raw)
+            return cfg
+
+        with (
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", _expand),
+            _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), ("tau=0.61",), no_prompt=True, overview=False)
+        assert seen["Phase 1"]["tau"] == pytest.approx(0.61)
+        assert seen["Phase 2"]["tau"] == pytest.approx(0.61)
+
+    def test_phase1_prompt_override_does_not_reach_phase2(self, tmp_path):
+        """An override typed at the Phase 1 prompt is scoped to Phase 1."""
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        data_dir = self._data_dir_with_snapshots(tmp_path)
+        seen = []
+
+        def _expand(raw, phase_name):
+            seen.append((phase_name, raw.get("tau")))
+            return cfg
+
+        with (
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", _expand),
+            _patch("src.cli.wetting_init._prompt_wetting_params", return_value=dict(_WETTING_PARAM_DEFAULTS)),
+            _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
+            # Phase 1: override to tau=0.55 then start; Phase 2: start.
+            _patch("rich.prompt.Prompt.ask", side_effect=["o", "tau=0.55", "y", "y"]),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=False, overview=False)
+        assert seen[-2] == ("Phase 1", 0.55)
+        assert seen[-1][0] == "Phase 2"
+        assert seen[-1][1] != 0.55
+
+    def test_shortening_phase1_past_its_save_interval_warns(self, tmp_path, capsys):
+        """An nt below the derived spacing writes no snapshot, so Phase 2 could not seed."""
+        self._phase_configs(tmp_path, override_phase1=("nt=10",))
+        assert "no snapshot would be written" in capsys.readouterr().out.replace("\n", " ")
+
+    def test_dry_run_previews_both_phases_without_running(self, tmp_path, capsys):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        run_calls = []
+
+        with (
+            _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
+            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.execution._run_simulation", run_calls.append),
+        ):
+            _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False, dry_run=True)
+
+        out = capsys.readouterr().out
+        assert run_calls == []
+        assert "Phase 1" in out
+        assert "Phase 2" in out
+        assert "Dry run" in out
+
     def test_missing_snapshot_raises(self, tmp_path):
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
@@ -2181,9 +2483,10 @@ class TestRunImplAdditional:
         cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
         called = {"n": 0}
 
-        def _fake_wetting(path, overrides, *, no_prompt, overview, init_nt):
+        def _fake_wetting(path, overrides, *, no_prompt, overview, init_nt, **kwargs):
             called["n"] += 1
             called["init_nt"] = init_nt
+            called.update(kwargs)
 
         with _patch("src.cli.execution._run_two_phase_wetting_init", _fake_wetting):
             result = _run_impl(
@@ -2191,7 +2494,7 @@ class TestRunImplAdditional:
                 overrides=(),
                 max_workers=None,
                 init_dir=None,
-                flags=RunFlags(no_prompt=True, init_wetting=True, init_wetting_nt=1234),
+                flags=RunFlags(no_prompt=True, init_wetting=1234),
             )
         assert called["n"] == 1
         assert called["init_nt"] == 1234
@@ -2471,6 +2774,17 @@ class TestAnalyseCommand:
         config_arg, out_dir_arg = mock_calibrate.call_args.args
         assert config_arg.sim_type == "multiphase"
         assert out_dir_arg == Path(cfg_toml).resolve().parent
+
+    def test_uncalibrated_fluid_reports_no_sigma(self, tmp_path):
+        """A cache miss is not an error: the calibration prints how to stage the sweep."""
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        with patch(
+            "src.simulation_io.analysis.surface_tension.calibrate_surface_tension",
+            return_value=None,
+        ):
+            result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+        assert result.exit_code == 0
+        assert "Surface tension:" not in result.output
 
     def test_out_dir_option_overrides_default(self, tmp_path):
         cfg_toml = self._write_multiphase_toml(tmp_path)

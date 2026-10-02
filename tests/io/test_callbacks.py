@@ -29,6 +29,17 @@ def test_state_to_numpy_persists_wetting_even_with_field_filter():
     assert "cll_right" in data
 
 
+def test_state_to_numpy_saves_pressure_like_force():
+    """``pressure`` is a State field, so a snapshot carries it unless filtered out."""
+    from src.simulation_io import callbacks
+
+    pressure = jnp.full((2, 2, 1, 1, 1), 1.0 / 3.0)
+    state = _state_with_wetting()._replace(pressure=pressure)
+
+    np.testing.assert_array_equal(callbacks._state_to_numpy(state, t=7)["pressure"], np.asarray(pressure))
+    assert "pressure" not in callbacks._state_to_numpy(state, fields=("rho",), t=7)
+
+
 def test_state_to_numpy_raises_on_nan():
     from src.simulation_io import callbacks
 

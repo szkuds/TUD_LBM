@@ -7,8 +7,9 @@ registered, it must satisfy its protocol's structural requirements.
 
 import jax.numpy as jnp
 import pytest
+from src.config.boundary_edges import build_boundary_edges
 from src.lattice.lattice import build_lattice
-from src.operators.boundary import build_bc_masks
+from src.registry import get_operators
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -90,7 +91,7 @@ class TestStreamingProtocol:
         """Standard streaming should match protocol."""
         from src.operators.streaming import build_streaming_fn
 
-        stream = build_streaming_fn("standard")
+        stream = build_streaming_fn((True, True))
 
         nx, ny = grid_shape
         nz = 1
@@ -125,6 +126,58 @@ class TestEquilibriumProtocol:
         # Equilibrium should conserve mass
         assert jnp.allclose(jnp.sum(feq), jnp.sum(rho))
 
+    def test_improved_equilibrium_conformance(self, lattice_d2q9, grid_shape, test_state):
+        """The improved well-balanced equilibrium (Zhang, Guo & Wang 2022) satisfies the same protocol."""
+        import functools
+        import src.pipeline  # noqa: F401 - enter through the pipeline (differential import cycle)
+        from src.config.viscosity_params import build_viscosity_params
+        from src.operators.differential import build_gradient_fn
+
+        nx, ny = grid_shape
+        equilibrium = functools.partial(
+            get_operators("equilibrium")["wb_improved"].target,
+            viscosity=build_viscosity_params(relaxation_time=1.0, tau_liquid=0.75, tau_gas=0.6, rho_l=2.0, rho_v=0.5),
+            reference_pressure=jnp.zeros((nx, ny, 1, 1, 1)),
+            gradient=build_gradient_fn(lattice_d2q9, ("wrap", "wrap", "wrap", "wrap")),
+        )
+
+        _, rho, u = test_state
+        feq = equilibrium(rho, u, lattice_d2q9)
+
+        assert feq.shape == (nx, ny, 1, lattice_d2q9.q, 1)
+        assert jnp.allclose(jnp.sum(feq), jnp.sum(rho))
+
+
+class TestSourceTermProtocol:
+    """Verify source-term operators conform to SourceTermOperator."""
+
+    @pytest.mark.parametrize("referenced", [False, True])
+    def test_source_conformance(self, lattice_d2q9, grid_shape, test_state, referenced):
+        """The ``wb`` source and its reference-pressure variant carry no mass."""
+        import functools
+        import src.pipeline  # noqa: F401 - enter through the pipeline (differential import cycle)
+        from src.operators.differential import build_gradient_fn
+        from src.operators.source_term import build_source_fn
+
+        nx, ny = grid_shape
+        source_fn = (
+            functools.partial(
+                get_operators("source_term")["wb_referenced"].target,
+                reference_gradient=jnp.full((nx, ny, 1, 1, 2), 1e-4),
+            )
+            if referenced
+            else build_source_fn()
+        )
+        _, rho, u = test_state
+        force = jnp.full((nx, ny, 1, 1, 2), 1e-4)
+
+        source = source_fn(
+            rho, u, force, lattice_d2q9, gradient=build_gradient_fn(lattice_d2q9, ("wrap", "wrap", "wrap", "wrap"))
+        )
+
+        assert source.shape == (nx, ny, 1, lattice_d2q9.q, 1)
+        assert jnp.allclose(jnp.sum(source, axis=-2), 0.0, atol=1e-12)
+
 
 # ── Macroscopic Operator Tests ───────────────────────────────────────────────
 
@@ -140,12 +193,14 @@ class TestMacroscopicProtocol:
 
         f, rho_expected, u_expected = test_state
 
-        rho, u, _ = macroscopic(f, lattice_d2q9)  # ty: ignore[invalid-assignment]
+        rho, u, _, pressure = macroscopic(f, lattice_d2q9)
         assert rho.shape == rho_expected.shape
         assert u.shape == u_expected.shape
+        # Single phase has no EOS: the pressure is the lattice ideal gas cs^2 * rho.
+        assert bool(jnp.allclose(pressure, rho / 3.0))
 
     def test_macroscopic_with_force_conformance(self, lattice_d2q9, grid_shape, test_state):
-        """Macroscopic with force should return 3-tuple."""
+        """Macroscopic with force returns (rho, u, force, pressure)."""
         from src.operators.macroscopic import build_macroscopic_fn
 
         macroscopic = build_macroscopic_fn("standard")
@@ -153,9 +208,10 @@ class TestMacroscopicProtocol:
         f, rho_expected, u_expected = test_state
         force = jnp.zeros((grid_shape[0], grid_shape[1], 1, 1, 2))
 
-        rho, u, force_out = macroscopic(f, lattice_d2q9, force=force)  # ty: ignore[invalid-assignment]
+        rho, u, force_out, _ = macroscopic(f, lattice_d2q9, force=force)
         assert rho.shape == rho_expected.shape
         assert u.shape == u_expected.shape
+        assert force_out is not None
         assert force_out.shape == force.shape
 
 
@@ -165,7 +221,7 @@ class TestMacroscopicProtocol:
 class TestBoundaryProtocol:
     """Verify boundary operators conform to BoundaryOperator."""
 
-    def test_periodic_bc_conformance(self, lattice_d2q9, grid_shape, test_state):
+    def test_periodic_bc_conformance(self, lattice_d2q9, test_state):
         """Periodic boundary should match protocol."""
         from src.operators.boundary import build_bc
 
@@ -176,17 +232,13 @@ class TestBoundaryProtocol:
             "left": "periodic",
             "right": "periodic",
         }
-        grid_shape_3d = (*grid_shape, 1)
-        bc_masks = build_bc_masks(grid_shape_3d)
-
-        bc_fn = build_bc(bc_config, lattice_d2q9)
-        result = bc_fn(f_stream, f_col, bc_masks)
+        bc_fn = build_bc(build_boundary_edges(bc_config), lattice_d2q9)
+        result = bc_fn(f_stream, f_col)
         assert result.shape == f_stream.shape
 
-    def test_bounce_back_bc_conformance(self, lattice_d2q9, grid_shape, test_state):
+    def test_bounce_back_bc_conformance(self, lattice_d2q9, test_state):
         """Bounce-back boundary should match protocol."""
         from src.operators.boundary import build_bc
-        from src.operators.boundary import build_bc_masks
 
         f_stream, f_col = test_state[0], test_state[0]
         bc_config = {
@@ -195,11 +247,8 @@ class TestBoundaryProtocol:
             "left": "periodic",
             "right": "periodic",
         }
-        grid_shape_3d = (*grid_shape, 1)
-        bc_masks = build_bc_masks(grid_shape_3d)
-
-        bc_fn = build_bc(bc_config, lattice_d2q9)
-        result = bc_fn(f_stream, f_col, bc_masks)
+        bc_fn = build_bc(build_boundary_edges(bc_config), lattice_d2q9)
+        result = bc_fn(f_stream, f_col)
         assert result.shape == f_stream.shape
 
 

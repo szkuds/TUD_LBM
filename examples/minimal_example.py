@@ -9,7 +9,7 @@ Physics:
     - 2D Lattice Boltzmann Method (D2Q9 lattice)
     - Single-phase fluid
     - Periodic boundary conditions (all sides)
-    - Rest equilibrium initialization
+    - Rest equilibrium initialisation
     - BGK collision operator
 
 Usage:
@@ -42,7 +42,7 @@ def main():
     # This resolves operators from registry and prepares immutable setup
     setup = build_setup(config)
 
-    # Initialize state (rest equilibrium + zeros for velocity/forces)
+    # Initialise state (rest equilibrium + zeros for velocity/forces)
     state = init_state(setup)
 
     # Run simulation for nt timesteps

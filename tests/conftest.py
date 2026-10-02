@@ -19,7 +19,7 @@ def mock_optax_missing(monkeypatch):
     """Fixture: Simulate optax package not being installed.
 
     This fixture removes optax from sys.modules and makes import attempts fail.
-    Use when testing behavior WITHOUT optax installed.
+    Use when testing behaviour WITHOUT optax installed.
 
     Example:
         def test_something(mock_optax_missing):
@@ -49,7 +49,7 @@ def mock_optax_present(monkeypatch):
     """Fixture: Ensure optax package can be imported.
 
     This fixture ensures optax is available for testing WITH optax installed.
-    Use when testing behavior that REQUIRES optax.
+    Use when testing behaviour that REQUIRES optax.
 
     Example:
         def test_hysteresis_works(mock_optax_present):
@@ -77,6 +77,25 @@ def _clear_droplet_series_cache():
     clear_series_cache()
     yield
     clear_series_cache()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_surface_tension_cache(tmp_path, monkeypatch):
+    """Point the surface-tension cache and its results folder at per-test paths.
+
+    Sigma is resolved from that cache whenever a config is analysed, and the
+    real file is git-tracked: without this, committing a measurement could
+    change what an unrelated test computes, and a test that collects a sweep
+    would write into the checkout. The results folder is where staged sweep
+    configs, sweep runs and the density fields go; left alone, staging in a test
+    would write into the developer's real ``surface_tension`` directory.
+    """
+    from src.simulation_io.analysis.surface_tension import surface_tension
+
+    root = tmp_path / "surface_tension"
+    monkeypatch.setattr(surface_tension, "_SHARED_CACHE_PATH", tmp_path / surface_tension._CACHE_FILENAME)
+    monkeypatch.setattr(surface_tension, "SURFACE_TENSION_ROOT", root)
+    monkeypatch.setattr(surface_tension, "_FIELDS_CACHE_DIR", root / "fields")
 
 
 @pytest.fixture(autouse=True)

@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-import numpy as np
 from src.registry import eos_operator
 from src.registry import pressure_operator
 from src.registry import surface_tension_operator
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
-    from src.operators.macroscopic import MultiphaseParams
-    from src.operators.protocols import EOSFunction
-    from src.operators.protocols import PressureFunction
+    from src.config.multiphase_params import MultiphaseParams
+    from src.operators.protocols import EosOperator
 
 
 def _beta(mp: MultiphaseParams) -> float:
@@ -34,34 +32,34 @@ def _eos_double_well(
 
 
 def _pressure_double_well(
-    rho: jnp.ndarray | np.ndarray,
+    rho: jnp.ndarray,
     beta: float,
     rho_l: float,
     rho_v: float,
-) -> jnp.ndarray | np.ndarray:
+) -> jnp.ndarray:
     """Double-well bulk thermodynamic pressure ``p_0(rho)``.
 
     ``p_0 = beta * (rho - rho_l) * (rho - rho_v) * (3.0 * rho ** 2 - rho_l*rho_v - rho * (rho_l+rho_v))``
     with the bulk free-energy density ``psi(rho) = beta * (rho - rho_l)^2 * (rho - rho_v)^2``, so it is
     exactly consistent with ``_eos_double_well`` (``mu_0 = d(psi)/d(rho)``). Used by the
-    surface-tension calibration and the pressure plots; not part of the force pipeline.
-    Plain arithmetic, so it accepts NumPy or JAX arrays.
+    multiphase macroscopic operator, which reports it as the run's pressure field.
+    Plain arithmetic, so it traces under JIT.
     """
     return beta * (rho - rho_l) * (rho - rho_v) * (3.0 * rho**2 - rho_l * rho_v - rho * (rho_l + rho_v))
 
 
 @eos_operator(name="double-well")
-def build_double_well_eos(mp: MultiphaseParams) -> EOSFunction:
+def build_double_well_eos(mp: MultiphaseParams) -> EosOperator:
     """Return ``eos_fn(rho)`` for the double-well EOS using bound params."""
     beta = _beta(mp)
     return lambda rho: _eos_double_well(rho, beta, mp.rho_l, mp.rho_v)
 
 
 @pressure_operator(name="double-well")
-def build_double_well_pressure(mp: MultiphaseParams) -> PressureFunction:
-    """Return ``pressure_fn(rho)`` for the double-well bulk pressure using bound params."""
+def build_double_well_pressure(mp: MultiphaseParams) -> EosOperator:
+    """Return ``pressure_fn(rho) -> p_0`` for the double-well bulk pressure using bound params."""
     beta = _beta(mp)
-    return lambda rho: np.asarray(_pressure_double_well(rho, beta, mp.rho_l, mp.rho_v))
+    return lambda rho: _pressure_double_well(rho, beta, mp.rho_l, mp.rho_v)
 
 
 @surface_tension_operator(name="double-well")

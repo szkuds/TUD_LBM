@@ -46,6 +46,10 @@ class WettingState(NamedTuple):
             wetting wall: x for bottom/top walls, y for left/right walls.
         cll_right: Contact-line location — right. Tangential to the wetting wall
             (see ``cll_left``).
+
+    ``cll_left`` / ``cll_right`` are the hysteresis *anchors*: they follow the
+    measured contact line only while it moves the way its exceeded window bound
+    allows, and hold still while it is pinned.
     """
 
     phi_left: jnp.ndarray
@@ -68,6 +72,10 @@ class State(NamedTuple):
         t: Current timestep — scalar ``jax.Array``.
         force: Interaction / body force field (optional), shape ``(nx, ny, nz, 1, d)``.
         force_ext: External force field (optional), shape ``(nx, ny, nz, 1, d)``.
+        pressure: Bulk pressure from the macroscopic operator, shape
+            ``(nx, ny, nz, 1, 1)`` — the EOS ``p_0(rho)`` for multiphase runs,
+            ``cs^2 * rho`` for single-phase. Seeded as zeros by
+            :func:`~src.pipeline.runner.init_state`, like ``force``.
         h: Electric potential field (optional), shape ``(nx, ny, nz, q, 1)``.
         wetting: Dynamic wetting state (``None`` for non-wetting runs).
     """
@@ -78,5 +86,6 @@ class State(NamedTuple):
     t: jnp.ndarray
     force: jnp.ndarray | None = None
     force_ext: jnp.ndarray | None = None
+    pressure: jnp.ndarray | None = None
     h: jnp.ndarray | None = None
     wetting: WettingState | None = None

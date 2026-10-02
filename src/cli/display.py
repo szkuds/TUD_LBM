@@ -174,6 +174,8 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
     table.add_row("Relaxation Time (tau)", str(config.tau))
     table.add_row("Time Steps", str(config.nt))
     table.add_row("Save Interval", str(config.save_interval))
+    if config.bc_config:
+        table.add_row("Boundary Conditions", ", ".join(f"{face}={bc}" for face, bc in config.bc_config.items()))
     table.add_row("Results Directory", config.results_dir)
     if config.save_fields:
         table.add_row("Save Fields", ", ".join(config.save_fields))

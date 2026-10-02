@@ -13,9 +13,8 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from typing import cast
 from src.operators._loader import auto_load_operators
-from src.operators.factory import build_operator
+from src.registry import get_operators
 
 if TYPE_CHECKING:
     from src.operators.protocols import EquilibriumOperator
@@ -40,15 +39,12 @@ def build_equilibrium_fn(scheme: str = "wb") -> EquilibriumOperator:
 
         Type-checkers will verify any use of op matches the protocol.
 
-    Raises:
-        ValueError: If scheme is not registered.
-
     Examples:
         >>> from operators.equilibrium import build_equilibrium_fn
         >>> equilibrium = build_equilibrium_fn("wb")
         >>> feq = equilibrium(rho, u, lattice)
     """
-    return cast("EquilibriumOperator", build_operator("equilibrium", scheme))
+    return get_operators("equilibrium")[scheme].target
 
 
 __all__ = [

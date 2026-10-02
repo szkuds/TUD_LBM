@@ -189,14 +189,14 @@ extend-immutable-calls = ["array_field"]
 "src/operators/macroscopic/_multiphase.py"    = ["RUF002","RUF003"]
 "src/operators/collision/_bgk.py"             = ["RUF002"]
 "src/pipeline/**"                             = ["T201"]
-"src/operators/wetting/hysteresis/hysteresis.py" = ["C901", "PLR0915"]
+"src/operators/wetting/_hysteresis.py" = ["C901", "PLR0915"]
 # `src.io` is only ever imported fully qualified, so it never shadows the
 # stdlib `io` at runtime (absolute imports are the default). Surfaced by the
 # tud_lbm -> src package rename, not by anything in the module itself.
 "src/simulation_io/__init__.py"                      = ["A005"]
 "src/simulation_io/plotting/run_comparison.py"   = ["T201"]
 "src/cli/analysis_routing.py"          = ["T201"]
-"src/simulation_io/plotting/simulation_csv.py"   = ["T201"]
+"src/simulation_io/plotting/_simulation_csv.py"   = ["T201"]
 "src/simulation_io/plotting/regime_map_plot.py"  = ["T201"]
 
 [tool.ruff.lint.isort]

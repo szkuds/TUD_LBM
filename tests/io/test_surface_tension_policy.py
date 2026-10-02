@@ -12,7 +12,7 @@ from src.simulation_io.analysis.droplet_metrics import analytical_sigma_lg
 from src.simulation_io.analysis.droplet_metrics import droplet_series_for_run
 from src.simulation_io.analysis.droplet_metrics import measured_sigma_lg
 from src.simulation_io.analysis.droplet_metrics import resolve_scales
-from src.simulation_io.plotting.simulation_csv import build_simulation_csv
+from src.simulation_io.plotting._simulation_csv import build_simulation_csv
 from tests.support.run_dirs import build_run_dir
 from tests.support.run_dirs import wetting_config
 
@@ -90,3 +90,36 @@ def test_uncalibrated_csv_reports_analytical_source(tmp_path: Path):
     assert (df["sigma_lg_source"] == "analytical").all()
     # With no measured value the two Ca columns coincide.
     assert df["Ca"].to_numpy() == pytest.approx(df["Ca_analytical"].to_numpy())
+
+
+_CS_FLUID = {
+    "eos": "carnahan-starling",
+    "kappa": 0.01,
+    "rho_l": 0.4,
+    "rho_v": 0.02,
+    "interface_width": 4,
+    "a_eos": 0.5,
+    "b_eos": 4.0,
+    "r_eos": 1.0,
+    "t_eos": 0.05,
+}
+
+
+def test_uncalibrated_fluid_without_a_closed_form_has_no_measured_sigma():
+    assert measured_sigma_lg(wetting_config(**_CS_FLUID)) is None
+
+
+def test_measured_sigma_is_resolved_from_the_cache_not_the_config():
+    """A run's config.toml stores no sigma; its fluid parameters find the cache entry."""
+    from src.simulation_io.analysis.surface_tension import surface_tension as st
+
+    config = wetting_config(**_CS_FLUID)
+    radii = st.sweep_radii()
+    st._store_cache(st._cache_key(config), radii, _MEASURED / radii, _MEASURED, st._CALIBRATION_GRID_SHAPE)
+
+    scales = resolve_scales(config)
+
+    assert config.extra == {}
+    assert scales is not None
+    assert scales.sigma_source == "measured"
+    assert scales.sigma_primary == pytest.approx(_MEASURED)

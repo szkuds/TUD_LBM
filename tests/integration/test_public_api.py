@@ -222,7 +222,7 @@ class TestForceConfiguration:
         """Verify config rejects simultaneous gravity force variants."""
         with pytest.raises(
             ValueError,
-            match=r"Only one gravity force can be applied: set either gravity_force or gravity_masked_force, not both.",
+            match=r"Only one gravity force can be applied, got gravity_force, gravity_masked_force",
         ):
             SimulationConfig(
                 grid_shape=(16, 16),
@@ -381,7 +381,7 @@ class TestAPIIntegration:
         setup = build_setup(config)
         assert setup is not None
 
-        # Initialize state
+        # Initialise state
         state = init_state(setup)
         assert state is not None
 
