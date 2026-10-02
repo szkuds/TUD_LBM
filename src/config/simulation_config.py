@@ -118,7 +118,8 @@ _HYSTERESIS_KEYS: frozenset[str] = frozenset(
 )
 #: Distance (lattice units) either side of a contact line at which the chemical
 #: step's surfaces are probed for its advancing and receding bounds.
-_CHEMICAL_STEP_DEFAULTS: dict[str, Any] = {"edge_width": 1.0, "chemical_step_edge": "bottom"}
+#: ``chemical_step_edge`` defaults to the measurement wall, so it is filled in separately.
+_CHEMICAL_STEP_DEFAULTS: dict[str, Any] = {"edge_width": 1.0}
 
 
 def _validate_positive(value: object, name: str) -> None:
@@ -404,7 +405,11 @@ class SimulationConfig:
             hysteresis.setdefault("max_iterations_above", hysteresis["max_iterations"])
             object.__setattr__(self, "hysteresis_config", hysteresis)
         if self.chemical_step_config is not None:
-            object.__setattr__(self, "chemical_step_config", {**_CHEMICAL_STEP_DEFAULTS, **self.chemical_step_config})
+            from src.operators.wetting._edge_config import first_wetting_edge
+
+            chemical_step = {**_CHEMICAL_STEP_DEFAULTS, **self.chemical_step_config}
+            chemical_step.setdefault("chemical_step_edge", first_wetting_edge(self.bc_config) or "bottom")
+            object.__setattr__(self, "chemical_step_config", chemical_step)
 
     def _make_grid_shape_3d(self) -> None:
         """Promote grid_shape to 3D by adding a singleton z-dimension."""
@@ -438,6 +443,7 @@ class SimulationConfig:
         self._validate_boundary_conditions()
         self._validate_obstacle()
         self._validate_hysteresis()
+        self._validate_chemical_step()
         self._validate_viscosity()
 
     def _validate_hysteresis(self) -> None:
@@ -451,6 +457,23 @@ class SimulationConfig:
         unknown = set(self.hysteresis_config) - _HYSTERESIS_KEYS
         if unknown:
             msg = f"Unknown [hysteresis] keys {sorted(unknown)}; allowed: {sorted(_HYSTERESIS_KEYS)}"
+            raise ValueError(msg)
+
+    def _validate_chemical_step(self) -> None:
+        """Reject a chemical step that is not on the wall the contact angles are measured at.
+
+        The wetting applicator splits a wall by surface only on ``chemical_step_edge``,
+        while the hysteresis reads its contact lines off the first ``"wetting"`` edge.
+        A step configured on any other edge would be ignored without a word.
+        """
+        if self.chemical_step_config is None:
+            return
+        from src.operators.wetting._edge_config import first_wetting_edge
+
+        wall = first_wetting_edge(self.bc_config)
+        edge = self.chemical_step_config["chemical_step_edge"]
+        if wall is not None and edge != wall:
+            msg = f"chemical_step_edge must be the wetting wall '{wall}', got '{edge}'"
             raise ValueError(msg)
 
     def _apply_force_defaults(self) -> None:

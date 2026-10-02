@@ -506,12 +506,13 @@ def _hysteresis_config(
     *,
     sim_type: str = "multiphase_hysteresis",
     chemical_step_config: dict[str, Any] | None = None,
+    wall: str = "bottom",
 ) -> SimulationConfig:
     base = {k: v for k, v in _DW_BASE.items() if k != "sim_type"}
     return SimulationConfig(
         **base,
         sim_type=sim_type,  # ty: ignore[invalid-argument-type]
-        bc_config={"bottom": "wetting"},
+        bc_config={wall: "wetting"},
         hysteresis_config=hysteresis,
         chemical_step_config=chemical_step_config,
     )
@@ -635,3 +636,18 @@ class TestChemicalStepWall:
 
     def test_no_step_no_wall(self):
         assert _hysteresis_config({}).chemical_step_wall is None
+
+    def test_the_step_defaults_to_the_wetting_wall(self):
+        cfg = _hysteresis_config(
+            {}, sim_type="multiphase_hysteresis_chemical_step", chemical_step_config=dict(_STEP), wall="top"
+        )
+        wall = cfg.chemical_step_wall
+        assert wall is not None
+        assert wall.edge == "top"
+
+    def test_a_step_off_the_wetting_wall_raises(self):
+        step = dict(_STEP, chemical_step_edge="bottom")
+        with pytest.raises(ValueError, match="chemical_step_edge must be the wetting wall 'top'"):
+            _hysteresis_config(
+                {}, sim_type="multiphase_hysteresis_chemical_step", chemical_step_config=step, wall="top"
+            )
