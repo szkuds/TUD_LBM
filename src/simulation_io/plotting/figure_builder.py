@@ -134,6 +134,10 @@ class FigureBuilder:
         self._analysis_operators: list = []
         self._analysis_export_operators: list = []
         self._overlay_operators: list = []
+        # Field operators already reported as dropped, so each is named once.
+        # Only a named selection is reported: the default set is a best effort.
+        self._reported_unavailable: set[str] = set()
+        self._fields_named = bool(fields or config.plot_fields)
 
         # Guard: plotting only supports 2D simulations (nz=1)
         nz = getattr(config, "nz", config.grid_shape[2] if len(config.grid_shape) > 2 else 1)  # noqa: PLR2004
@@ -210,6 +214,26 @@ class FigureBuilder:
                 f"No plot operator registered for '{name}'. Available: {known}",
                 stacklevel=2,
             )
+
+    def _report_unavailable(self, data: dict[str, np.ndarray], field_ops: list) -> None:
+        """Warn, once per operator, about a requested panel the snapshot cannot fill.
+
+        Without this a requested field just goes missing from the figure, which
+        reads as the selection having been ignored.
+        """
+        if not self._fields_named:
+            return
+        dropped = [
+            op.name for op in self._field_operators if op not in field_ops and op.name not in self._reported_unavailable
+        ]
+        if not dropped:
+            return
+        self._reported_unavailable.update(dropped)
+        warnings.warn(
+            f"FigureBuilder: no data for {dropped} in the snapshot (saved fields: {sorted(data)}); "
+            "those panels are left out. Add the field to save_fields to plot it.",
+            stacklevel=3,
+        )
 
     def sorted_timed_files(self) -> list[tuple[int, Path]]:
         """Return ``(timestep, path)`` pairs sorted by timestep."""
@@ -315,6 +339,7 @@ class FigureBuilder:
     ) -> plt.Figure | None:
         """Render one timestep into a Figure without saving it."""
         field_ops = [op for op in self._field_operators if op.is_available(data)]
+        self._report_unavailable(data, field_ops)
         analysis_ops = list(self._analysis_operators) if history_files is not None else []
         panels = field_ops + analysis_ops
 

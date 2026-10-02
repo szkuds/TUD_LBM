@@ -14,8 +14,10 @@ the macroscopic operator returns every step, next to ``force``:
     multiphase only. The interfacial terms largely cancel the ``p_0`` swing,
     leaving the Laplace jump between the bulk phases.
 
-A snapshot written before ``pressure`` was part of the state carries none, so
-both panels drop for it.
+A snapshot that carries no ``pressure`` (it is not in the run's ``save_fields``,
+or the snapshot predates the field) gets it recomputed from the saved ``rho``
+with the same function the macroscopic operator uses, so the panels render for
+any run that saved its density.
 
 Both are opt-in: they only render when named in ``plot_fields`` /
 ``animate_fields``, so they do not change the default four-panel figure.
@@ -32,6 +34,7 @@ if TYPE_CHECKING:
     import matplotlib.axes
     from src.config.multiphase_params import MultiphaseParams
     from src.operators.protocols import DifferentialOperator
+    from src.operators.protocols import EosOperator
 
 
 class _BasePressureOperator(PlotOperator):
@@ -40,13 +43,37 @@ class _BasePressureOperator(PlotOperator):
     title: str = "Pressure"
     opt_in = True
 
-    def is_available(self, data: dict[str, np.ndarray]) -> bool:
-        """Whether the snapshot carries the pressure the run saved.
+    _pressure_fn: EosOperator | None = None
 
-        A snapshot from before ``pressure`` joined the state drops the panel
-        rather than rendering an error into it.
+    def is_available(self, data: dict[str, np.ndarray]) -> bool:
+        """Whether the snapshot carries the pressure, or the density it follows from."""
+        return "pressure" in data or "rho" in data
+
+    def _bulk_pressure(self, data: dict[str, np.ndarray]) -> np.ndarray:
+        """Return the bulk pressure in the snapshot's 5-D layout.
+
+        The saved field when the snapshot has one. Otherwise it is recomputed
+        from ``rho`` exactly as the macroscopic operator computes it each step:
+        the EOS ``p_0(rho)`` for a multiphase run, ``cs^2 * rho`` for a
+        single-phase one.
         """
-        return "pressure" in data
+        if "pressure" in data:
+            return np.asarray(data["pressure"])
+
+        rho = np.asarray(data["rho"])
+        mp = self.config.multiphase_params
+        if mp is None:
+            from src.operators.macroscopic._single_phase import CS2
+
+            return CS2 * rho
+
+        if self._pressure_fn is None:
+            from src.operators.macroscopic.eos import build_pressure_fn
+
+            self._pressure_fn = build_pressure_fn(mp)
+        import jax.numpy as jnp
+
+        return np.asarray(self._pressure_fn(jnp.asarray(rho)))
 
     def _pressure_2d(self, data: dict[str, np.ndarray]) -> np.ndarray:
         """Return the pressure field as a 2-D ``(ny, nx)`` array ready for imshow."""
@@ -69,13 +96,13 @@ class _BasePressureOperator(PlotOperator):
 
 @plotting_operator(name="pressure")
 class BulkPressurePlotOperator(_BasePressureOperator):
-    """Render the bulk pressure saved with the snapshot."""
+    """Render the bulk pressure of the snapshot."""
 
     name = "pressure"
     title = "Bulk pressure"
 
     def _pressure_2d(self, data: dict[str, np.ndarray]) -> np.ndarray:
-        return np.asarray(data["pressure"])[:, :, 0, 0, 0].T
+        return self._bulk_pressure(data)[:, :, 0, 0, 0].T
 
 
 @plotting_operator(name="pressure_total")
@@ -90,7 +117,7 @@ class TotalPressurePlotOperator(_BasePressureOperator):
 
     def is_available(self, data: dict[str, np.ndarray]) -> bool:
         """Multiphase only: the interfacial terms need ``kappa``."""
-        return super().is_available(data) and "rho" in data and self.config.is_multiphase
+        return "rho" in data and self.config.is_multiphase
 
     def _operators(self) -> tuple[MultiphaseParams, DifferentialOperator, DifferentialOperator]:
         """Return the cached ``(mp, gradient_density, laplacian_density)``.
@@ -126,5 +153,5 @@ class TotalPressurePlotOperator(_BasePressureOperator):
 
         rho_np = np.asarray(rho)
         # Sign convention matches the force pipeline's mu = mu_0 - kappa * lap(rho).
-        pressure = np.asarray(data["pressure"]) - mp.kappa * (rho_np * laplacian + 0.5 * grad_sq)
+        pressure = self._bulk_pressure(data) - mp.kappa * (rho_np * laplacian + 0.5 * grad_sq)
         return pressure[:, :, 0, 0, 0].T

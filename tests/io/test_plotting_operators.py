@@ -3,8 +3,10 @@
 from __future__ import annotations
 import dataclasses
 import tempfile
+import warnings
 import matplotlib.pyplot as plt
 import numpy as np
+import pytest
 from src.config import SimulationConfig
 from src.simulation_io.plotting import FigureBuilder
 from src.simulation_io.plotting._force import ExternalForcePlotOperator
@@ -209,7 +211,7 @@ def test_total_pressure_flattens_the_interface_swing():
 
 
 def test_pressure_operator_availability():
-    """Bulk needs the saved pressure; total additionally needs rho and a multiphase kappa."""
+    """Bulk needs the saved pressure or rho; total needs rho and a multiphase kappa."""
     rho = np.full((16, 16, 1, 1, 1), 0.7)
     data = {"rho": rho, "pressure": rho / 3.0}
 
@@ -218,11 +220,51 @@ def test_pressure_operator_availability():
     assert BulkPressurePlotOperator(single_phase).is_available(data)
     assert not TotalPressurePlotOperator(single_phase).is_available(data)
 
-    # A snapshot written before pressure joined the state drops both panels.
+    # A snapshot without a saved pressure still renders: it follows from rho.
     multiphase = _multiphase_config()
-    assert not BulkPressurePlotOperator(multiphase).is_available({"rho": rho})
-    assert not TotalPressurePlotOperator(multiphase).is_available({"rho": rho})
+    assert BulkPressurePlotOperator(multiphase).is_available({"rho": rho})
+    assert TotalPressurePlotOperator(multiphase).is_available({"rho": rho})
     assert not TotalPressurePlotOperator(multiphase).is_available({"pressure": rho})
+    assert not BulkPressurePlotOperator(multiphase).is_available({"u": rho})
+
+
+def test_pressure_is_recomputed_from_rho_when_not_saved():
+    """Without a saved ``pressure`` the panels show what the run would have saved."""
+    x, y = np.meshgrid(np.arange(16), np.arange(16), indexing="ij")
+    rho = (0.5 + 0.02 * x + 0.01 * y)[:, :, None, None, None]
+    saved = _snapshot(rho)
+    config = _multiphase_config()
+
+    for operator in (BulkPressurePlotOperator, TotalPressurePlotOperator):
+        np.testing.assert_allclose(
+            operator(config)._pressure_2d({"rho": rho}),
+            operator(config)._pressure_2d(saved),
+            rtol=1e-6,
+        )
+
+    single_phase = SimulationConfig(grid_shape=(16, 16, 1), tau=0.8, nt=2)
+    np.testing.assert_allclose(
+        BulkPressurePlotOperator(single_phase)._pressure_2d({"rho": rho}),
+        rho[:, :, 0, 0, 0].T / 3.0,
+    )
+
+
+def test_named_field_without_data_is_reported_once():
+    """A selected panel the snapshot cannot fill is named, not dropped in silence."""
+    rho = np.full((16, 16, 1, 1, 1), 0.7)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        builder = FigureBuilder(_multiphase_config(), run_dir=tmpdir, fields=["density", "force"])
+        with pytest.warns(UserWarning, match=r"no data for \['force'\]"):
+            plt.close(builder.render_figure({"rho": rho}, timestep=0))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            plt.close(builder.render_figure({"rho": rho}, timestep=1))
+
+        # The default set is a best effort and stays quiet.
+        default = FigureBuilder(_multiphase_config(), run_dir=tmpdir)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            plt.close(default.render_figure({"rho": rho}, timestep=0))
 
 
 def test_pressure_operators_are_opt_in():
