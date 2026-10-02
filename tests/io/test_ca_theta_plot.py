@@ -148,21 +148,21 @@ _TH_LE = np.array([85.0, 82.0, 79.0, 76.0, 73.0])
 
 def test_plot_dual_axis_ca_theta_returns_figure():
     import matplotlib.figure
-    from src.simulation_io.plotting import plot_dual_axis_ca_theta
+    from src.simulation_io.plotting._ca_theta_plot import plot_dual_axis_ca_theta
 
     fig = plot_dual_axis_ca_theta(_X, _CA_TR, _CA_LE, _TH_TR, _TH_LE)
     assert isinstance(fig, matplotlib.figure.Figure)
 
 
 def test_dual_axis_has_two_axes():
-    from src.simulation_io.plotting import plot_dual_axis_ca_theta
+    from src.simulation_io.plotting._ca_theta_plot import plot_dual_axis_ca_theta
 
     fig = plot_dual_axis_ca_theta(_X, _CA_TR, _CA_LE, _TH_TR, _TH_LE)
     assert len(fig.axes) == 2
 
 
 def test_dual_axis_axis_labels():
-    from src.simulation_io.plotting import plot_dual_axis_ca_theta
+    from src.simulation_io.plotting._ca_theta_plot import plot_dual_axis_ca_theta
 
     fig = plot_dual_axis_ca_theta(_X, _CA_TR, _CA_LE, _TH_TR, _TH_LE, x_label="x-label")
     ax1, ax2 = fig.axes
@@ -171,7 +171,7 @@ def test_dual_axis_axis_labels():
 
 
 def test_dual_axis_four_scatter_collections():
-    from src.simulation_io.plotting import plot_dual_axis_ca_theta
+    from src.simulation_io.plotting._ca_theta_plot import plot_dual_axis_ca_theta
 
     fig = plot_dual_axis_ca_theta(_X, _CA_TR, _CA_LE, _TH_TR, _TH_LE)
     total_collections = sum(len(ax.collections) for ax in fig.axes)

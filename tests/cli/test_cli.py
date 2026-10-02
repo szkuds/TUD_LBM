@@ -23,12 +23,15 @@ from src.cli.display import _print_dry_run_message
 from src.cli.execution import RunFlags
 from src.cli.execution import _check_sweep_errors
 from src.cli.execution import _run_impl
+from src.cli.wetting_init import _WETTING_INIT_NT
 from src.cli.wetting_init import _WETTING_PARAM_DEFAULTS
 from src.cli.wetting_init import _build_wetting_gravity_raw
 from src.cli.wetting_init import _build_wetting_init_raw
 from src.cli.wetting_init import _prompt_wetting_params
 from src.config import SimulationConfig
 from src.config.array_expansion import ArrayParameterSet
+from src.config.config_overview import DEBUG_STABILITY_INTERVAL
+from src.config.config_overview import DEBUG_WETTING_INTERVAL
 from src.pipeline.parallel_runner import SimulationResult
 
 try:
@@ -614,52 +617,38 @@ class TestRunImplFlags:
         assert called["n"] == 1
         assert result is False
 
-    def test_debug_wetting_sets_flag_and_interval(self, tmp_path):
+    @pytest.mark.parametrize(
+        ("flags", "enabled_attr", "interval_attr"),
+        [
+            (RunFlags(no_prompt=True, dry_run=True, debug_wetting=25), "DEBUG_FLAG_WETTING", "DEBUG_WETTING_INTERVAL"),
+            (
+                RunFlags(no_prompt=True, dry_run=True, debug_stability=25),
+                "DEBUG_FLAG_STABILITY",
+                "DEBUG_STABILITY_INTERVAL",
+            ),
+        ],
+    )
+    def test_debug_flag_sets_flag_and_interval(self, tmp_path, monkeypatch, flags, enabled_attr, interval_attr):
         import src.config.config_overview as _flags
 
-        original = _flags.DEBUG_FLAG_WETTING
-        original_interval = _flags.DEBUG_WETTING_INTERVAL
+        # Registers both globals for restoration; _run_impl overwrites them.
+        monkeypatch.setattr(_flags, enabled_attr, False)
+        monkeypatch.setattr(_flags, interval_attr, getattr(_flags, interval_attr))
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
-        try:
-            with (
-                patch("src.cli.execution._load_raw_config", return_value={}),
-                patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
-            ):
-                _run_impl(
-                    config_path=str(cfg_toml),
-                    overrides=(),
-                    max_workers=None,
-                    init_dir=None,
-                    flags=RunFlags(no_prompt=True, dry_run=True, debug_wetting=True, debug_wetting_interval=25),
-                )
-            assert _flags.DEBUG_FLAG_WETTING is True
-            assert _flags.DEBUG_WETTING_INTERVAL == 25
-        finally:
-            _flags.DEBUG_FLAG_WETTING = original
-            _flags.DEBUG_WETTING_INTERVAL = original_interval
-
-    def test_debug_stability_sets_flag(self, tmp_path):
-        import src.config.config_overview as _flags
-
-        original = _flags.DEBUG_FLAG_STABILITY
-        cfg_toml = tmp_path / "config.toml"
-        cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
-        try:
-            with (
-                patch("src.cli.execution._load_raw_config", return_value={}),
-                patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
-            ):
-                _run_impl(
-                    config_path=str(cfg_toml),
-                    overrides=(),
-                    max_workers=None,
-                    init_dir=None,
-                    flags=RunFlags(no_prompt=True, dry_run=True, debug_stability=True),
-                )
-            assert _flags.DEBUG_FLAG_STABILITY is True
-        finally:
-            _flags.DEBUG_FLAG_STABILITY = original
+        with (
+            patch("src.cli.execution._load_raw_config", return_value={}),
+            patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
+        ):
+            _run_impl(
+                config_path=str(cfg_toml),
+                overrides=(),
+                max_workers=None,
+                init_dir=None,
+                flags=flags,
+            )
+        assert getattr(_flags, enabled_attr) is True
+        assert getattr(_flags, interval_attr) == 25
 
 
 class TestClickCommandPaths:
@@ -678,7 +667,7 @@ class TestClickCommandPaths:
         with patch("src.cli.commands.run._run_impl", return_value=False) as mock_impl:
             result = runner.invoke(cli, ["run", str(cfg_toml), "--debug-stability", "--dry-run"])
         assert result.exit_code == 0
-        assert mock_impl.call_args.args[-1].debug_stability is True
+        assert mock_impl.call_args.args[-1].debug_stability == DEBUG_STABILITY_INTERVAL
 
     def test_run_continue_option_forwards(self, tmp_path):
         cfg_toml = tmp_path / "config.toml"
@@ -904,56 +893,57 @@ class TestClickCommandPaths:
         assert result.exit_code in (0, 1)
 
 
-class TestInitWettingOption:
-    """`--init-wetting` takes the equilibration length as an optional value."""
+def _invoke_run(tmp_path: Path, *args: str) -> tuple[int, RunFlags | None]:
+    """Invoke `run` on an empty config with `_run_impl` mocked; return (exit code, flags)."""
+    cfg_toml = tmp_path / "config.toml"
+    cfg_toml.write_text("", encoding="utf-8")
+    with patch("src.cli.commands.run._run_impl", return_value=False) as mock_impl:
+        result = CliRunner().invoke(cli, ["run", str(cfg_toml), *args])
+    flags = mock_impl.call_args.args[-1] if mock_impl.called else None
+    return result.exit_code, flags
 
-    @staticmethod
-    def _invoke(tmp_path: Path, *args: str) -> tuple[int, RunFlags | None]:
-        cfg_toml = tmp_path / "config.toml"
-        cfg_toml.write_text("", encoding="utf-8")
-        with patch("src.cli.commands.run._run_impl", return_value=False) as mock_impl:
-            result = CliRunner().invoke(cli, ["run", str(cfg_toml), *args])
-        flags = mock_impl.call_args.args[-1] if mock_impl.called else None
-        return result.exit_code, flags
 
-    def test_bare_flag_uses_default_length(self, tmp_path):
-        from src.cli.wetting_init import _WETTING_INIT_NT
+@pytest.mark.parametrize(
+    ("option", "attr", "default", "old_option"),
+    [
+        ("--init-wetting", "init_wetting", _WETTING_INIT_NT, "--init-wetting-nt"),
+        ("--debug-wetting", "debug_wetting", DEBUG_WETTING_INTERVAL, "--debug-wetting-interval"),
+        ("--debug-stability", "debug_stability", DEBUG_STABILITY_INTERVAL, "--debug-stability-interval"),
+    ],
+)
+class TestOptionalIntOptions:
+    """`--init-wetting`, `--debug-wetting` and `--debug-stability` take an optional number."""
 
-        exit_code, flags = self._invoke(tmp_path, "--init-wetting")
+    def test_bare_flag_uses_default(self, tmp_path, option, attr, default, old_option):
+        exit_code, flags = _invoke_run(tmp_path, option)
+        assert exit_code == 0
+        assert getattr(flags, attr) == default
+
+    def test_value_sets_number(self, tmp_path, option, attr, default, old_option):
+        exit_code, flags = _invoke_run(tmp_path, option, "1234")
+        assert exit_code == 0
+        assert getattr(flags, attr) == 1234
+
+    def test_bare_flag_before_another_option(self, tmp_path, option, attr, default, old_option):
+        exit_code, flags = _invoke_run(tmp_path, option, "--dry-run")
         assert exit_code == 0
         assert flags is not None
-        assert flags.init_wetting is True
-        assert flags.init_wetting_nt == _WETTING_INIT_NT
-
-    def test_value_sets_length(self, tmp_path):
-        exit_code, flags = self._invoke(tmp_path, "--init-wetting", "1234")
-        assert exit_code == 0
-        assert flags is not None
-        assert flags.init_wetting is True
-        assert flags.init_wetting_nt == 1234
-
-    def test_bare_flag_before_another_option(self, tmp_path):
-        from src.cli.wetting_init import _WETTING_INIT_NT
-
-        exit_code, flags = self._invoke(tmp_path, "--init-wetting", "--dry-run")
-        assert exit_code == 0
-        assert flags is not None
-        assert flags.init_wetting_nt == _WETTING_INIT_NT
+        assert getattr(flags, attr) == default
         assert flags.dry_run is True
 
-    def test_absent_disables_init_wetting(self, tmp_path):
-        exit_code, flags = self._invoke(tmp_path)
+    def test_absent_is_none(self, tmp_path, option, attr, default, old_option):
+        exit_code, flags = _invoke_run(tmp_path)
         assert exit_code == 0
         assert flags is not None
-        assert flags.init_wetting is False
+        assert getattr(flags, attr) is None
 
-    def test_old_length_option_is_gone(self, tmp_path):
-        exit_code, flags = self._invoke(tmp_path, "--init-wetting-nt", "5")
+    def test_separate_value_option_is_gone(self, tmp_path, option, attr, default, old_option):
+        exit_code, flags = _invoke_run(tmp_path, old_option, "5")
         assert exit_code == 2
         assert flags is None
 
-    def test_non_positive_length_rejected(self, tmp_path):
-        exit_code, flags = self._invoke(tmp_path, "--init-wetting", "0")
+    def test_non_positive_value_rejected(self, tmp_path, option, attr, default, old_option):
+        exit_code, flags = _invoke_run(tmp_path, option, "0")
         assert exit_code == 2
         assert flags is None
 
@@ -2504,7 +2494,7 @@ class TestRunImplAdditional:
                 overrides=(),
                 max_workers=None,
                 init_dir=None,
-                flags=RunFlags(no_prompt=True, init_wetting=True, init_wetting_nt=1234),
+                flags=RunFlags(no_prompt=True, init_wetting=1234),
             )
         assert called["n"] == 1
         assert called["init_nt"] == 1234

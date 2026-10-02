@@ -244,7 +244,7 @@ def run(
             stab_dir,
             gradient_density=setup.gradient_density,
             mp=setup.multiphase_params,
-            log_interval=save_interval if save_interval >= 1 else max(1, nt // 10),
+            log_interval=max(1, int(_flags.DEBUG_STABILITY_INTERVAL)),
             vapor_frac=_flags.STABILITY_VAPOR_FRACTION,
             grad_frac=_flags.STABILITY_GRAD_RHO_FRACTION,
         )

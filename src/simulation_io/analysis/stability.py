@@ -2,7 +2,8 @@
 
 Enabled via the ``--debug-stability`` CLI flag, which sets
 ``DEBUG_FLAG_STABILITY`` in :mod:`src.config.config_overview`.
-Every ``save_interval`` steps the runner samples a small vector of
+Every ``DEBUG_STABILITY_INTERVAL`` steps (``--debug-stability [INTERVAL]``,
+independent of ``save_interval``) the runner samples a small vector of
 on-device metrics and ships it to a host callback:
 
 * ``max|u|`` — maximum velocity magnitude
@@ -292,7 +293,7 @@ def make_stability_callback(
         out_dir: Directory for ``stability_log.csv``.
         gradient_density: ``setup.gradient_density`` (``None`` for single-phase).
         mp: ``setup.multiphase_params`` (``None`` for single-phase).
-        log_interval: Steps between samples (the run's ``save_interval``).
+        log_interval: Steps between samples (``DEBUG_STABILITY_INTERVAL``).
         vapor_frac: See :func:`wake_mask`.
         grad_frac: See :func:`wake_mask`.
 

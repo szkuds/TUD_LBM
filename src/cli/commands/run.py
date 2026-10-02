@@ -8,7 +8,14 @@ from src.cli._console import success
 from src.cli.app import cli
 from src.cli.execution import RunFlags
 from src.cli.execution import _run_impl
+from src.cli.options import optional_int
+from src.cli.options import optional_int_option
 from src.cli.wetting_init import _WETTING_INIT_NT
+
+# From-imports on purpose: these are the defaults as they stand before
+# _enable_debug_flags overwrites the module attributes with the chosen values.
+from src.config.config_overview import DEBUG_STABILITY_INTERVAL
+from src.config.config_overview import DEBUG_WETTING_INTERVAL
 
 
 @cli.command()
@@ -73,44 +80,34 @@ from src.cli.wetting_init import _WETTING_INIT_NT
     is_flag=True,
     help="Display the full physical-parameter overview in addition to the compact summary.",
 )
-@click.option(
+@optional_int_option(
     "--debug-wetting",
-    is_flag=True,
-    help="Enable wetting debug output (sets DEBUG_FLAG_WETTING in config_overview)",
-)
-@click.option(
-    "--debug-wetting-interval",
-    "debug_wetting_interval",
-    default=100,
-    show_default=True,
-    type=click.IntRange(min=1),
-    help=(
-        "Timesteps between logged wetting debug rows (sets DEBUG_WETTING_INTERVAL); "
-        "1 logs every step. Only has an effect with --debug-wetting"
+    default=DEBUG_WETTING_INTERVAL,
+    metavar="[INTERVAL]",
+    help_text=(
+        "Enable wetting debug output, logging one row every INTERVAL timesteps (1 logs every "
+        "step). Sets DEBUG_FLAG_WETTING and DEBUG_WETTING_INTERVAL in config_overview."
     ),
 )
-@click.option(
+@optional_int_option(
     "--debug-stability",
-    is_flag=True,
-    help=(
-        "Enable stability diagnostics: per-save-interval max|u|/max|grad mu|/rho-range/"
-        "checkerboard logging to stability_log.csv plus a NaN guard that aborts the run "
-        "(sets DEBUG_FLAG_STABILITY in config_overview; not propagated to sweep workers)"
+    default=DEBUG_STABILITY_INTERVAL,
+    metavar="[INTERVAL]",
+    help_text=(
+        "Enable stability diagnostics: max|u|/max|grad mu|/rho-range/checkerboard logging to "
+        "stability_log.csv every INTERVAL timesteps plus a NaN guard that aborts the run. Sets "
+        "DEBUG_FLAG_STABILITY and DEBUG_STABILITY_INTERVAL in config_overview; not propagated "
+        "to sweep workers."
     ),
 )
-@click.option(
+@optional_int_option(
     "--init-wetting",
-    "init_wetting",
-    type=click.IntRange(min=1),
-    is_flag=False,
-    flag_value=_WETTING_INIT_NT,
-    default=None,
+    default=_WETTING_INIT_NT,
     metavar="[NT]",
-    help=(
+    help_text=(
         "Two-phase wetting initialisation: run without gravity to equilibrate the droplet "
-        f"for NT timesteps (default {_WETTING_INIT_NT}), then run the full config using the "
-        "final snapshot as the initial condition. Phase 1 saves a max|u| convergence plot. "
-        "Place after CONFIG_PATH, or write --init-wetting=NT"
+        "for NT timesteps, then run the full config using the final snapshot as the initial "
+        "condition. Phase 1 saves a max|u| convergence plot."
     ),
 )
 @click.option(
@@ -187,8 +184,14 @@ def run(**cli_kwargs: object) -> None:
         # Enable wetting debug output
         tud-lbm run config.toml --debug-wetting
 
+        # Same, but log a row every 10 steps instead of the default
+        tud-lbm run config.toml --debug-wetting 10
+
         # Enable stability diagnostics (stability_log.csv + NaN guard)
         tud-lbm run config.toml --debug-stability
+
+        # Same, but sample every 500 steps instead of the default
+        tud-lbm run config.toml --debug-stability 500
 
         # Two-phase wetting init: equilibrate without gravity then run with gravity
         tud-lbm run config.toml --init-wetting
@@ -215,7 +218,6 @@ def run(**cli_kwargs: object) -> None:
     overrides = cast("tuple[str, ...]", cli_kwargs["overrides"])
     init_dir = cast("str | None", cli_kwargs["init_dir"])
     continue_run = cast("bool", cli_kwargs["continue_run"])
-    init_wetting_nt = cast("int | None", cli_kwargs["init_wetting"])
     flags = RunFlags(
         no_prompt=cast("bool", cli_kwargs["no_prompt"]),
         dry_run=cast("bool", cli_kwargs["dry_run"]),
@@ -223,11 +225,9 @@ def run(**cli_kwargs: object) -> None:
         list_analysis=cast("bool", cli_kwargs["list_analysis"]),
         fail_fast=cast("bool", cli_kwargs["fail_fast"]),
         overview=cast("bool", cli_kwargs["overview"]),
-        debug_wetting=cast("bool", cli_kwargs["debug_wetting"]),
-        debug_wetting_interval=cast("int", cli_kwargs["debug_wetting_interval"]),
-        debug_stability=cast("bool", cli_kwargs["debug_stability"]),
-        init_wetting=init_wetting_nt is not None,
-        init_wetting_nt=init_wetting_nt or _WETTING_INIT_NT,
+        debug_wetting=optional_int(cli_kwargs["debug_wetting"]),
+        debug_stability=optional_int(cli_kwargs["debug_stability"]),
+        init_wetting=optional_int(cli_kwargs["init_wetting"]),
         override_phase1=cast("tuple[str, ...]", cli_kwargs["override_phase1"]),
         override_phase2=cast("tuple[str, ...]", cli_kwargs["override_phase2"]),
         run_compare=cast("bool", cli_kwargs["run_compare"]),

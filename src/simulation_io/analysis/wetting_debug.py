@@ -16,7 +16,7 @@ sides of one timestep always appear together, and through
 is exactly one terminal line with columns that line up vertically across
 timesteps.
 
-``DEBUG_WETTING_INTERVAL`` (``--debug-wetting-interval``) rate-limits the
+``DEBUG_WETTING_INTERVAL`` (``--debug-wetting [INTERVAL]``) rate-limits the
 trace: the optimiser runs every timestep, but printing every timestep
 scrolls faster than it can be read.  The gate is a ``lax.cond`` on the
 timestep, and the sample values — two full trial steps' worth of loss

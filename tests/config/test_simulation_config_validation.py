@@ -377,6 +377,28 @@ class TestValidateBoundaryConditions:
         cfg = SimulationConfig(grid_shape=(20, 20, 1), bc_config={"top": "bounce-back"})
         assert cfg.bc_config is not None
         assert cfg.bc_config["bottom"] == "periodic"
+
+    def test_planar_lattice_has_no_front_or_back_edge(self):
+        cfg = SimulationConfig(grid_shape=(20, 20, 1), bc_config={"top": "bounce-back"})
+        assert cfg.bc_config is not None
+        assert set(cfg.bc_config) == {"top", "bottom", "left", "right"}
+        assert set(SimulationConfig(grid_shape=(20, 20, 1)).bc_config or {}) == {"top", "bottom", "left", "right"}
+
+    def test_planar_lattice_drops_a_periodic_front_and_back(self):
+        """A config.toml saved before the edges were lattice-aware still loads."""
+        cfg = SimulationConfig(grid_shape=(20, 20, 1), bc_config={"front": "periodic", "back": "periodic"})
+        assert cfg.bc_config is not None
+        assert "front" not in cfg.bc_config
+        assert "back" not in cfg.bc_config
+
+    def test_planar_lattice_rejects_a_wall_on_a_face_it_lacks(self):
+        with pytest.raises(ValueError, match=r"bc_config\['front'\] has no face on the D2Q9 lattice"):
+            SimulationConfig(grid_shape=(20, 20, 1), bc_config={"front": "bounce-back"})
+
+    def test_three_dimensional_lattice_keeps_front_and_back(self):
+        cfg = SimulationConfig(grid_shape=(8, 8, 8), lattice_type="D3Q19", bc_config={"top": "bounce-back"})
+        assert cfg.bc_config is not None
+        assert cfg.bc_config["front"] == "periodic"
         assert cfg.bc_config["back"] == "periodic"
 
     def test_unknown_bc_name_raises(self):

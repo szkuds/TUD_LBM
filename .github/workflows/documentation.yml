@@ -8,6 +8,7 @@ on:
     branches:
       - main
       - develop
+  workflow_dispatch:
 
 jobs:
   build-documentation:
@@ -44,3 +45,92 @@ jobs:
       - name: Build documentation
         run: uv run make coverage doctest html
         working-directory: docs
+
+  publish-readthedocs:
+    name: Publish main to Read the Docs
+    # Only a main whose documentation builds is published; a pull request never is.
+    needs: build-documentation
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {}
+    # Only the newest main needs publishing, so a later merge supersedes a run still waiting.
+    concurrency:
+      group: readthedocs
+      cancel-in-progress: true
+    env:
+      RTD_API: https://readthedocs.org/api/v3
+      RTD_PROJECT: tud-lbm
+      RTD_VERSION: latest          # the version https://tud-lbm.readthedocs.io redirects to
+      RTD_BRANCH: main             # the branch that version must track
+      RTD_TOKEN: ${{ secrets.RTD_TOKEN }}
+    steps:
+      - name: Check the API token is configured
+        run: |
+          if [ -z "$RTD_TOKEN" ]; then
+            echo "::error::Repository secret RTD_TOKEN is not set. Create a token at https://app.readthedocs.org/accounts/tokens/ and add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Check that '${{ env.RTD_VERSION }}' tracks ${{ env.RTD_BRANCH }}
+        # A build of a version that tracks another branch would succeed and still
+        # publish the wrong sources, so fail here instead.
+        run: |
+          tracked=$(curl --silent --show-error --fail --retry 3 \
+            --header "Authorization: Token $RTD_TOKEN" \
+            "$RTD_API/projects/$RTD_PROJECT/versions/$RTD_VERSION/" | jq --raw-output '.identifier')
+          if [ "$tracked" != "$RTD_BRANCH" ]; then
+            echo "::error::Read the Docs version '$RTD_VERSION' tracks '$tracked', not '$RTD_BRANCH'. Set the default branch to '$RTD_BRANCH' at https://app.readthedocs.org/dashboard/$RTD_PROJECT/edit/"
+            exit 1
+          fi
+
+      - name: Trigger the build
+        id: trigger
+        run: |
+          response=$(curl --silent --show-error --fail-with-body --retry 3 \
+            --request POST \
+            --header "Authorization: Token $RTD_TOKEN" \
+            "$RTD_API/projects/$RTD_PROJECT/versions/$RTD_VERSION/builds/")
+          build_id=$(echo "$response" | jq --exit-status --raw-output '.build.id')
+          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+          echo "Triggered build $build_id: https://app.readthedocs.org/projects/$RTD_PROJECT/builds/$build_id/"
+
+      - name: Wait for the build to finish
+        env:
+          BUILD_ID: ${{ steps.trigger.outputs.build_id }}
+        run: |
+          build_url="https://app.readthedocs.org/projects/$RTD_PROJECT/builds/$BUILD_ID/"
+          deadline=$((SECONDS + 1500))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            build=$(curl --silent --show-error --fail --retry 3 \
+              --header "Authorization: Token $RTD_TOKEN" \
+              "$RTD_API/projects/$RTD_PROJECT/builds/$BUILD_ID/")
+            state=$(echo "$build" | jq --raw-output '.state.code')
+            echo "Build $BUILD_ID: $state"
+            case "$state" in
+              finished)
+                commit=$(echo "$build" | jq --raw-output '.commit')
+                if [ "$(echo "$build" | jq --raw-output '.success')" != "true" ]; then
+                  echo "::error::Read the Docs build $BUILD_ID failed: $(echo "$build" | jq --raw-output '.error') ($build_url)"
+                  exit 1
+                fi
+                # Read the Docs builds the branch head, which is newer than this
+                # run's commit when another merge landed in between.
+                if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$commit" != "$GITHUB_SHA" ]; then
+                  echo "::notice::Read the Docs built $commit, this run was triggered by $GITHUB_SHA."
+                fi
+                {
+                  echo "### Read the Docs"
+                  echo "Published \`$commit\` to <https://$RTD_PROJECT.readthedocs.io/en/$RTD_VERSION/> ([build $BUILD_ID]($build_url))."
+                } >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+                ;;
+              cancelled)
+                echo "::error::Read the Docs build $BUILD_ID was cancelled ($build_url)"
+                exit 1
+                ;;
+            esac
+            sleep 15
+          done
+          echo "::error::Read the Docs build $BUILD_ID did not finish within 25 minutes ($build_url)"
+          exit 1

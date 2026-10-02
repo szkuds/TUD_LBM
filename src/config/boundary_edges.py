@@ -21,6 +21,9 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 BC_APPLICATION_ORDER: tuple[str, ...] = ("bottom", "top", "left", "right")
+IN_PLANE_EDGES: tuple[str, ...] = ("top", "bottom", "left", "right")
+OUT_OF_PLANE_EDGES: tuple[str, ...] = ("front", "back")
+_PLANAR_DIM: int = 2
 
 
 class BoundaryEdge(NamedTuple):
@@ -45,6 +48,29 @@ def parameter_section_key(edge: str, name: str) -> str:
     ``"left_velocity_inlet"``.
     """
     return f"{edge}_{name.replace('-', '_')}"
+
+
+def lattice_edges(lattice_type: str) -> tuple[str, ...]:
+    """The edges a domain on *lattice_type* has.
+
+    A two-dimensional lattice has no ``front``/``back`` face, so those edges are
+    neither completed, validated, printed nor saved for it. The dimension is the
+    ``dim`` the lattice declares at its registration.
+
+    Args:
+        lattice_type: A lattice name. An unregistered one gets every edge;
+            :class:`~src.config.simulation_config.SimulationConfig` rejects the
+            name itself.
+
+    Returns:
+        The in-plane edges, followed by ``front``/``back`` for a 3D lattice.
+    """
+    import src.lattice.lattice  # noqa: F401 - registration side effect, as in pad_modes
+
+    entry = get_operators("lattice").get(lattice_type)
+    if entry is not None and (entry.metadata or {}).get("dim") == _PLANAR_DIM:
+        return IN_PLANE_EDGES
+    return IN_PLANE_EDGES + OUT_OF_PLANE_EDGES
 
 
 def periodic_axes(bc_config: Mapping[str, Any]) -> tuple[bool, bool]:

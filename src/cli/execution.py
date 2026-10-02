@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import TypeAlias
+import src.config.config_overview as _flags
 from src.cli._console import console
 from src.cli._console import success
 from src.cli.config_loading import _expand_raw_config
@@ -18,7 +19,6 @@ from src.cli.display import _display_summary
 from src.cli.display import _print_dry_run_message
 from src.cli.overrides import _ask_confirm
 from src.cli.overrides import confirm_or_override
-from src.cli.wetting_init import _WETTING_INIT_NT
 from src.cli.wetting_init import _run_two_phase_wetting_init
 from src.config.run_config import COMPARISON_DIRNAME
 
@@ -243,22 +243,21 @@ def _run_with_optional_overrides(
     return confirmed
 
 
-def _enable_debug_flags(*, debug_wetting: bool, debug_wetting_interval: int, debug_stability: bool) -> None:
+def _enable_debug_flags(flags: RunFlags) -> None:
     """Set the module-global debug flags in config_overview before setup/run traces."""
-    if not (debug_wetting or debug_stability):
-        return
-
-    import src.config.config_overview as _flags
-
-    if debug_wetting:
+    if flags.debug_wetting is not None:
         _flags.DEBUG_FLAG_WETTING = True
-        _flags.DEBUG_WETTING_INTERVAL = debug_wetting_interval
-        console.print(f"[dim]Wetting debug logging enabled (every {debug_wetting_interval} steps).[/dim]")
+        _flags.DEBUG_WETTING_INTERVAL = flags.debug_wetting
+        console.print(f"[dim]Wetting debug logging enabled (every {flags.debug_wetting} steps).[/dim]")
         console.print()
 
-    if debug_stability:
+    if flags.debug_stability is not None:
         _flags.DEBUG_FLAG_STABILITY = True
-        console.print("[dim]Stability diagnostics enabled (stability_log.csv + NaN guard).[/dim]")
+        _flags.DEBUG_STABILITY_INTERVAL = flags.debug_stability
+        console.print(
+            "[dim]Stability diagnostics enabled "
+            f"(stability_log.csv + NaN guard, every {flags.debug_stability} steps).[/dim]",
+        )
         console.print()
 
 
@@ -266,11 +265,11 @@ def _enable_debug_flags(*, debug_wetting: bool, debug_wetting_interval: int, deb
 class RunFlags:
     """Option values for `run`, bundled to keep `_run_impl`'s signature within S107's limit.
 
-    All boolean but `debug_wetting_interval`, which carries the
-    `--debug-wetting-interval` value through to `_enable_debug_flags`, and
-    `init_wetting_nt`, `override_phase1` and `override_phase2`, which carry
-    the `--init-wetting NT` length and the two phase-scoped override lists through to
-    `_run_two_phase_wetting_init`. The override tuples ride here rather than on
+    All boolean but the three optional-value flags and the phase-scoped overrides.
+    `debug_wetting`, `debug_stability` and `init_wetting` are `None` when the flag
+    is absent and otherwise carry its number: the `--debug-wetting [INTERVAL]` and
+    `--debug-stability [INTERVAL]` sampling intervals, and the `--init-wetting [NT]`
+    Phase 1 length. `override_phase1` and `override_phase2` ride here rather than on
     `_run_impl`'s signature, which is already at PLR0913's five-argument limit.
     """
 
@@ -280,11 +279,9 @@ class RunFlags:
     list_analysis: bool = False
     fail_fast: bool = False
     overview: bool = False
-    debug_wetting: bool = False
-    debug_wetting_interval: int = 50
-    debug_stability: bool = False
-    init_wetting: bool = False
-    init_wetting_nt: int = _WETTING_INIT_NT
+    debug_wetting: int | None = None
+    debug_stability: int | None = None
+    init_wetting: int | None = None
     override_phase1: tuple[str, ...] = ()
     override_phase2: tuple[str, ...] = ()
     run_compare: bool = False
@@ -306,23 +303,19 @@ def _run_impl(
         _display_analysis_operators()
         return False
 
-    _enable_debug_flags(
-        debug_wetting=flags.debug_wetting,
-        debug_wetting_interval=flags.debug_wetting_interval,
-        debug_stability=flags.debug_stability,
-    )
+    _enable_debug_flags(flags)
 
     _validate_cli_args(
         overrides,
         config_path,
-        init_wetting=flags.init_wetting,
+        init_wetting=flags.init_wetting is not None,
         init_dir=init_dir,
         continue_run=flags.continue_run,
         override_phase1=flags.override_phase1,
         override_phase2=flags.override_phase2,
     )
 
-    if flags.init_wetting:
+    if flags.init_wetting is not None:
         if config_path is None:
             msg = "config_path is required for wetting initialisation"
             raise ValueError(msg)
@@ -331,7 +324,7 @@ def _run_impl(
             overrides,
             no_prompt=flags.no_prompt,
             overview=flags.overview,
-            init_nt=flags.init_wetting_nt,
+            init_nt=flags.init_wetting,
             override_phase1=flags.override_phase1,
             override_phase2=flags.override_phase2,
             dry_run=flags.dry_run,

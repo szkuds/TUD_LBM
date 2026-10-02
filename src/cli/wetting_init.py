@@ -139,7 +139,7 @@ def _plot_wetting_init_convergence(init_config: SimulationConfig, data_dir: str)
     The equilibration run is only useful if it actually settled, and a single
     end-state snapshot cannot show that — this reads the saved history instead.
     """
-    from src.simulation_io.plotting import MaxVelocityPlot
+    from src.simulation_io.plotting import build_analysis_plot
     from src.simulation_io.plotting.figure_builder import FigureBuilder
 
     run_dir = Path(data_dir).parent
@@ -153,7 +153,7 @@ def _plot_wetting_init_convergence(init_config: SimulationConfig, data_dir: str)
     for path in saved:
         console.print(f"  Convergence plot  : {path}")
 
-    series = MaxVelocityPlot(config=init_config).compute(files)
+    series = build_analysis_plot("max_velocity")(config=init_config).compute(files)
     if len(series["values"]):
         _report_equilibrium(series["iters"], series["values"])
 

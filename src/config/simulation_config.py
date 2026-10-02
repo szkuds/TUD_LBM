@@ -24,8 +24,10 @@ from typing import Any
 from typing import Literal
 from typing import NamedTuple
 from typing import cast
+from src.config.boundary_edges import OUT_OF_PLANE_EDGES
 from src.config.boundary_edges import BoundaryEdge
 from src.config.boundary_edges import build_boundary_edges
+from src.config.boundary_edges import lattice_edges
 from src.config.boundary_edges import pad_modes
 from src.config.boundary_edges import parameter_section_key
 from src.config.boundary_edges import periodic_axes
@@ -49,7 +51,6 @@ ARRAY_ELIGIBLE: str = "array_eligible"
 NESTED_SWEEPABLE: str = "nested_sweepable"
 MIN_GRID_DIMENSIONS: int = 2
 MIN_TAU_VALUE: float = 0.5
-_BC_EDGES: tuple[str, ...] = ("top", "bottom", "left", "right", "front", "back")
 
 
 def array_field(
@@ -392,7 +393,7 @@ class SimulationConfig:
             object.__setattr__(
                 self,
                 "bc_config",
-                dict.fromkeys(_BC_EDGES, "periodic"),
+                dict.fromkeys(lattice_edges(self.lattice_type), "periodic"),
             )
         if self.hysteresis_config is not None and self.wetting_config is None:
             object.__setattr__(
@@ -420,13 +421,23 @@ class SimulationConfig:
     def _set_all_bcs(self) -> None:
         """Complete bc_config so the boundary builder only looks up and binds.
 
-        Every edge missing a BC becomes ``"periodic"``. A BC without its
-        ``{edge}_{name}`` parameter section runs on the operator's own
-        defaults (see :attr:`boundary_edges`).
+        Every edge of the lattice missing a BC becomes ``"periodic"``. A BC
+        without its ``{edge}_{name}`` parameter section runs on the operator's
+        own defaults (see :attr:`boundary_edges`).
+
+        A two-dimensional lattice has no ``front``/``back`` face, so a periodic
+        entry for one is dropped rather than carried into the overview and the
+        saved ``config.toml``; run directories written before this still load.
+        Any other BC there is left for :meth:`_validate_boundary_conditions`
+        to reject.
         """
         if self.bc_config is None:
             return
-        for edge in _BC_EDGES:
+        edges = lattice_edges(self.lattice_type)
+        for edge in OUT_OF_PLANE_EDGES:
+            if edge not in edges and self.bc_config.get(edge) == "periodic":
+                del self.bc_config[edge]
+        for edge in edges:
             if edge not in self.bc_config:
                 self.bc_config[edge] = "periodic"
 
@@ -550,12 +561,19 @@ class SimulationConfig:
         """Reject an unregistered BC type, and a parameter section no edge's BC reads."""
         assert self.bc_config is not None  # noqa: S101 - guaranteed by _apply_defaults
         valid_bcs = _valid_boundary_conditions()
-        for edge in _BC_EDGES:
+        edges = lattice_edges(self.lattice_type)
+        for edge in OUT_OF_PLANE_EDGES:
+            if edge not in edges and edge in self.bc_config:
+                msg = (
+                    f"bc_config['{edge}'] has no face on the {self.lattice_type} lattice, got '{self.bc_config[edge]}'"
+                )
+                raise ValueError(msg)
+        for edge in edges:
             if self.bc_config[edge] not in valid_bcs:
                 msg = f"bc_config['{edge}'] must be one of {sorted(valid_bcs)}, got '{self.bc_config[edge]}'"
                 raise ValueError(msg)
-        sections = {parameter_section_key(edge, self.bc_config[edge]) for edge in _BC_EDGES}
-        for key in sorted(self.bc_config.keys() - set(_BC_EDGES) - sections):
+        sections = {parameter_section_key(edge, self.bc_config[edge]) for edge in edges}
+        for key in sorted(self.bc_config.keys() - set(edges) - sections):
             msg = f"bc_config['{key}'] is not the parameter section of any edge's boundary condition"
             raise ValueError(msg)
 

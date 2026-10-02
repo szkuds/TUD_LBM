@@ -112,6 +112,18 @@ If you do not have `make`, use:
 sphinx-build -b html docs docs/_build/html
 ```
 
+### Published documentation
+
+<https://tud-lbm.readthedocs.io> serves the `latest` version on Read the Docs, which tracks `main`.
+Every push to `main` runs `.github/workflows/documentation.yml`. Once its documentation build has
+passed on every Python version, the `publish-readthedocs` job triggers a Read the Docs build of
+`latest` through the API, waits for it, and fails if the build fails or if `latest` tracks any
+other branch. A `main` whose documentation does not build is not published. The workflow can also
+be started by hand from the Actions tab; it publishes only when run on `main`.
+
+The workflow needs the repository secret `RTD_TOKEN`, an API token from
+<https://app.readthedocs.org/accounts/tokens/> of an account that maintains the `tud-lbm` project.
+
 ---
 
 ## Running on DelftBlue (HPC)
@@ -452,9 +464,8 @@ Frequently used `run` options:
 | `--continue`                  | Resume from a previous run directory.                                   |
 | `--init-dir`                  | Seed initialisation from saved data.                                    |
 | `--init-wetting [NT]`         | Wetting initialisation; NT sets the equilibration length (default 50000). |
-| `--debug-stability`           | Enable NaN and checkerboard diagnostics.                                |
-| `--debug-wetting`             | Enable wetting-optimiser diagnostics.                                   |
-| `--debug-wetting-interval N`  | Timesteps between logged wetting rows (default 100; 1 logs every step).  |
+| `--debug-stability [INTERVAL]` | NaN and checkerboard diagnostics; INTERVAL sets the steps between samples (default 100). |
+| `--debug-wetting [INTERVAL]`  | Wetting-optimiser diagnostics; INTERVAL sets the steps between logged rows (default 100; 1 logs every step). |
 | `--list-simulation-operators` | List registered physics operators and exit.                             |
 | `--list-simulation-analysis`  | List registered analysis operators and exit.                            |
 

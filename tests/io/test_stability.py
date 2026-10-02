@@ -236,12 +236,13 @@ class TestRunIntegration:
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10, results_dir=str(tmp_path))
         return build_setup(cfg)
 
-    def test_in_memory_mode_writes_csv_rows_at_save_interval(self, tmp_path, monkeypatch):
+    def test_in_memory_mode_writes_csv_rows_at_debug_interval(self, tmp_path, monkeypatch):
         monkeypatch.setattr(_flags, "DEBUG_FLAG_STABILITY", True)
+        monkeypatch.setattr(_flags, "DEBUG_STABILITY_INTERVAL", 2)
         setup = self._setup(tmp_path)
         state = init_state(setup)
 
-        run(setup, state, nt=10, save_interval=2)
+        run(setup, state, nt=10, save_interval=5)
 
         csv_path = tmp_path / "stability_debug" / "stability_log.csv"
         lines = csv_path.read_text(encoding="utf-8").splitlines()
@@ -257,6 +258,7 @@ class TestRunIntegration:
         from src.simulation_io import SimulationIO
 
         monkeypatch.setattr(_flags, "DEBUG_FLAG_STABILITY", True)
+        monkeypatch.setattr(_flags, "DEBUG_STABILITY_INTERVAL", 2)
         setup = self._setup(tmp_path)
         state = init_state(setup)
         io = SimulationIO(base_dir=str(tmp_path), output_format="numpy")

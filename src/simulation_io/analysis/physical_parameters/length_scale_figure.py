@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     import matplotlib.axes
     from src.config.simulation_config import SimulationConfig
-    from src.simulation_io.plotting import DensityPlotOperator
+    from src.simulation_io.plotting import PlotOperator
 
 _PANEL_FIGSIZE = (5.0, 5.0)
 _MASK_ALPHA = 0.28
@@ -104,10 +104,10 @@ def write_length_scale_figure(
 
     mpl.use("Agg")
     import matplotlib.pyplot as plt
-    from src.simulation_io.plotting import DensityPlotOperator
+    from src.simulation_io.plotting import build_plot_operator
     from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
-    operator = DensityPlotOperator(config)
+    operator = build_plot_operator("density")(config)
     fig, axes = plt.subplots(
         1,
         len(panels),
@@ -259,7 +259,7 @@ def _analytic_region(config: SimulationConfig) -> _AnalyticRegion | None:
 def _render_panel(
     ax: matplotlib.axes.Axes,
     panel: _Panel,
-    operator: DensityPlotOperator,
+    operator: PlotOperator,
     config: SimulationConfig,
 ) -> None:
     """Draw one panel: the density field with its mask, or the analytic circle."""
@@ -274,7 +274,7 @@ def _render_panel(
 def _overlay_mask(ax: matplotlib.axes.Axes, mask: np.ndarray) -> None:
     """Shade and outline the counted cells over an already-rendered field.
 
-    ``DensityPlotOperator`` transposes its field and draws it with
+    The ``density`` operator transposes its field and draws it with
     ``origin="lower"``, so the mask must be transposed the same way or it lands
     rotated relative to the density beneath it.
     """
