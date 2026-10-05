@@ -88,7 +88,7 @@ def _probe(expression: str) -> str:
         capture_output=True,
         text=True,
         check=True,
-        cwd=_PLOTTING_DIR.parents[2].parent,
+        cwd=_PLOTTING_DIR.parents[2],
     )
     return result.stdout.strip()
 
