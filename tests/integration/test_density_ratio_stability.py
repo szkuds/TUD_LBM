@@ -104,15 +104,12 @@ def test_ratio_100_is_stable_with_bgk():
     assert metrics[:, _STRIPE].max() < 0.01
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="ratio 1000 with BGK: the vapour-side zig-zag grows (e-fold ~3000 steps) and diverges at t ~ 21000",
-)
-def test_ratio_1000_is_stable_with_bgk():
+def test_ratio_1000_diverges_with_bgk():
+    """The vapour-side zig-zag grows (e-fold ~3000 steps) and the run is unhealthy by t ~ 21000."""
     rho_v = 0.001
     _, metrics = _run(_config(rho_v))
 
-    assert _healthy(metrics, rho_v)
+    assert not _healthy(metrics, rho_v)
 
 
 def test_ratio_1000_low_bulk_rate_outlives_bgk_failure():
