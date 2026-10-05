@@ -1,7 +1,6 @@
 r"""Equilibrium distribution computation — pure function.
 
-Extracted from :class:`simulation_operators.equilibrium.EquilibriumWB`.
-Implements the well-balanced equilibrium used throughout TUD-LBM:
+Implements the standard second-order equilibrium, used by single-phase runs:
 
 .. math::
 
@@ -13,9 +12,10 @@ Implements the well-balanced equilibrium used throughout TUD-LBM:
 
 with :math:`c_s^2 = 1/3`.
 
-The *rest direction* (``i = 0``) is computed via mass conservation:
-``feq_0 = rho - Σ_{i>0} feq_i``, which matches the legacy
-``EquilibriumWB`` class exactly.
+The leading ``1`` puts ``w_i * rho`` into every direction, so the second moment
+is ``cs^2 * rho * I + rho * u u``: the ideal-gas pressure ``cs^2 * rho`` is part
+of the equilibrium. The ``"wb"`` equilibrium omits that term and relies on a
+force for its pressure, which a single-phase run does not have.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ def compute_equilibrium(
     u: jnp.ndarray,
     lattice: Lattice,
 ) -> jnp.ndarray:
-    """Compute the well-balanced equilibrium distribution.
+    """Compute the standard equilibrium distribution.
 
     Args:
         rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
@@ -46,6 +46,6 @@ def compute_equilibrium(
     """
     u2 = jnp.sum(u**2, axis=-1, keepdims=True)  # (nx, ny, nz, 1, 1)
 
-    cu = jnp.sum(u * lattice.c, axis=-1, keepdims=True)  # (nx, ny, nz, 1, d)
+    cu = jnp.sum(u * lattice.c, axis=-1, keepdims=True)  # (nx, ny, nz, q, 1)
 
     return lattice.w * rho * (1.0 + 3.0 * cu + 4.5 * cu**2 - 1.5 * u2)  # (nx, ny, nz, q, 1)

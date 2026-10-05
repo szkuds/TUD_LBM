@@ -13,14 +13,10 @@ collision -> streaming -> bounce-back) from multiphase, wetting and hysteresis:
   gravity. The steady state is hydrostatic,
   ``rho ∝ exp(g_vec . x / cs2)``, at rest, with mass conserved.
 
-The last two are marked ``xfail(strict=True)``: ``build_setup`` uses the
-well-balanced ``wb`` equilibrium for every simulation type, which carries no
-isotropic pressure (the ``w_i*rho`` term is absent), and the single-phase step
-adds no ``-cs2*grad(rho)`` force to replace it. A single-phase fluid therefore
-has no pressure to balance a force normal to a wall: it flows through the
-interior and piles up against the wall indefinitely. The multiphase step is
-not affected — its pressure enters through ``-rho*grad(mu)``. Strict xfail
-makes these flip to a failure the moment the defect is fixed.
+A single-phase run takes the ``standard_equilibrium`` / ``guo`` pair, whose
+second moment carries the pressure ``cs2*rho`` that balances a force normal to
+a wall. With the pressureless ``wb`` equilibrium the last two rungs fail: the
+fluid piles up against the wall indefinitely.
 """
 
 import numpy as np
@@ -43,11 +39,6 @@ CHANNEL_BCS = {
     "back": "periodic",
 }
 BOX_BCS = {**CHANNEL_BCS, "left": "bounce-back", "right": "bounce-back"}
-
-PRESSURELESS_SINGLE_PHASE = pytest.mark.xfail(
-    strict=True,
-    reason="single-phase step uses the pressureless 'wb' equilibrium with no -cs2*grad(rho) force",
-)
 
 
 def _run(scheme: str, grid: tuple[int, int, int], bcs: dict, force_g: float, angle_deg: float, nt: int):
@@ -92,7 +83,6 @@ def test_mrt_poiseuille_matches_the_parabolic_profile():
 
 
 @pytest.mark.integration
-@PRESSURELESS_SINGLE_PHASE
 @pytest.mark.parametrize("scheme", ["bgk", "mrt"])
 def test_inclined_channel_splits_gravity_into_flow_and_hydrostatics(scheme):
     force_g, angle = 1e-6, np.deg2rad(60.0)
@@ -105,7 +95,6 @@ def test_inclined_channel_splits_gravity_into_flow_and_hydrostatics(scheme):
 
 
 @pytest.mark.integration
-@PRESSURELESS_SINGLE_PHASE
 @pytest.mark.parametrize("scheme", ["bgk", "mrt"])
 def test_closed_box_reaches_hydrostatic_rest(scheme):
     force_g, angle = 1e-5, np.deg2rad(60.0)

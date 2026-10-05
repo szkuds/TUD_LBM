@@ -154,9 +154,16 @@ def _build_equilibrium_and_source(
     forces: tuple[ForceOperator, ...],
     gradient_standard: DifferentialOperator,
 ) -> tuple[EquilibriumOperator, SourceTermOperator]:
-    """The ``wb`` pair, or the improved well-balanced pair of Zhang, Guo & Wang (2022).
+    """The equilibrium and source term that belong together for this run.
 
-    The improved model is the separately registered ``"wb_improved"`` equilibrium
+    A single-phase run takes the ``"standard_equilibrium"`` / ``"guo"`` pair: that
+    equilibrium carries the isotropic pressure ``cs^2 * rho`` in its second moment.
+    The ``wb`` equilibrium leaves it out, because a multiphase run supplies its
+    pressure as the force ``-rho * grad(mu)``; a single-phase run has no such
+    force, so with ``wb`` it would have no pressure at all.
+
+    A multiphase run takes the ``wb`` pair, or the improved well-balanced pair of
+    Zhang, Guo & Wang (2022). The improved model is the separately registered ``"wb_improved"`` equilibrium
     and ``"wb_referenced"`` source; their model inputs (the config's viscous-stress
     parameters, the reference pressure carried by a ``gravity_referenced_force``)
     are keywords the protocols lack, so they are bound here. They are bound on the
@@ -166,6 +173,9 @@ def _build_equilibrium_and_source(
     from src.operators.equilibrium import build_equilibrium_fn
     from src.operators.force._gravity_referenced import GravityReferencedForceModule
     from src.registry import get_operators
+
+    if "multiphase" not in config.sim_type:
+        return build_equilibrium_fn("standard_equilibrium"), build_source_fn("guo")
 
     referenced = next((f for f in forces if isinstance(f, GravityReferencedForceModule)), None)
     if config.viscosity_params is None and referenced is None:

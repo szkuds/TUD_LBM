@@ -126,6 +126,17 @@ class TestEquilibriumProtocol:
         # Equilibrium should conserve mass
         assert jnp.allclose(jnp.sum(feq), jnp.sum(rho))
 
+    def test_standard_equilibrium_conformance(self, lattice_d2q9, grid_shape, test_state):
+        """The single-phase standard equilibrium satisfies the same protocol."""
+        from src.operators.equilibrium import build_equilibrium_fn
+
+        _, rho, u = test_state
+        feq = build_equilibrium_fn("standard_equilibrium")(rho, u, lattice_d2q9)
+
+        nx, ny = grid_shape
+        assert feq.shape == (nx, ny, 1, lattice_d2q9.q, 1)
+        assert jnp.allclose(jnp.sum(feq), jnp.sum(rho))
+
     def test_improved_equilibrium_conformance(self, lattice_d2q9, grid_shape, test_state):
         """The improved well-balanced equilibrium (Zhang, Guo & Wang 2022) satisfies the same protocol."""
         import functools
@@ -172,6 +183,23 @@ class TestSourceTermProtocol:
         force = jnp.full((nx, ny, 1, 1, 2), 1e-4)
 
         source = source_fn(
+            rho, u, force, lattice_d2q9, gradient=build_gradient_fn(lattice_d2q9, ("wrap", "wrap", "wrap", "wrap"))
+        )
+
+        assert source.shape == (nx, ny, 1, lattice_d2q9.q, 1)
+        assert jnp.allclose(jnp.sum(source, axis=-2), 0.0, atol=1e-12)
+
+    def test_guo_source_conformance(self, lattice_d2q9, grid_shape, test_state):
+        """The single-phase ``guo`` source satisfies the same protocol and carries no mass."""
+        import src.pipeline  # noqa: F401 - enter through the pipeline (differential import cycle)
+        from src.operators.differential import build_gradient_fn
+        from src.operators.source_term import build_source_fn
+
+        nx, ny = grid_shape
+        _, rho, u = test_state
+        force = jnp.full((nx, ny, 1, 1, 2), 1e-4)
+
+        source = build_source_fn("guo")(
             rho, u, force, lattice_d2q9, gradient=build_gradient_fn(lattice_d2q9, ("wrap", "wrap", "wrap", "wrap"))
         )
 
