@@ -45,7 +45,7 @@ def _decorator_names(tree: ast.Module) -> set[str]:
 def _registering_modules() -> dict[str, bool]:
     """Map each module stem in the package to whether it registers an operator."""
     return {
-        path.stem: bool(_decorator_names(ast.parse(path.read_text())) & _REGISTRATION_DECORATORS)
+        path.stem: bool(_decorator_names(ast.parse(path.read_text(encoding="utf-8"))) & _REGISTRATION_DECORATORS)
         for path in sorted(_PLOTTING_DIR.glob("*.py"))
         if path.stem != "__init__"
     }
@@ -87,6 +87,7 @@ def _probe(expression: str) -> str:
         [sys.executable, "-c", probe],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=True,
         cwd=_PLOTTING_DIR.parents[2],
     )

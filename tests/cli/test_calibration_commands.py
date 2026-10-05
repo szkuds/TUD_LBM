@@ -89,7 +89,7 @@ def test_stage_writes_one_sweep_per_fluid(runner: CliRunner, tmp_path: Path):
 
     assert result.exit_code == 0, result.output
     assert sorted(p.name for p in _configs_dir().iterdir()) == _RADIUS_FILES
-    assert sorted(manifest.read_text().split()) == sorted(str(p) for p in _configs_dir().iterdir())
+    assert sorted(manifest.read_text(encoding="utf-8").split()) == sorted(str(p) for p in _configs_dir().iterdir())
     staged = TomlAdapter().load(str(_configs_dir() / "R75.toml"))
     assert staged.simulation_name == f"surface_tension_{_FLUID}_R75"
     assert staged.results_dir == str(st.SURFACE_TENSION_ROOT / _FLUID)
@@ -112,7 +112,7 @@ def test_stage_ignores_configs_that_are_themselves_sweep_runs(runner: CliRunner,
     assert result.exit_code == 0, result.output
     assert "Nothing staged" in result.output
     assert "5 of the configs are sweep runs themselves" in result.output
-    assert manifest.read_text() == ""
+    assert manifest.read_text(encoding="utf-8") == ""
 
 
 def test_stage_skips_a_calibrated_fluid_and_a_closed_form_eos(runner: CliRunner, tmp_path: Path):
@@ -131,7 +131,7 @@ def test_stage_skips_a_calibrated_fluid_and_a_closed_form_eos(runner: CliRunner,
 
 def test_stage_covers_every_fluid_of_a_parameter_sweep(runner: CliRunner, tmp_path: Path):
     path = _write_config(tmp_path / "sweep.toml", _config())
-    path.write_text(path.read_text().replace("kappa = 0.01", "kappa = [0.01, 0.02]"))
+    path.write_text(path.read_text(encoding="utf-8").replace("kappa = 0.01", "kappa = [0.01, 0.02]"), encoding="utf-8")
 
     result = runner.invoke(cli, ["calibration", "stage", str(path)])
 
@@ -173,7 +173,7 @@ def test_stage_collect_refresh_round_trip(runner: CliRunner, tmp_path: Path):
     earlier_run = results / "2026-01-01" / "00-00-00_drop"
     earlier_run.mkdir(parents=True)
     _write_config(earlier_run / CONFIG_FILENAME, config)
-    config_before = (earlier_run / CONFIG_FILENAME).read_text()
+    config_before = (earlier_run / CONFIG_FILENAME).read_text(encoding="utf-8")
 
     assert runner.invoke(cli, ["calibration", "stage", str(source)]).exit_code == 0
     for staged_toml in sorted(_configs_dir().iterdir()):
@@ -198,10 +198,10 @@ def test_stage_collect_refresh_round_trip(runner: CliRunner, tmp_path: Path):
 
     refreshed = runner.invoke(cli, ["calibration", "refresh", str(results)])
     assert refreshed.exit_code == 0, refreshed.output
-    overview = (earlier_run / PHYSICAL_PARAMETERS_FILENAME).read_text()
+    overview = (earlier_run / PHYSICAL_PARAMETERS_FILENAME).read_text(encoding="utf-8")
     assert "measured, Young–Laplace" in overview
     # Sigma is linked through the cache; the run's config is not rewritten.
-    assert (earlier_run / CONFIG_FILENAME).read_text() == config_before
+    assert (earlier_run / CONFIG_FILENAME).read_text(encoding="utf-8") == config_before
 
 
 def test_collect_reports_an_incomplete_sweep_without_caching(runner: CliRunner, tmp_path: Path):

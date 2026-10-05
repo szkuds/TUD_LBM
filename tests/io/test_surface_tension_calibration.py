@@ -115,7 +115,7 @@ def test_cache_round_trip(tmp_path, monkeypatch):
     assert key in stored
     assert stored[key]["sigma"] == 0.5
     assert stored[key]["grid_shape"] == [64, 64, 1]
-    assert json.loads(path.read_text())[key]["radii"] == [1.0, 2.0]
+    assert json.loads(path.read_text(encoding="utf-8"))[key]["radii"] == [1.0, 2.0]
 
 
 def test_cache_key_changes_with_eos_params(tmp_path):
@@ -160,7 +160,7 @@ def test_load_cache_drops_malformed_entries(tmp_path):
         missing_field_key: {"radii": [1.0], "delta_p": [0.5]},
         bad_grid_shape_key: {"sigma": 0.5, "radii": [1.0], "delta_p": [0.5], "grid_shape": [64, 0, 1]},
     }
-    path.write_text(json.dumps(raw))
+    path.write_text(json.dumps(raw), encoding="utf-8")
 
     cache = st._load_cache(path)
 
@@ -170,7 +170,7 @@ def test_load_cache_drops_malformed_entries(tmp_path):
 
 def test_load_cache_rejects_non_dict_file(tmp_path):
     path = tmp_path / st._CACHE_FILENAME
-    path.write_text(json.dumps([1, 2, 3]))
+    path.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
     assert st._load_cache(path) == {}
 
 
@@ -222,7 +222,7 @@ def test_calibrate_reads_cache_and_writes_plot(tmp_path):
 
     assert sigma == pytest.approx(_SEED_SIGMA, rel=1e-9)
     assert (st.surface_tension_plots_dir(run_dir) / st._PLOT_FILENAME).exists()
-    data = json.loads((st.surface_tension_data_dir(run_dir) / st._DATA_FILENAME).read_text())
+    data = json.loads((st.surface_tension_data_dir(run_dir) / st._DATA_FILENAME).read_text(encoding="utf-8"))
     assert data["sigma"] == pytest.approx(_SEED_SIGMA, rel=1e-9)
     assert data["radii"] == [10.0, 20.0, 30.0]
     snapshots = st.surface_tension_plots_dir(run_dir) / SNAPSHOTS_DIRNAME
@@ -289,7 +289,7 @@ def test_record_attaches_cached_sigma_and_rewrites_the_overview(tmp_path):
     updated = st.record_surface_tension(config, run_dir)
 
     assert updated.extra["surface_tension"] == pytest.approx(_SEED_SIGMA, rel=1e-9)
-    assert "measured, Young–Laplace" in (run_dir / "physical_parameters.txt").read_text()
+    assert "measured, Young–Laplace" in (run_dir / "physical_parameters.txt").read_text(encoding="utf-8")
 
 
 def test_cached_surface_tension_links_a_config_to_the_cache():
@@ -440,7 +440,7 @@ def test_collect_fits_sigma_from_finished_sweep_runs():
     assert fields[0].shape == (st._CALIBRATION_SIDE, st._CALIBRATION_SIDE)
     # The fit sits beside the runs it came from.
     assert (fluid_dir / st._PLOT_FILENAME).stat().st_size > 0
-    data = json.loads((fluid_dir / st._DATA_FILENAME).read_text())
+    data = json.loads((fluid_dir / st._DATA_FILENAME).read_text(encoding="utf-8"))
     assert data["sigma"] == pytest.approx(sigma_true, rel=1e-9)
     np.testing.assert_allclose(data["radii"], st.sweep_radii())
 

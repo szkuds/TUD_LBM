@@ -971,7 +971,7 @@ class TestSaveSweepLog:
             assert len(log_files) == 1
             log_path = log_files[0]
 
-            with log_path.open() as f:
+            with log_path.open(encoding="utf-8") as f:
                 log = json.load(f)
 
             assert log["total_simulations"] == 3
@@ -996,7 +996,7 @@ class TestSaveSweepLog:
             assert len(log_files) == 1
             log_path = log_files[0]
 
-            with log_path.open() as f:
+            with log_path.open(encoding="utf-8") as f:
                 log = json.load(f)
 
             entry = log["simulations"][0]
@@ -1024,7 +1024,7 @@ class TestSaveSweepLog:
             assert len(log_files) == 1
             log_path = log_files[0]
 
-            with log_path.open() as f:
+            with log_path.open(encoding="utf-8") as f:
                 log = json.load(f)
 
             sweep_id = UUID(log["sweep_id"])
@@ -1047,7 +1047,7 @@ class TestSaveSweepLog:
             assert len(log_files) == 1
             log_path = log_files[0]
 
-            with log_path.open() as f:
+            with log_path.open(encoding="utf-8") as f:
                 log = json.load(f)
 
             timestamp = log["timestamp"]

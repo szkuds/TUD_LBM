@@ -127,7 +127,7 @@ def test_pad_modes_resolve_without_the_caller_importing_the_boundary_package():
         " 'top': 'wetting', 'bottom': 'bounce-back'}))"
     )
     result = subprocess.run(  # noqa: S603 - the argv is this module's own literal, not input
-        [sys.executable, "-c", source], capture_output=True, text=True, check=True
+        [sys.executable, "-c", source], capture_output=True, text=True, encoding="utf-8", check=True
     )
 
     assert result.stdout.strip() == "('edge', 'edge', 'wrap', 'wrap')"

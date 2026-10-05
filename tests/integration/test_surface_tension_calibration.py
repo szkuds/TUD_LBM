@@ -200,7 +200,9 @@ def test_every_artefact_lands_under_the_run_directory(calibration):
         PLOTS_DIRNAME,
     ]
 
-    data = json.loads((st.surface_tension_data_dir(calibration.run_dir) / st._DATA_FILENAME).read_text())
+    data = json.loads(
+        (st.surface_tension_data_dir(calibration.run_dir) / st._DATA_FILENAME).read_text(encoding="utf-8")
+    )
     np.testing.assert_allclose(data["radii"], calibration.radii)
     assert data["sigma"] == pytest.approx(calibration.sigma, rel=1e-12)
 

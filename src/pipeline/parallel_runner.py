@@ -342,5 +342,5 @@ def save_sweep_log(
     }
 
     manifest_path = output_dir / f"sweep_log_{manifest['sweep_id']}.json"
-    with manifest_path.open("w") as f:
+    with manifest_path.open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
