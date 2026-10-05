@@ -11,11 +11,6 @@ Implements the standard second-order equilibrium, used by single-phase runs:
     \\right]
 
 with :math:`c_s^2 = 1/3`.
-
-The leading ``1`` puts ``w_i * rho`` into every direction, so the second moment
-is ``cs^2 * rho * I + rho * u u``: the ideal-gas pressure ``cs^2 * rho`` is part
-of the equilibrium. The ``"wb"`` equilibrium omits that term and relies on a
-force for its pressure, which a single-phase run does not have.
 """
 
 from __future__ import annotations
