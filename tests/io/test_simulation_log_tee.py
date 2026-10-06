@@ -21,7 +21,8 @@ if TYPE_CHECKING:
 def cp1252_console(monkeypatch) -> Iterator[io.BytesIO]:
     """Stand in a cp1252 console for ``sys.__stdout__`` and undo the tee afterwards."""
     raw = io.BytesIO()
-    console = io.TextIOWrapper(raw, encoding="cp1252", write_through=True)
+    # newline="" keeps "\n" as written; the default would translate it to "\r\n" on Windows.
+    console = io.TextIOWrapper(raw, encoding="cp1252", newline="", write_through=True)
     root = logging.getLogger()
     handlers, level = root.handlers[:], root.level
     monkeypatch.setattr(sys, "__stdout__", console)
