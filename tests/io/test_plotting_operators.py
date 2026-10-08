@@ -3,19 +3,30 @@
 from __future__ import annotations
 import dataclasses
 import tempfile
+import warnings
 import matplotlib.pyplot as plt
 import numpy as np
+import pytest
 from src.config import SimulationConfig
 from src.simulation_io.plotting import FigureBuilder
-from src.simulation_io.plotting.force import ExternalForcePlotOperator
-from src.simulation_io.plotting.force import ForcePlotOperator
-from src.simulation_io.plotting.pressure import BulkPressurePlotOperator
-from src.simulation_io.plotting.pressure import TotalPressurePlotOperator
+from src.simulation_io.plotting._force import ExternalForcePlotOperator
+from src.simulation_io.plotting._force import ForcePlotOperator
+from src.simulation_io.plotting._pressure import BulkPressurePlotOperator
+from src.simulation_io.plotting._pressure import TotalPressurePlotOperator
 
 _KAPPA = 0.01
 _RHO_L = 1.0
 _RHO_V = 0.1
 _WIDTH = 4
+
+
+def _snapshot(rho: np.ndarray) -> dict[str, np.ndarray]:
+    """A snapshot as the run saves it: density plus the double-well bulk pressure of it."""
+    import jax.numpy as jnp
+    from src.operators.macroscopic.eos._double_well import _pressure_double_well
+
+    beta = 8.0 * _KAPPA / (float(_WIDTH) ** 2 * (_RHO_L - _RHO_V) ** 2)
+    return {"rho": rho, "pressure": np.asarray(_pressure_double_well(jnp.asarray(rho), beta, _RHO_L, _RHO_V))}
 
 
 def _multiphase_config(**overrides: object) -> SimulationConfig:
@@ -39,7 +50,7 @@ class TestPlottingOperatorsShapeHandling:
 
     def test_density_operator_2d_shape(self):
         """Density operator should produce correct 2D array from data."""
-        from src.simulation_io.plotting.density import DensityPlotOperator
+        from src.simulation_io.plotting._density import DensityPlotOperator
 
         config = SimulationConfig(
             grid_shape=(100, 100, 1),
@@ -61,7 +72,7 @@ class TestPlottingOperatorsShapeHandling:
 
     def test_velocity_operator_2d_shape(self):
         """Velocity operator should produce correct 2D array from data."""
-        from src.simulation_io.plotting.velocity import VelocityPlotOperator
+        from src.simulation_io.plotting._velocity import VelocityPlotOperator
 
         config = SimulationConfig(
             grid_shape=(100, 100, 1),
@@ -149,20 +160,14 @@ def test_external_force_plot_operator_availability_and_render():
         plt.close(fig)
 
 
-def test_bulk_pressure_operator_matches_eos_reference():
-    """Bulk pressure panel should render p_0(rho) straight from the EOS function."""
-    from src.operators.macroscopic.eos._double_well import _pressure_double_well
-
+def test_bulk_pressure_operator_renders_the_saved_pressure():
+    """Bulk pressure panel renders the snapshot's ``pressure`` field, transposed for imshow."""
     config = _multiphase_config()
     op = BulkPressurePlotOperator(config)
 
-    rho = np.full((16, 16, 1, 1, 1), 0.7)
-    data = {"rho": rho}
+    data = _snapshot(np.full((16, 16, 1, 1, 1), 0.7))
     assert op.is_available(data)
-
-    beta = 8.0 * _KAPPA / (float(_WIDTH) ** 2 * (_RHO_L - _RHO_V) ** 2)
-    expected = np.asarray(_pressure_double_well(rho[:, :, 0, 0, 0], beta, _RHO_L, _RHO_V)).T
-    np.testing.assert_allclose(op._pressure_2d(data), expected)
+    np.testing.assert_array_equal(op._pressure_2d(data), data["pressure"][:, :, 0, 0, 0].T)
 
     fig, ax = plt.subplots()
     try:
@@ -178,8 +183,7 @@ def test_bulk_pressure_operator_matches_eos_reference():
 def test_total_pressure_reduces_to_bulk_for_uniform_density():
     """With no density gradient the kappa terms vanish, so total == bulk."""
     config = _multiphase_config()
-    rho = np.full((16, 16, 1, 1, 1), 0.7)
-    data = {"rho": rho}
+    data = _snapshot(np.full((16, 16, 1, 1, 1), 0.7))
 
     bulk = BulkPressurePlotOperator(config)._pressure_2d(data)
     total = TotalPressurePlotOperator(config)._pressure_2d(data)
@@ -198,7 +202,7 @@ def test_total_pressure_flattens_the_interface_swing():
     x, y = np.meshgrid(np.arange(64), np.arange(64), indexing="ij")
     radius = np.sqrt((x - 32.0) ** 2 + (y - 32.0) ** 2)
     profile = 0.5 * (_RHO_L + _RHO_V) - 0.5 * (_RHO_L - _RHO_V) * np.tanh(2.0 * (radius - 16.0) / _WIDTH)
-    data = {"rho": profile[:, :, None, None, None]}
+    data = _snapshot(profile[:, :, None, None, None])
 
     bulk = BulkPressurePlotOperator(config)._pressure_2d(data)
     total = TotalPressurePlotOperator(config)._pressure_2d(data)
@@ -206,16 +210,61 @@ def test_total_pressure_flattens_the_interface_swing():
     assert np.ptp(total) < np.ptp(bulk)
 
 
-def test_pressure_operators_unavailable_without_supported_eos():
-    """Single-phase runs and unsupported EOS must drop the panel, not error in it."""
-    data = {"rho": np.full((16, 16, 1, 1, 1), 0.7)}
+def test_pressure_operator_availability():
+    """Bulk needs the saved pressure or rho; total needs rho and a multiphase kappa."""
+    rho = np.full((16, 16, 1, 1, 1), 0.7)
+    data = {"rho": rho, "pressure": rho / 3.0}
 
+    # A single-phase run has a pressure (cs^2 rho) but no interfacial terms.
     single_phase = SimulationConfig(grid_shape=(16, 16, 1), tau=0.8, nt=2)
-    assert not BulkPressurePlotOperator(single_phase).is_available(data)
+    assert BulkPressurePlotOperator(single_phase).is_available(data)
     assert not TotalPressurePlotOperator(single_phase).is_available(data)
 
+    # A snapshot without a saved pressure still renders: it follows from rho.
     multiphase = _multiphase_config()
-    assert not BulkPressurePlotOperator(multiphase).is_available({})
+    assert BulkPressurePlotOperator(multiphase).is_available({"rho": rho})
+    assert TotalPressurePlotOperator(multiphase).is_available({"rho": rho})
+    assert not TotalPressurePlotOperator(multiphase).is_available({"pressure": rho})
+    assert not BulkPressurePlotOperator(multiphase).is_available({"u": rho})
+
+
+def test_pressure_is_recomputed_from_rho_when_not_saved():
+    """Without a saved ``pressure`` the panels show what the run would have saved."""
+    x, y = np.meshgrid(np.arange(16), np.arange(16), indexing="ij")
+    rho = (0.5 + 0.02 * x + 0.01 * y)[:, :, None, None, None]
+    saved = _snapshot(rho)
+    config = _multiphase_config()
+
+    for operator in (BulkPressurePlotOperator, TotalPressurePlotOperator):
+        np.testing.assert_allclose(
+            operator(config)._pressure_2d({"rho": rho}),
+            operator(config)._pressure_2d(saved),
+            rtol=1e-6,
+        )
+
+    single_phase = SimulationConfig(grid_shape=(16, 16, 1), tau=0.8, nt=2)
+    np.testing.assert_allclose(
+        BulkPressurePlotOperator(single_phase)._pressure_2d({"rho": rho}),
+        rho[:, :, 0, 0, 0].T / 3.0,
+    )
+
+
+def test_named_field_without_data_is_reported_once():
+    """A selected panel the snapshot cannot fill is named, not dropped in silence."""
+    rho = np.full((16, 16, 1, 1, 1), 0.7)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        builder = FigureBuilder(_multiphase_config(), run_dir=tmpdir, fields=["density", "force"])
+        with pytest.warns(UserWarning, match=r"no data for \['force'\]"):
+            plt.close(builder.render_figure({"rho": rho}, timestep=0))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            plt.close(builder.render_figure({"rho": rho}, timestep=1))
+
+        # The default set is a best effort and stays quiet.
+        default = FigureBuilder(_multiphase_config(), run_dir=tmpdir)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            plt.close(default.render_figure({"rho": rho}, timestep=0))
 
 
 def test_pressure_operators_are_opt_in():

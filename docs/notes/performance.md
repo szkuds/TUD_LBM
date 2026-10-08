@@ -14,15 +14,15 @@ physics requirement for this project, not a tuning knob.
 
 ```bash
 # Case A — bandwidth-bound LBM kernel. Sweep the grid to find the crossover.
-tud-lbm benchmark examples/benchmarks/bench_kernel.toml \
+tud-lbm benchmark .claude/benchmarks/bench_kernel.toml \
     --steps 200 --repeats 3 --override 'grid_shape=[512,512]' --label kernel_512
 
 # Case B — the real research workload, with the ablation ladder.
-tud-lbm benchmark examples/benchmarks/bench_hysteresis.toml \
+tud-lbm benchmark .claude/benchmarks/bench_hysteresis.toml \
     --steps 20 --repeats 3 --breakdown --label hyst_256
 
 # Price the streaming-I/O host callback (expected to matter far more on GPU).
-tud-lbm benchmark examples/benchmarks/bench_kernel.toml --steps 200 --io
+tud-lbm benchmark .claude/benchmarks/bench_kernel.toml --steps 200 --io
 ```
 
 Each run writes a JSON record to `$TUD_LBM_DATA_DIR/benchmarks/<label>_<backend>.json`
@@ -69,7 +69,7 @@ floor, 274× as a ceiling, and measure the middle by instrumenting a real run
 (`--debug-wetting` reports the actual `iters` against the cap in its per-side
 row; note each logged step evaluates two extra objectives, so use it for
 iteration counts and never for timing — and rate-limit it with
-`--debug-wetting-interval` to keep even that cost off most steps).
+`--debug-wetting INTERVAL` to keep even that cost off most steps).
 
 Either way the conclusion for GPU work is the same: **the LBM kernel is not the
 workload.** Even in the cheapest regime, collision, streaming and the

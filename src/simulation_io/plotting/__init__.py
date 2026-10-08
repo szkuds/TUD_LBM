@@ -1,45 +1,59 @@
-"""Plotting utilities for TUD-LBM.
+"""Plotting — figures, animations and the plot operators they are built from.
 
-Public surface:
+Public API: FigureBuilder, Animator, build_plot_operator(), build_analysis_plot(),
+the PlotOperator / AnalysisPlot base classes, and FigureStyle / DEFAULT_STYLE.
 
-- ``FigureBuilder`` -- assembles per-timestep composite figures from config.
-- ``Animator``      -- encodes saved snapshots into an mp4 or gif.
-- ``PlotOperator`` -- abstract base class for individual panel operators.
-- ``AnalysisPlot``  -- abstract base class for analysis plot operators.
-- ``FigureStyle`` / ``DEFAULT_STYLE`` -- centralized figure styling.
+Implementation modules (every ``_*.py``) are operator modules: auto-discovered,
+internal, and reached by registered name through the two factories. Public
+modules are library API and are never scanned, which is what keeps
+``regime_map_plot`` (and its scipy import) out of a bare package import.
+
+Example:
+    from src.simulation_io.plotting import FigureBuilder, build_plot_operator
+
+    FigureBuilder(config, run_dir).build_all()
+
+    density = build_plot_operator("density")(config)
+    density(ax, {"rho": rho}, timestep)
 """
 
-from __future__ import annotations  # noqa: I001
+from __future__ import annotations
+from src.operators._loader import auto_load_operators
+from src.registry import get_operators
+from src.simulation_io.plotting.animator import Animator
+from src.simulation_io.plotting.base import AnalysisPlot
+from src.simulation_io.plotting.base import PlotOperator
+from src.simulation_io.plotting.figure_builder import FigureBuilder
+from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
+from src.simulation_io.plotting.figure_config import FigureStyle
 
-# Trigger operator self-registration at import time.
-#
-# NOT auto-discovered: unlike the operator subpackages, plot operators live in
-# public modules, and a blanket public-module scan also pulls in
-# ``regime_map_plot`` -> ``analysis.accelerations`` -> ``plotting.figure_config``,
-# which re-enters this package before it is initialised. Breaking that cycle
-# means moving ``figure_config`` out of the plotting package first.
-from . import ca_theta_plot as _ca_theta_plot_mod  # noqa: F401
-from . import contact_angle as _contact_angle_mod  # noqa: F401
-from . import contact_angle_plot as _contact_angle_plot_mod  # noqa: F401
-from . import contact_line_speed_plot as _contact_line_speed_plot_mod  # noqa: F401
-from . import density as _density_mod  # noqa: F401
-from . import force as _force_mod  # noqa: F401
-from . import interface as _interface_mod  # noqa: F401
-from . import overview_simulation_inc_snapshots as _overview_mod  # noqa: F401
-from . import pressure as _pressure_mod  # noqa: F401
-from . import run_comparison as _run_comparison_mod  # noqa: F401
-from . import scalar_history_plot as _scalar_history_plot_mod  # noqa: F401
-from . import simulation_csv as _simulation_csv_mod  # noqa: F401
-from . import velocity as _velocity_mod  # noqa: F401
-from .animator import Animator
-from .base import AnalysisPlot
-from .base import PlotOperator
-from .ca_theta_plot import plot_contact_angle_vs_capillary_number
-from .ca_theta_plot import plot_dual_axis_ca_theta
-from .ca_theta_plot import save_figure
-from .figure_builder import FigureBuilder
-from .figure_config import DEFAULT_STYLE
-from .figure_config import FigureStyle
+# Auto-discover and import private operator modules for registry registration
+auto_load_operators("src.simulation_io.plotting")
+
+
+def build_plot_operator(name: str) -> type[PlotOperator]:
+    """Return the per-timestep panel operator class registered as *name*.
+
+    Args:
+        name: A ``plotting`` operator name, e.g. ``"density"`` or ``"pressure"``.
+
+    Returns:
+        The operator class; instantiate it with the run's config.
+    """
+    return get_operators("plotting")[name].target
+
+
+def build_analysis_plot(name: str) -> type[AnalysisPlot]:
+    """Return the snapshot-history plot class registered as *name*.
+
+    Args:
+        name: An ``analysis`` operator name, e.g. ``"max_velocity"``.
+
+    Returns:
+        The analysis plot class; instantiate it with the run's config.
+    """
+    return get_operators("analysis")[name].target
+
 
 __all__ = [
     "DEFAULT_STYLE",
@@ -48,7 +62,6 @@ __all__ = [
     "FigureBuilder",
     "FigureStyle",
     "PlotOperator",
-    "plot_contact_angle_vs_capillary_number",
-    "plot_dual_axis_ca_theta",
-    "save_figure",
+    "build_analysis_plot",
+    "build_plot_operator",
 ]

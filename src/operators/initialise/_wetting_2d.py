@@ -15,9 +15,7 @@ if TYPE_CHECKING:
 
 @initialise_operator(name="wetting")
 def init_wetting(
-    nx: int,
-    ny: int,
-    nz: int,
+    grid_shape: tuple[int, int, int],
     lattice: Lattice,
     *,
     rho_l: float = 1.0,
@@ -31,9 +29,7 @@ def init_wetting(
     radius ``ny / 3.33``.
 
     Args:
-        nx: Grid size in x.
-        ny: Grid size in y.
-        nz: Grid size in z (must be 1).
+        grid_shape: Spatial dimensions ``(nx, ny, nz)``; nz must be 1.
         lattice: :class:`~setup.lattice.Lattice`.
         rho_l: Liquid density.
         rho_v: Vapour density.
@@ -46,6 +42,7 @@ def init_wetting(
     Returns:
         Initial distribution ``f``, shape ``(nx, ny, nz, q, 1)``.
     """
+    nx, ny, nz = grid_shape
     if nz != 1:
         msg = "Wetting initialisation only supports 2D (nz=1)."
         raise ValueError(msg)

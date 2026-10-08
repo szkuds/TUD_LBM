@@ -111,7 +111,7 @@ def run_single_simulation(
         # Build simulation setup
         setup = setup_fn(config)
 
-        # Initialize state
+        # Initialise state
         state = init_state(setup)
 
         # Create unique simulation name including parameter values
@@ -342,5 +342,5 @@ def save_sweep_log(
     }
 
     manifest_path = output_dir / f"sweep_log_{manifest['sweep_id']}.json"
-    with manifest_path.open("w") as f:
+    with manifest_path.open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)

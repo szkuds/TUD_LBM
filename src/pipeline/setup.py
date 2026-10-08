@@ -26,32 +26,32 @@ Usage::
 """
 
 from __future__ import annotations
+import functools
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 from typing import cast
+import jax.numpy as jnp
 from src.lattice.lattice import Lattice
 from src.lattice.lattice import build_lattice
-from src.operators.differential import build_diff_ops
-from src.operators.force import ForceSetup
 from src.operators.force import build_forces
+from src.operators.source_term import build_source_fn
 
 if TYPE_CHECKING:
-    import jax.numpy as jnp
+    from src.config.multiphase_params import MultiphaseParams
     from src.config.simulation_config import SimulationConfig
-    from src.operators.boundary import BCMasks
-    from src.operators.macroscopic import MultiphaseParams
     from src.operators.protocols import BoundaryOperator
-    from src.operators.protocols import BoundDifferentialOperator
     from src.operators.protocols import CollisionOperator
+    from src.operators.protocols import DifferentialOperator
     from src.operators.protocols import EquilibriumOperator
     from src.operators.protocols import ExtraStatePlugin
+    from src.operators.protocols import ForceOperator
     from src.operators.protocols import HysteresisOperator
     from src.operators.protocols import InitialPopulationOperator
     from src.operators.protocols import MacroscopicOperator
     from src.operators.protocols import ObstacleOperator
+    from src.operators.protocols import SourceTermOperator
     from src.operators.protocols import StepOperator
     from src.operators.protocols import StreamingOperator
-    from src.operators.protocols import WettingDifferentialOperator
 
 
 class SimulationSetup(NamedTuple):
@@ -68,27 +68,24 @@ class SimulationSetup(NamedTuple):
             and any metadata that does not enter the JIT boundary.
         lattice: The :class:`~setup.lattice.Lattice` pytree.
         grid_shape: Spatial dimensions, e.g. ``(64, 64)``.
-        tau: Relaxation time (> 0.5).
+        tau: Relaxation time of the shear moments (> 0.5) passed to the
+            collision: ``lambda_v`` when configured, else the config's ``tau``.
         collision_scheme: Name of the collision model (``"bgk"`` / ``"mrt"``).
-        k_diag: MRT relaxation rates (``None`` for BGK).
-        bc_masks: Pre-computed boundary-condition masks (:class:`BCMasks`).
-        forces: Pre-built force setup (:class:`~operators.force.ForceSetup`) containing
-            specs and source-term callable, or ``None`` if no forces are active.
+        k_diag: MRT relaxation rates (``None`` for BGK); already bound into
+            ``collision_fn``.
+        forces: The configured forces, each a bound
+            :class:`~src.operators.protocols.ForceOperator`; empty when none are active.
+        source_fn: Couples the total force into the populations
+            (:class:`~src.operators.protocols.SourceTermOperator`).
         multiphase_params: ``None`` for single-phase runs.
         gradient_standard: Standard gradient ``∇μ`` (chemical potential).
             Always used for chemical-potential gradient. Never wetting-corrected.
         gradient_density: Density gradient ``∇ρ`` used in source term.
             Wetting-corrected when applicable.
         laplacian_density: Laplacian of density ``∇²ρ`` in chemical-potential computation.
-            Wetting-corrected when applicable.
-        gradient_density_wetting: Parametric density gradient for hysteresis optimisation.
-            Populated for hysteresis runs.
-            Signature: ``(grid, phi_l, phi_r, d_rho_l, d_rho_r) -> result``.
-            ``None`` for non-hysteresis cases.
-        laplacian_density_wetting: Parametric Laplacian of density for hysteresis optimisation.
-            Populated for hysteresis runs.
-            Signature: ``(grid, phi_l, phi_r, d_rho_l, d_rho_r) -> result``.
-            ``None`` for non-hysteresis cases.
+            Wetting-corrected when applicable. The hysteresis optimiser passes
+            candidate :class:`~src.operators.wetting._params.WettingParams` to
+            both density operators as their ``wetting`` argument.
         step_fn: The unbound step operator resolved from the registry,
             implementing :class:`~operators.protocols.StepOperator`.
             Signature: ``(setup, state) → state_next``.
@@ -123,18 +120,16 @@ class SimulationSetup(NamedTuple):
     k_diag: tuple[float, ...] | None = None
 
     # ── Pre-built operators ──
-    bc_masks: BCMasks | None = None
-    forces: ForceSetup | None = None
+    forces: tuple[ForceOperator, ...] = ()
+    source_fn: SourceTermOperator | None = None
     multiphase_params: MultiphaseParams | None = None
     obstacle_mask: jnp.ndarray | None = None
     obstacle_fn: ObstacleOperator | None = None
 
     # ── Differential operator closures (pre-built) ──
-    gradient_standard: BoundDifferentialOperator | None = None
-    gradient_density: BoundDifferentialOperator | None = None
-    laplacian_density: BoundDifferentialOperator | None = None
-    gradient_density_wetting: WettingDifferentialOperator | None = None
-    laplacian_density_wetting: WettingDifferentialOperator | None = None
+    gradient_standard: DifferentialOperator | None = None
+    gradient_density: DifferentialOperator | None = None
+    laplacian_density: DifferentialOperator | None = None
 
     # ── Step function (unbound: (setup, state) -> State) ──
     step_fn: StepOperator | None = None
@@ -145,13 +140,60 @@ class SimulationSetup(NamedTuple):
     # ── Pre-built operator closures (resolved at setup time) ──
     collision_fn: CollisionOperator | None = None
     equilibrium_fn: EquilibriumOperator | None = None
-    macroscopic_fn: MacroscopicOperator[..., tuple[jnp.ndarray, ...]] | None = None
+    macroscopic_fn: MacroscopicOperator | None = None
     streaming_fn: StreamingOperator | None = None
     bc_fn: BoundaryOperator | None = None
     initial_f_fn: InitialPopulationOperator[..., jnp.ndarray] | None = None
 
 
 # ── Main factory ─────────────────────────────────────────────────────
+
+
+def _build_equilibrium_and_source(
+    config: SimulationConfig,
+    forces: tuple[ForceOperator, ...],
+    gradient_standard: DifferentialOperator,
+) -> tuple[EquilibriumOperator, SourceTermOperator]:
+    """The equilibrium and source term that belong together for this run.
+
+    A single-phase run takes the ``"standard_equilibrium"`` / ``"guo"`` pair: that
+    equilibrium carries the isotropic pressure ``cs^2 * rho`` in its second moment.
+    The ``wb`` equilibrium leaves it out, because a multiphase run supplies its
+    pressure as the force ``-rho * grad(mu)``; a single-phase run has no such
+    force, so with ``wb`` it would have no pressure at all.
+
+    A multiphase run takes the ``wb`` pair, or the improved well-balanced pair of
+    Zhang, Guo & Wang (2022). The improved model is the separately registered ``"wb_improved"`` equilibrium
+    and ``"wb_referenced"`` source; their model inputs (the config's viscous-stress
+    parameters, the reference pressure carried by a ``gravity_referenced_force``)
+    are keywords the protocols lack, so they are bound here. They are bound on the
+    raw registry entries, as ``build_bc`` does: the package factories are annotated
+    with the protocols, which do not name those keywords.
+    """
+    from src.operators.equilibrium import build_equilibrium_fn
+    from src.operators.force._gravity_referenced import GravityReferencedForceModule
+    from src.registry import get_operators
+
+    if "multiphase" not in config.sim_type:
+        return build_equilibrium_fn("standard_equilibrium"), build_source_fn("guo")
+
+    referenced = next((f for f in forces if isinstance(f, GravityReferencedForceModule)), None)
+    if config.viscosity_params is None and referenced is None:
+        return build_equilibrium_fn("wb"), build_source_fn("wb")
+    equilibrium_fn = functools.partial(
+        get_operators("equilibrium")["wb_improved"].target,
+        viscosity=config.viscosity_params,
+        reference_pressure=None if referenced is None else referenced.pressure,
+        gradient=gradient_standard,
+    )
+    source_fn = (
+        build_source_fn("wb")
+        if referenced is None
+        else functools.partial(
+            get_operators("source_term")["wb_referenced"].target, reference_gradient=referenced.pressure_gradient
+        )
+    )
+    return equilibrium_fn, source_fn
 
 
 def build_setup(config: SimulationConfig) -> SimulationSetup:
@@ -195,48 +237,45 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
 
     # Import here to avoid circular import issues at module level
     from src.operators.boundary import build_bc
-    from src.operators.boundary import build_bc_masks
     from src.operators.collision import build_collision_fn
-    from src.operators.equilibrium import build_equilibrium_fn
+    from src.operators.differential import build_diff_ops
     from src.operators.initialise import build_initialise_fn
     from src.operators.macroscopic import build_macroscopic_fn
-    from src.operators.macroscopic import build_multiphase_params
     from src.operators.obstacle import build_obstacle_fn
-    from src.operators.obstacle import build_obstacle_mask
     from src.operators.step import build_step_fn
     from src.operators.streaming import build_streaming_fn
-    from src.operators.wetting import build_wetting_fn
+    from src.operators.wetting import build_hysteresis_fn
     from src.registry import get_operators
 
     lattice = build_lattice(config.lattice_type)
-    bc_masks = build_bc_masks(tuple(config.grid_shape))
-
-    # Build multiphase params if applicable (multiphase runs with optional wetting)
-    mp_params = build_multiphase_params(config) if "multiphase" in config.sim_type else None
+    # Multiphase params (None for single-phase), validated and built by the config
+    mp_params = config.multiphase_params
 
     # Build force specs
     forces = build_forces(config, tuple(config.grid_shape), lattice)
 
-    # Build differential operators (returns 5-tuple: standard, density, laplacian, raw_density, raw_laplacian)
-    gradient_standard, gradient_density, laplacian_density, gradient_density_wetting, laplacian_density_wetting = (
-        build_diff_ops(config, mp_params, lattice)
-    )
+    # Build differential operators (standard gradient, density gradient, density Laplacian)
+    gradient_standard, gradient_density, laplacian_density = build_diff_ops(config, mp_params, lattice)
 
     # Resolve step operator from registry
     step_fn = build_step_fn(config.sim_type)
 
     # Build operator closures (pre-resolved at setup time)
     collision_fn = build_collision_fn(config.collision_scheme)
-    equilibrium_fn = build_equilibrium_fn("wb")
-    streaming_fn = build_streaming_fn("standard", config.bc_config)
+    if config.k_diag is not None:
+        # A keyword the protocol lacks is bound, not typed: the configured rates
+        # (shear entries already coupled to the relaxation time) reach collide_mrt.
+        collision_fn = functools.partial(collision_fn, k_diag=jnp.asarray(config.k_diag))
+    equilibrium_fn, source_fn = _build_equilibrium_and_source(config, forces, gradient_standard)
+    streaming_fn = build_streaming_fn(config.periodic_axes)
     macroscopic_fn = (
         build_macroscopic_fn("multiphase")  # unified multiphase op; EOS selected from mp.eos
         if "multiphase" in config.sim_type
         else build_macroscopic_fn("standard")  # single-phase
     )
-    bc_fn = build_bc(config.bc_config, lattice)
+    bc_fn = build_bc(config.boundary_edges, lattice)
 
-    obstacle_mask = build_obstacle_mask(config.obstacle_config, cast("tuple[int, int, int]", tuple(config.grid_shape)))
+    obstacle_mask = config.obstacle_mask
     obstacle_fn = build_obstacle_fn(obstacle_mask, lattice)
 
     # Build wetting function for hysteresis-capable runs.
@@ -245,7 +284,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         wetting_scheme = (
             "chemical_step_hysteresis" if config.sim_type == "multiphase_hysteresis_chemical_step" else "hysteresis"
         )
-        wetting_fn = build_wetting_fn(wetting_scheme)
+        wetting_fn = build_hysteresis_fn(wetting_scheme)
 
     # Orient measurement from the first wetting wall.
     from src.operators.wetting._edge_config import first_wetting_edge
@@ -273,19 +312,17 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         config=config,
         lattice=lattice,
         grid_shape=tuple(config.grid_shape),
-        tau=config.tau,
+        tau=config.relaxation_time,
         collision_scheme=config.collision_scheme,
         k_diag=config.k_diag,
-        bc_masks=bc_masks,
         forces=forces,
+        source_fn=source_fn,
         multiphase_params=mp_params,
         obstacle_mask=obstacle_mask,
         obstacle_fn=obstacle_fn,
         gradient_standard=gradient_standard,
         gradient_density=gradient_density,
         laplacian_density=laplacian_density,
-        gradient_density_wetting=gradient_density_wetting,
-        laplacian_density_wetting=laplacian_density_wetting,
         step_fn=step_fn,
         wetting_fn=wetting_fn,
         wetting_edge=wetting_edge,

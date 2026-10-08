@@ -91,7 +91,7 @@ def test_build_setup_config_variants(cfg_kwargs: dict, expected: dict) -> None:
     assert setup.streaming_fn is not None
     assert setup.equilibrium_fn is not None
 
-    has_forces = setup.forces is not None and len(setup.forces.specs) > 0
+    has_forces = len(setup.forces) > 0
     assert has_forces == expected["has_forces"], (
         f"Force mismatch for {cfg_kwargs}: expected has_forces={expected['has_forces']}"
     )
@@ -121,3 +121,27 @@ def test_build_setup_grid_shape_stored_correctly() -> None:
     config = SimulationConfig(grid_shape=(16, 8), tau=0.8, nt=2)
     setup = build_setup(config)
     assert setup.grid_shape == (16, 8, 1)
+
+
+@pytest.mark.parametrize(
+    ("cfg_kwargs", "equilibrium", "source"),
+    [
+        pytest.param({}, "standard_equilibrium", "guo", id="single_phase"),
+        pytest.param(
+            {"sim_type": "multiphase", "eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33}
+            | {"interface_width": 4},
+            "wb",
+            "wb",
+            id="multiphase",
+        ),
+    ],
+)
+def test_build_setup_pairs_the_equilibrium_with_its_source(cfg_kwargs: dict, equilibrium: str, source: str) -> None:
+    """Single-phase carries its pressure in the equilibrium; multiphase keeps the well-balanced pair."""
+    from src.operators.equilibrium import build_equilibrium_fn
+    from src.operators.source_term import build_source_fn
+
+    setup = build_setup(SimulationConfig(**{**_BASE, **cfg_kwargs}))
+
+    assert setup.equilibrium_fn is build_equilibrium_fn(equilibrium)
+    assert setup.source_fn is build_source_fn(source)

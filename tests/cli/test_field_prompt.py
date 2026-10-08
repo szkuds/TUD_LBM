@@ -113,6 +113,19 @@ def test_contact_angle_question_is_only_asked_with_a_wetting_wall(monkeypatch):
     assert asked == [(_CONTACT_ANGLE_QUESTION, True), (_OVERLAY_QUESTION, True)]
 
 
+def test_no_overlay_question_is_asked_for_a_single_phase_run(monkeypatch):
+    from src.cli import field_select
+    from src.config import SimulationConfig
+
+    def _ask(*_args, **_kwargs):
+        pytest.fail("a single-phase run has no interface to overlay")
+
+    monkeypatch.setattr(field_select.Confirm, "ask", _ask)
+    config = SimulationConfig(sim_type="single_phase", grid_shape=(16, 16), nt=10)
+
+    assert field_select.prompt_overlays(_entries("plotting"), config) is None
+
+
 def test_prompt_overlays_keeps_default_on_end_of_input(monkeypatch):
     from src.cli import field_select
 

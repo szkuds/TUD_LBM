@@ -14,7 +14,7 @@ class TestFigureBuilderGuardFor3D:
     """Test the 3D simulation guard in FigureBuilder.__init__."""
 
     def test_2d_simulation_creates_operators(self):
-        """FigureBuilder should initialize normally for 2D simulations (nz=1)."""
+        """FigureBuilder should initialise normally for 2D simulations (nz=1)."""
         config = SimulationConfig(
             grid_shape=(64, 64, 1),
             tau=0.8,
@@ -22,7 +22,7 @@ class TestFigureBuilderGuardFor3D:
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             builder = FigureBuilder(config, run_dir=tmpdir)
-            # For 2D (nz=1), operators should be initialized (or empty if no plotting registered)
+            # For 2D (nz=1), operators should be initialised (or empty if no plotting registered)
             # The key is that _operators is a list (not None) and no warning is raised
             assert isinstance(builder.field_operators, list)
 
@@ -183,7 +183,7 @@ def test_build_csv_runs_when_simulation_csv_selected(monkeypatch, tmp_path):
         assert config_arg == config
         return run_dir / "simulation_data.csv"
 
-    monkeypatch.setattr("src.simulation_io.plotting.simulation_csv.build_simulation_csv", _fake_export)
+    monkeypatch.setattr("src.simulation_io.plotting._simulation_csv.build_simulation_csv", _fake_export)
 
     out = builder.build_csv()
     assert called["n"] == 1
@@ -201,7 +201,7 @@ def test_build_csv_skips_when_simulation_csv_not_selected(monkeypatch, tmp_path)
         msg = "build_simulation_csv should not be called"
         raise AssertionError(msg)
 
-    monkeypatch.setattr("src.simulation_io.plotting.simulation_csv.build_simulation_csv", _fail_if_called)
+    monkeypatch.setattr("src.simulation_io.plotting._simulation_csv.build_simulation_csv", _fail_if_called)
 
     out = builder.build_csv()
     assert out is None

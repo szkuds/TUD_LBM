@@ -19,10 +19,32 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
 from dataclasses import field
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import Literal
+from typing import NamedTuple
 from typing import cast
+from src.config.boundary_edges import OUT_OF_PLANE_EDGES
+from src.config.boundary_edges import BoundaryEdge
+from src.config.boundary_edges import build_boundary_edges
+from src.config.boundary_edges import lattice_edges
+from src.config.boundary_edges import pad_modes
+from src.config.boundary_edges import parameter_section_key
+from src.config.boundary_edges import periodic_axes
+from src.config.chemical_step import ChemicalStepWall
+from src.config.chemical_step import build_chemical_step_wall
 from src.config.config_overview import BASE_RESULTS_DIR
+from src.config.init_field import load_init_wetting
+from src.config.init_field import measure_init_phase_densities
+from src.config.multiphase_params import MultiphaseParams
+from src.config.obstacle_mask import build_obstacle_mask
+from src.config.viscosity_params import ViscosityParams
+from src.config.viscosity_params import build_viscosity_params
+from src.config.wetting_defaults import NEUTRAL_WETTING_CONFIG
+from src.config.wetting_defaults import resolve_wetting_defaults
+
+if TYPE_CHECKING:
+    import jax.numpy as jnp
 
 CONFIG_SECTION: str = "config_section"
 ARRAY_ELIGIBLE: str = "array_eligible"
@@ -78,6 +100,29 @@ def _first_if_list(value: object) -> object:
     return value
 
 
+#: Optimiser settings of ``[hysteresis]``, filled in by ``_apply_defaults``.
+_HYSTERESIS_DEFAULTS: dict[str, Any] = {
+    "learning_rate": 0.01,
+    "learning_rate_above": 0.05,
+    "max_iterations": 50,
+    "loss_tol": 1e-4,
+    "trial_steps": 2,
+    "carry_inactive_params": False,
+    # Chemical-step runs: degrees from its bound past which a line on (or held
+    # at) the post surface skips the optimiser and takes its knob's clamp limit.
+    "saturation_gap": 1.0,
+}
+#: Every key the hysteresis operators read. ``max_iterations_above`` defaults to
+#: the run's own ``max_iterations``, so it is filled in separately.
+_HYSTERESIS_KEYS: frozenset[str] = frozenset(
+    {"ca_advancing", "ca_receding", "max_iterations_above", *_HYSTERESIS_DEFAULTS}
+)
+#: Distance (lattice units) either side of a contact line at which the chemical
+#: step's surfaces are probed for its advancing and receding bounds.
+#: ``chemical_step_edge`` defaults to the measurement wall, so it is filled in separately.
+_CHEMICAL_STEP_DEFAULTS: dict[str, Any] = {"edge_width": 1.0}
+
+
 def _validate_positive(value: object, name: str) -> None:
     """Validate that value is positive."""
     if value is not None and value <= 0:  # ty: ignore[unsupported-operator]
@@ -123,6 +168,62 @@ def _valid_lattices() -> set[str]:
         return get_operator_names("lattice")
     except (ImportError, KeyError):
         return set()  # Operators not yet loaded - skip validation
+
+
+def _valid_boundary_conditions() -> set[str]:
+    """Get valid boundary-condition names. Returns empty set if operators not loaded."""
+    try:
+        import src.operators.boundary  # noqa: F401
+        from src.registry import get_operator_names
+
+        return get_operator_names("boundary_condition")
+    except (ImportError, KeyError):
+        return set()  # Operators not yet loaded - skip validation
+
+
+def _valid_init_types() -> set[str]:
+    """Get valid init_type names. Returns empty set if operators not loaded."""
+    try:
+        import src.operators.initialise  # noqa: F401
+        from src.registry import get_operator_names
+
+        return get_operator_names("initialise")
+    except (ImportError, KeyError):
+        return set()  # Operators not yet loaded - skip validation
+
+
+def _valid_obstacle_shapes() -> set[str]:
+    """Get valid obstacle shape names. Returns empty set if operators not loaded."""
+    try:
+        import src.operators.obstacle  # noqa: F401
+        from src.registry import get_operator_names
+
+        return get_operator_names("obstacle")
+    except (ImportError, KeyError):
+        return set()  # Operators not yet loaded - skip validation
+
+
+class _ForceSchema(NamedTuple):
+    """What a force needs from its config section, declared at its registration."""
+
+    required: tuple[str, ...]
+    defaults: dict[str, Any]
+    optional: tuple[str, ...]
+    positive: tuple[str, ...]
+
+
+def _force_schema(name: str) -> _ForceSchema:
+    """Read the parameter schema a force module registered under *name*."""
+    import src.operators.force  # noqa: F401
+    from src.registry import get_operators
+
+    meta: dict[str, Any] = get_operators("force")[name].metadata or {}
+    return _ForceSchema(
+        required=tuple(meta.get("required", ())),
+        defaults=dict(meta.get("defaults", {})),
+        optional=tuple(meta.get("optional", ())),
+        positive=tuple(meta.get("positive", ())),
+    )
 
 
 @dataclass(frozen=True)
@@ -189,6 +290,9 @@ class SimulationConfig:
     gravity_masked_force: dict[str, Any] | None = array_field(
         default=None, section="gravity_masked_force", nested_sweepable=True
     )
+    gravity_referenced_force: dict[str, Any] | None = array_field(
+        default=None, section="gravity_referenced_force", nested_sweepable=True
+    )
     # ── Initialisation ───────────────────────────────────────────
     init_type: str = "standard"
     init_dir: str | None = None
@@ -223,6 +327,13 @@ class SimulationConfig:
     b_eos: float | None = array_field(default=None, section="multiphase")
     r_eos: float | None = array_field(default=None, section="multiphase")
     t_eos: float | None = array_field(default=None, section="multiphase")
+    # Shear relaxation time decoupled from the viscosity (Zhang, Guo & Wang 2022):
+    # tau keeps setting the liquid viscosity, lambda_v the MRT/BGK shear rate, and
+    # the equilibrium's viscous-stress term A*S makes up the difference.
+    lambda_v: float | None = array_field(default=None, section="multiphase")
+    # Gas viscosity nu_v = cs2*(tau_gas - 0.5); the viscosity is interpolated
+    # linearly in rho between the phases. Unset means tau (uniform viscosity).
+    tau_gas: float | None = array_field(default=None, section="multiphase")
 
     # ── Extra / extensible ───────────────────────────────────────
     extra: dict[str, Any] = field(default_factory=dict, metadata={CONFIG_SECTION: "extra"})
@@ -245,6 +356,8 @@ class SimulationConfig:
         object.__setattr__(self, "output_format", _first_if_list(self.output_format))
         if isinstance(self.output_format, str):
             object.__setattr__(self, "output_format", self.output_format.lower())
+        if self.save_fields is not None and "f" not in self.save_fields:
+            object.__setattr__(self, "save_fields", ["f", *self.save_fields])
 
     def _derive(self) -> None:
         """Fill in fields computed from other, already-validated fields.
@@ -255,48 +368,49 @@ class SimulationConfig:
         self._couple_mrt_shear_to_tau()
 
     def _couple_mrt_shear_to_tau(self) -> None:
-        """Rewrite the shear entries of ``k_diag`` to ``1/tau``.
+        """Rewrite the shear entries of ``k_diag`` to ``1/relaxation_time``.
 
         The MRT shear moments set the kinematic viscosity, so left free they
         would decouple the run from ``nu = cs2*(tau - 0.5)`` — the viscosity
         every reported ``Oh``, ``La``, ``Re`` and ``Ar`` is derived from.
-        Deriving here rather than inside the collision operator keeps a saved
-        config truthful about the rates its run actually used.
+        With ``lambda_v`` set the shear rate is ``1/lambda_v`` and the
+        viscous-stress term restores ``nu``. Deriving here rather than inside
+        the collision operator keeps a saved config truthful about the rates
+        its run actually used.
         """
         if self.collision_scheme != "mrt" or self.k_diag is None:
             return
 
         from src.operators.collision._mrt import couple_shear_to_tau
 
-        object.__setattr__(self, "k_diag", couple_shear_to_tau(self.k_diag, float(self.tau)))
+        object.__setattr__(self, "k_diag", couple_shear_to_tau(self.k_diag, self.relaxation_time))
 
     def _apply_defaults(self) -> None:
+        self._apply_force_defaults()
         if self.save_interval == 0:
             object.__setattr__(self, "save_interval", self.nt // 10)
         if self.bc_config is None:
             object.__setattr__(
                 self,
                 "bc_config",
-                {
-                    "top": "periodic",
-                    "bottom": "periodic",
-                    "left": "periodic",
-                    "right": "periodic",
-                    "front": "periodic",
-                    "back": "periodic",
-                },
+                dict.fromkeys(lattice_edges(self.lattice_type), "periodic"),
             )
         if self.hysteresis_config is not None and self.wetting_config is None:
             object.__setattr__(
                 self,
                 "wetting_config",
-                {
-                    "phi_left": 1.0,
-                    "phi_right": 1.0,
-                    "d_rho_left": 0.0,
-                    "d_rho_right": 0.0,
-                },
+                dict(NEUTRAL_WETTING_CONFIG),
             )
+        if self.hysteresis_config is not None:
+            hysteresis = {**_HYSTERESIS_DEFAULTS, **self.hysteresis_config}
+            hysteresis.setdefault("max_iterations_above", hysteresis["max_iterations"])
+            object.__setattr__(self, "hysteresis_config", hysteresis)
+        if self.chemical_step_config is not None:
+            from src.operators.wetting._edge_config import first_wetting_edge
+
+            chemical_step = {**_CHEMICAL_STEP_DEFAULTS, **self.chemical_step_config}
+            chemical_step.setdefault("chemical_step_edge", first_wetting_edge(self.bc_config) or "bottom")
+            object.__setattr__(self, "chemical_step_config", chemical_step)
 
     def _make_grid_shape_3d(self) -> None:
         """Promote grid_shape to 3D by adding a singleton z-dimension."""
@@ -305,10 +419,25 @@ class SimulationConfig:
             object.__setattr__(self, "grid_shape", self.grid_shape + (1,) * (_target_dims - len(self.grid_shape)))
 
     def _set_all_bcs(self) -> None:
-        """Set missing BCs in bc_config to 'periodic'."""
+        """Complete bc_config so the boundary builder only looks up and binds.
+
+        Every edge of the lattice missing a BC becomes ``"periodic"``. A BC
+        without its ``{edge}_{name}`` parameter section runs on the operator's
+        own defaults (see :attr:`boundary_edges`).
+
+        A two-dimensional lattice has no ``front``/``back`` face, so a periodic
+        entry for one is dropped rather than carried into the overview and the
+        saved ``config.toml``; run directories written before this still load.
+        Any other BC there is left for :meth:`_validate_boundary_conditions`
+        to reject.
+        """
         if self.bc_config is None:
             return
-        for edge in ("top", "bottom", "left", "right", "front", "back"):
+        edges = lattice_edges(self.lattice_type)
+        for edge in OUT_OF_PLANE_EDGES:
+            if edge not in edges and self.bc_config.get(edge) == "periodic":
+                del self.bc_config[edge]
+        for edge in edges:
             if edge not in self.bc_config:
                 self.bc_config[edge] = "periodic"
 
@@ -322,18 +451,82 @@ class SimulationConfig:
         self._validate_forces()
         self._validate_init()
         self._validate_save_fields()
+        self._validate_boundary_conditions()
         self._validate_obstacle()
+        self._validate_hysteresis()
+        self._validate_chemical_step()
+        self._validate_viscosity()
+
+    def _validate_hysteresis(self) -> None:
+        """Reject ``[hysteresis]`` keys the optimiser does not read.
+
+        The section is free-form TOML, so a misspelled key would otherwise be
+        ignored without a word.
+        """
+        if self.hysteresis_config is None:
+            return
+        unknown = set(self.hysteresis_config) - _HYSTERESIS_KEYS
+        if unknown:
+            msg = f"Unknown [hysteresis] keys {sorted(unknown)}; allowed: {sorted(_HYSTERESIS_KEYS)}"
+            raise ValueError(msg)
+
+    def _validate_chemical_step(self) -> None:
+        """Reject a chemical step that is not on the wall the contact angles are measured at.
+
+        The wetting applicator splits a wall by surface only on ``chemical_step_edge``,
+        while the hysteresis reads its contact lines off the first ``"wetting"`` edge.
+        A step configured on any other edge would be ignored without a word.
+        """
+        if self.chemical_step_config is None:
+            return
+        from src.operators.wetting._edge_config import first_wetting_edge
+
+        wall = first_wetting_edge(self.bc_config)
+        edge = self.chemical_step_config["chemical_step_edge"]
+        if wall is not None and edge != wall:
+            msg = f"chemical_step_edge must be the wetting wall '{wall}', got '{edge}'"
+            raise ValueError(msg)
+
+    def _apply_force_defaults(self) -> None:
+        """Fill every configured force section with its registered defaults."""
+        for name, params in self.active_forces.items():
+            object.__setattr__(self, name, {**_force_schema(name).defaults, **params})
 
     def _validate_forces(self) -> None:
-        """Validate force configuration consistency."""
-        if self.gravity_force is not None and self.gravity_masked_force is not None:
-            msg = "Only one gravity force can be applied: set either gravity_force or gravity_masked_force, not both."
+        """Check every configured force section against the schema its module registered.
+
+        After this, a force's ``build`` reads its section with ``params[key]``
+        and never checks it again.
+        """
+        gravities = sorted(name for name in self.active_forces if name.startswith("gravity"))
+        if len(gravities) > 1:
+            msg = f"Only one gravity force can be applied, got {', '.join(gravities)}."
             raise ValueError(msg)
+
+        for name, params in self.active_forces.items():
+            schema = _force_schema(name)
+            missing = [key for key in schema.required if key not in params]
+            if missing:
+                msg = f"[{name}] is missing required key(s): {', '.join(missing)}"
+                raise ValueError(msg)
+            allowed = {*schema.required, *schema.defaults, *schema.optional}
+            unknown = sorted(set(params) - allowed)
+            if unknown:
+                msg = f"[{name}] has unknown key(s): {', '.join(unknown)}. Allowed: {', '.join(sorted(allowed))}"
+                raise ValueError(msg)
+            for key in schema.positive:
+                _validate_positive(params.get(key), f"[{name}] {key}")
 
     def _validate_obstacle(self) -> None:
         """Validate interior-obstacle geometry against the grid and BC topology."""
         if self.obstacle_config is None:
             return
+
+        self.obstacle_config.setdefault("shape", "circle")
+        valid_shapes = _valid_obstacle_shapes()
+        if self.obstacle_config["shape"] not in valid_shapes:
+            msg = f"obstacle shape must be one of {sorted(valid_shapes)}, got '{self.obstacle_config['shape']}'"
+            raise ValueError(msg)
 
         nx, ny, nz = self.grid_shape[:3]
         if nz > 1:
@@ -356,19 +549,33 @@ class SimulationConfig:
             )
             raise ValueError(msg)
 
-        if self.bc_config is not None:
-            left_bc = self.bc_config.get("left", "periodic")
-            right_bc = self.bc_config.get("right", "periodic")
-            if left_bc != "periodic" and cx - radius <= 1:
+        assert self.bc_config is not None  # noqa: S101 - guaranteed by _apply_defaults
+        if self.bc_config["left"] != "periodic" and cx - radius <= 1:
+            msg = f"obstacle must keep >1 cell clearance from a non-periodic left edge, got cx={cx}, radius={radius}"
+            raise ValueError(msg)
+        if self.bc_config["right"] != "periodic" and cx + radius >= nx - 2:
+            msg = f"obstacle must keep >1 cell clearance from a non-periodic right edge, got cx={cx}, radius={radius}"
+            raise ValueError(msg)
+
+    def _validate_boundary_conditions(self) -> None:
+        """Reject an unregistered BC type, and a parameter section no edge's BC reads."""
+        assert self.bc_config is not None  # noqa: S101 - guaranteed by _apply_defaults
+        valid_bcs = _valid_boundary_conditions()
+        edges = lattice_edges(self.lattice_type)
+        for edge in OUT_OF_PLANE_EDGES:
+            if edge not in edges and edge in self.bc_config:
                 msg = (
-                    f"obstacle must keep >1 cell clearance from a non-periodic left edge, got cx={cx}, radius={radius}"
+                    f"bc_config['{edge}'] has no face on the {self.lattice_type} lattice, got '{self.bc_config[edge]}'"
                 )
                 raise ValueError(msg)
-            if right_bc != "periodic" and cx + radius >= nx - 2:
-                msg = (
-                    f"obstacle must keep >1 cell clearance from a non-periodic right edge, got cx={cx}, radius={radius}"
-                )
+        for edge in edges:
+            if self.bc_config[edge] not in valid_bcs:
+                msg = f"bc_config['{edge}'] must be one of {sorted(valid_bcs)}, got '{self.bc_config[edge]}'"
                 raise ValueError(msg)
+        sections = {parameter_section_key(edge, self.bc_config[edge]) for edge in edges}
+        for key in sorted(self.bc_config.keys() - set(edges) - sections):
+            msg = f"bc_config['{key}'] is not the parameter section of any edge's boundary condition"
+            raise ValueError(msg)
 
     def _validate_grid_shape(self) -> None:
         """Validate grid_shape dimensions."""
@@ -392,6 +599,34 @@ class SimulationConfig:
             msg = f"tau must be > {MIN_TAU_VALUE} for stability, got {self.tau}"
             raise ValueError(msg)
 
+    def _validate_viscosity(self) -> None:
+        """Validate ``lambda_v`` / ``tau_gas`` and the positivity bound on ``A``.
+
+        The viscous-stress parameter ``A = lambda_v - 1/2 - nu/cs2`` needs the
+        density interpolation between the phases, so it is multiphase-only.
+        ``|A| < lambda_v - 1/2`` keeps the scheme stable (Zhang, Guo & Wang 2022);
+        ``A`` is linear in ``rho``, so checking both phase endpoints bounds it.
+        """
+        if self.lambda_v is None and self.tau_gas is None:
+            return
+        if not self.is_multiphase:
+            msg = "lambda_v and tau_gas require a multiphase sim_type"
+            raise ValueError(msg)
+        for name in ("lambda_v", "tau_gas"):
+            value = getattr(self, name)
+            if value is not None and value <= MIN_TAU_VALUE:
+                msg = f"{name} must be > {MIN_TAU_VALUE}, got {value}"
+                raise ValueError(msg)
+        margin = self.relaxation_time - MIN_TAU_VALUE
+        for name, tau_phase in (("tau", self.tau), ("tau_gas", self.tau_gas or self.tau)):
+            a_phase = self.relaxation_time - tau_phase
+            if abs(a_phase) >= margin:
+                msg = (
+                    f"|A| = |lambda_v - {name}| = {abs(a_phase):.6g} must be < lambda_v - 0.5 = {margin:.6g}; "
+                    f"raise lambda_v or bring {name} closer to it"
+                )
+                raise ValueError(msg)
+
     def _validate_time_steps(self) -> None:
         """Validate time stepping parameters."""
         if self.nt <= 0:
@@ -412,7 +647,11 @@ class SimulationConfig:
             raise ValueError(msg)
 
     def _validate_init(self) -> None:
-        """Validate initialization parameters."""
+        """Validate initialisation parameters."""
+        valid_init_types = _valid_init_types()
+        if self.init_type not in valid_init_types:
+            msg = f"init_type must be one of {sorted(valid_init_types)}, got '{self.init_type}'"
+            raise ValueError(msg)
         if self.init_type == "init_from_file" and self.init_dir is None:
             msg = "init_dir must be provided when init_type is 'init_from_file'"
             raise ValueError(msg)
@@ -420,7 +659,7 @@ class SimulationConfig:
     def _validate_save_fields(self) -> None:
         """Validate save_fields are valid."""
         if self.save_fields is not None:
-            valid_fields = {"f", "rho", "u", "force", "force_ext", "h"}
+            valid_fields = {"f", "rho", "u", "force", "force_ext", "pressure", "h"}
             invalid = set(self.save_fields) - valid_fields
             if invalid:
                 msg = f"Invalid save_fields: {invalid}. Valid fields: {valid_fields}"
@@ -446,10 +685,10 @@ class SimulationConfig:
             msg = f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'"
             raise ValueError(msg)
 
-        if self.eos == "carnahan-starling":
+        if self.eos in {"carnahan-starling", "van-der-waals"}:
             for name in ("a_eos", "b_eos", "r_eos", "t_eos"):
                 if getattr(self, name) is None:
-                    msg = f"'{name}' is required when eos = 'carnahan-starling'"
+                    msg = f"'{name}' is required when eos = '{self.eos}'"
                     raise ValueError(msg)
 
     @property
@@ -463,9 +702,150 @@ class SimulationConfig:
         return "multiphase" in self.sim_type
 
     @property
+    def multiphase_params(self) -> MultiphaseParams | None:
+        """The multiphase parameters, or ``None`` for a non-multiphase run.
+
+        ``_validate_multiphase`` has already rejected any multiphase config
+        missing a required field, so this is the single place the parameters
+        are built and no consumer guards them again. The asserts only narrow
+        the optional field types.
+        """
+        if not self.is_multiphase:
+            return None
+        assert self.eos is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        assert self.kappa is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        assert self.rho_l is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        assert self.rho_v is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        assert self.interface_width is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        return MultiphaseParams(
+            eos=self.eos,
+            kappa=self.kappa,
+            rho_l=self.rho_l,
+            rho_v=self.rho_v,
+            interface_width=self.interface_width,
+            g=self.g,
+            a_eos=self.a_eos,
+            b_eos=self.b_eos,
+            r_eos=self.r_eos,
+            t_eos=self.t_eos,
+        )
+
+    @property
+    def relaxation_time(self) -> float:
+        """Relaxation time of the shear moments: ``lambda_v`` when set, else ``tau``."""
+        return float(self.tau if self.lambda_v is None else self.lambda_v)
+
+    @property
+    def viscosity_params(self) -> ViscosityParams | None:
+        """The viscous-stress parameters, or ``None`` when the term is off.
+
+        Off unless ``lambda_v`` or ``tau_gas`` is configured; with neither the
+        shear rate is ``1/tau`` and ``A`` is identically zero.
+        ``_validate_viscosity`` has already restricted these to multiphase runs.
+        """
+        if self.lambda_v is None and self.tau_gas is None:
+            return None
+        assert self.rho_l is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        assert self.rho_v is not None  # noqa: S101 - guaranteed by _validate_multiphase
+        return build_viscosity_params(
+            relaxation_time=self.relaxation_time,
+            tau_liquid=float(self.tau),
+            tau_gas=float(self.tau if self.tau_gas is None else self.tau_gas),
+            rho_l=float(self.rho_l),
+            rho_v=float(self.rho_v),
+        )
+
+    @property
+    def boundary_edges(self) -> tuple[BoundaryEdge, ...]:
+        """Each edge's boundary condition and its parameters, in application order.
+
+        Static for the whole run, so resolved here rather than by the boundary
+        operator package.
+        """
+        assert self.bc_config is not None  # noqa: S101 - guaranteed by _apply_defaults
+        return build_boundary_edges(self.bc_config)
+
+    @property
+    def obstacle_mask(self) -> jnp.ndarray | None:
+        """The interior-obstacle solid-cell mask; ``None`` without an obstacle."""
+        nx, ny, nz = self.grid_shape[:3]
+        return build_obstacle_mask(self.obstacle_config, (nx, ny, nz))
+
+    @property
+    def wetting_defaults(self) -> dict[str, float] | None:
+        """The four wetting scalars by canonical name; ``None`` without wetting.
+
+        Every hysteresis run has a (neutral) ``wetting_config`` from
+        ``_apply_defaults``, so this is ``None`` only for a run with no wetting.
+        """
+        if self.wetting_config is None:
+            return None
+        return resolve_wetting_defaults(self.wetting_config)
+
+    @property
+    def pad_modes(self) -> tuple[str, str, str, str]:
+        """Stencil pad mode per edge, ``(top, bottom, right, left)``, from each BC's registration."""
+        assert self.bc_config is not None  # noqa: S101 - guaranteed by _apply_defaults
+        return pad_modes(self.bc_config)
+
+    @property
+    def periodic_axes(self) -> tuple[bool, bool]:
+        """Per-axis periodicity ``(x, y)``: both edges of the axis are periodic."""
+        assert self.bc_config is not None  # noqa: S101 - guaranteed by _apply_defaults
+        return periodic_axes(self.bc_config)
+
+    @property
+    def active_forces(self) -> dict[str, dict[str, Any]]:
+        """The configured ``*_force`` sections, keyed by field (= registry) name.
+
+        The single place that decides which forces a run has, so the force
+        factory only looks up and binds.
+        """
+        return {
+            f.name: params
+            for f in dataclasses.fields(self)
+            if f.name.endswith("_force") and (params := getattr(self, f.name)) is not None
+        }
+
+    @property
+    def phase_references(self) -> tuple[float, float] | None:
+        """``(rho_lo, rho_hi)`` the run's phases actually sit at, or ``None`` without two phases.
+
+        Measured off the init field for ``init_from_file`` — an equilibrated
+        field relaxes away from the prescribed coexistence densities — else the
+        configured ``(rho_v, rho_l)``. ``physical_parameters`` measures the same
+        field through the same reader, so the buoyancy contrast a run injects
+        and the one its Bond number reports cannot diverge.
+        """
+        if self.rho_l is None or self.rho_v is None:
+            return None
+        measured = measure_init_phase_densities(self) if self.init_type == "init_from_file" else None
+        return measured or (float(self.rho_v), float(self.rho_l))
+
+    @property
+    def chemical_step_wall(self) -> ChemicalStepWall | None:
+        """The stepped wall the wetting applicator splits by surface; ``None`` without a step."""
+        return build_chemical_step_wall(self)
+
+    @property
+    def restored_wetting(self) -> dict[str, float] | None:
+        """Wetting state a hysteresis restart resumes from, or ``None`` for a fresh start.
+
+        The hysteresis optimiser accumulates ``phi``/``d_rho`` and moves the
+        contact-line anchors over a run; restarting ``init_from_file`` from one of
+        its snapshots must continue from those values. Seeding them from
+        ``wetting_config`` instead dropped a wall at ``phi`` ≈ 1.7 back to 1.0 on
+        restart, and the contact angle ran up past its advancing bound. Only for
+        hysteresis runs: a fixed-wetting run's parameters are its configuration.
+        """
+        if self.hysteresis_config is None or self.init_type != "init_from_file":
+            return None
+        return load_init_wetting(self)
+
+    @property
     def force_enabled(self) -> bool:
         """Check if any force field is populated."""
-        return any(getattr(self, f.name) is not None for f in dataclasses.fields(self) if f.name.endswith("_force"))
+        return bool(self.active_forces)
 
     # Serialisation
 

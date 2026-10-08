@@ -108,6 +108,35 @@ class TestInitState:
         state = init_state(setup, f=f_custom)
         np.testing.assert_allclose(state.f, f_custom)
 
+    def test_pressure_seeded_as_zeros(self):
+        """``pressure`` starts as zeros so the lax.scan carry keeps one pytree structure."""
+        for setup in (_single_phase_setup(), _mp_setup()):
+            state = init_state(setup)
+            assert state.pressure is not None
+            assert state.pressure.shape == (*setup.grid_shape, 1, 1)
+            np.testing.assert_array_equal(np.asarray(state.pressure), 0.0)
+
+    def test_single_phase_step_writes_ideal_gas_pressure(self):
+        """After a step the state carries the macroscopic operator's ``cs^2 * rho``."""
+        from src.pipeline.runner import run
+
+        setup = _single_phase_setup()
+        final_state, _ = run(setup, init_state(setup), nt=2)
+        assert final_state.pressure is not None
+        np.testing.assert_allclose(np.asarray(final_state.pressure), np.asarray(final_state.rho) / 3.0, rtol=1e-6)
+
+    def test_multiphase_step_writes_eos_pressure(self):
+        """After a step the state carries the EOS bulk pressure of the stored density."""
+        from src.operators.macroscopic.eos import build_pressure_fn
+        from src.pipeline.runner import run
+
+        setup = _mp_setup()
+        final_state, _ = run(setup, init_state(setup), nt=2)
+        assert final_state.pressure is not None
+        assert setup.multiphase_params is not None
+        expected = build_pressure_fn(setup.multiphase_params)(final_state.rho)
+        np.testing.assert_allclose(np.asarray(final_state.pressure), np.asarray(expected), rtol=1e-6)
+
     def test_resume_timestep_parsed_from_snapshot_name(self):
         cfg = SimulationConfig(
             grid_shape=(8, 8),
@@ -314,18 +343,12 @@ class TestSource:
 
     @staticmethod
     def _build_gradient_closure(lattice):
-        from src.operators.differential import build_differential_fn
+        from src.operators.differential import build_gradient_fn
 
-        _gradient = build_differential_fn("gradient")
-        pad_modes = ("wrap", "wrap", "wrap", "wrap")
-
-        def gradient(grid):
-            return _gradient(grid, lattice.w, lattice.c, pad_modes)
-
-        return gradient
+        return build_gradient_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))
 
     def test_shape(self):
-        from src.operators.force._source_term import source
+        from src.operators.source_term._source_well_balanced import compute_source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
@@ -333,11 +356,11 @@ class TestSource:
         u = jnp.zeros((NX, NY, NZ, 1, 2))
         force = jnp.ones((NX, NY, NZ, 1, 2)) * 0.001
 
-        src = source(rho, u, force, lattice, gradient=gradient)
+        src = compute_source(rho, u, force, lattice, gradient=gradient)
         assert src.shape == (NX, NY, NZ, 9, 1)
 
     def test_zero_force_zero_source(self):
-        from src.operators.force._source_term import source
+        from src.operators.source_term._source_well_balanced import compute_source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
@@ -345,11 +368,11 @@ class TestSource:
         u = jnp.zeros((NX, NY, NZ, 1, 2))
         force = jnp.zeros((NX, NY, NZ, 1, 2))
 
-        src = source(rho, u, force, lattice, gradient=gradient)
+        src = compute_source(rho, u, force, lattice, gradient=gradient)
         np.testing.assert_allclose(np.array(src), 0.0, atol=1e-10)
 
     def test_jittable(self):
-        from src.operators.force._source_term import source
+        from src.operators.source_term._source_well_balanced import compute_source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
@@ -357,12 +380,12 @@ class TestSource:
         u = jnp.zeros((NX, NY, NZ, 1, 2))
         force = jnp.ones((NX, NY, NZ, 1, 2)) * 0.001
 
-        jitted = jax.jit(partial(source, lattice=lattice, gradient=gradient))
+        jitted = jax.jit(partial(compute_source, lattice=lattice, gradient=gradient))
         src = jitted(rho, u, force)
         assert src.shape == (NX, NY, NZ, 9, 1)
 
     def test_source_sums_to_zero(self):
-        from src.operators.force._source_term import source
+        from src.operators.source_term._source_well_balanced import compute_source
 
         lattice = build_lattice("D2Q9")
         gradient = self._build_gradient_closure(lattice)
@@ -370,7 +393,7 @@ class TestSource:
         u = jnp.zeros((NX, NY, NZ, 1, 2))
         force = jnp.ones((NX, NY, NZ, 1, 2)) * 0.01
 
-        src = source(rho, u, force, lattice, gradient=gradient)
+        src = compute_source(rho, u, force, lattice, gradient=gradient)
         src_sum = jnp.sum(src, axis=-2)
         np.testing.assert_allclose(np.array(src_sum), 0.0, atol=1e-6)
 

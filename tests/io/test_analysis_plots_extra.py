@@ -14,10 +14,10 @@ from src.simulation_io.plotting._analysis_common import _empty_data_message
 from src.simulation_io.plotting._analysis_common import _extract_u_mag_2d
 from src.simulation_io.plotting._analysis_common import _reduce_timesteps
 from src.simulation_io.plotting._analysis_common import _render_scatter
-from src.simulation_io.plotting.contact_angle_plot import ContactAnglesPairPlot
-from src.simulation_io.plotting.contact_line_speed_plot import ContactLineSpeedLeftPlot
-from src.simulation_io.plotting.contact_line_speed_plot import ContactLineSpeedsPairPlot
-from src.simulation_io.plotting.scalar_history_plot import DensityRatioPlot
+from src.simulation_io.plotting._contact_angle_plot import ContactAnglesPairPlot
+from src.simulation_io.plotting._contact_line_speed_plot import ContactLineSpeedLeftPlot
+from src.simulation_io.plotting._contact_line_speed_plot import ContactLineSpeedsPairPlot
+from src.simulation_io.plotting._scalar_history_plot import DensityRatioPlot
 from tests.support.run_dirs import build_run_dir
 from tests.support.run_dirs import wetting_config
 

@@ -72,8 +72,8 @@ def test_two_analysis_operators_share_one_read(tmp_path: Path, count_loads) -> N
     This is the duplication the shared layer exists to remove: previously each
     operator ran its own loop over every ``.npz``.
     """
-    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsTimePlot
-    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsXPlot
+    from src.simulation_io.plotting._ca_theta_plot import CaThetaVsTimePlot
+    from src.simulation_io.plotting._ca_theta_plot import CaThetaVsXPlot
 
     iterations = (5, 10, 15, 20)
     run_dir = build_run_dir(tmp_path, iterations=iterations)
@@ -88,8 +88,8 @@ def test_two_analysis_operators_share_one_read(tmp_path: Path, count_loads) -> N
 
 def test_ca_theta_operators_agree_on_shared_columns(tmp_path: Path) -> None:
     """The two operators differ only in which x-axis they render."""
-    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsTimePlot
-    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsXPlot
+    from src.simulation_io.plotting._ca_theta_plot import CaThetaVsTimePlot
+    from src.simulation_io.plotting._ca_theta_plot import CaThetaVsXPlot
 
     run_dir = build_run_dir(tmp_path)
     files = sorted((run_dir / "data").glob("timestep_*.npz"))
@@ -105,8 +105,8 @@ def test_ca_theta_operators_agree_on_shared_columns(tmp_path: Path) -> None:
 def test_ca_theta_arrays_match_the_csv_columns(tmp_path: Path) -> None:
     """The plot adapter and the CSV serialiser cannot drift apart."""
     import pandas as pd
-    from src.simulation_io.plotting.ca_theta_plot import CaThetaVsXPlot
-    from src.simulation_io.plotting.simulation_csv import build_simulation_csv
+    from src.simulation_io.plotting._ca_theta_plot import CaThetaVsXPlot
+    from src.simulation_io.plotting._simulation_csv import build_simulation_csv
 
     config = wetting_config()
     run_dir = build_run_dir(tmp_path, config=config)

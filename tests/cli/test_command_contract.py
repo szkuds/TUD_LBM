@@ -15,9 +15,11 @@ _SEAM = {
     "benchmark": "src.cli.commands.benchmark.run_benchmark",
     "animate": "src.cli.commands.visualise._validate_run_dir_has_config",
     "visualise": "src.cli.commands.visualise._validate_run_dir_has_config",
+    "setup-figure": "src.cli.commands.visualise._validate_run_dir_has_config",
     "compare": "src.cli.analysis_routing.analyse_tree",
     "regime-map": "src.simulation_io.plotting.regime_map_plot.build_regime_map",
     "analyse": "src.cli.commands.analysis._load_single_config",
+    "calibration": "src.cli.commands.calibration._load_raw_config",
 }
 
 _EXIT_INTERRUPTED = 130
@@ -38,6 +40,10 @@ def _args(name: str, tmp_path) -> list[str]:
         cfg = tmp_path / "config.toml"
         cfg.write_text("", encoding="utf-8")
         return [name, str(cfg)]
+    if name == "calibration":
+        cfg = tmp_path / "config.toml"
+        cfg.write_text("", encoding="utf-8")
+        return [name, "stage", str(cfg)]
     if name == "analyse":
         cfg = tmp_path / "config.toml"
         cfg.write_text("", encoding="utf-8")

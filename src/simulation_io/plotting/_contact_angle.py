@@ -3,9 +3,9 @@
 Draws, for a run with a ``"wetting"`` wall:
 
 - the ``rho_upper`` / ``rho_lower`` iso-contours bounding the density band in
-  which the wetting BC modifies the ghost row, one pair per contact line: the
-  solver measures the bounds locally at each, so the two pairs generally differ
-  and there is no global band to select a marker for;
+  which the wetting BC modifies the ghost row. The solver measures one pair per
+  wall, from the densities around both contact lines together, so the two sides'
+  contours coincide; being measured, they take no ``config``/``measured`` marker;
 - the ghost-row cells it actually modifies, as thick segments on the solid
   surface coloured by left/right contact-line region, with a tick at each
   contact-line anchor;

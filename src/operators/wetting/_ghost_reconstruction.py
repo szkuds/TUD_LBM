@@ -27,8 +27,8 @@ def _reconstruct_ghost_row(
     """Reconstruct ghost-cell values using D2Q9 stencil weights.
 
     The ghost row value at position ``i`` is a weighted average of the
-    three nearest interior-row neighbors: the cardinal neighbor directly
-    inward, and the two diagonal neighbors (i-1, i+1).
+    three nearest interior-row neighbours: the cardinal neighbour directly
+    inward, and the two diagonal neighbours (i-1, i+1).
 
     Corner handling depends on whether the perpendicular BC is periodic.
 

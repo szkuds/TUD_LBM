@@ -14,16 +14,14 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from typing import cast
 from src.operators._loader import auto_load_operators
-from src.operators.factory import build_operator
+from src.registry import get_operators
 
 if TYPE_CHECKING:
     from src.operators.protocols import StepOperator
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("src.operators.step")
-from src.operators.step import _multiphase_hysteresis_chemical_step  # noqa: F401, E402
 
 
 def build_step_fn(scheme: str = "single_phase") -> StepOperator:
@@ -37,15 +35,12 @@ def build_step_fn(scheme: str = "single_phase") -> StepOperator:
         A callable satisfying the StepOperator protocol,
         registered under the "update_timestep" kind.
 
-    Raises:
-        ValueError: If scheme is not registered.
-
     Examples:
         >>> from src.operators.step import build_step_fn
         >>> step = build_step_fn("single_phase")
         >>> new_state = step(setup, state)
     """
-    return cast("StepOperator", build_operator("update_timestep", scheme))
+    return get_operators("update_timestep")[scheme].target
 
 
 __all__ = [

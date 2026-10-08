@@ -4,27 +4,22 @@ Provides a constant-body-force implementation with no auxiliary state.
 
 Usage::
 
-    # Via registry (preferred)
-    from operators.force import build_force_fn
+    from src.operators.force import build_forces
 
-    module = build_force_fn("gravity_force")
-    template = module.build({"force_g": 0.001}, (64, 64), config, lattice)
-    force = module.compute(state, template)
-
-    # Direct (internal / testing)
-    from operators.force._gravity import GravityForceModule
-
-    template = GravityForceModule.build({"force_g": 0.001}, (64, 64), config, lattice)
-    force = GravityForceModule.compute(state, template)
+    forces = build_forces(config, config.grid_shape, lattice)  # [gravity_force] validated by the config
+    force = forces[0].compute(state)
 """
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from typing import cast
+from typing import Any
+from typing import NamedTuple
+from typing import Self
 import jax.numpy as jnp
 from src.registry import force_model
 
 if TYPE_CHECKING:
+    from src.config.simulation_config import SimulationConfig
     from src.lattice.lattice import Lattice
     from src.pipeline.state import State
 
@@ -32,15 +27,17 @@ if TYPE_CHECKING:
 def _build_gravity_template(
     params: dict,
     grid_shape: tuple[int, ...],
-    **kwargs: object,
+    lattice: Lattice,
 ) -> jnp.ndarray:
-    """Build a constant gravity template shared by gravity force variants."""
-    lattice = cast("Lattice | None", kwargs.get("lattice"))
-    d = lattice.d if lattice is not None else min(len(grid_shape), 3)
+    """Build a constant gravity template shared by gravity force variants.
 
+    *params* has passed ``SimulationConfig`` validation against the schema
+    registered with the force, so every key is present.
+    """
+    d = lattice.d
     nx, ny, nz = grid_shape[0], grid_shape[1], grid_shape[2] if len(grid_shape) > 2 else 1  # noqa: PLR2004
 
-    angle_rad = jnp.deg2rad(params.get("inclination_angle_deg", 0.0))
+    angle_rad = jnp.deg2rad(params["inclination_angle_deg"])
     force_x = params["force_g"] * (-jnp.sin(angle_rad))
     force_y = params["force_g"] * jnp.cos(angle_rad)
 
@@ -54,49 +51,51 @@ def _build_gravity_template(
 # ══════════════════════════════════════════════════════════════════════
 
 
-@force_model(name="gravity_force")
-class GravityForceModule:
-    """Gravity force conforming to :class:`ForceOperator` protocol.
+@force_model(name="gravity_force", required=("force_g",), defaults={"inclination_angle_deg": 0.0})
+class GravityForceModule(NamedTuple):
+    """Constant gravity force, bound to its template (:class:`ForceOperator`).
 
     Stateless — it uses the default no force state hooks.
+
+    Attributes:
+        template: Constant force per unit density, shape ``(nx, ny, nz, 1, d)``.
     """
 
-    @staticmethod
+    template: jnp.ndarray
+
+    @classmethod
     def build(
-        params: dict,
+        cls,
+        params: dict[str, Any],
         grid_shape: tuple[int, ...],
-        **kwargs: object,
-    ) -> jnp.ndarray:
-        """Build a constant gravity-force template.
+        *,
+        config: SimulationConfig,  # noqa: ARG003  # required by ForceOperator protocol
+        lattice: Lattice,
+    ) -> Self:
+        """Build the constant gravity template.
 
         Args:
-            params: Config dict from ``[gravity_force]`` TOML section.
-                Required key: ``force_g``.
-                Optional key: ``inclination_angle_deg`` (default 0).
+            params: The validated ``[gravity_force]`` section: ``force_g`` and
+                ``inclination_angle_deg`` (defaulted by the config).
             grid_shape: Spatial dimensions ``(nx, ny, nz, ...)``.
-            **kwargs: Additional arguments including ``lattice`` (for dimension info).
+            config: Full simulation configuration (unused).
+            lattice: The simulation lattice (for the velocity dimension).
 
         Returns:
-            Gravity template array, shape ``(nx, ny, nz, 1, d)``.
+            The force bound to its template.
         """
-        return _build_gravity_template(params, grid_shape, **kwargs)
+        return cls(template=_build_gravity_template(params, grid_shape, lattice))
 
-    @staticmethod
-    def compute(
-        state: State,
-        precomputed: jnp.ndarray,
-        **_kwargs: object,
-    ) -> jnp.ndarray:
+    def compute(self, state: State, **_kwargs: object) -> jnp.ndarray:
         """Compute gravity force (step-time, jittable).
 
         Args:
             state: Current simulation :class:`State`. Only ``state.f``
                 is used (to compute density).
-            precomputed: Gravity template from :meth:`build`.
-            **kwargs: Additional arguments (ignored).
+            **_kwargs: Differential operators (unused).
 
         Returns:
             Gravity force field, shape ``(nx, ny, nz, 1, d)``.
         """
         rho = jnp.sum(state.f, axis=-2, keepdims=True)
-        return -precomputed * rho
+        return -self.template * rho

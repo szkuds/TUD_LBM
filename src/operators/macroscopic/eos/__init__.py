@@ -23,22 +23,19 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from typing import cast
 from src.operators._loader import auto_load_operators
-from src.operators.factory import build_operator
 from src.registry import get_operator_names
+from src.registry import get_operators
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from src.operators.macroscopic import MultiphaseParams
-    from src.operators.protocols import EOSFunction
-    from src.operators.protocols import PressureFunction
+    from src.config.multiphase_params import MultiphaseParams
+    from src.operators.protocols import EosOperator
 
 # Auto-discover EOS modules in this subpackage.
 auto_load_operators("src.operators.macroscopic.eos")
 
 
-def build_eos_fn(eos: str, mp: MultiphaseParams) -> EOSFunction:
+def build_eos_fn(eos: str, mp: MultiphaseParams) -> EosOperator:
     """Build an EOS callable with bound parameters.
 
     Args:
@@ -47,17 +44,13 @@ def build_eos_fn(eos: str, mp: MultiphaseParams) -> EOSFunction:
             all EOS-specific scalars.
 
     Returns:
-        A bound :class:`~src.operators.protocols.EOSFunction`
+        A bound :class:`~src.operators.protocols.EosOperator`
         ``eos_fn(rho) -> mu_0``.
-
-    Raises:
-        ValueError: If *eos* is not registered in the EOS registry.
     """
-    eos_builder = build_operator("eos", eos)
-    return cast("EOSFunction", eos_builder(mp))
+    return get_operators("eos")[eos].target(mp)
 
 
-def build_pressure_fn(mp: MultiphaseParams) -> PressureFunction:
+def build_pressure_fn(mp: MultiphaseParams) -> EosOperator:
     """Build the bulk-pressure callable for the EOS bound in *mp*.
 
     This is the bulk thermodynamic pressure only: the interfacial ``-kappa``
@@ -70,15 +63,14 @@ def build_pressure_fn(mp: MultiphaseParams) -> PressureFunction:
             EOS name and its scalars.
 
     Returns:
-        A bound :class:`~src.operators.protocols.PressureFunction`
-        ``pressure_fn(rho) -> p_0``.
+        A bound :class:`~src.operators.protocols.EosOperator`
+        ``pressure_fn(rho) -> p_0``. The multiphase macroscopic operator
+        evaluates it every step and returns it as the pressure field.
 
     Raises:
-        ValueError: If ``mp.eos`` has no registered pressure implementation, or
-            if the EOS's own parameters are missing.
+        ValueError: If the EOS's own parameters are missing.
     """
-    pressure_builder = build_operator("pressure", mp.eos)
-    return cast("PressureFunction", pressure_builder(mp))
+    return get_operators("pressure")[mp.eos].target(mp)
 
 
 def has_analytical_surface_tension(eos: str | None) -> bool:
@@ -104,8 +96,7 @@ def analytical_surface_tension(mp: MultiphaseParams) -> float | None:
     """
     if not has_analytical_surface_tension(mp.eos):
         return None
-    builder = cast("Callable[[MultiphaseParams], float | None]", build_operator("surface_tension", mp.eos))
-    sigma = builder(mp)
+    sigma = get_operators("surface_tension")[mp.eos].target(mp)
     return None if sigma is None else float(sigma)
 
 

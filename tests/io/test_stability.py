@@ -15,6 +15,8 @@ from src.simulation_io.analysis.stability import StabilityAbortError
 from src.simulation_io.analysis.stability import _host_check
 from src.simulation_io.analysis.stability import checkerboard_amplitude
 from src.simulation_io.analysis.stability import compute_stability_metrics
+from src.simulation_io.analysis.stability import local_mach
+from src.simulation_io.analysis.stability import stripe_amplitude
 from src.simulation_io.analysis.stability import wake_mask
 
 # =====================================================================
@@ -58,6 +60,72 @@ class TestCheckerboardAmplitude:
         interior[1:-1, 1:-1] = True
         mask = _field(interior).astype(bool)
         assert float(checkerboard_amplitude(rho, mask)) == pytest.approx(0.0, abs=1e-10)
+
+
+# =====================================================================
+# stripe_amplitude
+# =====================================================================
+
+
+class TestStripeAmplitude:
+    """Relative two-cell mode amplitude along one axis."""
+
+    def test_pure_stripe_along_y_returns_its_relative_amplitude(self):
+        eps, rho0 = 1e-2, 1e-3
+        j = np.arange(8)
+        rho = _field(np.broadcast_to(rho0 * (1.0 + eps * (-1.0) ** j), (8, 8)).copy())
+        mask = jnp.ones_like(rho, dtype=bool)
+
+        # The zig-zag amplitude is exactly rho0*eps, over the local rho0*(1 +/- eps).
+        expected = np.sqrt(np.mean((eps / (1.0 + eps * (-1.0) ** j)) ** 2))
+        assert float(stripe_amplitude(rho, mask, 1)) == pytest.approx(expected, rel=1e-4)
+        # Constant along x: no stripe there.
+        assert float(stripe_amplitude(rho, mask, 0)) == pytest.approx(0.0, abs=1e-9)
+
+    def test_exponential_tail_is_zero(self):
+        """A monotone vapour-side tail with a one-cell decay length carries no stripe."""
+        rho = _field(np.broadcast_to(1e-3 * np.exp(np.arange(8.0))[None, :], (8, 8)).copy())
+        interior = np.zeros((8, 8), dtype=bool)
+        interior[:, 1:-1] = True
+        assert float(stripe_amplitude(rho, _field(interior).astype(bool), 1)) == pytest.approx(0.0, abs=1e-12)
+
+    def test_linear_ramp_interior_is_zero(self):
+        rho = _field(np.broadcast_to(1.0 + 0.1 * np.arange(8.0)[None, :], (8, 8)).copy())
+        interior = np.zeros((8, 8), dtype=bool)
+        interior[:, 1:-1] = True
+        assert float(stripe_amplitude(rho, _field(interior).astype(bool), 1)) == pytest.approx(0.0, abs=1e-7)
+
+
+# =====================================================================
+# local_mach
+# =====================================================================
+
+
+class TestLocalMach:
+    """``|u| / sqrt(dp_0/drho)`` against closed-form sound speeds."""
+
+    def test_double_well_vapour_sound_speed_scales_with_sqrt_rho_v(self):
+        """``c_v**2 = rho_v * 16 kappa / W**2`` — the vapour of the double-well collapses with rho_v."""
+        from src.config.multiphase_params import MultiphaseParams
+        from src.operators.macroscopic.eos import build_pressure_fn
+
+        kappa, width, u0 = 0.04, 5, 1e-3
+        for rho_v in (0.1, 1e-3):
+            mp = MultiphaseParams(eos="double-well", kappa=kappa, rho_l=1.0, rho_v=rho_v, interface_width=width)
+            rho = jnp.full((2, 2, 1, 1, 1), rho_v)
+            u = jnp.zeros((2, 2, 1, 1, 2)).at[..., 0].set(u0)
+            c_v = np.sqrt(rho_v * 16.0 * kappa / width**2)
+            mach = np.asarray(local_mach(rho, u, build_pressure_fn(mp)))
+            np.testing.assert_allclose(mach, u0 / c_v, rtol=1e-4)
+
+    def test_spinodal_nodes_report_zero(self):
+        from src.config.multiphase_params import MultiphaseParams
+        from src.operators.macroscopic.eos import build_pressure_fn
+
+        mp = MultiphaseParams(eos="double-well", kappa=0.04, rho_l=1.0, rho_v=1e-3, interface_width=5)
+        rho = jnp.full((2, 2, 1, 1, 1), 0.5)  # midway: dp_0/drho < 0
+        u = jnp.full((2, 2, 1, 1, 2), 1e-2)
+        assert float(jnp.max(local_mach(rho, u, build_pressure_fn(mp)))) == pytest.approx(0.0)
 
 
 # =====================================================================
@@ -109,7 +177,7 @@ class TestComputeStabilityMetrics:
         force = -rho * grad_mu + force_ext
 
         metrics = np.asarray(compute_stability_metrics(_state(rho, u, force, force_ext)))
-        max_u, max_grad_mu, rho_min, rho_max, cb_amp, n_wake = metrics
+        max_u, max_grad_mu, rho_min, rho_max, cb_amp, n_wake, stripe, vapour_mach = metrics
 
         assert max_u == pytest.approx(0.5)  # |(0.3, 0.4)|
         assert max_grad_mu == pytest.approx(0.1)
@@ -117,6 +185,8 @@ class TestComputeStabilityMetrics:
         assert rho_max == pytest.approx(2.0)
         assert cb_amp > 0.0  # rho has two bumps -> nonzero residual
         assert n_wake == pytest.approx(nx * ny)  # no mp -> whole-domain mask
+        assert stripe > 0.0
+        assert vapour_mach == pytest.approx(0.0)  # no pressure_fn
 
     def test_single_phase_reports_zero_grad_mu(self):
         rho = jnp.ones((4, 4, 1, 1, 1))
@@ -133,7 +203,7 @@ class TestComputeStabilityMetrics:
 class TestHostCheck:
     """Host-side CSV writing and the NaN guard."""
 
-    BENIGN = np.array([0.01, 0.02, 0.33, 1.0, 1e-6, 42.0])
+    BENIGN = np.array([0.01, 0.02, 0.33, 1.0, 1e-6, 42.0, 1e-3, 0.05])
 
     def test_csv_created_with_header_and_appended(self, tmp_path):
         _host_check(tmp_path, self.BENIGN, 100)
@@ -141,7 +211,7 @@ class TestHostCheck:
 
         lines = (tmp_path / "stability_log.csv").read_text(encoding="utf-8").splitlines()
         assert len(lines) == 3
-        assert lines[0] == "t,max_u,max_grad_mu,rho_min,rho_max,checkerboard_amp,n_wake_cells"
+        assert lines[0] == "t,max_u,max_grad_mu,rho_min,rho_max,checkerboard_amp,n_wake_cells,stripe_amp,vapour_mach"
         assert lines[1].startswith("100,")
         assert lines[2].startswith("200,")
 
@@ -166,12 +236,13 @@ class TestRunIntegration:
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10, results_dir=str(tmp_path))
         return build_setup(cfg)
 
-    def test_in_memory_mode_writes_csv_rows_at_save_interval(self, tmp_path, monkeypatch):
+    def test_in_memory_mode_writes_csv_rows_at_debug_interval(self, tmp_path, monkeypatch):
         monkeypatch.setattr(_flags, "DEBUG_FLAG_STABILITY", True)
+        monkeypatch.setattr(_flags, "DEBUG_STABILITY_INTERVAL", 2)
         setup = self._setup(tmp_path)
         state = init_state(setup)
 
-        run(setup, state, nt=10, save_interval=2)
+        run(setup, state, nt=10, save_interval=5)
 
         csv_path = tmp_path / "stability_debug" / "stability_log.csv"
         lines = csv_path.read_text(encoding="utf-8").splitlines()
@@ -187,6 +258,7 @@ class TestRunIntegration:
         from src.simulation_io import SimulationIO
 
         monkeypatch.setattr(_flags, "DEBUG_FLAG_STABILITY", True)
+        monkeypatch.setattr(_flags, "DEBUG_STABILITY_INTERVAL", 2)
         setup = self._setup(tmp_path)
         state = init_state(setup)
         io = SimulationIO(base_dir=str(tmp_path), output_format="numpy")

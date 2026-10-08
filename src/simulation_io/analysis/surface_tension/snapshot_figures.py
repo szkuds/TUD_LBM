@@ -9,8 +9,10 @@ values enter the Laplace jump. Seeing them makes it obvious whether the
 which is the failure mode the fit alone cannot show.
 
 The panels are the registered plotting operators (``density``, ``pressure``,
-``pressure_total``) called directly, so the pressure shown here is by
-construction the pressure the calibration measured.
+``pressure_total``) called directly. Only the density is cached per droplet, so
+the bulk pressure is re-evaluated from it with :func:`build_pressure_fn` — the
+same EOS function the multiphase macroscopic operator evaluates for the
+``pressure`` the calibration measured.
 """
 
 from __future__ import annotations
@@ -18,10 +20,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from matplotlib.patches import Circle
 from src.simulation_io.analysis.surface_tension.surface_tension import sample_points
-from src.simulation_io.plotting.density import DensityPlotOperator
+from src.simulation_io.plotting import build_plot_operator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
-from src.simulation_io.plotting.pressure import BulkPressurePlotOperator
-from src.simulation_io.plotting.pressure import TotalPressurePlotOperator
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -61,20 +61,29 @@ def save_snapshot_figures(
     import matplotlib as mpl
 
     mpl.use("Agg")
+    import jax.numpy as jnp
     import matplotlib.pyplot as plt
+    from src.operators.macroscopic.eos import build_pressure_fn
+
+    mp = config.multiphase_params
+    if mp is None:
+        msg = "snapshot figures need the multiphase calibration config"
+        raise ValueError(msg)
+    pressure_fn = build_pressure_fn(mp)
 
     # Built once for the whole sweep: each operator caches its EOS parameters
     # and differential closures on first use, so the lattice and diff-op
     # construction is paid once rather than per radius.
     operators: list[PlotOperator] = [
-        DensityPlotOperator(config),
-        BulkPressurePlotOperator(config),
-        TotalPressurePlotOperator(config),
+        build_plot_operator("density")(config),
+        build_plot_operator("pressure")(config),
+        build_plot_operator("pressure_total")(config),
     ]
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for radius, jump, rho_2d in zip(radii, delta_p, densities, strict=True):
-        data = {"rho": np.asarray(rho_2d)[:, :, None, None, None]}
+        rho = np.asarray(rho_2d)[:, :, None, None, None]
+        data = {"rho": rho, "pressure": np.asarray(pressure_fn(jnp.asarray(rho)))}
         panels = [op for op in operators if op.is_available(data)]
         if not panels:
             continue
