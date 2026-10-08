@@ -99,6 +99,26 @@ class FigureStyle:
     #: Tangent length as a fraction of the shorter domain side.
     contact_angle_length_fraction: float = 0.25
 
+    # Setup figure (plotting.setup_figure): the interface at rho_mean, the wall
+    # split into its surfaces, and the schematic annotations.
+    setup_interface_color: str = "red"
+    setup_interface_linewidth: float = 1.8
+    setup_wall_colors: dict[str, str] = field(
+        default_factory=lambda: {
+            "hydrophobic": "firebrick",
+            "hydrophilic": "seagreen",
+            "plain": GREY,
+        }
+    )
+    #: Wall band thickness as a fraction of the shorter domain side.
+    setup_wall_thickness_fraction: float = 0.06
+    setup_annotation_color: str = "black"
+    setup_annotation_linewidth: float = 1.2
+    setup_outline_linewidth: float = 0.8
+    setup_outline_linestyle: str = "--"
+    setup_fontsize: int = 11
+    setup_key_fontsize: int = 9
+
     colors: dict[str, str] = field(
         default_factory=lambda: {
             "max_velocity": BLUE,

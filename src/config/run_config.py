@@ -14,7 +14,8 @@ CLI layers::
     `-- plots/                          PLOTS_DIRNAME
         |-- snapshots/                  SNAPSHOTS_DIRNAME
         `-- analysis/                   ANALYSIS_DIRNAME
-            `-- acceleration_analysis.png   ACCELERATION_PLOT_FILENAME
+            |-- acceleration_analysis.png   ACCELERATION_PLOT_FILENAME
+            `-- setup.pdf                   SETUP_FIGURE_FILENAME
 
 Aggregate analyses spanning several runs write into their own directory rather
 than into any one run: ``COMPARISON_DIRNAME`` for ``tud-lbm compare`` and
@@ -65,6 +66,10 @@ ACCELERATION_PLOT_FILENAME = "acceleration_analysis.png"
 
 #: Length-scale diagnostic figure, written under ``plots/analysis/``.
 LENGTH_SCALE_PLOT_FILENAME = "length_scale.png"
+
+#: Setup schematic for a paper (``tud-lbm setup-figure``), written under
+#: ``plots/analysis/``. A PDF: it is a vector figure.
+SETUP_FIGURE_FILENAME = "setup.pdf"
 
 #: Dimensionless-number overview at the run-directory root.
 PHYSICAL_PARAMETERS_FILENAME = "physical_parameters.txt"

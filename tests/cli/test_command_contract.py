@@ -15,6 +15,7 @@ _SEAM = {
     "benchmark": "src.cli.commands.benchmark.run_benchmark",
     "animate": "src.cli.commands.visualise._validate_run_dir_has_config",
     "visualise": "src.cli.commands.visualise._validate_run_dir_has_config",
+    "setup-figure": "src.cli.commands.visualise._validate_run_dir_has_config",
     "compare": "src.cli.analysis_routing.analyse_tree",
     "regime-map": "src.simulation_io.plotting.regime_map_plot.build_regime_map",
     "analyse": "src.cli.commands.analysis._load_single_config",
