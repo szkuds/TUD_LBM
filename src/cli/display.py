@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from src.config import SimulationConfig
     from src.config.array_expansion import ArrayParameterSet
 
-_BOLD_CYAN = "bold cyan"
+BOLD_CYAN = "bold cyan"
 
 _VISUAL_KINDS = {
     "plotting": "Field plots - rendered per timestep snapshot",
@@ -37,7 +37,7 @@ def _new_operator_table(title: str, columns: tuple[tuple[str, dict], ...]) -> Ta
     table = Table(
         title=title,
         show_header=True,
-        header_style=_BOLD_CYAN,
+        header_style=BOLD_CYAN,
         title_justify="left",
     )
     for header, style in columns:
@@ -135,7 +135,7 @@ def _display_analysis_operators() -> None:
 
 def build_choices_table(choices: list[OperatorChoice]) -> Table:
     """List selectable operators, marking which the stored config already names."""
-    table = Table(show_header=True, header_style=_BOLD_CYAN, box=None, padding=(0, 1))
+    table = Table(show_header=True, header_style=BOLD_CYAN, box=None, padding=(0, 1))
     table.add_column("#", style="dim", width=4)
     table.add_column("Name", style="green", no_wrap=True)
     table.add_column("Kind", style="magenta", no_wrap=True)

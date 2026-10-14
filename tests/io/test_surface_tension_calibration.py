@@ -499,8 +499,9 @@ def test_collect_rejects_two_fluids_sharing_one_label():
     for sweep_config in (first[0], second[1]):
         _write_sweep_run(sweep_config, 0.0123)
 
+    runs = _sweep_runs()
     with pytest.raises(ValueError, match="one fluid at a time"):
-        st.collect_calibration(_sweep_runs())
+        st.collect_calibration(runs)
 
 
 def test_field_cache_never_lands_in_the_checkout():
@@ -521,8 +522,10 @@ def test_store_fields_refuses_to_write_into_the_checkout(monkeypatch):
     in_repo = st._PACKAGE_ROOT / "simulation_io" / "analysis" / "surface_tension" / "data" / "fields"
     monkeypatch.setattr(st, "_FIELDS_CACHE_DIR", in_repo)
 
+    key = st._cache_key(_stub_config())
+    fields = [np.zeros((4, 4))]
     with pytest.raises(RuntimeError, match="inside the repository"):
-        st._store_fields(st._cache_key(_stub_config()), [np.zeros((4, 4))])
+        st._store_fields(key, fields)
 
     # Not `not in_repo.exists()`: the directory may survive from an old
     # checkout. What must hold is that nothing was written into it.

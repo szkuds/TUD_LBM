@@ -102,7 +102,7 @@ def _first_if_list(value: object) -> object:
 
 #: Optimiser settings of ``[hysteresis]``, filled in by ``_apply_defaults``.
 _HYSTERESIS_DEFAULTS: dict[str, Any] = {
-    "learning_rate": 0.01,
+    "learning_rate": 0.005,
     "learning_rate_above": 0.05,
     "max_iterations": 50,
     "loss_tol": 1e-4,

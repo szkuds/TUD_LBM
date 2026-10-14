@@ -10,6 +10,7 @@ from src.cli.execution import RunFlags
 from src.cli.execution import _run_impl
 from src.cli.options import optional_int
 from src.cli.options import optional_int_option
+from src.cli.options import str_tuple
 from src.cli.wetting_init import _WETTING_INIT_NT
 
 # From-imports on purpose: these are the defaults as they stand before
@@ -215,7 +216,7 @@ def run(**cli_kwargs: object) -> None:
     """
     config_path = cast("str | None", cli_kwargs["config_path"])
     max_workers = cast("int | None", cli_kwargs["max_workers"])
-    overrides = cast("tuple[str, ...]", cli_kwargs["overrides"])
+    overrides = str_tuple(cli_kwargs["overrides"])
     init_dir = cast("str | None", cli_kwargs["init_dir"])
     continue_run = cast("bool", cli_kwargs["continue_run"])
     flags = RunFlags(
@@ -228,8 +229,8 @@ def run(**cli_kwargs: object) -> None:
         debug_wetting=optional_int(cli_kwargs["debug_wetting"]),
         debug_stability=optional_int(cli_kwargs["debug_stability"]),
         init_wetting=optional_int(cli_kwargs["init_wetting"]),
-        override_phase1=cast("tuple[str, ...]", cli_kwargs["override_phase1"]),
-        override_phase2=cast("tuple[str, ...]", cli_kwargs["override_phase2"]),
+        override_phase1=str_tuple(cli_kwargs["override_phase1"]),
+        override_phase2=str_tuple(cli_kwargs["override_phase2"]),
         run_compare=cast("bool", cli_kwargs["run_compare"]),
         continue_run=continue_run,
     )

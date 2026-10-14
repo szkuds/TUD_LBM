@@ -31,3 +31,8 @@ def optional_int_option(flag: str, *, default: int, metavar: str, help_text: str
 def optional_int(value: object) -> int | None:
     """Narrow an :func:`optional_int_option` value: ``None`` when the flag was absent."""
     return value if isinstance(value, int) else None
+
+
+def str_tuple(value: object) -> tuple[str, ...]:
+    """Narrow a ``multiple=True`` option value to its tuple of strings."""
+    return tuple(str(item) for item in value) if isinstance(value, tuple) else ()

@@ -110,8 +110,9 @@ class TestGetHysteresisWindowChemicalStep:
         assert _window(setup, 120.0, "left") == _POST
 
     def test_rejects_unknown_side(self):
+        setup = _make_setup()
         with pytest.raises(ValueError, match="side must be"):
-            _window(_make_setup(), 20.0, "middle")
+            _window(setup, 20.0, "middle")
 
 
 # ---------------------------------------------------------------------------

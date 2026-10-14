@@ -636,21 +636,21 @@ class TestVanDerWaals:
     def test_config_requires_the_eos_parameters(self):
         from src.config import DictAdapter
 
+        adapter = DictAdapter()
+        raw = {
+            "sim_type": "multiphase",
+            "grid_shape": (16, 16),
+            "eos": "van-der-waals",
+            "kappa": 0.01,
+            "rho_l": 6.7645,
+            "rho_v": 0.8388,
+            "interface_width": 4,
+            "a_eos": _VDW_A,
+            "b_eos": _VDW_B,
+            "r_eos": 1.0,
+        }
         with pytest.raises(ValueError, match="'t_eos' is required when eos = 'van-der-waals'"):
-            DictAdapter().load(
-                {
-                    "sim_type": "multiphase",
-                    "grid_shape": (16, 16),
-                    "eos": "van-der-waals",
-                    "kappa": 0.01,
-                    "rho_l": 6.7645,
-                    "rho_v": 0.8388,
-                    "interface_width": 4,
-                    "a_eos": _VDW_A,
-                    "b_eos": _VDW_B,
-                    "r_eos": 1.0,
-                }
-            )
+            adapter.load(raw)
 
 
 class TestCarnahanStarlingCoexistence:

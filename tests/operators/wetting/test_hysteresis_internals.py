@@ -112,8 +112,9 @@ def test_side_regime_inverted_window_follows_the_motion(side, cll, expected_adva
 
 
 def test_side_regime_rejects_unknown_side():
+    ca, cll, anchor = jnp.array(90.0), jnp.array(1.0), jnp.array(0.0)
     with pytest.raises(ValueError, match="side must be"):
-        _side_regime(jnp.array(90.0), jnp.array(1.0), jnp.array(0.0), 80.0, 60.0, side="middle")
+        _side_regime(ca, cll, anchor, 80.0, 60.0, side="middle")
 
 
 @pytest.mark.parametrize(
@@ -255,8 +256,9 @@ def test_liquid_is_advancing_truth_table(side, cll_now, cll_stored, is_bubble, e
 
 
 def test_liquid_is_advancing_rejects_unknown_side():
+    cll_now, cll_stored, is_bubble = jnp.array(1.0), jnp.array(0.0), jnp.array(False)
     with pytest.raises(ValueError, match="side must be"):
-        _liquid_is_advancing(jnp.array(1.0), jnp.array(0.0), jnp.array(False), side="middle")
+        _liquid_is_advancing(cll_now, cll_stored, is_bubble, side="middle")
 
 
 # ---------------------------------------------------------------------------
@@ -649,10 +651,11 @@ class TestUpdateWettingStateGuards:
 
     def test_raises_when_hysteresis_config_none(self):
         setup = SimpleNamespace(config=SimpleNamespace(hysteresis_config=None))
+        wetting, rho = _wetting(), jnp.ones((4, 4, 1, 1, 1))
         with pytest.raises(TypeError, match="hysteresis_config is required"):
             update_wetting_state(
-                _wetting(),
-                jnp.ones((4, 4, 1, 1, 1)),
+                wetting,
+                rho,
                 setup,  # ty: ignore[invalid-argument-type]
                 trial_step_fn=_dummy_trial_fn,
             )
@@ -669,10 +672,11 @@ class TestUpdateWettingStateImplGuards:
             config=SimpleNamespace(hysteresis_config={"ca_advancing": 110.0, "ca_receding": 85.0}),
         )
         ca_adv, ca_rec = jnp.array(110.0), jnp.array(85.0)
+        wetting, rho = _wetting(), jnp.ones((4, 4, 1, 1, 1))
         with pytest.raises(TypeError, match="multiphase_params is required"):
             _update_wetting_state_impl(
-                _wetting(),
-                jnp.ones((4, 4, 1, 1, 1)),
+                wetting,
+                rho,
                 setup,  # ty: ignore[invalid-argument-type]
                 _dummy_trial_fn,
                 ca_adv_left=ca_adv,
@@ -688,10 +692,11 @@ class TestUpdateWettingStateImplGuards:
             config=SimpleNamespace(hysteresis_config=None),
         )
         ca_adv, ca_rec = jnp.array(110.0), jnp.array(85.0)
+        wetting, rho = _wetting(), jnp.ones((4, 4, 1, 1, 1))
         with pytest.raises(TypeError, match="hysteresis_config is required"):
             _update_wetting_state_impl(
-                _wetting(),
-                jnp.ones((4, 4, 1, 1, 1)),
+                wetting,
+                rho,
                 setup,  # ty: ignore[invalid-argument-type]
                 _dummy_trial_fn,
                 ca_adv_left=ca_adv,

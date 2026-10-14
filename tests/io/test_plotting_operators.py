@@ -255,7 +255,8 @@ def test_named_field_without_data_is_reported_once():
     with tempfile.TemporaryDirectory() as tmpdir:
         builder = FigureBuilder(_multiphase_config(), run_dir=tmpdir, fields=["density", "force"])
         with pytest.warns(UserWarning, match=r"no data for \['force'\]"):
-            plt.close(builder.render_figure({"rho": rho}, timestep=0))
+            fig = builder.render_figure({"rho": rho}, timestep=0)
+        plt.close(fig)
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             plt.close(builder.render_figure({"rho": rho}, timestep=1))

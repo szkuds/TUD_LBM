@@ -34,6 +34,7 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 from src.cli._console import console
+from src.cli.display import BOLD_CYAN
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -293,16 +294,13 @@ def _static_analysis(compiled: Any) -> tuple[dict[str, Any] | None, dict[str, An
     roofline (arithmetic intensity = FLOPs / bytes) *before* a GPU is involved:
     a bandwidth-bound case is one a GPU rewards, a latency-bound one may not be.
 
-    Both analyses are backend- and version-dependent and are documented as
-    best-effort, so failure degrades to ``None`` rather than failing the run.
+    Both analyses are backend- and version-dependent; JAX itself returns ``None``
+    where a backend offers none, so no failure handling is repeated here.
     """
     cost: dict[str, Any] | None = None
     memory: dict[str, Any] | None = None
 
-    try:
-        raw = compiled.cost_analysis()
-    except Exception:  # noqa: BLE001 — best-effort diagnostic, never fatal
-        raw = None
+    raw = compiled.cost_analysis()
     if isinstance(raw, list) and raw:
         raw = raw[0]
     if isinstance(raw, dict):
@@ -312,10 +310,7 @@ def _static_analysis(compiled: Any) -> tuple[dict[str, Any] | None, dict[str, An
         if flops and bytes_accessed:
             cost["arithmetic_intensity"] = flops / bytes_accessed
 
-    try:
-        analysis = compiled.memory_analysis()
-    except Exception:  # noqa: BLE001 — best-effort diagnostic, never fatal
-        analysis = None
+    analysis = compiled.memory_analysis()
     if analysis is not None:
         memory = {
             name: getattr(analysis, name, None)
@@ -431,7 +426,7 @@ def _render_phases(result: BenchmarkResult) -> None:
     """
     from rich.table import Table
 
-    phases = Table(title="Phases", header_style="bold cyan")
+    phases = Table(title="Phases", header_style=BOLD_CYAN)
     phases.add_column("Phase")
     phases.add_column("Seconds", justify="right")
     phases.add_row("setup (build + init)", f"{result.setup_s:.3f}")
@@ -444,7 +439,7 @@ def _render_throughput(result: BenchmarkResult) -> None:
     """Print per-step cost and MLUPS for the full loop and every variant."""
     from rich.table import Table
 
-    throughput = Table(title="Throughput", header_style="bold cyan")
+    throughput = Table(title="Throughput", header_style=BOLD_CYAN)
     throughput.add_column("Variant")
     throughput.add_column("ms/step", justify="right")
     throughput.add_column("MLUPS", justify="right")
@@ -478,7 +473,7 @@ def _render_attribution(result: BenchmarkResult) -> None:
         return
 
     console.print()
-    attribution = Table(title="Attribution", header_style="bold cyan")
+    attribution = Table(title="Attribution", header_style=BOLD_CYAN)
     attribution.add_column("Layer removed")
     attribution.add_column("ms/step saved", justify="right")
     attribution.add_column("share of full", justify="right")

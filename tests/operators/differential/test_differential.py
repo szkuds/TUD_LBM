@@ -131,8 +131,9 @@ class TestComputeGradient:
         op = build_gradient_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))
         expected = compute_gradient(linear_x_field, lattice.w, lattice.c, ("wrap", "wrap", "wrap", "wrap"))
         np.testing.assert_array_equal(np.asarray(op(linear_x_field)), np.asarray(expected))
+        wetting = _wetting(PHI, PHI, D_RHO, D_RHO)
         with pytest.raises(TypeError, match="does not accept wetting parameters"):
-            op(linear_x_field, _wetting(PHI, PHI, D_RHO, D_RHO))
+            op(linear_x_field, wetting)
 
 
 # =====================================================================
@@ -187,8 +188,9 @@ class TestComputeLaplacian:
         op = build_laplacian_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))
         expected = compute_laplacian(linear_x_field, lattice.w, ("wrap", "wrap", "wrap", "wrap"))
         np.testing.assert_array_equal(np.asarray(op(linear_x_field)), np.asarray(expected))
+        wetting = _wetting(PHI, PHI, D_RHO, D_RHO)
         with pytest.raises(TypeError, match="does not accept wetting parameters"):
-            op(linear_x_field, _wetting(PHI, PHI, D_RHO, D_RHO))
+            op(linear_x_field, wetting)
 
 
 # =====================================================================

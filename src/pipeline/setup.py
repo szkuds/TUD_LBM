@@ -196,6 +196,37 @@ def _build_equilibrium_and_source(
     return equilibrium_fn, source_fn
 
 
+def _hysteresis_scheme(config: SimulationConfig) -> str | None:
+    """The registered hysteresis update for this run, ``None`` without a ``[hysteresis]`` config."""
+    if config.hysteresis_config is None:
+        return None
+    if config.sim_type == "multiphase_hysteresis_chemical_step":
+        return "chemical_step_hysteresis"
+    return "hysteresis"
+
+
+def _build_initial_f_fn(
+    config: SimulationConfig,
+    mp_params: MultiphaseParams | None,
+    lattice: Lattice,
+) -> InitialPopulationOperator[..., jnp.ndarray]:
+    """The initial-population closure: the configured initialiser bound to its keywords."""
+    from src.operators.initialise import build_initialise_fn
+
+    def _initial_f_fn(init_kwargs: dict | None = None) -> jnp.ndarray:
+        kw: dict = {}
+        if mp_params is not None:
+            kw.update(rho_l=mp_params.rho_l, rho_v=mp_params.rho_v, interface_width=mp_params.interface_width)
+        kw.update(config.initialisation)
+        if init_kwargs:
+            kw.update(init_kwargs)
+        if config.init_type == "init_from_file" and "npz_path" not in kw and config.init_dir is not None:
+            kw["npz_path"] = config.init_dir
+        return build_initialise_fn(config.init_type)(cast("tuple[int, int, int]", config.grid_shape), lattice, **kw)
+
+    return _initial_f_fn
+
+
 def build_setup(config: SimulationConfig) -> SimulationSetup:
     """Construct a JAX-friendly :class:`SimulationSetup` from a config.
 
@@ -239,7 +270,6 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     from src.operators.boundary import build_bc
     from src.operators.collision import build_collision_fn
     from src.operators.differential import build_diff_ops
-    from src.operators.initialise import build_initialise_fn
     from src.operators.macroscopic import build_macroscopic_fn
     from src.operators.obstacle import build_obstacle_fn
     from src.operators.step import build_step_fn
@@ -279,12 +309,8 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     obstacle_fn = build_obstacle_fn(obstacle_mask, lattice)
 
     # Build wetting function for hysteresis-capable runs.
-    wetting_fn = None
-    if config.hysteresis_config is not None:
-        wetting_scheme = (
-            "chemical_step_hysteresis" if config.sim_type == "multiphase_hysteresis_chemical_step" else "hysteresis"
-        )
-        wetting_fn = build_hysteresis_fn(wetting_scheme)
+    wetting_scheme = _hysteresis_scheme(config)
+    wetting_fn = build_hysteresis_fn(wetting_scheme) if wetting_scheme is not None else None
 
     # Orient measurement from the first wetting wall.
     from src.operators.wetting._edge_config import first_wetting_edge
@@ -296,17 +322,6 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         for entry in sorted(get_operators("extra_state").values(), key=lambda e: e.name)
         if cast("ExtraStatePlugin", entry.target).is_active(config)
     )
-
-    def _initial_f_fn(init_kwargs: dict | None = None) -> jnp.ndarray:
-        kw: dict = {}
-        if mp_params is not None:
-            kw.update(rho_l=mp_params.rho_l, rho_v=mp_params.rho_v, interface_width=mp_params.interface_width)
-        kw.update(config.initialisation)
-        if init_kwargs:
-            kw.update(init_kwargs)
-        if config.init_type == "init_from_file" and "npz_path" not in kw and config.init_dir is not None:
-            kw["npz_path"] = config.init_dir
-        return build_initialise_fn(config.init_type)(cast("tuple[int, int, int]", config.grid_shape), lattice, **kw)
 
     return SimulationSetup(
         config=config,
@@ -332,5 +347,5 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         macroscopic_fn=macroscopic_fn,
         streaming_fn=streaming_fn,
         bc_fn=bc_fn,
-        initial_f_fn=_initial_f_fn,
+        initial_f_fn=_build_initial_f_fn(config, mp_params, lattice),
     )

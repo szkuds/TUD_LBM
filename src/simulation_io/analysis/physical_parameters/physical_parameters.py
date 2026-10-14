@@ -69,17 +69,25 @@ def _add_grid_section(lines: list[str], config: SimulationConfig) -> None:
     lines.append(_section("Grid"))
     shape = config.grid_shape
     display_shape = shape[:2] if shape[2] == 1 else shape
-    lines.append(_row("Shape:", " x ".join(str(n) for n in display_shape)))
-    lines.append(_row("Timesteps:", config.nt))
-    lines.append(_row("Save interval:", config.save_interval))
+    lines.extend(
+        [
+            _row("Shape:", " x ".join(str(n) for n in display_shape)),
+            _row("Timesteps:", config.nt),
+            _row("Save interval:", config.save_interval),
+        ]
+    )
 
 
 def _add_collision_section(lines: list[str], config: SimulationConfig) -> None:
     lines.append(_section("Collision"))
     tau = config.tau
-    lines.append(_row("Collision scheme:", config.collision_scheme))
-    lines.append(_row("tau:", tau))
-    lines.append(_row("nu (kinematic viscosity):", f"{_nu(tau):.6g}  [cs2*(tau-0.5)]"))
+    lines.extend(
+        [
+            _row("Collision scheme:", config.collision_scheme),
+            _row("tau:", tau),
+            _row("nu (kinematic viscosity):", f"{_nu(tau):.6g}  [cs2*(tau-0.5)]"),
+        ]
+    )
 
 
 def _get_setup_contact_line_length(config: SimulationConfig) -> float | None:
@@ -665,12 +673,16 @@ def _add_buoyancy_delta_rho_row(lines: list[str], config: SimulationConfig) -> N
 def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
     if "multiphase" not in config.sim_type:
         return
-    lines.append(_section("Multiphase"))
-    lines.append(_row("EOS:", config.eos or "-"))
-    lines.append(_row("kappa:", config.kappa))
-    lines.append(_row("rho_liquid:", config.rho_l))
-    lines.append(_row("rho_vapour:", config.rho_v))
-    lines.append(_row("Interface width:", config.interface_width))
+    lines.extend(
+        [
+            _section("Multiphase"),
+            _row("EOS:", config.eos or "-"),
+            _row("kappa:", config.kappa),
+            _row("rho_liquid:", config.rho_l),
+            _row("rho_vapour:", config.rho_v),
+            _row("Interface width:", config.interface_width),
+        ]
+    )
     _add_measured_density_rows(lines, config)
     if config.g is not None:
         lines.append(_row("g (gravity):", config.g))

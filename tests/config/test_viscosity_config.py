@@ -65,8 +65,10 @@ def test_mrt_shear_rates_follow_lambda_v():
 
 
 def test_single_phase_is_rejected():
+    adapter = DictAdapter()
+    raw = {"sim_type": "single_phase", "grid_shape": (16, 16), "lambda_v": 1.0}
     with pytest.raises(ValueError, match="require a multiphase sim_type"):
-        DictAdapter().load({"sim_type": "single_phase", "grid_shape": (16, 16), "lambda_v": 1.0})
+        adapter.load(raw)
 
 
 @pytest.mark.parametrize(("name", "value"), [("lambda_v", 0.5), ("tau_gas", 0.4)])

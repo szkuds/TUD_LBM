@@ -65,7 +65,8 @@ def lattice_edges(lattice_type: str) -> tuple[str, ...]:
     Returns:
         The in-plane edges, followed by ``front``/``back`` for a 3D lattice.
     """
-    import src.lattice.lattice  # noqa: F401 - registration side effect, as in pad_modes
+    # Imported for its registration side effect, as in pad_modes.
+    import src.lattice.lattice  # noqa: F401
 
     entry = get_operators("lattice").get(lattice_type)
     if entry is not None and (entry.metadata or {}).get("dim") == _PLANAR_DIM:

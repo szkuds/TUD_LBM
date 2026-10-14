@@ -127,8 +127,9 @@ def test_unknown_level_is_rejected_with_the_choices():
 
     with pytest.raises(ValueError, match=r"median.*config.*measured"):
         resolve_interface_levels(config)
+    rho = _droplet()
     with pytest.raises(ValueError, match="median"):
-        level_value("median", config, _droplet())
+        level_value("median", config, rho)
 
 
 @pytest.mark.parametrize("level", ["config", "measured"])
