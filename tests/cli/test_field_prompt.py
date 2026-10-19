@@ -233,7 +233,7 @@ def test_interactive_animate_asks_overlay_question(runner, tmp_path, monkeypatch
     captured: dict[str, object] = {}
 
     class _FakeAnimator:
-        def __init__(self, *, config, run_dir, fps, fields, overlays):
+        def __init__(self, *, config, run_dir, fps, dpi, fields, overlays):
             captured["overlays"] = overlays
 
         def create(self, output):

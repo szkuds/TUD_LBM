@@ -17,6 +17,12 @@
 
 A JAX-accelerated lattice Boltzmann method framework developed at Delft University of Technology. TUD-LBM supports single-phase, multiphase, wetting, hysteresis, and chemical-step simulations through a configuration-driven workflow.
 
+<p align="center">
+  <img src="docs/images/von_karman.gif" alt="Von Karman vortex street behind a cylinder: velocity magnitude above vorticity" width="800">
+</p>
+
+*A von Kármán vortex street at Re = 100: channel flow past a cylinder, with velocity magnitude (top) and vorticity (bottom). Reproduce it in about a minute with `uv run python examples/example_run_von_karman.py`.*
+
 ## Installation
 
 TUD-LBM requires Python 3.11 or newer. We recommend [uv](https://docs.astral.sh/uv/getting-started/installation/) for reproducible environments and dependency management.
@@ -93,7 +99,12 @@ tud-lbm animate /path/to/run-directory
 tud-lbm compare /path/to/sweep-results --no-prompt
 ```
 
-See the [examples](examples/) for single-phase, multiphase, parallel, and von Karman configurations.
+See the [examples](examples/) for single-phase, multiphase, parallel, and von Kármán configurations. The animation at the top of this page comes from [`examples/example_run_von_karman.py`](examples/example_run_von_karman.py); the same run from the command line:
+
+```console
+tud-lbm run examples/config_von_karman.toml
+tud-lbm animate /path/to/run-directory --fields velocity,vorticity --dpi 80 --output von_karman.gif
+```
 
 ## Reporting bugs and vulnerabilities
 

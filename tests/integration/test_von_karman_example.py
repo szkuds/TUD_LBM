@@ -18,14 +18,14 @@ def test_von_karman_pipeline_smoke() -> None:
     cfg = SimulationConfig(
         sim_type="single_phase",
         grid_shape=(80, 30, 1),
-        tau=0.524,
+        tau=0.532,
         nt=50,
         bc_config={
             "top": "bounce-back",
             "bottom": "bounce-back",
             "left": "velocity-inlet",
             "right": "outlet",
-            "left_velocity_inlet": {"u0": 0.04},
+            "left_velocity_inlet": {"u0": 0.08},
         },
         obstacle_config={"center_x": 20, "center_y": 15, "radius": 5},
     )

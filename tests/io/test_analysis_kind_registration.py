@@ -35,12 +35,22 @@ _EXPECTED_ANALYSIS_OPERATORS = frozenset(
 )
 
 _EXPECTED_PLOTTING_OPERATORS = frozenset(
-    {"contact_angle", "density", "velocity", "force", "force_ext", "interface", "pressure", "pressure_total"}
+    {
+        "contact_angle",
+        "density",
+        "velocity",
+        "vorticity",
+        "force",
+        "force_ext",
+        "interface",
+        "pressure",
+        "pressure_total",
+    }
 )
 
 #: Registered, but excluded from the default figure — they only render when
 #: named in ``plot_fields``. See ``PlotOperator.opt_in``.
-_EXPECTED_OPT_IN_OPERATORS = frozenset({"contact_angle", "interface", "pressure", "pressure_total"})
+_EXPECTED_OPT_IN_OPERATORS = frozenset({"contact_angle", "interface", "pressure", "pressure_total", "vorticity"})
 
 #: May be named in ``overlay_fields``. See ``PlotOperator.supports_overlay``.
 _EXPECTED_OVERLAY_OPERATORS = frozenset({"contact_angle", "interface"})

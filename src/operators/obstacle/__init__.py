@@ -10,7 +10,7 @@ Example:
     from src.operators.obstacle import build_obstacle_fn
 
     obstacle_fn = build_obstacle_fn(config.obstacle_mask, lattice)
-    f_stream = obstacle_fn(f_stream, f_collision)
+    f_col = obstacle_fn(f_col, f_pre)
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def build_obstacle_fn(mask: jnp.ndarray | None, lattice: Lattice) -> ObstacleOpe
         lattice: :class:`~src.lattice.lattice.Lattice`.
 
     Returns:
-        ``obstacle_fn(f_stream, f_col) -> f_stream``, or ``None`` without an obstacle.
+        ``obstacle_fn(f_col, f_pre) -> f_col``, or ``None`` without an obstacle.
     """
     if mask is None:
         return None

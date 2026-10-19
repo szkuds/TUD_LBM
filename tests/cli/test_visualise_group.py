@@ -201,7 +201,7 @@ def test_animate_accepts_overlay_options(runner, run_dir, monkeypatch):
     captured: dict[str, object] = {}
 
     class _FakeAnimator:
-        def __init__(self, *, config, run_dir, fps, fields, overlays):
+        def __init__(self, *, config, run_dir, fps, dpi, fields, overlays):
             captured.update(levels=config.interface_levels, fields=fields, overlays=overlays)
 
         def create(self, output):

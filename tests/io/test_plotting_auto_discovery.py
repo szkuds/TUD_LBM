@@ -105,8 +105,8 @@ def test_package_import_alone_registers_every_operator() -> None:
         "(len(__import__('src.registry', fromlist=['x']).get_operator_names('plotting')), "
         "len(__import__('src.registry', fromlist=['x']).get_operator_names('analysis')))"
     )
-    assert counts == "(8, 16)", (
-        f"bare package import registered {counts}, expected (8, 16) -- is auto_load_operators still called?"
+    assert counts == "(9, 16)", (
+        f"bare package import registered {counts}, expected (9, 16) -- is auto_load_operators still called?"
     )
 
 

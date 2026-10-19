@@ -35,6 +35,16 @@ _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
     4: (2, 2),
 }
 
+#: A domain at least this many times wider than tall stacks its field panels in
+#: one full-width column: side by side, a channel renders as a row of thin strips.
+_WIDE_ASPECT = 2.0
+#: Width of a stacked wide panel, in multiples of ``panel_figsize``'s width.
+_WIDE_WIDTH_PANELS = 2.0
+#: Height reserved per stacked wide panel for its title and axis labels, in inches.
+_WIDE_PANEL_CHROME = 1.2
+#: Share of a stacked panel's width the image itself takes (the rest is colorbar).
+_WIDE_IMAGE_FRACTION = 0.85
+
 _WETTING_SIM_TYPES: frozenset[str] = frozenset(
     {
         "multiphase_wetting",
@@ -376,14 +386,8 @@ class FigureBuilder:
         if not panels:
             return None
 
-        ncols, nrows = self.layout(len(panels))
-        panel_w, panel_h = DEFAULT_STYLE.panel_figsize
-        fig, axes = plt.subplots(
-            nrows,
-            ncols,
-            figsize=(panel_w * ncols, panel_h * nrows),
-            squeeze=False,
-        )
+        ncols, nrows, figsize = self._figure_grid(len(panels), stacked=not analysis_ops)
+        fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
 
         for idx, op in enumerate(field_ops):
             row, col = divmod(idx, ncols)
@@ -491,6 +495,23 @@ class FigureBuilder:
         saved.extend(self.build_analysis([fp for _, fp in timed_files]))
         self.build_csv()
         return saved
+
+    def _figure_grid(self, n: int, *, stacked: bool) -> tuple[int, int, tuple[float, float]]:
+        """``(ncols, nrows, figsize)`` for *n* panels.
+
+        Field-only figures of a wide domain (``nx/ny >= _WIDE_ASPECT``) stack
+        their panels in one full-width column whose height follows the domain's
+        aspect ratio; everything else uses :meth:`layout`.
+        """
+        panel_w, panel_h = DEFAULT_STYLE.panel_figsize
+        nx, ny = self.config.grid_shape[0], self.config.grid_shape[1]
+        aspect = nx / ny
+        if stacked and aspect >= _WIDE_ASPECT:
+            width = panel_w * _WIDE_WIDTH_PANELS
+            height = width * _WIDE_IMAGE_FRACTION / aspect + _WIDE_PANEL_CHROME
+            return 1, n, (width, height * n)
+        ncols, nrows = self.layout(n)
+        return ncols, nrows, (panel_w * ncols, panel_h * nrows)
 
     @staticmethod
     def layout(n: int) -> tuple[int, int]:

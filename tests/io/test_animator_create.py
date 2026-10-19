@@ -5,6 +5,7 @@ import builtins
 import sys
 import types
 import pytest
+from PIL import Image
 from src.config import SimulationConfig
 from src.simulation_io.plotting.animator import Animator
 
@@ -44,25 +45,38 @@ def test_create_wraps_moviepy_import_error(tmp_path, monkeypatch):
         animator.create()
 
 
-def test_create_writes_gif_with_fake_moviepy(tmp_path, monkeypatch):
+def test_create_writes_looping_gif_with_every_frame(tmp_path, monkeypatch):
+    animator = _animator(tmp_path)
+    frames = []
+    for idx, colour in enumerate(("red", "blue", "green")):
+        frame = tmp_path / f"f{idx}.png"
+        Image.new("RGB", (16, 8), colour).save(frame)
+        frames.append(frame)
+    monkeypatch.setattr(animator, "build_frames", lambda: frames)
+
+    out = animator.create(tmp_path / "anim.gif")
+
+    with Image.open(out) as gif:
+        assert gif.n_frames == len(frames)
+        assert gif.info["loop"] == 0
+        assert gif.info["duration"] == round(1000 / animator.fps)
+
+
+def test_create_writes_mp4_with_fake_moviepy(tmp_path, monkeypatch):
     animator = _animator(tmp_path)
     frame = tmp_path / "f.png"
     frame.write_bytes(b"x")
     monkeypatch.setattr(animator, "build_frames", lambda: [frame])
 
-    calls = {"gif": 0, "close": 0}
+    calls = {"mp4": 0, "close": 0}
 
     class _FakeClip:
         def __init__(self, seq, fps):
             self.seq = seq
             self.fps = fps
 
-        def write_gif(self, output, fps):
-            calls["gif"] += 1
-
         def write_videofile(self, output, fps, audio, logger):
-            msg = "mp4 path should not be used"
-            raise AssertionError(msg)
+            calls["mp4"] += 1
 
         def close(self):
             calls["close"] += 1
@@ -74,8 +88,8 @@ def test_create_writes_gif_with_fake_moviepy(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "moviepy.video.io", types.ModuleType("moviepy.video.io"))
     monkeypatch.setitem(sys.modules, "moviepy.video.io.ImageSequenceClip", module)
 
-    out = animator.create(tmp_path / "anim.gif")
+    out = animator.create(tmp_path / "anim.mp4")
 
-    assert out.suffix == ".gif"
-    assert calls["gif"] == 1
+    assert out.suffix == ".mp4"
+    assert calls["mp4"] == 1
     assert calls["close"] == 1

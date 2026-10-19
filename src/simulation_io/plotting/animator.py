@@ -88,6 +88,10 @@ class Animator:
 
         output = Path(output_path) if output_path is not None else self.builder.plot_dir / "animation.mp4"
 
+        if output.suffix.lower() == ".gif":
+            self._write_gif(frame_paths, output)
+            return output
+
         try:
             from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
         except ImportError as exc:
@@ -95,11 +99,31 @@ class Animator:
             raise ImportError(msg) from exc
 
         clip = ImageSequenceClip([str(p) for p in frame_paths], fps=self.fps)
-        if output.suffix.lower() == ".gif":
-            clip.write_gif(str(output), fps=self.fps)
-        else:
-            clip.write_videofile(str(output), fps=self.fps, audio=False, logger=None)
+        clip.write_videofile(str(output), fps=self.fps, audio=False, logger=None)
 
         if hasattr(clip, "close"):
             clip.close()
         return output
+
+    def _write_gif(self, frame_paths: list[Path], output: Path) -> None:
+        """Encode *frame_paths* as a looping GIF with Pillow.
+
+        Each frame gets its own 256-colour palette, undithered: a field panel's
+        colormap and a second panel's diverging one then share no global palette,
+        which is what banded moviepy's GIFs and made them larger. Every frame is
+        kept (moviepy resampled to its own clock and dropped some).
+        """
+        from PIL import Image
+
+        frames = [
+            Image.open(p).convert("RGB").quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+            for p in frame_paths
+        ]
+        frames[0].save(
+            output,
+            save_all=True,
+            append_images=frames[1:],
+            duration=round(1000 / self.fps),
+            loop=0,
+            optimize=True,
+        )

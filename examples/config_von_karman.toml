@@ -1,21 +1,29 @@
 # TUD-LBM Von Karman Vortex Street Example
 #
-# 2D D2Q9 channel flow past a circular cylinder, set up to shed
-# periodic vortices (Re ~ 100, mid shedding regime).
+# 2D D2Q9 channel flow past a circular cylinder, shedding an alternating
+# vortex street at Re ~ 100.
 #
-#   D = 2*radius = 20 lattice units
-#   u0 = 0.04 (safe LBM inflow velocity)
-#   nu = u0*D/Re = 0.04*20/100 = 0.008
-#   tau = 0.5 + 3*nu = 0.524
+#   D    = 2*radius = 20 lattice units
+#   u0   = 0.08, the peak of the parabolic inlet profile; mean u = 2/3*u0 = 0.0533
+#   Re   = u_mean*D/nu = 100  ->  nu = 0.01067
+#   tau  = 0.5 + 3*nu = 0.532
+#
+# The cylinder sits one cell above the channel centre line (the inlet profile
+# is symmetric about y = 49.5), which seeds the instability: shedding has
+# saturated by t ~ 16 000. Snapshots up to skip_interval are not saved, so the
+# animation shows only the developed street. One shedding period is ~2 250
+# steps, so the 45 snapshots from 18 200 to 27 000 (plus the one interval that
+# wraps the loop) span four periods and the animation loops without a seam.
 
 [simulation_type]
 simulation_name = 'von_karman_vortex_street'
 type = "single_phase"
 grid_shape = [400, 100, 1]
 lattice_type = "D2Q9"
-tau = 0.99
-nt = 40000
+tau = 0.532
+nt = 27000
 save_interval = 200
+skip_interval = 18000
 init_type = "standard"
 
 [boundary_conditions]
@@ -25,14 +33,15 @@ left = "velocity-inlet"
 right = "outlet"
 
 [boundary_conditions.left_velocity_inlet]
-u0 = 0.04
+u0 = 0.08
 
 [obstacle]
 center_x = 80
-center_y = 50
+center_y = 51
 radius = 10
 
 [output]
 results_dir = "~/TUD_LBM_data/example_results"
-save_fields = ["rho", "u"]
-plot_fields = ["density", "velocity"]
+save_fields = ["u"]
+plot_fields = ["velocity", "vorticity"]
+animate_fields = ["velocity", "vorticity"]

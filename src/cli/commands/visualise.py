@@ -305,6 +305,12 @@ def _figure_output_dir(builder: FigureBuilder, ctx: VisualiseContext, saved: lis
     help="Frames per second for the output video.",
 )
 @click.option(
+    "--dpi",
+    default=150,
+    show_default=True,
+    help="Resolution of each frame; lower it to shrink a GIF (80 suits a README).",
+)
+@click.option(
     "--fields",
     default=None,
     help="Comma-separated operator names to activate — skips the interactive prompt.",
@@ -322,6 +328,7 @@ def animate(
     run_dir: str,
     output: str | None,
     fps: int,
+    dpi: int,
     fields: str | None,
     no_prompt: bool,
     overlay: str | None,
@@ -367,7 +374,7 @@ def animate(
     _print_overlays(overlays)
     console.print()
 
-    animator = Animator(config=config, run_dir=run_dir, fps=fps, fields=selected, overlays=overlays)
+    animator = Animator(config=config, run_dir=run_dir, fps=fps, dpi=dpi, fields=selected, overlays=overlays)
     output_path = animator.create(output)
 
     console.print(f"[bold green]Animation saved to:[/bold green] {output_path}")

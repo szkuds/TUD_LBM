@@ -253,23 +253,23 @@ class ObstacleOperator(Protocol):
 
     Unlike :class:`BoundaryOperator`, which applies whole-edge BC rules,
     this operator reverses populations at an arbitrary per-cell mask of
-    solid (obstacle) nodes. Applied post-streaming, pre-edge-BC.
+    solid (obstacle) nodes. Applied post-collision, pre-streaming.
 
     Signature::
 
-        def apply_obstacle(f_stream, f_col) -> f_stream
+        def apply_obstacle(f_col, f_pre) -> f_col
     """
 
     def __call__(
         self,
-        f_stream: jnp.ndarray,
         f_col: jnp.ndarray,
+        f_pre: jnp.ndarray,
     ) -> jnp.ndarray:
         """Apply bounce-back at masked interior solid cells.
 
         Args:
-            f_stream: Post-streaming populations.
             f_col: Post-collision populations.
+            f_pre: Pre-collision populations.
 
         Returns:
             Populations with obstacle bounce-back applied.

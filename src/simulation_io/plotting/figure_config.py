@@ -55,6 +55,8 @@ class FigureStyle:
     colormap_force: str = "cividis"
     # Diverging: the bulk pressure straddles zero across a diffuse interface.
     colormap_pressure: str = "coolwarm"
+    # Diverging and zero-centred: the sign of the vorticity is the rotation sense.
+    colormap_vorticity: str = "RdBu_r"
 
     quiver_color: str = "white"
     quiver_alpha: float = 0.7

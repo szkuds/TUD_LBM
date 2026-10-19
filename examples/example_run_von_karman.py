@@ -1,11 +1,27 @@
-"""Von Karman vortex street example_for_test using the functional API.
+"""Von Karman vortex street: channel flow past a cylinder at Re ~ 100.
 
-Single-phase channel flow past a circular cylinder obstacle, with a
-velocity-inlet on the left and an outlet on the right. Streaming I/O mode —
-snapshots are saved to disk at each save_interval via jax.debug.callback,
-then plotted post-run.
+Single-phase D2Q9 flow enters on the left through a parabolic velocity inlet,
+leaves on the right through a zero-gradient outlet, and sheds an alternating
+vortex street behind a circular cylinder. Configuration is loaded from
+``config_von_karman.toml``.
 
-Configuration is loaded from config_von_karman.toml.
+Run it with::
+
+    python examples/example_run_von_karman.py
+
+It produces, inside the timestamped run directory it prints:
+
+* ``data/timestep_*.npz``: the saved snapshots (streamed to disk while the
+  ``lax.scan`` loop runs);
+* ``plots/snapshots/timestep_<nt>.png``: velocity magnitude above vorticity at
+  the final step;
+* ``plots/von_karman.gif``: the same two panels animated over four shedding
+  periods of the developed street, looping without a seam.
+
+The same run is available from the command line::
+
+    tud-lbm run examples/config_von_karman.toml
+    tud-lbm animate <run_dir> --fields velocity,vorticity --dpi 80 --output anim.gif
 """
 
 from pathlib import Path
@@ -14,19 +30,27 @@ from src.config.jax_config import configure_jax
 from src.pipeline.runner import init_state
 from src.pipeline.runner import run
 from src.pipeline.setup import build_setup
+from src.simulation_io.plotting.animator import Animator
 from src.simulation_io.plotting.figure_builder import FigureBuilder
 from src.simulation_io.save import SimulationIO
 
 # Configure JAX (64-bit precision, JIT enabled).
 configure_jax()
 
+#: GIF settings: 10 fps plays one shedding period (~11 frames) in about a second,
+#: and 80 dpi keeps the file small enough to embed in a README (~4-5 MB).
+GIF_FPS = 10
+GIF_DPI = 80
 
-def run_von_karman():
-    """Run the Von Karman vortex street simulation and plot the result."""
-    # Load configuration from TOML file.
+
+def run_von_karman() -> Path:
+    """Run the vortex street, plot the final step and animate it.
+
+    Returns:
+        Path to the run directory.
+    """
     config_path = Path(__file__).parent / "config_von_karman.toml"
-    adapter = TomlAdapter()
-    config = adapter.load(str(config_path))
+    config = TomlAdapter().load(str(config_path))
 
     setup = build_setup(config)
     state = init_state(setup)
@@ -39,21 +63,27 @@ def run_von_karman():
         output_format=config.output_format,
     )
 
-    # Stream snapshots to disk while the lax.scan loop runs.
-    final_state, _ = run(
+    # Stream snapshots to disk while the lax.scan loop runs; nothing before
+    # skip_interval is saved, so only the developed street is kept.
+    run(
         setup,
         state,
         nt=config.nt,
         save_interval=config.save_interval,
+        skip_interval=config.skip_interval,
         io_handler=io,
         save_fields=tuple(config.save_fields) if config.save_fields else None,
     )
 
-    # Generate one PNG per saved snapshot.
     builder = FigureBuilder(config=config, run_dir=io.run_dir)
-    builder.build_all()
+    _, last_snapshot = builder.sorted_timed_files()[-1]
+    still = builder.build_single(last_snapshot)
+    print(f"Final snapshot: {still}")
 
-    return final_state
+    gif = Animator(config, io.run_dir, fps=GIF_FPS, dpi=GIF_DPI).create(builder.plot_dir / "von_karman.gif")
+    print(f"Animation:      {gif}")
+
+    return Path(io.run_dir)
 
 
 if __name__ == "__main__":

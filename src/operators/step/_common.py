@@ -155,12 +155,12 @@ def _apply_common_step(
     else:
         f_col = setup.collision_fn(state.f, feq, setup.tau)
 
+    # 4b. Interior obstacle bounce-back: solid cells reverse instead of colliding
+    if setup.obstacle_fn is not None:
+        f_col = setup.obstacle_fn(f_col, state.f)
+
     # 5. Streaming
     f_stream = setup.streaming_fn(f_col, lattice)
-
-    # 5b. Interior obstacle bounce-back (before edge BCs)
-    if setup.obstacle_fn is not None:
-        f_stream = setup.obstacle_fn(f_stream, f_col)
 
     # 6. Boundary conditions
     f_bc = setup.bc_fn(f_stream, f_col)
