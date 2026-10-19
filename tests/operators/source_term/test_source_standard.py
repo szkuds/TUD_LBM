@@ -1,6 +1,6 @@
-"""The ``"guo"`` source term and the pressure of the equilibrium it pairs with.
+"""The ``"standard_source"`` source term and the pressure of the equilibrium it pairs with.
 
-A single-phase run takes ``"standard_equilibrium"`` with ``"guo"``. The source
+A single-phase run takes ``"standard_equilibrium"`` with ``"standard_source"``. The source
 must add the force to the momentum and nothing to the mass, and the equilibrium
 must carry the isotropic pressure ``cs^2 * rho`` that the ``"wb"`` one omits.
 """
@@ -35,10 +35,10 @@ def _zero_gradient(grid: jnp.ndarray, wetting: object = None) -> jnp.ndarray:
     return jnp.zeros((*grid.shape[:-1], 2))
 
 
-def test_guo_source_adds_the_force_to_the_momentum_and_no_mass(lattice, fields):
+def test_standard_source_adds_the_force_to_the_momentum_and_no_mass(lattice, fields):
     rho, u, force = fields
 
-    source = build_source_fn("guo")(rho, u, force, lattice, gradient=_zero_gradient)
+    source = build_source_fn("standard_source")(rho, u, force, lattice, gradient=_zero_gradient)
 
     np.testing.assert_allclose(np.asarray(jnp.sum(source, axis=-2)), 0.0, atol=1e-15)
     np.testing.assert_allclose(
@@ -46,13 +46,13 @@ def test_guo_source_adds_the_force_to_the_momentum_and_no_mass(lattice, fields):
     )
 
 
-def test_guo_source_is_the_wb_source_without_its_density_gradient(lattice, fields):
+def test_standard_source_is_the_wb_source_without_its_density_gradient(lattice, fields):
     rho, u, force = fields
 
-    guo = build_source_fn("guo")(rho, u, force, lattice, gradient=_zero_gradient)
+    standard = build_source_fn("standard_source")(rho, u, force, lattice, gradient=_zero_gradient)
     wb = build_source_fn("wb")(rho, u, force, lattice, gradient=_zero_gradient)
 
-    np.testing.assert_allclose(np.asarray(guo), np.asarray(wb), atol=1e-15)
+    np.testing.assert_allclose(np.asarray(standard), np.asarray(wb), atol=1e-15)
 
 
 @pytest.mark.parametrize(("scheme", "pressure"), [("standard_equilibrium", CS2), ("wb", 0.0)])

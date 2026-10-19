@@ -151,7 +151,7 @@ class SimulationSetup(NamedTuple):
 def _build_equilibrium_and_source(config: SimulationConfig) -> tuple[EquilibriumOperator, SourceTermOperator]:
     """The equilibrium and source term that belong together for this run.
 
-    A single-phase run takes the ``"standard_equilibrium"`` / ``"guo"`` pair: that
+    A single-phase run takes the ``"standard_equilibrium"`` / ``"standard_source"`` pair: that
     equilibrium carries the isotropic pressure ``cs^2 * rho`` in its second moment.
     The ``wb`` equilibrium leaves it out, because a multiphase run supplies its
     pressure as the force ``-rho * grad(mu)``; a single-phase run has no such
@@ -161,7 +161,7 @@ def _build_equilibrium_and_source(config: SimulationConfig) -> tuple[Equilibrium
     from src.operators.equilibrium import build_equilibrium_fn
 
     if "multiphase" not in config.sim_type:
-        return build_equilibrium_fn("standard_equilibrium"), build_source_fn("guo")
+        return build_equilibrium_fn("standard_equilibrium"), build_source_fn("standard_source")
     return build_equilibrium_fn("wb"), build_source_fn("wb")
 
 

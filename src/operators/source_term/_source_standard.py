@@ -1,4 +1,4 @@
-r"""Guo forcing source term — pure function.
+r"""Standard source term (Guo forcing) — pure function.
 
 The source term that pairs with the ``"standard_equilibrium"`` equilibrium of a
 single-phase run:
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from src.operators.protocols import DifferentialOperator
 
 
-@source_term_operator(name="guo")
+@source_term_operator(name="standard_source")
 def compute_source(
     rho: jnp.ndarray,  # noqa: ARG001  # required by SourceTermOperator protocol
     u: jnp.ndarray,
@@ -38,7 +38,7 @@ def compute_source(
     *,
     gradient: DifferentialOperator,  # noqa: ARG001  # required by SourceTermOperator protocol
 ) -> jnp.ndarray:
-    """Compute the Guo forcing source term.
+    """Compute the standard (Guo) forcing source term.
 
     Args:
         rho: Density field (unused), shape ``(nx, ny, nz, 1, 1)``.

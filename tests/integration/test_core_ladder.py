@@ -13,7 +13,7 @@ collision -> streaming -> bounce-back) from multiphase, wetting and hysteresis:
   gravity. The steady state is hydrostatic,
   ``rho ∝ exp(g_vec . x / cs2)``, at rest, with mass conserved.
 
-A single-phase run takes the ``standard_equilibrium`` / ``guo`` pair, whose
+A single-phase run takes the ``standard_equilibrium`` / ``standard_source`` pair, whose
 second moment carries the pressure ``cs2*rho`` that balances a force normal to
 a wall. With the pressureless ``wb`` equilibrium the last two rungs fail: the
 fluid piles up against the wall indefinitely.

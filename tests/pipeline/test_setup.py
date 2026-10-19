@@ -126,7 +126,7 @@ def test_build_setup_grid_shape_stored_correctly() -> None:
 @pytest.mark.parametrize(
     ("cfg_kwargs", "equilibrium", "source"),
     [
-        pytest.param({}, "standard_equilibrium", "guo", id="single_phase"),
+        pytest.param({}, "standard_equilibrium", "standard_source", id="single_phase"),
         pytest.param(
             {"sim_type": "multiphase", "eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33}
             | {"interface_width": 4},
