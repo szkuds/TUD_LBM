@@ -1,0 +1,45 @@
+# Case A — bandwidth-bound LBM kernel.
+#
+# Plain multiphase: no wetting, no hysteresis, all-periodic boundaries. Dense
+# stencil work, no data-dependent control flow, no host interaction — the best
+# case for a GPU. If a GPU does not win here it will not win anywhere.
+#
+# Sweep the grid to find the crossover point where the GPU overtakes the CPU.
+# On DelftBlue, both backends and every size in one command:
+#
+#   scripts/db_benchmark.sh --steps 200 --scales "1 2 4 8" \
+#       .claude/benchmarks/bench_kernel.toml
+#
+# Locally, one size at a time:
+#
+#   tud-lbm benchmark .claude/benchmarks/bench_kernel.toml \
+#       --override grid_shape=[128,128]  --label kernel_128
+#
+# `nt` is irrelevant here — `--steps` sets the measured scan length.
+
+[simulation_type]
+simulation_name = "bench_kernel"
+type = "multiphase"
+grid_shape = [256, 256]
+lattice_type = "D2Q9"
+tau = 0.99
+nt = 1000
+init_type = "multiphase_bubbles"
+
+[initialisation]
+centres = [[0.5, 0.5]]
+radii = [0.3]
+
+[multiphase]
+kappa = 0.017
+rho_l = 1.0
+rho_v = 0.33
+interface_width = 5
+eos = "double-well"
+
+[gravity_force]
+force_g = 0
+inclination_angle_deg = 90
+
+[output]
+save_fields = ["rho", "u"]
