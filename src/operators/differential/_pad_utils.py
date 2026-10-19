@@ -11,24 +11,10 @@ The ordering convention is ``(y_end, y_start, x_end, x_start)`` — that is,
 ``_laplacian.py``.
 
 **Both ghost layers of an axis are derived from that axis's original extent.**
-The predecessor padded the two sides in sequence, so the start-side ``jnp.pad``
-ran against an array already extended on the end side. On a fully periodic axis
-the end pad had appended a copy of row 0, so ``mode="wrap"`` on the start side
-copied *that* — the start ghost became row 0 instead of row ``n - 1``, and the
-field the stencil saw was not periodic at all but carried a zero-gradient seam
-at index 0.
-
-That seam is pinned to the array origin, so it breaks translation invariance
-along the axis: measured on a 201-cell periodic wall, a bubble held its centroid
-at ``100.00000`` for 2000 steps while *its own 40-cell roll* drifted to
-``139.147``, and ``gradient``/``laplacian`` failed to commute with ``jnp.roll``
-by 8.0e-04 / 1.8e-03. In a periodic domain there is no restoring force for
-translation, so a spurious seam force integrates without bound — the same
-argument the D4 alignment invariant rests on.
-
-Only a **fully periodic** axis was affected: ``bounce-back``, ``symmetry`` and
-``wetting`` all resolve to ``"edge"``, and an edge pad after an edge pad happens
-to be correct.
+Padding the sides in sequence would let ``mode="wrap"`` on the start side copy
+the end side's freshly appended row 0 instead of row ``n - 1``: a zero-gradient
+seam pinned to the array origin, which breaks translation invariance on a fully
+periodic axis (``tests/pipeline/test_translation_invariance.py``).
 """
 
 from __future__ import annotations

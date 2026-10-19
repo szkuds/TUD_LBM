@@ -346,7 +346,7 @@ wetting ghost-cell correction for a padded density array.
     does it target that bound and its anchor follow the line.  Configured by
     ``[hysteresis]`` (``ca_advancing``, ``ca_receding``, ``learning_rate``,
     ``learning_rate_above``, ``max_iterations``, ``max_iterations_above``,
-    ``loss_tol``, ``trial_steps``, ``carry_inactive_params``); any other key is
+    ``loss_tol``, ``trial_steps``, ``saturation_gap``); any other key is
     rejected.
 
 ``chemical_step_hysteresis``

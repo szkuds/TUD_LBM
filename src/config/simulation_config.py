@@ -38,8 +38,6 @@ from src.config.init_field import load_init_wetting
 from src.config.init_field import measure_init_phase_densities
 from src.config.multiphase_params import MultiphaseParams
 from src.config.obstacle_mask import build_obstacle_mask
-from src.config.viscosity_params import ViscosityParams
-from src.config.viscosity_params import build_viscosity_params
 from src.config.wetting_defaults import NEUTRAL_WETTING_CONFIG
 from src.config.wetting_defaults import resolve_wetting_defaults
 
@@ -107,7 +105,6 @@ _HYSTERESIS_DEFAULTS: dict[str, Any] = {
     "max_iterations": 50,
     "loss_tol": 1e-4,
     "trial_steps": 2,
-    "carry_inactive_params": False,
     # Chemical-step runs: degrees from its bound past which a line on (or held
     # at) the post surface skips the optimiser and takes its knob's clamp limit.
     "saturation_gap": 1.0,
@@ -137,70 +134,13 @@ def _validate_nonnegative(value: object, name: str) -> None:
         raise ValueError(msg)
 
 
-def _valid_collision_schemes() -> set[str]:
-    """Get valid collision scheme names. Returns empty set if operators not loaded."""
-    try:
-        import src.operators.collision  # noqa: F401
-        from src.registry import get_operator_names
+def _registered_names(package: str, kind: str) -> set[str]:
+    """Names registered under *kind*, after importing *package* for its registration side effect."""
+    import importlib
+    from src.registry import get_operator_names
 
-        return get_operator_names("collision_models")
-    except (ImportError, KeyError):
-        return set()  # Operators not yet loaded - skip validation
-
-
-def _valid_eos() -> set[str]:
-    """Get valid EOS names. Returns empty set if operators not loaded."""
-    try:
-        import src.operators.macroscopic.eos  # noqa: F401
-        from src.registry import get_operator_names
-
-        return get_operator_names("eos")
-    except (ImportError, KeyError):
-        return set()  # Operators not yet loaded - skip validation
-
-
-def _valid_lattices() -> set[str]:
-    """Get valid lattice types. Returns empty set if operators not loaded."""
-    try:
-        import src.lattice.lattice  # noqa: F401
-        from src.registry import get_operator_names
-
-        return get_operator_names("lattice")
-    except (ImportError, KeyError):
-        return set()  # Operators not yet loaded - skip validation
-
-
-def _valid_boundary_conditions() -> set[str]:
-    """Get valid boundary-condition names. Returns empty set if operators not loaded."""
-    try:
-        import src.operators.boundary  # noqa: F401
-        from src.registry import get_operator_names
-
-        return get_operator_names("boundary_condition")
-    except (ImportError, KeyError):
-        return set()  # Operators not yet loaded - skip validation
-
-
-def _valid_init_types() -> set[str]:
-    """Get valid init_type names. Returns empty set if operators not loaded."""
-    try:
-        import src.operators.initialise  # noqa: F401
-        from src.registry import get_operator_names
-
-        return get_operator_names("initialise")
-    except (ImportError, KeyError):
-        return set()  # Operators not yet loaded - skip validation
-
-
-def _valid_obstacle_shapes() -> set[str]:
-    """Get valid obstacle shape names. Returns empty set if operators not loaded."""
-    try:
-        import src.operators.obstacle  # noqa: F401
-        from src.registry import get_operator_names
-
-        return get_operator_names("obstacle")
-    except (ImportError, KeyError):
-        return set()  # Operators not yet loaded - skip validation
+    importlib.import_module(package)
+    return get_operator_names(kind)
 
 
 class _ForceSchema(NamedTuple):
@@ -290,9 +230,6 @@ class SimulationConfig:
     gravity_masked_force: dict[str, Any] | None = array_field(
         default=None, section="gravity_masked_force", nested_sweepable=True
     )
-    gravity_referenced_force: dict[str, Any] | None = array_field(
-        default=None, section="gravity_referenced_force", nested_sweepable=True
-    )
     # ── Initialisation ───────────────────────────────────────────
     init_type: str = "standard"
     init_dir: str | None = None
@@ -327,13 +264,6 @@ class SimulationConfig:
     b_eos: float | None = array_field(default=None, section="multiphase")
     r_eos: float | None = array_field(default=None, section="multiphase")
     t_eos: float | None = array_field(default=None, section="multiphase")
-    # Shear relaxation time decoupled from the viscosity (Zhang, Guo & Wang 2022):
-    # tau keeps setting the liquid viscosity, lambda_v the MRT/BGK shear rate, and
-    # the equilibrium's viscous-stress term A*S makes up the difference.
-    lambda_v: float | None = array_field(default=None, section="multiphase")
-    # Gas viscosity nu_v = cs2*(tau_gas - 0.5); the viscosity is interpolated
-    # linearly in rho between the phases. Unset means tau (uniform viscosity).
-    tau_gas: float | None = array_field(default=None, section="multiphase")
 
     # ── Extra / extensible ───────────────────────────────────────
     extra: dict[str, Any] = field(default_factory=dict, metadata={CONFIG_SECTION: "extra"})
@@ -368,13 +298,12 @@ class SimulationConfig:
         self._couple_mrt_shear_to_tau()
 
     def _couple_mrt_shear_to_tau(self) -> None:
-        """Rewrite the shear entries of ``k_diag`` to ``1/relaxation_time``.
+        """Rewrite the shear entries of ``k_diag`` to ``1/tau``.
 
         The MRT shear moments set the kinematic viscosity, so left free they
         would decouple the run from ``nu = cs2*(tau - 0.5)`` — the viscosity
         every reported ``Oh``, ``La``, ``Re`` and ``Ar`` is derived from.
-        With ``lambda_v`` set the shear rate is ``1/lambda_v`` and the
-        viscous-stress term restores ``nu``. Deriving here rather than inside
+        Deriving here rather than inside
         the collision operator keeps a saved config truthful about the rates
         its run actually used.
         """
@@ -383,7 +312,7 @@ class SimulationConfig:
 
         from src.operators.collision._mrt import couple_shear_to_tau
 
-        object.__setattr__(self, "k_diag", couple_shear_to_tau(self.k_diag, self.relaxation_time))
+        object.__setattr__(self, "k_diag", couple_shear_to_tau(self.k_diag, float(self.tau)))
 
     def _apply_defaults(self) -> None:
         self._apply_force_defaults()
@@ -455,7 +384,6 @@ class SimulationConfig:
         self._validate_obstacle()
         self._validate_hysteresis()
         self._validate_chemical_step()
-        self._validate_viscosity()
 
     def _validate_hysteresis(self) -> None:
         """Reject ``[hysteresis]`` keys the optimiser does not read.
@@ -523,7 +451,7 @@ class SimulationConfig:
             return
 
         self.obstacle_config.setdefault("shape", "circle")
-        valid_shapes = _valid_obstacle_shapes()
+        valid_shapes = _registered_names("src.operators.obstacle", "obstacle")
         if self.obstacle_config["shape"] not in valid_shapes:
             msg = f"obstacle shape must be one of {sorted(valid_shapes)}, got '{self.obstacle_config['shape']}'"
             raise ValueError(msg)
@@ -560,7 +488,7 @@ class SimulationConfig:
     def _validate_boundary_conditions(self) -> None:
         """Reject an unregistered BC type, and a parameter section no edge's BC reads."""
         assert self.bc_config is not None  # noqa: S101 - guaranteed by _apply_defaults
-        valid_bcs = _valid_boundary_conditions()
+        valid_bcs = _registered_names("src.operators.boundary", "boundary_condition")
         edges = lattice_edges(self.lattice_type)
         for edge in OUT_OF_PLANE_EDGES:
             if edge not in edges and edge in self.bc_config:
@@ -588,8 +516,8 @@ class SimulationConfig:
 
     def _validate_lattice(self) -> None:
         """Validate lattice_type is supported."""
-        if self.lattice_type not in _valid_lattices():
-            valid = _valid_lattices()
+        valid = _registered_names("src.lattice.lattice", "lattice")
+        if self.lattice_type not in valid:
             msg = f"lattice_type must be one of {valid}, got '{self.lattice_type}'"
             raise ValueError(msg)
 
@@ -598,34 +526,6 @@ class SimulationConfig:
         if self.tau <= MIN_TAU_VALUE:
             msg = f"tau must be > {MIN_TAU_VALUE} for stability, got {self.tau}"
             raise ValueError(msg)
-
-    def _validate_viscosity(self) -> None:
-        """Validate ``lambda_v`` / ``tau_gas`` and the positivity bound on ``A``.
-
-        The viscous-stress parameter ``A = lambda_v - 1/2 - nu/cs2`` needs the
-        density interpolation between the phases, so it is multiphase-only.
-        ``|A| < lambda_v - 1/2`` keeps the scheme stable (Zhang, Guo & Wang 2022);
-        ``A`` is linear in ``rho``, so checking both phase endpoints bounds it.
-        """
-        if self.lambda_v is None and self.tau_gas is None:
-            return
-        if not self.is_multiphase:
-            msg = "lambda_v and tau_gas require a multiphase sim_type"
-            raise ValueError(msg)
-        for name in ("lambda_v", "tau_gas"):
-            value = getattr(self, name)
-            if value is not None and value <= MIN_TAU_VALUE:
-                msg = f"{name} must be > {MIN_TAU_VALUE}, got {value}"
-                raise ValueError(msg)
-        margin = self.relaxation_time - MIN_TAU_VALUE
-        for name, tau_phase in (("tau", self.tau), ("tau_gas", self.tau_gas or self.tau)):
-            a_phase = self.relaxation_time - tau_phase
-            if abs(a_phase) >= margin:
-                msg = (
-                    f"|A| = |lambda_v - {name}| = {abs(a_phase):.6g} must be < lambda_v - 0.5 = {margin:.6g}; "
-                    f"raise lambda_v or bring {name} closer to it"
-                )
-                raise ValueError(msg)
 
     def _validate_time_steps(self) -> None:
         """Validate time stepping parameters."""
@@ -637,7 +537,7 @@ class SimulationConfig:
 
     def _validate_collision(self) -> None:
         """Validate collision scheme and parameters."""
-        valid_schemes = _valid_collision_schemes()
+        valid_schemes = _registered_names("src.operators.collision", "collision_models")
         if self.collision_scheme not in valid_schemes:
             msg = f"collision_scheme must be one of {sorted(valid_schemes)}, got '{self.collision_scheme}'"
             raise ValueError(msg)
@@ -648,7 +548,7 @@ class SimulationConfig:
 
     def _validate_init(self) -> None:
         """Validate initialisation parameters."""
-        valid_init_types = _valid_init_types()
+        valid_init_types = _registered_names("src.operators.initialise", "initialise")
         if self.init_type not in valid_init_types:
             msg = f"init_type must be one of {sorted(valid_init_types)}, got '{self.init_type}'"
             raise ValueError(msg)
@@ -680,12 +580,12 @@ class SimulationConfig:
         _validate_positive(self.kappa, "kappa")
         _validate_positive(self.interface_width, "interface_width")
 
-        valid_eos = _valid_eos()
+        valid_eos = _registered_names("src.operators.macroscopic.eos", "eos")
         if self.eos not in valid_eos:
             msg = f"eos must be one of {sorted(valid_eos)}, got '{self.eos}'"
             raise ValueError(msg)
 
-        if self.eos in {"carnahan-starling", "van-der-waals"}:
+        if self.eos == "carnahan-starling":
             for name in ("a_eos", "b_eos", "r_eos", "t_eos"):
                 if getattr(self, name) is None:
                     msg = f"'{name}' is required when eos = '{self.eos}'"
@@ -728,31 +628,6 @@ class SimulationConfig:
             b_eos=self.b_eos,
             r_eos=self.r_eos,
             t_eos=self.t_eos,
-        )
-
-    @property
-    def relaxation_time(self) -> float:
-        """Relaxation time of the shear moments: ``lambda_v`` when set, else ``tau``."""
-        return float(self.tau if self.lambda_v is None else self.lambda_v)
-
-    @property
-    def viscosity_params(self) -> ViscosityParams | None:
-        """The viscous-stress parameters, or ``None`` when the term is off.
-
-        Off unless ``lambda_v`` or ``tau_gas`` is configured; with neither the
-        shear rate is ``1/tau`` and ``A`` is identically zero.
-        ``_validate_viscosity`` has already restricted these to multiphase runs.
-        """
-        if self.lambda_v is None and self.tau_gas is None:
-            return None
-        assert self.rho_l is not None  # noqa: S101 - guaranteed by _validate_multiphase
-        assert self.rho_v is not None  # noqa: S101 - guaranteed by _validate_multiphase
-        return build_viscosity_params(
-            relaxation_time=self.relaxation_time,
-            tau_liquid=float(self.tau),
-            tau_gas=float(self.tau if self.tau_gas is None else self.tau_gas),
-            rho_l=float(self.rho_l),
-            rho_v=float(self.rho_v),
         )
 
     @property

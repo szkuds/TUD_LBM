@@ -20,12 +20,6 @@ if TYPE_CHECKING:
 _SIGMA = 0.0123
 
 
-@pytest.fixture(autouse=True)
-def _isolate_field_cache(tmp_path, monkeypatch):
-    """Keep the density fields a collection stores out of the real data root."""
-    monkeypatch.setattr(st, "_FIELDS_CACHE_DIR", tmp_path / "field_cache")
-
-
 def _config(**overrides: object) -> SimulationConfig:
     params: dict[str, object] = {
         "sim_type": "multiphase",
@@ -194,7 +188,7 @@ def test_stage_collect_refresh_round_trip(runner: CliRunner, tmp_path: Path):
 
     # The density fields are machine-local and feed only the snapshot figures.
     # Refresh as a machine that pulled the cache from git would: without them.
-    shutil.rmtree(tmp_path / "field_cache")
+    shutil.rmtree(st._FIELDS_CACHE_DIR)
 
     refreshed = runner.invoke(cli, ["calibration", "refresh", str(results)])
     assert refreshed.exit_code == 0, refreshed.output

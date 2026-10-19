@@ -903,71 +903,37 @@ class TestUpdateWettingStateBubble:
         assert float(new_wetting.phi_right) != 1.0
         assert float(new_wetting.d_rho_right) == 0.0
 
-    def test_above_window_selects_d_rho_for_a_bubble(self, monkeypatch):
-        """Above the window the reported angle must come down.
-
-        For a bubble that means a *less* liquid-wetting wall, i.e. ``d_rho`` —
-        the opposite of the droplet case below.
-        """
+    @pytest.mark.parametrize(
+        ("topology", "ca", "expected"),
+        [
+            # Above the window the reported angle must come down: phi for a
+            # droplet, d_rho (a less liquid-wetting wall) for a bubble.
+            ("bubble", 130.0, "d_rho"),
+            ("droplet", 130.0, "phi"),
+            # Below the window it must rise, so the selection inverts.
+            ("bubble", 40.0, "phi"),
+            ("droplet", 40.0, "d_rho"),
+        ],
+    )
+    def test_out_of_window_knob_follows_the_topology(self, monkeypatch, topology, ca, expected):
         import src.operators.wetting._hysteresis as hysteresis_module
 
         setup = self._make_setup()
-        rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
-        self._pin_measurements(monkeypatch, hysteresis_module, 130.0)
+        builder = _bubble_rho if topology == "bubble" else _droplet_rho
+        rho = builder(NX, NY, NZ, RHO_L, RHO_V)
+        self._pin_measurements(monkeypatch, hysteresis_module, ca)
 
         new_wetting = hysteresis_module.update_wetting_state(
             self._make_wetting_state(), rho, setup, trial_step_fn=lambda p: (rho, rho)
         )
-        self._assert_d_rho_selected(new_wetting)
-
-    def test_above_window_selects_phi_for_a_droplet(self, monkeypatch):
-        """The droplet counterpart, kept as the mirror."""
-        import src.operators.wetting._hysteresis as hysteresis_module
-
-        setup = self._make_setup()
-        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
-        self._pin_measurements(monkeypatch, hysteresis_module, 130.0)
-
-        new_wetting = hysteresis_module.update_wetting_state(
-            self._make_wetting_state(), rho, setup, trial_step_fn=lambda p: (rho, rho)
-        )
-        self._assert_phi_selected(new_wetting)
-
-    def test_below_window_selects_phi_for_a_bubble(self, monkeypatch):
-        """Below the window the reported angle must rise.
-
-        For a bubble that means a *more* liquid-wetting wall, i.e. ``phi``.
-        """
-        import src.operators.wetting._hysteresis as hysteresis_module
-
-        setup = self._make_setup()
-        rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
-        self._pin_measurements(monkeypatch, hysteresis_module, 40.0)
-
-        new_wetting = hysteresis_module.update_wetting_state(
-            self._make_wetting_state(), rho, setup, trial_step_fn=lambda p: (rho, rho)
-        )
-        self._assert_phi_selected(new_wetting)
-
-    def test_below_window_selects_d_rho_for_a_droplet(self, monkeypatch):
-        import src.operators.wetting._hysteresis as hysteresis_module
-
-        setup = self._make_setup()
-        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
-        self._pin_measurements(monkeypatch, hysteresis_module, 40.0)
-
-        new_wetting = hysteresis_module.update_wetting_state(
-            self._make_wetting_state(), rho, setup, trial_step_fn=lambda p: (rho, rho)
-        )
-        self._assert_d_rho_selected(new_wetting)
+        (self._assert_phi_selected if expected == "phi" else self._assert_d_rho_selected)(new_wetting)
 
     @pytest.mark.parametrize("dispersed_expanding", [True, False])
     def test_in_window_knob_inverts_with_topology(self, monkeypatch, dispersed_expanding):
         """In-window pinning resists whichever way the **liquid** is moving.
 
-        ``_phi_is_active`` takes the drift already converted to the liquid frame
-        by :func:`_liquid_is_advancing`, so its pinned branch carries no
-        further inversion. The selection nonetheless flips between topologies,
+        ``_phi_is_active`` takes the drift already converted to the liquid frame,
+        so its pinned branch carries no further inversion. The selection nonetheless flips between topologies,
         because one contact-line motion is the liquid advancing for a droplet
         and the liquid receding for a bubble.
         """

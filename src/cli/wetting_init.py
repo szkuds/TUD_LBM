@@ -16,6 +16,7 @@ from src.cli.display import _display_full_overview
 from src.cli.display import _print_dry_run_message
 from src.cli.overrides import _apply_overrides
 from src.cli.overrides import confirm_or_override
+from src.config.wetting_defaults import NEUTRAL_WETTING_CONFIG
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
@@ -40,24 +41,17 @@ _EQUILIBRIUM_REL_TOL = 0.01
 #: does not exist, so ``--overview`` degrades rather than raising.
 _DRY_RUN_SNAPSHOT = "<Phase 1 final snapshot>"
 
-_WETTING_PARAM_DEFAULTS: dict[str, float] = {
-    "phi_left": 1.0,
-    "phi_right": 1.0,
-    "d_rho_left": 0.0,
-    "d_rho_right": 0.0,
-}
-
 
 def _prompt_wetting_params(base_raw: dict[str, Any], *, no_prompt: bool) -> dict[str, float]:
     """Return wetting params, reading from config and only prompting for missing ones."""
     from_config: dict[str, Any] = base_raw.get("wetting_config") or {}
-    missing = [k for k in _WETTING_PARAM_DEFAULTS if k not in from_config]
+    missing = [k for k in NEUTRAL_WETTING_CONFIG if k not in from_config]
 
     if missing and not no_prompt:
         console.print("[cyan]Wetting init - enter missing wetting boundary parameters:[/cyan]")
 
     params: dict[str, float] = {}
-    for key, default in _WETTING_PARAM_DEFAULTS.items():
+    for key, default in NEUTRAL_WETTING_CONFIG.items():
         if key in from_config:
             params[key] = float(from_config[key])
         elif no_prompt:

@@ -211,9 +211,6 @@ class TestBuildWettingGradient:
 
         return build_wetting_gradient(lattice.w, lattice.c, pad, bc_config, rho_l=RHO_L, rho_v=RHO_V, default=default)
 
-    def test_returns_callable(self, lattice, periodic_pad, wetting_params):
-        assert callable(self._build(lattice, periodic_pad, wetting_params))
-
     def test_output_shape(self, lattice, periodic_pad, wetting_params, const_field):
         fn = self._build(lattice, periodic_pad, wetting_params)
         assert fn(const_field, wetting_params).shape == (NX, NY, NZ, 1, 2)
@@ -227,20 +224,6 @@ class TestBuildWettingGradient:
         wetting_fn = self._build(lattice, _WETTING_PAD, wetting_params, _WETTING_BC)
 
         assert not jnp.allclose(plain, wetting_fn(rho, wetting_params), atol=1e-9)
-
-    def test_deterministic_result(self, lattice, periodic_pad, wetting_params, const_field):
-        fn = self._build(lattice, periodic_pad, wetting_params)
-        out = fn(const_field, wetting_params)
-        out2 = fn(const_field, wetting_params)
-        np.testing.assert_array_equal(np.array(out), np.array(out2))
-
-    def test_chemical_step_variant(self, lattice, periodic_pad, const_field, wetting_params):
-        """The operator accepts explicit step-selected per-side wetting params."""
-        # Chemical-step side selection happens in hysteresis logic; the
-        # differential operator consumes explicit per-side values.
-        fn = self._build(lattice, periodic_pad, wetting_params)
-        out = fn(const_field, _wetting(PHI, 1.4, 0.03, 0.07))
-        assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_without_wetting_uses_build_time_default(self, lattice):
         """``op(grid)`` applies the default; an explicit argument overrides it."""
@@ -368,41 +351,6 @@ class TestWettingUtil:
 
     # --- Wetting modification ---------------------------------------------
 
-    def test_modification_only_touches_the_contact_line_regions(self):
-        """Only cells inside one of the two contact-line regions change."""
-        from src.operators.wetting._wetting_modification import _apply_wetting_modification
-        from src.operators.wetting._wetting_modification import wetting_regions
-
-        edge = self._wall_edge_profile(64, RHO_L, RHO_V, phase_center="liquid")
-        left, right = wetting_regions(edge, RHO_L, RHO_V)
-        result = _apply_wetting_modification(edge, RHO_L, RHO_V, 1.3, 1.3, D_RHO, D_RHO)
-
-        region = np.asarray(left.mask | right.mask)
-        assert region.any()
-        changed = ~np.isclose(np.asarray(edge), np.asarray(result))
-        np.testing.assert_array_equal(changed & ~region, np.zeros_like(changed))
-        np.testing.assert_array_equal(np.asarray(result)[~region], np.asarray(edge)[~region])
-
-    def test_modification_clamps_to_each_sides_own_bounds(self):
-        """Extreme phi saturates at the bounds measured for that contact line.
-
-        The bounds are per side: each is measured in a window around its own
-        contact line, so a wall whose bulk densities vary along it does not share
-        one global clip range.
-        """
-        from src.operators.wetting._wetting_modification import _apply_wetting_modification
-        from src.operators.wetting._wetting_modification import wetting_regions
-
-        edge = self._wall_edge_profile(64, RHO_L, RHO_V, phase_center="liquid")
-        left, right = wetting_regions(edge, RHO_L, RHO_V)
-        result = np.asarray(_apply_wetting_modification(edge, RHO_L, RHO_V, 10.0, 10.0, D_RHO, D_RHO))
-
-        for region in (left, right):
-            mask = np.asarray(region.mask)
-            assert mask.any()
-            assert float(result[mask].max()) <= float(region.rho_upper) + 1e-6
-            assert float(result[mask].min()) >= float(region.rho_lower) - 1e-6
-
     @staticmethod
     def _wall_edge_profile(n: int, rho_l: float, rho_v: float, *, phase_center: str) -> jnp.ndarray:
         """Build a 1-D wall density slice with two contact-line transitions.
@@ -442,28 +390,6 @@ class TestWettingUtil:
         # Non-trivial params must change the interface cells.
         modified = _apply_wetting_modification(edge, rho_l, rho_v, 1.3 * PHI, 1.3 * PHI, 1.3 * D_RHO, 1.3 * D_RHO)
         assert not np.allclose(np.array(modified), np.array(edge))
-
-    def test_bubble_left_right_regions_are_independent(self):
-        """A bubble's two contact lines receive their own phi/d_rho.
-
-        Guards the left/right assignment: perturbing only phi_left must act on
-        lower wall indices than perturbing only phi_right.
-        """
-        from src.operators.wetting._wetting_modification import _apply_wetting_modification
-
-        rho_l, rho_v = RHO_L, RHO_V
-        edge = self._wall_edge_profile(80, rho_l, rho_v, phase_center="vapour")
-
-        left_only = _apply_wetting_modification(edge, rho_l, rho_v, 1.3 * PHI, PHI, D_RHO, D_RHO)
-        right_only = _apply_wetting_modification(edge, rho_l, rho_v, PHI, 1.3 * PHI, D_RHO, D_RHO)
-
-        left_changed = ~np.isclose(np.array(left_only), np.array(edge))
-        right_changed = ~np.isclose(np.array(right_only), np.array(edge))
-        assert left_changed.any(), "phi_left must affect the left contact line"
-        assert right_changed.any(), "phi_right must affect the right contact line"
-
-        # Left perturbation sits at lower wall indices than the right one.
-        assert float(np.mean(np.where(left_changed)[0])) < float(np.mean(np.where(right_changed)[0]))
 
     # --- Per-edge application via build_wetting_applicator -----------------
 

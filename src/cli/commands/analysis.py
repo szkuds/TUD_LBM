@@ -1,4 +1,4 @@
-"""The ``tud-lbm compare``, ``regime-map``, ``force-balance`` and ``analyse`` commands."""
+"""The ``tud-lbm compare``, ``regime-map`` and ``analyse`` commands."""
 
 from __future__ import annotations
 import sys
@@ -182,56 +182,6 @@ def regime_map(
 
     success("Regime map complete!")
     console.print(f"[bold green]Plot saved to:[/bold green] {out_path}")
-
-
-@cli.command("force-balance")
-@click.argument("config_path", type=click.Path(exists=True, dir_okay=False))
-@click.option(
-    "--groups",
-    "-g",
-    "groups",
-    multiple=True,
-    help="Run groups of the config to analyse, repeatable or comma-separated (default: every group).",
-)
-@click.option(
-    "--out",
-    "out_dir",
-    type=click.Path(file_okay=False),
-    default=None,
-    help="Output directory (default: [data] output_dir of the config).",
-)
-@click.option(
-    "--detailed",
-    "detailed",
-    is_flag=True,
-    help="Also run every friction model (M0..M6) on every run and write the full figure set and "
-    "report_detailed.md (slower).",
-)
-@cli_command(title="Force Balance", interrupt_message="Force-balance analysis interrupted by user.")
-def force_balance(config_path: str, groups: tuple[str, ...], out_dir: str | None, detailed: bool) -> None:
-    """Compare chemical-step runs with the reduced droplet ODE, per data point.
-
-    CONFIG_PATH is the analysis TOML: [data] root/output_dir, [groups] of run
-    directories, optional [analysis] settings. Writes tables, figures and
-    report.md to the output directory.
-    """
-    # Imported lazily so the CLI does not load scipy/matplotlib to define its
-    # options, and so tests can patch ``load_force_balance_config`` at this seam.
-    from src.simulation_io.analysis.force_balance.config import load_force_balance_config
-    from src.simulation_io.analysis.force_balance.pipeline import run_force_balance
-
-    cfg = load_force_balance_config(config_path, out_dir)
-    selected = [g.strip() for value in groups for g in value.split(",") if g.strip()] or None
-    console.print(f"[dim]Config  : {config_path}[/dim]")
-    console.print(f"[dim]Groups  : {', '.join(selected or cfg.groups)}[/dim]")
-    console.print(f"[dim]Output  : {cfg.output_dir}[/dim]")
-    console.print()
-
-    report = run_force_balance(
-        cfg, selected, lambda message: console.print(f"[dim]  {message}[/dim]"), detailed=detailed
-    )
-    success("Force-balance analysis complete!")
-    console.print(f"[bold green]Report saved to:[/bold green] {report}")
 
 
 def _analyse_surface_tension(config: SimulationConfig, out_dir: Path) -> None:

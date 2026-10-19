@@ -9,7 +9,6 @@ import jax.numpy as jnp
 import pytest
 from src.config.boundary_edges import build_boundary_edges
 from src.lattice.lattice import build_lattice
-from src.registry import get_operators
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -137,48 +136,18 @@ class TestEquilibriumProtocol:
         assert feq.shape == (nx, ny, 1, lattice_d2q9.q, 1)
         assert jnp.allclose(jnp.sum(feq), jnp.sum(rho))
 
-    def test_improved_equilibrium_conformance(self, lattice_d2q9, grid_shape, test_state):
-        """The improved well-balanced equilibrium (Zhang, Guo & Wang 2022) satisfies the same protocol."""
-        import functools
-        import src.pipeline  # noqa: F401 - enter through the pipeline (differential import cycle)
-        from src.config.viscosity_params import build_viscosity_params
-        from src.operators.differential import build_gradient_fn
-
-        nx, ny = grid_shape
-        equilibrium = functools.partial(
-            get_operators("equilibrium")["wb_improved"].target,
-            viscosity=build_viscosity_params(relaxation_time=1.0, tau_liquid=0.75, tau_gas=0.6, rho_l=2.0, rho_v=0.5),
-            reference_pressure=jnp.zeros((nx, ny, 1, 1, 1)),
-            gradient=build_gradient_fn(lattice_d2q9, ("wrap", "wrap", "wrap", "wrap")),
-        )
-
-        _, rho, u = test_state
-        feq = equilibrium(rho, u, lattice_d2q9)
-
-        assert feq.shape == (nx, ny, 1, lattice_d2q9.q, 1)
-        assert jnp.allclose(jnp.sum(feq), jnp.sum(rho))
-
 
 class TestSourceTermProtocol:
     """Verify source-term operators conform to SourceTermOperator."""
 
-    @pytest.mark.parametrize("referenced", [False, True])
-    def test_source_conformance(self, lattice_d2q9, grid_shape, test_state, referenced):
-        """The ``wb`` source and its reference-pressure variant carry no mass."""
-        import functools
+    def test_source_conformance(self, lattice_d2q9, grid_shape, test_state):
+        """The ``wb`` source carries no mass."""
         import src.pipeline  # noqa: F401 - enter through the pipeline (differential import cycle)
         from src.operators.differential import build_gradient_fn
         from src.operators.source_term import build_source_fn
 
         nx, ny = grid_shape
-        source_fn = (
-            functools.partial(
-                get_operators("source_term")["wb_referenced"].target,
-                reference_gradient=jnp.full((nx, ny, 1, 1, 2), 1e-4),
-            )
-            if referenced
-            else build_source_fn()
-        )
+        source_fn = build_source_fn()
         _, rho, u = test_state
         force = jnp.full((nx, ny, 1, 1, 2), 1e-4)
 

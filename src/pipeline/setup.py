@@ -68,8 +68,7 @@ class SimulationSetup(NamedTuple):
             and any metadata that does not enter the JIT boundary.
         lattice: The :class:`~setup.lattice.Lattice` pytree.
         grid_shape: Spatial dimensions, e.g. ``(64, 64)``.
-        tau: Relaxation time of the shear moments (> 0.5) passed to the
-            collision: ``lambda_v`` when configured, else the config's ``tau``.
+        tau: Relaxation time (> 0.5).
         collision_scheme: Name of the collision model (``"bgk"`` / ``"mrt"``).
         k_diag: MRT relaxation rates (``None`` for BGK); already bound into
             ``collision_fn``.
@@ -149,51 +148,21 @@ class SimulationSetup(NamedTuple):
 # ── Main factory ─────────────────────────────────────────────────────
 
 
-def _build_equilibrium_and_source(
-    config: SimulationConfig,
-    forces: tuple[ForceOperator, ...],
-    gradient_standard: DifferentialOperator,
-) -> tuple[EquilibriumOperator, SourceTermOperator]:
+def _build_equilibrium_and_source(config: SimulationConfig) -> tuple[EquilibriumOperator, SourceTermOperator]:
     """The equilibrium and source term that belong together for this run.
 
     A single-phase run takes the ``"standard_equilibrium"`` / ``"guo"`` pair: that
     equilibrium carries the isotropic pressure ``cs^2 * rho`` in its second moment.
     The ``wb`` equilibrium leaves it out, because a multiphase run supplies its
     pressure as the force ``-rho * grad(mu)``; a single-phase run has no such
-    force, so with ``wb`` it would have no pressure at all.
-
-    A multiphase run takes the ``wb`` pair, or the improved well-balanced pair of
-    Zhang, Guo & Wang (2022). The improved model is the separately registered ``"wb_improved"`` equilibrium
-    and ``"wb_referenced"`` source; their model inputs (the config's viscous-stress
-    parameters, the reference pressure carried by a ``gravity_referenced_force``)
-    are keywords the protocols lack, so they are bound here. They are bound on the
-    raw registry entries, as ``build_bc`` does: the package factories are annotated
-    with the protocols, which do not name those keywords.
+    force, so with ``wb`` it would have no pressure at all. A multiphase run
+    takes the ``wb`` pair.
     """
     from src.operators.equilibrium import build_equilibrium_fn
-    from src.operators.force._gravity_referenced import GravityReferencedForceModule
-    from src.registry import get_operators
 
     if "multiphase" not in config.sim_type:
         return build_equilibrium_fn("standard_equilibrium"), build_source_fn("guo")
-
-    referenced = next((f for f in forces if isinstance(f, GravityReferencedForceModule)), None)
-    if config.viscosity_params is None and referenced is None:
-        return build_equilibrium_fn("wb"), build_source_fn("wb")
-    equilibrium_fn = functools.partial(
-        get_operators("equilibrium")["wb_improved"].target,
-        viscosity=config.viscosity_params,
-        reference_pressure=None if referenced is None else referenced.pressure,
-        gradient=gradient_standard,
-    )
-    source_fn = (
-        build_source_fn("wb")
-        if referenced is None
-        else functools.partial(
-            get_operators("source_term")["wb_referenced"].target, reference_gradient=referenced.pressure_gradient
-        )
-    )
-    return equilibrium_fn, source_fn
+    return build_equilibrium_fn("wb"), build_source_fn("wb")
 
 
 def _hysteresis_scheme(config: SimulationConfig) -> str | None:
@@ -296,7 +265,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         # A keyword the protocol lacks is bound, not typed: the configured rates
         # (shear entries already coupled to the relaxation time) reach collide_mrt.
         collision_fn = functools.partial(collision_fn, k_diag=jnp.asarray(config.k_diag))
-    equilibrium_fn, source_fn = _build_equilibrium_and_source(config, forces, gradient_standard)
+    equilibrium_fn, source_fn = _build_equilibrium_and_source(config)
     streaming_fn = build_streaming_fn(config.periodic_axes)
     macroscopic_fn = (
         build_macroscopic_fn("multiphase")  # unified multiphase op; EOS selected from mp.eos
@@ -327,7 +296,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         config=config,
         lattice=lattice,
         grid_shape=tuple(config.grid_shape),
-        tau=config.relaxation_time,
+        tau=config.tau,
         collision_scheme=config.collision_scheme,
         k_diag=config.k_diag,
         forces=forces,

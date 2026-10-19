@@ -20,21 +20,10 @@ from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import SNAPSHOTS_DIRNAME
 from src.simulation_io.analysis.surface_tension import surface_tension as st
 
-# Captured before the autouse fixture below redirects it, so the "never inside
-# the checkout" invariant can be asserted against the value a real run uses.
+# Captured at import, before the autouse fixture in tests/conftest.py redirects
+# it, so the "never inside the checkout" invariant is asserted against the value
+# a real run uses.
 _REAL_FIELDS_CACHE_DIR = st._FIELDS_CACHE_DIR
-
-
-@pytest.fixture(autouse=True)
-def _isolate_field_cache(tmp_path, monkeypatch):
-    """Keep the density-field cache out of the developer's real data root.
-
-    ``_FIELDS_CACHE_DIR`` resolves to ``$TUD_LBM_DATA_DIR`` at import time, so
-    without this every test that measures would leave multi-megabyte archives
-    in the user's actual results directory. (The JSON cache is redirected for
-    every test by ``tests/conftest.py``.)
-    """
-    monkeypatch.setattr(st, "_FIELDS_CACHE_DIR", tmp_path / "field_cache")
 
 
 def _stub_config(**overrides):
@@ -574,64 +563,6 @@ def test_save_snapshot_figures_writes_one_per_radius(tmp_path):
 
     assert sorted(p.name for p in tmp_path.iterdir()) == ["R_6.00.png", "R_9.00.png"]
     assert all(p.stat().st_size > 0 for p in tmp_path.iterdir())
-
-
-def _multiphase_params(**overrides):
-    from typing import Any
-    from src.config.multiphase_params import MultiphaseParams
-
-    base: dict[str, Any] = {
-        "eos": "carnahan-starling",
-        "kappa": 0.01,
-        "rho_l": 0.4,
-        "rho_v": 0.02,
-        "interface_width": 4,
-        "a_eos": 0.5,
-        "b_eos": 4.0,
-        "r_eos": 1.0,
-        "t_eos": 0.05,
-    }
-    base.update(overrides)
-    return MultiphaseParams(**base)
-
-
-def test_bulk_pressure_fn_carnahan_starling_matches_reference():
-    import jax.numpy as jnp
-    from src.operators.macroscopic.eos import build_pressure_fn
-    from src.operators.macroscopic.eos._carnahan_starling import _pressure_carnahan_starling
-
-    mp = _multiphase_params()
-    assert mp.a_eos is not None
-    assert mp.b_eos is not None
-    assert mp.r_eos is not None
-    assert mp.t_eos is not None
-    pressure_fn = build_pressure_fn(mp)
-    rho = jnp.linspace(mp.rho_v, mp.rho_l, 20)
-
-    expected = _pressure_carnahan_starling(rho, mp.a_eos, mp.b_eos, mp.r_eos, mp.t_eos)
-    np.testing.assert_allclose(np.asarray(pressure_fn(rho)), np.asarray(expected))
-
-
-def test_bulk_pressure_fn_double_well_matches_reference():
-    import jax.numpy as jnp
-    from src.operators.macroscopic.eos import build_pressure_fn
-    from src.operators.macroscopic.eos._double_well import _pressure_double_well
-
-    mp = _multiphase_params(eos="double-well", a_eos=None, b_eos=None, r_eos=None, t_eos=None)
-    pressure_fn = build_pressure_fn(mp)
-    rho = jnp.linspace(mp.rho_v, mp.rho_l, 20)
-
-    beta = 8.0 * mp.kappa / (float(mp.interface_width) ** 2 * (mp.rho_l - mp.rho_v) ** 2)
-    expected = _pressure_double_well(rho, beta, mp.rho_l, mp.rho_v)
-    np.testing.assert_allclose(np.asarray(pressure_fn(rho)), np.asarray(expected))
-
-
-def test_bulk_pressure_fn_cs_missing_params_raises():
-    from src.operators.macroscopic.eos import build_pressure_fn
-
-    mp = _multiphase_params(a_eos=None)
-    with pytest.raises(ValueError, match="required for Carnahan-Starling"):
-        build_pressure_fn(mp)
 
 
 def _cs_config(**overrides):

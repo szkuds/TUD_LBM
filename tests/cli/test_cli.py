@@ -24,7 +24,6 @@ from src.cli.execution import RunFlags
 from src.cli.execution import _check_sweep_errors
 from src.cli.execution import _run_impl
 from src.cli.wetting_init import _WETTING_INIT_NT
-from src.cli.wetting_init import _WETTING_PARAM_DEFAULTS
 from src.cli.wetting_init import _build_wetting_gravity_raw
 from src.cli.wetting_init import _build_wetting_init_raw
 from src.cli.wetting_init import _prompt_wetting_params
@@ -32,6 +31,7 @@ from src.config import SimulationConfig
 from src.config.array_expansion import ArrayParameterSet
 from src.config.config_overview import DEBUG_STABILITY_INTERVAL
 from src.config.config_overview import DEBUG_WETTING_INTERVAL
+from src.config.wetting_defaults import NEUTRAL_WETTING_CONFIG
 from src.pipeline.parallel_runner import SimulationResult
 
 try:
@@ -988,7 +988,7 @@ class TestPromptWettingParams:
 
     def test_no_prompt_uses_defaults_when_config_empty(self):
         params = _prompt_wetting_params({}, no_prompt=True)
-        assert params == _WETTING_PARAM_DEFAULTS
+        assert params == NEUTRAL_WETTING_CONFIG
 
     def test_values_from_config_override_defaults(self):
         raw = {"wetting_config": {"phi_left": 1.3, "phi_right": 1.4, "d_rho_left": 0.1, "d_rho_right": 0.05}}
@@ -1002,7 +1002,7 @@ class TestPromptWettingParams:
         raw = {"wetting_config": {"phi_left": 1.2}}
         params = _prompt_wetting_params(raw, no_prompt=True)
         assert params["phi_left"] == pytest.approx(1.2)
-        assert params["phi_right"] == pytest.approx(_WETTING_PARAM_DEFAULTS["phi_right"])
+        assert params["phi_right"] == pytest.approx(NEUTRAL_WETTING_CONFIG["phi_right"])
 
 
 class TestBuildWettingInitRaw:
@@ -1958,104 +1958,33 @@ class TestConfirmOrOverride:
 
 
 class TestRunWithOptionalOverrides:
-    """Tests for _run_with_optional_overrides interactive confirmation loop."""
+    """``_run_with_optional_overrides`` around ``confirm_or_override`` (whose loop is tested above)."""
 
-    def _cfg(self):
-        return SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-
-    def test_no_prompt_returns_immediately(self):
-        cfg = self._cfg()
-        result = _run_with_optional_overrides(
+    @staticmethod
+    def _run(cfg, *, no_prompt):
+        return _run_with_optional_overrides(
             raw_config={},
             configs=[cfg],
             config=cfg,
             sweep_metadata=None,
             parameters_list=None,
-            no_prompt=True,
+            no_prompt=no_prompt,
             overview=False,
         )
-        assert result[1] == cfg
 
-    def test_n_choice_cancels(self):
-        cfg = self._cfg()
-        with _patch("rich.prompt.Prompt.ask", return_value="n"):
-            _configs, config, _sweep, _params = _run_with_optional_overrides(
-                raw_config={},
-                configs=[cfg],
-                config=cfg,
-                sweep_metadata=None,
-                parameters_list=None,
-                no_prompt=False,
-                overview=False,
-            )
-        assert _configs == []
-        assert config is None
+    def test_no_prompt_returns_immediately(self):
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        assert self._run(cfg, no_prompt=True)[1] == cfg
 
-    def test_y_choice_returns_configs(self):
-        cfg = self._cfg()
-        with _patch("rich.prompt.Prompt.ask", return_value="y"):
-            configs, _config, _sweep, _params = _run_with_optional_overrides(
-                raw_config={},
-                configs=[cfg],
-                config=cfg,
-                sweep_metadata=None,
-                parameters_list=None,
-                no_prompt=False,
-                overview=False,
-            )
-        assert configs == [cfg]
-
-    def test_o_with_no_raw_config_prints_warning_then_y(self, capsys):
-        cfg = self._cfg()
-        answers = iter(["o", "y"])
-        with _patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(answers)):
-            _configs, _config, _sweep, _params = _run_with_optional_overrides(
-                raw_config=None,
-                configs=[cfg],
-                config=cfg,
-                sweep_metadata=None,
-                parameters_list=None,
-                no_prompt=False,
-                overview=False,
-            )
-        out = capsys.readouterr().out
-        assert "Inline overrides" in out
-
-    def test_o_with_raw_config_valid_override_then_y(self):
-        cfg = self._cfg()
-        raw = {"tau": 0.8}
-        answers = iter(["o", "tau=0.9", "y"])
-        with (
-            _patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(answers)),
-            _patch("src.cli.execution._expand_raw_config", return_value=([cfg], cfg, None, None)),
-        ):
-            configs, _config, _sweep, _params = _run_with_optional_overrides(
-                raw_config=raw,
-                configs=[cfg],
-                config=cfg,
-                sweep_metadata=None,
-                parameters_list=None,
-                no_prompt=False,
-                overview=False,
-            )
-        assert configs == [cfg]
-
-    def test_o_with_invalid_override_retries_then_y(self, capsys):
-        cfg = self._cfg()
-        raw = {"tau": 0.8}
-        answers = iter(["o", "tau=bad_value", "y"])
-        with _patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(answers)):
-            _configs, _config, _sweep, _params = _run_with_optional_overrides(
-                raw_config=raw,
-                configs=[cfg],
-                config=cfg,
-                sweep_metadata=None,
-                parameters_list=None,
-                no_prompt=False,
-                overview=False,
-            )
-        out = capsys.readouterr().out
-        assert "Invalid override" in out
+    @pytest.mark.parametrize(("answer", "expected_configs"), [("y", "same"), ("n", "none")])
+    def test_answer_confirms_or_cancels(self, answer, expected_configs):
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+        with _patch("rich.prompt.Prompt.ask", return_value=answer):
+            configs, config, _sweep, _params = self._run(cfg, no_prompt=False)
+        if expected_configs == "same":
+            assert configs == [cfg]
+        else:
+            assert (configs, config) == ([], None)
 
 
 # =========================================================================
@@ -2199,7 +2128,7 @@ class TestRunTwoPhaseWettingInit:
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\n", encoding="utf-8")
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        wetting_params = dict(_WETTING_PARAM_DEFAULTS)
+        wetting_params = dict(NEUTRAL_WETTING_CONFIG)
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
             _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
@@ -2378,7 +2307,7 @@ class TestRunTwoPhaseWettingInit:
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
             _patch("src.cli.wetting_init._expand_single_phase", _expand),
-            _patch("src.cli.wetting_init._prompt_wetting_params", return_value=dict(_WETTING_PARAM_DEFAULTS)),
+            _patch("src.cli.wetting_init._prompt_wetting_params", return_value=dict(NEUTRAL_WETTING_CONFIG)),
             _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
             # Phase 1: override to tau=0.55 then start; Phase 2: start.
             _patch("rich.prompt.Prompt.ask", side_effect=["o", "tau=0.55", "y", "y"]),

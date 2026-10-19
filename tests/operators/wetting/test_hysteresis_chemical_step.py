@@ -3,8 +3,8 @@
 - _get_hysteresis_window_chemical_step: the surface's own window — post once a
   line is within ``edge_width`` of the step or past it — and the held-at-step
   flag for a line receding onto the more wetting surface
-- update_wetting_state_chemical_step: registered operator lookup, guards, and
-  the logged failure: a receding line just past the step stays pinned
+- update_wetting_state_chemical_step: its guard, the logged failure (a receding
+  line just past the step stays pinned) and the pin target of a held line
 """
 
 from __future__ import annotations
@@ -109,36 +109,10 @@ class TestGetHysteresisWindowChemicalStep:
         assert _window(setup, 100.0, "left") == _POST
         assert _window(setup, 120.0, "left") == _POST
 
-    def test_rejects_unknown_side(self):
-        setup = _make_setup()
-        with pytest.raises(ValueError, match="side must be"):
-            _window(setup, 20.0, "middle")
-
 
 # ---------------------------------------------------------------------------
-# update_wetting_state_chemical_step — registration check
+# update_wetting_state_chemical_step
 # ---------------------------------------------------------------------------
-
-
-def test_chemical_step_hysteresis_operator_is_registered():
-    """update_wetting_state_chemical_step must be registered as 'chemical_step_hysteresis'."""
-    from src.registry import get_operators
-
-    ops = get_operators("wetting")
-    assert "chemical_step_hysteresis" in ops, (
-        f"Expected 'chemical_step_hysteresis' in wetting registry. Available: {sorted(ops.keys())}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# TypeError guard branches
-# ---------------------------------------------------------------------------
-
-
-def test_get_hysteresis_window_raises_when_chemical_step_config_none():
-    setup = SimpleNamespace(config=SimpleNamespace(chemical_step_config=None))
-    with pytest.raises(TypeError, match="chemical_step_config is required"):
-        _window(setup, 20.0, "left")
 
 
 def test_update_wetting_state_chemical_step_raises_when_multiphase_params_none():
@@ -197,7 +171,6 @@ def test_receding_line_just_past_the_step_stays_pinned(monkeypatch):
                 "max_iterations": 3,
                 "max_iterations_above": 3,
                 "loss_tol": 1e-4,
-                "carry_inactive_params": False,
                 "saturation_gap": 1.0,
             },
         ),
@@ -240,5 +213,6 @@ def test_a_line_held_at_the_step_is_pinned_to_the_step_position(monkeypatch):
         trial_step_fn=lambda _p: (jnp.array(0.0), jnp.zeros(4)),
     )
 
-    assert float(captured["pin_left"]) == 50.0
-    assert float(captured["pin_right"]) == 90.0  # not at the step: its own anchor
+    pin_left, pin_right = captured["pins"]
+    assert float(pin_left) == 50.0
+    assert float(pin_right) == 90.0  # not at the step: its own anchor
