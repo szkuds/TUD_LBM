@@ -80,10 +80,9 @@ class TestApplyCommonStepGuards:
             "equilibrium_fn": lambda _rho, _u, _lat: feq,
             "collision_fn": lambda f, _feq, _tau, _src=None: f,
             "streaming_fn": lambda f, _lat: f,
-            "bc_fn": lambda f_s, _f_c, _masks: f_s,
-            "forces": None,
+            "bc_fn": lambda f_s, _f_c: f_s,
+            "source_fn": None,
             "tau": 1.0,
-            "bc_masks": None,
             "gradient_density": lambda g: g,
             "lattice": lattice,
         }
@@ -122,13 +121,13 @@ class TestApplyCommonStepGuards:
         with pytest.raises(TypeError, match="bc_fn is required"):
             _apply_common_step(setup, state, state.rho, state.u, force_tot=None)
 
-    def test_raises_when_forces_none_but_force_tot_present(self, lattice):
+    def test_raises_when_source_fn_none_but_force_tot_present(self, lattice):
         from src.operators.step._common import _apply_common_step
 
-        setup = self._setup_with(lattice, forces=None)
+        setup = self._setup_with(lattice, source_fn=None)
         state = _minimal_state(lattice)
         dummy_force = jnp.zeros((NX, NY, NZ, 1, lattice.d))
-        with pytest.raises(TypeError, match="forces is required"):
+        with pytest.raises(TypeError, match="source_fn is required"):
             _apply_common_step(setup, state, state.rho, state.u, force_tot=dummy_force)
 
 

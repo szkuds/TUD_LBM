@@ -1,6 +1,6 @@
 r"""LBM-stencil Laplacian operator — pure function.
 
-Registered as ``("differential", "laplacian")`` via ``@register_operator``.
+Resolved through :func:`~src.operators.differential.build_laplacian_fn`.
 
 The Laplacian formula follows the standard LBM isotropic stencil:
 
@@ -15,15 +15,16 @@ lattice (``c_s^2 = 1/3``).
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
+from src.operators.differential._gradient import reject_wetting
 from src.operators.differential._pad_utils import _apply_stencil_padding
 from src.operators.differential._pad_utils import to_2d
-from src.registry import register_operator
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from src.operators.protocols import DifferentialOperator
+    from src.operators.wetting._params import WettingParams
 
 
-@register_operator("differential", name="laplacian")
 def compute_laplacian(
     grid: jnp.ndarray,
     w: jnp.ndarray,
@@ -41,13 +42,32 @@ def compute_laplacian(
     Args:
         grid: Scalar field, shape ``(nx, ny, nz, 1, 1)`` or ``(nx, ny)``.
         w: Lattice weights, shape ``(q,)``.
-        pad_mode: Four padding modes ``(right_y, left_y, bottom_x, top_x)``.
+        pad_mode: Four padding modes ``(top, bottom, right, left)``.
 
     Returns:
         Laplacian field, shape ``(nx, ny, nz, 1, 1)``.
     """
     grid_padded = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
     return lap_core_2d(grid_padded, w)
+
+
+def build_laplacian(w: jnp.ndarray, pad_mode: Sequence[str]) -> DifferentialOperator:
+    """Return the plain Laplacian closure over the lattice weights and *pad_mode*.
+
+    Args:
+        w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
+        pad_mode: Four padding modes ``(top, bottom, right, left)``.
+
+    Returns:
+        ``lap(grid) → (nx, ny, nz, 1, 1)``. Passing *wetting* raises :class:`TypeError`.
+    """
+    _pad_mode = tuple(pad_mode)
+
+    def laplacian(grid: jnp.ndarray, wetting: WettingParams | None = None) -> jnp.ndarray:
+        reject_wetting("laplacian", wetting)
+        return compute_laplacian(grid, w, _pad_mode)
+
+    return laplacian
 
 
 def lap_core_2d(

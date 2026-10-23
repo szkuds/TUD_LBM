@@ -9,7 +9,6 @@ import pytest
 from matplotlib.collections import LineCollection
 from src.config import SimulationConfig
 from src.operators.differential._pad_utils import _apply_stencil_padding
-from src.operators.differential._pad_utils import determine_pad_modes
 from src.operators.wetting._apply_edge import _apply_wetting_edge
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._wetting_modification import anchor_window_half_width
@@ -73,12 +72,12 @@ def test_band_cells_are_exactly_the_cells_the_applicator_changes():
     config = _config()
     (band,) = wall_bands(rho, config)
 
-    gp = _apply_stencil_padding(jnp.asarray(rho), tuple(determine_pad_modes(config.bc_config)))
+    gp = _apply_stencil_padding(jnp.asarray(rho), config.pad_modes)
 
     # A modification that moves every banded cell, so changed == modified region.
     def _apply(d_rho: float) -> jnp.ndarray:
-        scalars = (jnp.asarray(v) for v in (_RHO_L, _RHO_V, 1.0, 1.0, d_rho, d_rho))
-        return _apply_wetting_edge(gp, "bottom", True, True, *scalars)
+        rho_l, rho_v, phi, d = (jnp.asarray(v) for v in (_RHO_L, _RHO_V, 1.0, d_rho))
+        return _apply_wetting_edge(gp, "bottom", True, True, rho_l, rho_v, phi, phi, d, d)
 
     neutral, shifted = _apply(0.0), _apply(0.05)
     changed = np.flatnonzero(np.asarray(neutral[1:-1, 0]) != np.asarray(shifted[1:-1, 0]))

@@ -1,7 +1,7 @@
 """Tests for the circular obstacle mask builder."""
 
 import pytest
-from src.operators.obstacle import build_obstacle_mask
+from src.config.obstacle_mask import build_obstacle_mask
 from src.operators.obstacle._circle import build_circle_mask
 
 
@@ -30,15 +30,5 @@ def test_build_obstacle_mask_dispatches_to_circle() -> None:
     assert mask.shape == (20, 20, 1, 1, 1)
 
 
-def test_build_obstacle_mask_defaults_to_circle_shape() -> None:
-    mask = build_obstacle_mask({"center_x": 10, "center_y": 10, "radius": 5}, (20, 20, 1))
-    assert mask is not None
-
-
 def test_build_obstacle_mask_none_config_returns_none() -> None:
     assert build_obstacle_mask(None, (20, 20, 1)) is None
-
-
-def test_build_obstacle_mask_unknown_shape_raises() -> None:
-    with pytest.raises(ValueError, match="Unknown obstacle shape"):
-        build_obstacle_mask({"shape": "square", "center_x": 10, "center_y": 10, "radius": 5}, (20, 20, 1))

@@ -313,7 +313,9 @@ _CRITICAL_ANGLE_BASE = {
     "g": None,
     "rho_l": 1.0,
     "rho_v": 0.5,
-    "initialisation": {"radii": [0.1]},
+    "init_type": "standard",
+    # A radius-10 circle clear of every wall: A = 100*pi from the init geometry.
+    "initialisation": {"radii": [0.1], "centres": [[0.5, 0.5]]},
     "grid_shape": (100, 100, 1),
 }
 
@@ -348,61 +350,41 @@ def test_critical_inclination_accepts_either_gravity_force(force_key):
     assert "arcsin" in result
 
 
-def test_critical_inclination_raises_without_rho_l():
-    ns = _critical_angle_ns(rho_l=None)
-    with pytest.raises(RuntimeError, match="rho_l"):
-        _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
-
-
-def test_critical_inclination_raises_without_rho_v():
+def test_critical_inclination_unresolved_without_density_contrast():
     ns = _critical_angle_ns(rho_v=None)
-    with pytest.raises(RuntimeError, match="rho_v"):
-        _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
-
-
-def test_critical_inclination_returns_angle_row_when_sina_in_range():
-    # g=1e-3 and drho=0.5 make sina≈0.066, well within [-1, 1]
-    ns = _critical_angle_ns()
     result = _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
-    assert "Critical Inclination Angle" in result
-    assert "arcsin" in result
-    assert "This droplet will remain pinned" not in result
+    assert "unresolved" in result
 
 
-def test_critical_inclination_returns_pinned_when_sina_exceeds_one():
-    # Vanishingly small g → sina >> 1 → physically impossible to tip → pinned.
-    # np.arcsin(sina) returns nan for out-of-range inputs before the branch check — expected.
+def test_critical_inclination_pinned_when_sina_exceeds_one():
+    # Vanishingly small g: no inclination can overcome the window, and no arcsin of an out-of-range value.
     ns = _critical_angle_ns(gravity_force=None, gravity_masked_force={"force_g": 1e-20})
-    with pytest.warns(RuntimeWarning, match="invalid value encountered in arcsin"):
-        result = _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
-    assert "This droplet will remain pinned" in result
+    result = _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
+    assert "pinned at any inclination" in result
 
 
-def test_critical_inclination_formula_matches_manual_calculation():
-    # ca_adv=90°, ca_rec=60°: cos(60°)-cos(90°) = 0.5 - 0.0 = 0.5
+def test_critical_inclination_is_the_inclination_where_bo_parallel_equals_h():
+    """Onset is the exact 2D balance Bo_parallel = H with Bo built on L = sqrt(A)."""
     ca_adv_deg, ca_rec_deg = 90.0, 60.0
     gamma = 0.02
-    radius_frac = 0.1
-    nx = 100
     g = 1e-3
     rho_l, rho_v = 2.0, 0.5
+    area = math.pi * 10.0**2
 
-    a = (np.pi * (radius_frac * nx) ** 2) / 2
-    hysteresis_force = (math.cos(math.radians(ca_rec_deg)) - math.cos(math.radians(ca_adv_deg))) * gamma
-    # The drive scales with the density contrast, not with rho_l.
-    expected_sina = hysteresis_force / (g * a * (rho_l - rho_v))
-    expected_deg = math.degrees(math.asin(expected_sina))
+    hysteresis = math.cos(math.radians(ca_rec_deg)) - math.cos(math.radians(ca_adv_deg))
+    expected_deg = math.degrees(math.asin(hysteresis * gamma / (g * area * (rho_l - rho_v))))
+    bo_parallel = (rho_l - rho_v) * g * area * math.sin(math.radians(expected_deg)) / gamma
+    assert bo_parallel == pytest.approx(hysteresis)
 
     ns = _critical_angle_ns(
         chemical_step_config={"ca_advancing_pre_step": ca_adv_deg, "ca_receding_pre_step": ca_rec_deg},
         gravity_masked_force={"force_g": g},
         rho_l=rho_l,
         rho_v=rho_v,
-        initialisation={"radii": [radius_frac]},
-        grid_shape=(nx, nx, 1),
     )
     result = _format_critical_inclination_angle_row(ns, gamma=gamma)  # ty: ignore[invalid-argument-type]
-    assert f"{expected_deg:.6g}" in result
+    assert f"{expected_deg:.6g} deg" in result
+    assert f"A={area:.6g}" in result
 
 
 def test_build_overview_includes_critical_inclination_angle_for_chemical_step_config():

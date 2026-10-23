@@ -203,9 +203,10 @@ def test_animator_frames_carry_the_overlay(tmp_path):
 def test_operator_without_overlay_support_refuses_draw_overlay():
     density = get_operators("plotting")["density"].target(_config())
     fig, ax = plt.subplots()
+    snapshot = _snapshot()
 
     with pytest.raises(NotImplementedError, match="density"):
-        density.draw_overlay(ax, _snapshot(), timestep=0)
+        density.draw_overlay(ax, snapshot, timestep=0)
     plt.close(fig)
 
 

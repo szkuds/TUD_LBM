@@ -117,7 +117,7 @@ def init_state(
 
     if f is None:
         if setup.initial_f_fn is None:
-            msg = "initial_f_fn is required in SimulationSetup to initialize state"
+            msg = "initial_f_fn is required in SimulationSetup to initialise state"
             raise TypeError(msg)
         f = setup.initial_f_fn(init_kwargs)
 
@@ -125,7 +125,7 @@ def init_state(
     u = jnp.zeros((nx, ny, nz, 1, lattice.d))
     t = _t_from_snapshot(setup.config)
 
-    force, force_ext = build_optional_fields(setup, nx, ny, nz, lattice.d)
+    force, force_ext, pressure = build_optional_fields(setup, nx, ny, nz, lattice.d)
     extra_state = build_extra_state(setup)
 
     return State(
@@ -135,6 +135,7 @@ def init_state(
         t=t,
         force=force,
         force_ext=force_ext,
+        pressure=pressure,
         **extra_state,
     )
 
@@ -243,7 +244,7 @@ def run(
             stab_dir,
             gradient_density=setup.gradient_density,
             mp=setup.multiphase_params,
-            log_interval=save_interval if save_interval >= 1 else max(1, nt // 10),
+            log_interval=max(1, int(_flags.DEBUG_STABILITY_INTERVAL)),
             vapor_frac=_flags.STABILITY_VAPOR_FRACTION,
             grad_frac=_flags.STABILITY_GRAD_RHO_FRACTION,
         )

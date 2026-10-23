@@ -125,14 +125,14 @@ class ConfigAdapter(ABC):
         return SimulationConfig(**config_kwargs)
 
     @staticmethod
-    def _serialize_safe(value: Any) -> Any:  # noqa: ANN401
+    def _serialise_safe(value: Any) -> Any:  # noqa: ANN401
         """Convert tuples to lists and recursively process nested structures."""
         if isinstance(value, tuple):
             value = list(value)
         if isinstance(value, dict):
-            return {k: ConfigAdapter._serialize_safe(v) for k, v in value.items()}
+            return {k: ConfigAdapter._serialise_safe(v) for k, v in value.items()}
         if isinstance(value, list):
-            return [ConfigAdapter._serialize_safe(v) for v in value]
+            return [ConfigAdapter._serialise_safe(v) for v in value]
         return value
 
     @classmethod
@@ -152,13 +152,13 @@ class ConfigAdapter(ABC):
             if section == "multiphase" and "multiphase" not in sim_type:
                 continue
             if isinstance(value, dict):
-                buckets[section].update(cls._serialize_safe(value))
+                buckets[section].update(cls._serialise_safe(value))
             else:
-                buckets[section][key] = cls._serialize_safe(value)
+                buckets[section][key] = cls._serialise_safe(value)
 
         buckets["simulation_type"]["type"] = sim_type
         for ek, ev in (config.extra or {}).items():
-            buckets["simulation_type"][ek] = cls._serialize_safe(ev)
+            buckets["simulation_type"][ek] = cls._serialise_safe(ev)
 
         return {
             "simulation_type": buckets.pop("simulation_type", {}),

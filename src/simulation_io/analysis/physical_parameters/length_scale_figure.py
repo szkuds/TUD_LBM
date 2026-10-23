@@ -1,6 +1,6 @@
 """Diagnostic figure for the region behind the Bo/Oh length scale.
 
-``L_eff = sqrt(A/pi)`` and ``Bo ∝ L^2 ∝ A``, so an area error passes straight
+``L_eff = sqrt(A)`` and ``Bo ∝ L^2 ∝ A``, so an area error passes straight
 into every dimensionless number. The area itself is never shown anywhere, which
 makes an overestimate invisible: the counted region is thresholded at
 ``rho_mean`` on the *setup* field, while the droplet the run actually evolves
@@ -26,6 +26,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 import numpy as np
+from src.config.init_field import load_init_field
+from src.config.init_field import measure_field
 from src.config.run_config import ANALYSIS_DIRNAME
 from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import LENGTH_SCALE_PLOT_FILENAME
@@ -34,8 +36,6 @@ from src.config.run_config import SNAPSHOT_GLOB
 from src.simulation_io.analysis.droplet_metrics._snapshot import extract_rho_2d
 from src.simulation_io.analysis.droplet_metrics._snapshot import parse_timestep_from_path
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _get_droplet_area
-from src.simulation_io.analysis.physical_parameters.physical_parameters import _load_init_rho
-from src.simulation_io.analysis.physical_parameters.physical_parameters import _measure_field
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_buoyancy_delta_rho
 from src.simulation_io.analysis.physical_parameters.physical_parameters import dimensionless_for_inputs
 from src.simulation_io.analysis.physical_parameters.physical_parameters import inclusion_mask_from_rho
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     import matplotlib.axes
     from src.config.simulation_config import SimulationConfig
-    from src.simulation_io.plotting.density import DensityPlotOperator
+    from src.simulation_io.plotting import PlotOperator
 
 _PANEL_FIGSIZE = (5.0, 5.0)
 _MASK_ALPHA = 0.28
@@ -104,10 +104,10 @@ def write_length_scale_figure(
 
     mpl.use("Agg")
     import matplotlib.pyplot as plt
-    from src.simulation_io.plotting.density import DensityPlotOperator
+    from src.simulation_io.plotting import build_plot_operator
     from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
-    operator = DensityPlotOperator(config)
+    operator = build_plot_operator("density")(config)
     fig, axes = plt.subplots(
         1,
         len(panels),
@@ -143,7 +143,7 @@ def _counted_panel(config: SimulationConfig) -> _Panel | None:
     buoyancy = _resolve_buoyancy_delta_rho(config)
     drho = None if buoyancy is None else buoyancy[0]
 
-    field = _load_init_rho(config) if config.init_type == "init_from_file" else None
+    field = load_init_field(config) if config.init_type == "init_from_file" else None
     if field is not None:
         return _Panel(
             title="as counted  (init NPZ)",
@@ -196,7 +196,7 @@ def _snapshot_panel(path: Path) -> _Panel | None:
         return None
 
     rho = np.asarray(rho_2d)[:, :, None, None, None]
-    field = _measure_field(rho)
+    field = measure_field(rho)
     if field is None:
         return None
     mask = inclusion_mask_from_rho(rho, field.rho_mean)
@@ -259,7 +259,7 @@ def _analytic_region(config: SimulationConfig) -> _AnalyticRegion | None:
 def _render_panel(
     ax: matplotlib.axes.Axes,
     panel: _Panel,
-    operator: DensityPlotOperator,
+    operator: PlotOperator,
     config: SimulationConfig,
 ) -> None:
     """Draw one panel: the density field with its mask, or the analytic circle."""
@@ -274,7 +274,7 @@ def _render_panel(
 def _overlay_mask(ax: matplotlib.axes.Axes, mask: np.ndarray) -> None:
     """Shade and outline the counted cells over an already-rendered field.
 
-    ``DensityPlotOperator`` transposes its field and draws it with
+    The ``density`` operator transposes its field and draws it with
     ``origin="lower"``, so the mask must be transposed the same way or it lands
     rotated relative to the density beneath it.
     """
@@ -341,7 +341,7 @@ def _caption_builder(config: SimulationConfig) -> Callable[[_Panel], str]:
             rows.append("A = -")
             return "\n".join(rows)
 
-        length = math.sqrt(panel.area / math.pi)
+        length = math.sqrt(panel.area)
         rows.append(f"A = {panel.area:.6g}")
         rows.append(f"L_eff = {length:.4g}")
         if inputs is not None and panel.drho is not None:

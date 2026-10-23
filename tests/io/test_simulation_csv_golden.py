@@ -9,7 +9,7 @@ from itertools import pairwise
 from pathlib import Path
 import pandas as pd
 import pytest
-from src.simulation_io.plotting.simulation_csv import build_simulation_csv
+from src.simulation_io.plotting._simulation_csv import build_simulation_csv
 from tests.support.run_dirs import NONUNIFORM_ITERATIONS
 from tests.support.run_dirs import SAVE_INTERVAL
 from tests.support.run_dirs import UNIFORM_ITERATIONS

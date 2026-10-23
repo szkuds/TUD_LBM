@@ -22,9 +22,9 @@ if TYPE_CHECKING:
 from src.cli.analysis_routing import analyse_tree
 from src.config import SimulationConfig
 from src.simulation_io.plotting._analysis_common import _set_empty_state
+from src.simulation_io.plotting._simulation_csv import build_simulation_csv
 from src.simulation_io.plotting.run_comparison import _load_comparison_entries
 from src.simulation_io.plotting.run_comparison import compare_runs
-from src.simulation_io.plotting.simulation_csv import build_simulation_csv
 
 # ---------------------------------------------------------------------------
 # Helpers

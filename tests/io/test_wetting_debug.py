@@ -15,12 +15,13 @@ from src.simulation_io.analysis._debug_table import layout_width
 PHI_NEUTRAL = jnp.array(1.0)
 
 
-def _sample(*, phi=1.4, phi_active=True, d_rho=0.002, iters=37, cap=60, fallback=0, ca=112.345):
+def _sample(*, regime=0, phi=1.4, phi_active=True, d_rho=0.002, iters=37, cap=60, fallback=0, ca=112.345):
     return wetting_debug.SideDebugSample(
         ca=jnp.array(ca),
         ca_adv=jnp.array(110.0),
         ca_rec=jnp.array(70.0),
         cll=jnp.array(23.456),
+        regime=jnp.array(regime),
         phi=jnp.array(phi),
         d_rho=jnp.array(d_rho),
         phi_active=jnp.array(phi_active),
@@ -147,3 +148,11 @@ def test_survives_a_jit_trace(capsys):
     assert int(step(jnp.array(7))) == 8
     lines = capsys.readouterr().out.splitlines()
     assert [line.split()[1] for line in lines[1:]] == ["L", "R"]
+
+
+@pytest.mark.usefixtures("debug_on")
+@pytest.mark.parametrize(("regime", "name"), [(0, "pin"), (1, "adv"), (2, "rec")])
+def test_row_names_the_regime(capsys, regime, name):
+    _log(jnp.array(0), sides=(_sample(regime=regime), _sample(regime=regime)))
+    left = capsys.readouterr().out.splitlines()[1]
+    assert f" {name} " in left

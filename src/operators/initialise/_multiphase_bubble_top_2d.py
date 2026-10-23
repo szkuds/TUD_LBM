@@ -15,9 +15,7 @@ if TYPE_CHECKING:
 
 @initialise_operator(name="multiphase_bubble_top")
 def init_multiphase_bubble_top(
-    nx: int,
-    ny: int,
-    nz: int,
+    grid_shape: tuple[int, int, int],
     lattice: Lattice,
     *,
     rho_l: float = 1.0,
@@ -30,9 +28,7 @@ def init_multiphase_bubble_top(
     Centre: ``(nx/2, ny/6)``, radius: ``min(nx, ny) / 4``.
 
     Args:
-        nx: Grid size in x.
-        ny: Grid size in y.
-        nz: Grid size in z (supports nz=1 for pseudo-3D).
+        grid_shape: Spatial dimensions ``(nx, ny, nz)``; nz=1 gives pseudo-3D.
         lattice: :class:`~setup.lattice.Lattice`.
         rho_l: Liquid density.
         rho_v: Vapour density.
@@ -42,6 +38,7 @@ def init_multiphase_bubble_top(
     Returns:
         Initial distribution ``f``, shape ``(nx, ny, nz, q, 1)``.
     """
+    nx, ny, nz = grid_shape
     # Support pseudo-3D (nz=1) — bubble logic remains 2D
     if nz != 1:
         msg = "Multiphase bubble initialisation supports nz=1 (pseudo-3D) for now."

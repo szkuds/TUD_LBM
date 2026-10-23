@@ -16,7 +16,7 @@ The main workflow: Config → Setup → State → Run::
     # 2. Build simulation setup from config
     setup = build_setup(config)
 
-    # 3. Initialize state (single-phase or multiphase)
+    # 3. Initialise state (single-phase or multiphase)
     state = init_state(setup)
 
     # 4. Run simulation
@@ -33,12 +33,12 @@ Key Classes & Functions
 - WettingState         : Multiphase state with contact angle and interface tracking
 
 **Execution:**
-- init_state()         : Initialize state from setup
+- init_state()         : Initialise state from setup
 - run()                : Execute simulation, returns (final_state, trajectory)
 
 **Input/Output:**
 - readers              : Config loaders (DictAdapter, TomlAdapter)
-- plotting             : Visualization (FigureBuilder, PlotOperator, visualise)
+- plotting             : Visualisation (FigureBuilder, PlotOperator, visualise)
 - simulation_io                   : Output writers (NumPy, VTK) and managers (SimulationIO)
 
 Full API Reference
@@ -66,7 +66,7 @@ def __getattr__(name):  # noqa: PLR0911, ANN001, ANN202
     Lattice          : Velocity model (D2Q9, D3Q19, etc.)
     build_lattice()  : Factory to create lattice from config
     build_setup()    : Factory to create complete Setup from config
-    init_state()     : Initialize State or WettingState from setup
+    init_state()     : Initialise State or WettingState from setup
     run()            : Execute simulation for N timesteps
     State            : Single-phase simulation state (rho, u, f, t)
     WettingState     : Multiphase state for contact angle tracking

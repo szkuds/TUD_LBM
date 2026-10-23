@@ -9,7 +9,14 @@ a gravitating wall the liquid equilibrates hydrostatically below the prescribed
 of 0.76, bulk liquid entered the band, the region grew from 54 to 158 of 200 wall
 cells and the run diverged. The tests here pin the properties that make that
 impossible: the region is anchored on the contact line, bounded by a window,
-confined to one contiguous run, and its density bounds are measured locally.
+confined to one contiguous run, and its density bounds are measured rather than
+prescribed.
+
+They also pin the property the *first* attempt at that fix broke. Measuring the
+bounds per contact line splits the two ceilings whenever the two flanks hold
+different amounts of liquid, which injects more density on one side than the
+other and walks the inclusion along the wall. The bounds are therefore measured
+over both anchor windows together and shared.
 """
 
 from __future__ import annotations
@@ -32,17 +39,26 @@ def _wall_row(
     *,
     liquid_drop: float = 0.0,
     tilt: float = 0.0,
+    right_flank_drop: float = 0.0,
     rho_l: float = _RHO_L,
+    left: float = _LEFT,
+    right: float = _RIGHT,
 ) -> jnp.ndarray:
     """A bubble footprint on a wall: vapour between the two contact lines.
 
     ``liquid_drop`` lowers the liquid everywhere and ``tilt`` adds a further
     linear fall along the wall, the two ways gravity moves a wetting wall's
     liquid density away from the prescribed ``rho_l``.
+
+    ``right_flank_drop`` lowers the liquid beyond the right contact line only,
+    leaving both interfaces the same shape. That is the measured geometry behind
+    the drift: an inclusion crowded against the far wall, whose right flank holds
+    too little liquid for a window centred there to see bulk.
     """
     x = np.arange(_N, dtype=float)
-    vapour_fraction = 0.5 * (np.tanh((x - _LEFT) / _WIDTH) - np.tanh((x - _RIGHT) / _WIDTH))
-    liquid = rho_l - liquid_drop - tilt * (x / (_N - 1))
+    vapour_fraction = 0.5 * (np.tanh((x - left) / _WIDTH) - np.tanh((x - right) / _WIDTH))
+    flank = 0.5 * (1.0 + np.tanh((x - (right + _WIDTH)) / _WIDTH))
+    liquid = rho_l - liquid_drop - tilt * (x / (_N - 1)) - right_flank_drop * flank
     return jnp.asarray(liquid + (_RHO_V - liquid) * vapour_fraction)
 
 
@@ -86,16 +102,70 @@ def test_bulk_liquid_below_the_old_upper_bound_does_not_enter_the_region():
         assert float(region.anchor) == pytest.approx(anchor, abs=2.0)
 
 
-def test_bounds_are_measured_locally_not_from_the_prescribed_densities():
+def test_bounds_are_measured_not_taken_from_the_prescribed_densities():
     drifted = _wall_row(liquid_drop=0.9, tilt=0.6)
     left, right = wetting_regions(drifted, _RHO_L, _RHO_V)
 
-    # Each side's upper bound tracks the liquid density beside *that* contact
-    # line, so the tilted wall gives the two sides different bounds.
-    assert float(left.rho_upper) > float(right.rho_upper)
+    # The bounds follow the liquid the wall actually holds, which the drop and
+    # tilt have pulled below the prescribed pair.
     for region in (left, right):
         assert float(region.rho_lower) < float(region.rho_upper)
         assert float(region.rho_upper) < 0.95 * _RHO_L + 0.05 * _RHO_V
+
+
+def test_both_contact_lines_share_one_pair_of_bounds():
+    """The bounds belong to the wall, not to a side — the fix for the drift.
+
+    Measuring them per contact line splits the two ceilings whenever the flanks
+    hold different amounts of liquid: on this row the predecessor put the left
+    ceiling 0.76 above the right, and on the measured run that split was 1.62
+    (10.82 against 9.20) and walked the bubble 32 cells into the far wall.
+    """
+    crowded = _wall_row(right_flank_drop=0.8)
+    left, right = wetting_regions(crowded, _RHO_L, _RHO_V)
+
+    half_width = anchor_window_half_width(_N)
+    row = np.asarray(crowded)
+    beside_left = row[int(_LEFT) - half_width : int(_LEFT) + 1].max()
+    beside_right = row[int(_RIGHT) : int(_RIGHT) + half_width + 1].max()
+    assert beside_left - beside_right > 0.5  # the flanks really do differ
+
+    assert float(left.rho_upper) == float(right.rho_upper)
+    assert float(left.rho_lower) == float(right.rho_lower)
+
+
+def test_a_mirror_symmetric_row_is_modified_symmetrically():
+    """Equal phi on a mirrored row must inject equal density on both sides.
+
+    This is the invariant the drift violated: an unbalanced injection is an
+    unbalanced tangential force at the wall, and nothing restores it.
+    """
+    half = (_RIGHT - _LEFT) / 2.0
+    centre = (_N - 1) / 2.0
+    mirrored = _wall_row(left=centre - half, right=centre + half)
+    left, right = wetting_regions(mirrored, _RHO_L, _RHO_V)
+
+    np.testing.assert_array_equal(np.asarray(left.mask), np.asarray(right.mask)[::-1])
+
+    modified = np.asarray(_apply_wetting_modification(mirrored, _RHO_L, _RHO_V, 1.05, 1.05, 0.0, 0.0))
+    injected = modified - np.asarray(mirrored)
+    assert injected[np.asarray(left.mask)].sum() == pytest.approx(
+        injected[np.asarray(right.mask)].sum(),
+        rel=1e-9,
+    )
+
+
+def test_a_crowded_flank_does_not_widen_the_region_past_the_window():
+    """Shared bounds let a depressed flank into the band; the window still caps it."""
+    crowded = _wall_row(right_flank_drop=0.8)
+    left, right = wetting_regions(crowded, _RHO_L, _RHO_V)
+
+    half_width = anchor_window_half_width(_N)
+    assert _extent(left) + _extent(right) <= 2 * (2 * half_width + 1)
+    assert _extent(right) > _extent(left)  # the depressed flank is in band
+    for region, anchor in ((left, _LEFT), (right, _RIGHT)):
+        cells = np.flatnonzero(np.asarray(region.mask))
+        assert np.abs(cells - anchor).max() <= half_width
 
 
 def test_a_disconnected_in_band_cluster_is_excluded():
@@ -162,7 +232,7 @@ def test_regions_are_jittable():
 def test_gradients_stay_finite_when_a_side_is_empty():
     """``jnp.where`` poisons gradients through a non-finite dead branch.
 
-    The hysteresis optimizer differentiates through the applicator, so the local
+    The hysteresis optimiser differentiates through the applicator, so the local
     bounds must stay finite even for an anchor the contrast floor rejected.
     """
     row = jnp.full(_N, _RHO_L)
@@ -172,3 +242,36 @@ def test_gradients_stay_finite_when_a_side_is_empty():
 
     grad = jax.grad(total)(jnp.asarray(1.1))
     assert np.isfinite(float(grad))
+
+
+# ---------------------------------------------------------------------------
+# Surface split on a stepped wall
+# ---------------------------------------------------------------------------
+
+
+def test_band_cells_across_the_step_keep_their_own_surface():
+    """A line's phi never reaches the pre surface, and the post surface always pulls."""
+    import numpy as np
+    from src.config.chemical_step import ChemicalStepWall
+    from src.operators.wetting._wetting_modification import _apply_wetting_modification
+    from src.operators.wetting._wetting_modification import wetting_regions
+
+    n, rho_l, rho_v = 64, 1.0, 0.001
+    x = np.arange(n)
+    # A droplet spanning [20, 44]: tanh walls at both ends, liquid inside.
+    row = jnp.asarray(rho_v + (rho_l - rho_v) * 0.25 * (1 + np.tanh((x - 20) / 2)) * (1 - np.tanh((x - 44) / 2)))
+    left, _ = wetting_regions(row, rho_l, rho_v)
+    band = np.flatnonzero(np.asarray(left.mask))
+    step_x = float(left.anchor) - 1.0  # the step cuts the left band just behind the line: it is on post
+    wall = ChemicalStepWall("bottom", step_x, 1.0, 1.0, 0.07, 0.07, post_phi=2.0, post_d_rho=0.0)
+
+    out = np.asarray(_apply_wetting_modification(row, rho_l, rho_v, 1.3, 1.0, 0.0, 0.0, wall))
+    lower, upper = float(left.rho_lower), float(left.rho_upper)
+    pre = band[band < step_x]
+    post = band[band >= step_x]
+    assert pre.size
+    assert post.size
+    # Pre-step cells across the step: the configured hydrophobic push, not the line's phi.
+    np.testing.assert_allclose(out[pre], np.clip(1.0 * np.asarray(row)[pre] - 0.07, lower, upper))
+    # Post-step cells on the line's own side: its live phi.
+    np.testing.assert_allclose(out[post], np.clip(1.3 * np.asarray(row)[post], lower, upper))

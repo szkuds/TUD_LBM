@@ -6,11 +6,15 @@ tension is measured directly: periodic droplets of several radii are
 equilibrated, the Laplace pressure jump is read from each, and a line is
 fitted to ``dP = sigma / R`` (2-D Young-Laplace).
 
-During ``tud-lbm run`` the measurement is triggered automatically only for
-EOS without a closed form — those absent from the ``"surface_tension"``
-registry kind, which is the whole definition; ``tud-lbm analyse CONFIG.toml
---surface-tension`` forces it for any supported multiphase EOS, e.g. to verify
-the closed-form double-well sigma numerically.
+The droplets are **ordinary simulations**, not something this module runs.
+:func:`calibration_configs` turns a config into one run config per radius
+(``tud-lbm calibration stage`` writes them as TOMLs, under
+``$TUD_LBM_DATA_DIR/surface_tension/<fluid>/configs/``); they are run like any
+other config — in practice on DelftBlue through ``scripts/db_pipeline.sh`` —
+and :func:`collect_calibration` assembles their final snapshots into sigma
+(``tud-lbm calibration collect``). Nothing here advances a simulation, so a
+``tud-lbm run`` whose fluid has no cached sigma starts immediately and says how
+to stage the sweep, instead of equilibrating five droplets first.
 
 The measurement is expensive, so results are cached on disk keyed by the
 thermodynamic parameters and calibration grid size that determine sigma. The
@@ -21,59 +25,54 @@ cache is split in two by size, and only the small half lives in the repo:
     purpose, so a measured sigma is shared with the team via the normal git
     workflow rather than re-measured by everyone individually (commit it after
     adding a new entry).
-``$TUD_LBM_DATA_DIR/surface_tension_cache/fields/<digest>.npz``
+``$TUD_LBM_DATA_DIR/surface_tension/fields/<digest>.npz``
     The equilibrated density field of every droplet, ~4 MB per entry. This is
     simulation output, so it is written under the user data root
     (:data:`~src.config.config_overview.BASE_RESULTS_DIR`) and never inside
     the repository — a run must not dirty the working tree. It is what lets a
-    cache hit still draw the snapshot figures below without re-running the
-    sweep; a machine that has the JSON entry but not the fields simply skips
-    those figures. :func:`_store_fields` refuses to write inside the package
-    tree, so the split cannot silently regress.
+    run with a cached sigma draw the snapshot figures below; a machine that has
+    the JSON entry but not the fields simply skips those figures.
+    :func:`_store_fields` refuses to write inside the package tree, so the
+    split cannot silently regress.
 
 Every artefact of a calibration is grouped under ``<run_dir>/surface_tension/``
 rather than dropped flat into the run directory, in the same ``data/`` +
 ``plots/`` shape a run directory itself has:
 
 ``plots/calibration.png``
-    The Young-Laplace fit. Written on every run, whether measured or served
-    from cache.
+    The Young-Laplace fit. Written on every run whose fluid is calibrated.
 ``data/data.json``
     The fitted ``(radii, delta_p, sigma)``. Written alongside the figure.
 ``plots/snapshots/R_<R>.png``
     One figure per droplet showing its equilibrated density, bulk pressure and
     total pressure, with markers on the pixels entering the Laplace jump.
-    Written whenever the density fields are available — from the sweep, or
-    from the field cache.
-``data/radius_<R>_{init,final}.npz``
-    The full initial and equilibrated ``State`` of every droplet, saved only
-    when the sweep actually runs. Living in ``data/`` is what lets
-    ``tud-lbm visualise <that file> --single`` write its figure into
-    ``plots/snapshots/`` beside the calibration output.
+    Written whenever the density fields are in the field cache.
 """
 
 from __future__ import annotations
 import hashlib
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
-from typing import cast
+from typing import NamedTuple
 import numpy as np
 from rich.console import Console
 from src.config.config_overview import BASE_RESULTS_DIR
+from src.config.run_config import CONFIG_FILENAME
 from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import PHYSICAL_PARAMETERS_FILENAME
 from src.config.run_config import PLOTS_DIRNAME
+from src.config.run_config import SNAPSHOT_GLOB
 from src.config.run_config import SNAPSHOTS_DIRNAME
-from src.operators.macroscopic.eos import build_pressure_fn  # also registers the pressure operators
+from src.operators.macroscopic import eos as _eos  # noqa: F401  registers the pressure operators
 from src.operators.macroscopic.eos import has_analytical_surface_tension
 from src.registry import get_operator_names
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from src.config import SimulationConfig
-    from src.pipeline.setup import SimulationSetup
-    from src.pipeline.state.state import State
 
 _MIN_GRID_SHAPE_DIMS = 2
 _N_RADII = 5
@@ -92,8 +91,7 @@ _RADIUS_MAX_FRACTION = 1.0 / 3.0
 # inside the largest (R = 10.7) droplet, silently measuring liquid as vapour.
 _SAMPLE_MARGIN_FRACTION = 1.0 / 8.0
 
-# Smallest square side the sweep runs in, regardless of how small the run's own
-# grid is.
+# Side of the square box every droplet sweep runs in.
 #
 # The sweep is deliberately NOT run in the run's own domain. Young-Laplace
 # assumes a circular droplet in an effectively unbounded bath, and a
@@ -106,25 +104,26 @@ _SAMPLE_MARGIN_FRACTION = 1.0 / 8.0
 # boxes spanning a 2.3x range of sizes agreed at +0.0720 to +0.0731.
 #
 # 301 is the smallest square in that agreeing set, so it is the smallest side
-# with evidence behind it. Sizing up rather than down also keeps the cost of a
-# calibration independent of how small the run that triggered it happens to be.
-_MIN_CALIBRATION_SIDE = 301
+# with evidence behind it -- and it is fixed, not a floor. The box used to grow
+# with the run's grid (``max(nx, ny, 301)``), which put the run's size back into
+# the cache key: a 401x101 run missed the entry a 201x101 run of the very same
+# fluid had measured, for a sigma those four boxes show does not depend on it.
+_CALIBRATION_SIDE = 301
+_CALIBRATION_GRID_SHAPE = (_CALIBRATION_SIDE, _CALIBRATION_SIDE, 1)
 
+# Everything a calibration leaves on disk lives under one directory of the
+# results root: a folder per fluid holding its staged sweep configs, the sweep's
+# run directories and the fitted result, plus the density-field cache.
+SURFACE_TENSION_ROOT = Path(BASE_RESULTS_DIR) / "surface_tension"
+_SWEEP_CONFIGS_DIRNAME = "configs"
 
-def _calibration_grid_shape(config: SimulationConfig) -> tuple[int, int, int]:
-    """Square domain the droplet sweep runs in, decoupled from the run's own grid.
-
-    Square, so no axis confines the droplet more than another; and at least
-    :data:`_MIN_CALIBRATION_SIDE` on a side. See that constant for why.
-
-    This is also the ``grid_shape`` that goes into the cache key
-    (:func:`_cache_grid_shape`), so every run whose calibration lands in the
-    same box shares one measurement -- a 201x101 and a 201x201 run now hit the
-    same entry, because sigma is a property of the fluid, not of the domain the
-    run happens to use.
-    """
-    side = max(int(config.grid_shape[0]), int(config.grid_shape[1]), _MIN_CALIBRATION_SIDE)
-    return (side, side, 1)
+# A sweep run is named ``surface_tension_<fluid>_R<radius>``. The name is what
+# marks a config as a sweep run -- here, and in ``scripts/db_new_job.sh``, which
+# keys the job command on the same prefix -- but it is a label, not an identity:
+# a run's fluid is its cache key and its place in the sweep is its radius, both
+# read from its own ``config.toml``.
+_SWEEP_NAME_PREFIX = "surface_tension"
+_SWEEP_NAME_PATTERN = re.compile(rf"(?:^|_){_SWEEP_NAME_PREFIX}_.+_R\d+$")
 
 
 _PERIODIC_BC = {"top": "periodic", "bottom": "periodic", "left": "periodic", "right": "periodic"}
@@ -157,7 +156,7 @@ _SHARED_CACHE_PATH = Path(__file__).resolve().parent / "data" / _CACHE_FILENAME
 # — the same ``$TUD_LBM_DATA_DIR`` (default ``~/TUD_LBM_data``) that run
 # directories default to — and never into the checkout. Machine-local by
 # design: an absent field cache costs snapshot figures, never sigma.
-_FIELDS_CACHE_DIR = Path(BASE_RESULTS_DIR) / "surface_tension_cache" / "fields"
+_FIELDS_CACHE_DIR = SURFACE_TENSION_ROOT / "fields"
 
 # Anything at or below the import root is the checkout; a calibration writing
 # there would dirty the working tree. Guards :func:`_store_fields`.
@@ -195,171 +194,261 @@ def surface_tension_plots_dir(run_dir: str | Path) -> Path:
     return surface_tension_dir(run_dir) / PLOTS_DIRNAME
 
 
-def record_surface_tension(config: SimulationConfig, run_dir: str | Path) -> SimulationConfig:
-    """Measure sigma when the EOS needs it, refresh the parameter file, return updated config.
+def cached_surface_tension(config: SimulationConfig) -> float | None:
+    """The measured sigma for *config*'s fluid, or ``None`` when there is none.
 
-    "Needs it" is registry membership: an EOS that registers under the
-    ``"surface_tension"`` kind has a closed form and the config is returned
-    unchanged. Otherwise sigma is measured (or read from cache), stored in
+    This is the link from a config to the cache: a run's ``config.toml`` never
+    stores sigma, so every reader that wants the measured value asks here. A
+    value already on ``config.extra`` wins; an EOS with a closed form is never
+    looked up, since its sigma is not a measurement.
+    """
+    stored = config.extra.get("surface_tension")
+    if stored is not None:
+        return float(stored)
+    if not needs_calibration(config):
+        return None
+    cached = _load_cache(_cache_path()).get(_cache_key(config))
+    return None if cached is None else float(cached["sigma"])
+
+
+def needs_calibration(config: SimulationConfig) -> bool:
+    """Whether *config*'s sigma can only come from a Young-Laplace measurement.
+
+    That is registry membership: an EOS registered under the
+    ``"surface_tension"`` kind has a closed form.
+    """
+    return config.is_multiphase and not has_analytical_surface_tension(config.eos)
+
+
+def is_calibrated(config: SimulationConfig) -> bool:
+    """Whether the cache holds a measurement for *config*'s fluid, whatever its EOS."""
+    return _cache_key(config) in _load_cache(_cache_path())
+
+
+def record_surface_tension(config: SimulationConfig, run_dir: str | Path) -> SimulationConfig:
+    """Attach the cached sigma when the EOS needs one, refresh the parameter file, return the config.
+
+    A fluid with a closed form, or one not yet calibrated, returns *config*
+    unchanged. Otherwise sigma is read from the cache, stored in
     ``config.extra['surface_tension']``, and ``physical_parameters.txt`` is
     rewritten in *run_dir* with the measured value.
     """
-    if not config.is_multiphase or has_analytical_surface_tension(config.eos):
+    # A sweep run *is* the measurement; it has no sigma to look up yet.
+    if not needs_calibration(config) or is_sweep_config(config):
+        return config
+
+    sigma = calibrate_surface_tension(config, run_dir)
+    if sigma is None:
         return config
 
     from src.simulation_io.analysis.physical_parameters import write_physical_parameters
 
-    sigma = calibrate_surface_tension(config, run_dir)
     updated = replace(config, extra={**config.extra, "surface_tension": sigma})
     write_physical_parameters(updated, Path(run_dir) / PHYSICAL_PARAMETERS_FILENAME)
     return updated
 
 
-def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> float:
-    """Return the measured lattice surface tension and write the calibration figure.
+def calibrate_surface_tension(config: SimulationConfig, run_dir: str | Path) -> float | None:
+    """Return the cached lattice surface tension and write the calibration artefacts.
 
-    Looks up a cached value keyed by the EOS thermodynamic parameters; on a
-    miss, runs the droplet sweep and caches the result. The calibration figure
-    and the fitted ``(radii, delta_p, sigma)`` data file are always written
-    into ``run_dir/surface_tension/``, as are the per-droplet snapshot figures
-    whenever the equilibrated density fields are available — freshly measured
-    or restored from the field cache. On a fresh measurement the initial and
-    equilibrated state of every droplet is additionally saved under
-    ``run_dir/surface_tension/data/`` (a cache hit runs no droplets, so no
-    states are written).
+    On a hit the calibration figure and the fitted ``(radii, delta_p, sigma)``
+    data file are written into ``run_dir/surface_tension/``, as are the
+    per-droplet snapshot figures whenever the equilibrated density fields are in
+    the field cache. On a miss nothing is measured and nothing is written: the
+    sweep is a set of runs of its own (:func:`calibration_configs`), so this
+    reports how to stage it and returns ``None``.
     """
+    key = _cache_key(config)
+    cached = _load_cache(_cache_path()).get(key)
+    if cached is None:
+        console.print(
+            "[yellow]No cached σ for this fluid — continuing without it.[/yellow]\n"
+            "[dim]Stage the Young–Laplace sweep with `tud-lbm calibration stage <config.toml>`, run the "
+            "staged configs (scripts/db_pipeline.sh), then `tud-lbm calibration collect`.[/dim]"
+        )
+        return None
+
+    radii = np.asarray(cached["radii"], dtype=float)
+    delta_p = np.asarray(cached["delta_p"], dtype=float)
+    sigma = float(cached["sigma"])
+    console.print(f"[dim]Using cached σ = {sigma:.6g}[/dim]")
+
     data_dir = surface_tension_data_dir(run_dir)
     plots_dir = surface_tension_plots_dir(run_dir)
-    cache_path = _cache_path()
-    key = _cache_key(config)
-
-    cached = _load_cache(cache_path).get(key)
-    if cached is not None:
-        radii = np.asarray(cached["radii"], dtype=float)
-        delta_p = np.asarray(cached["delta_p"], dtype=float)
-        sigma = float(cached["sigma"])
-        densities = _load_fields(key, radii.size)
-        console.print(
-            f"[dim]Using cached σ = {sigma:.6g} — droplet states are only "
-            f"saved when the calibration sweep actually runs.[/dim]"
-        )
-    else:
-        console.print(
-            f"[dim]No cached σ for these EOS parameters — running "
-            f"Young–Laplace calibration ({_N_RADII} droplets)...[/dim]"
-        )
-        radii, delta_p, densities = _measure_pressure_jumps(config, states_dir=data_dir)
-        sigma = _fit_sigma(radii, delta_p)
-        _store_cache(key, radii, delta_p, sigma, config.grid_shape)
-        _store_fields(key, densities)
-        console.print(f"[bold green]Surface tension calibrated: σ = {sigma:.6g}[/bold green]")
-
     _save_plot(plots_dir / _PLOT_FILENAME, radii, delta_p, sigma)
     _save_data(data_dir / _DATA_FILENAME, radii, delta_p, sigma)
-    _save_snapshots(config, plots_dir / SNAPSHOTS_DIRNAME, radii, delta_p, densities)
+    _save_snapshots(config, plots_dir / SNAPSHOTS_DIRNAME, radii, delta_p, _load_fields(key, radii.size))
     return sigma
 
 
-# ── Measurement ───────────────────────────────────────────────────────
+# ── The sweep, as ordinary runs ───────────────────────────────────────
 
 
-def _measure_pressure_jumps(
-    config: SimulationConfig, states_dir: Path | None = None
-) -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
-    """Equilibrate one droplet per radius and return ``(radii, delta_p, densities)``.
+def sweep_radii() -> np.ndarray:
+    """The droplet radii of a sweep, in lattice units of the calibration box."""
+    return np.linspace(_CALIBRATION_SIDE * _RADIUS_MIN_FRACTION, _CALIBRATION_SIDE * _RADIUS_MAX_FRACTION, _N_RADII)
 
-    *densities* holds the equilibrated 2-D density field of each droplet — the
-    very field the pressure jump was read from, handed back so the snapshot
-    figures and the field cache need no second pass over the states.
 
-    When *states_dir* is given, the initial and final :class:`State` of each
-    droplet is saved there as ``radius_<R>_init.npz`` / ``radius_<R>_final.npz``
-    so the fields entering the Young-Laplace fit can be inspected afterwards.
+def fluid_label(config: SimulationConfig) -> str:
+    """Readable name of *config*'s fluid: EOS initials, kappa and the density pair.
+
+    ``cs_kappa0.015_rho12.18_0.015`` for a Carnahan-Starling fluid. It names the
+    fluid's folder and its sweep runs; two fluids differing only in parameters
+    the label leaves out share it, which is why nothing reads identity off it.
     """
-    from src.operators.initialise import build_initialise_fn
-    from src.operators.macroscopic import build_multiphase_params
-    from src.pipeline.runner import init_state
-    from src.pipeline.setup import build_setup
+    initials = "".join(word[0] for word in str(config.eos).split("-"))
+    return f"{initials}_kappa{config.kappa:g}_rho{config.rho_l:g}_{config.rho_v:g}"
 
-    if config.interface_width is None or config.rho_l is None or config.rho_v is None:
-        msg = "interface_width, rho_l, rho_v are required for surface-tension calibration"
-        raise ValueError(msg)
 
-    calib_config = _calibration_config(config)
+def sweep_run_name(config: SimulationConfig, radius: float) -> str:
+    """The ``simulation_name`` of the sweep run of *config*'s fluid at *radius*."""
+    return f"{_SWEEP_NAME_PREFIX}_{fluid_label(config)}_R{round(radius)}"
 
-    # Radii are fractions of the *calibration* box, not the run's own grid --
-    # they have to match the domain the droplets are actually equilibrated in.
-    nx, ny = int(calib_config.grid_shape[0]), int(calib_config.grid_shape[1])
-    min_dim = min(nx, ny)
-    radii = np.linspace(min_dim * _RADIUS_MIN_FRACTION, min_dim * _RADIUS_MAX_FRACTION, _N_RADII)
-    width = int(config.interface_width)
-    rho_l, rho_v = float(config.rho_l), float(config.rho_v)
 
-    mp = build_multiphase_params(calib_config)
-    pressure_fn = build_pressure_fn(mp)
+def is_sweep_config(config: SimulationConfig) -> bool:
+    """Whether *config* is itself a run of a calibration sweep."""
+    return _SWEEP_NAME_PATTERN.search(str(config.simulation_name)) is not None
 
-    setup = build_setup(calib_config)
-    grid_shape = cast("tuple[int, int, int]", setup.grid_shape)
-    init_fn = build_initialise_fn("multiphase_bubbles")
 
-    if states_dir is not None:
-        states_dir.mkdir(parents=True, exist_ok=True)
+def sweep_config_path(sweep_config: SimulationConfig) -> Path:
+    """Where the staged TOML of *sweep_config* lives: ``<fluid dir>/configs/R<radius>.toml``."""
+    radius_tag = str(sweep_config.simulation_name).rsplit("_", maxsplit=1)[-1]
+    return Path(sweep_config.results_dir) / _SWEEP_CONFIGS_DIRNAME / f"{radius_tag}.toml"
 
-    delta_p = np.empty(_N_RADII)
-    densities: list[np.ndarray] = []
-    for i, radius in enumerate(radii):
-        console.print(f"[dim]Calibration running ({i + 1}/{_N_RADII})...[/dim]")
-        f0 = init_fn(
-            grid_shape,
-            setup.lattice,
-            rho_l=rho_l,
-            rho_v=rho_v,
-            interface_width=width,
-            centres=[[0.5, 0.5]],
-            radii=[float(radius) / min_dim],
-            dispersed="liquid",
+
+def calibration_configs(config: SimulationConfig) -> list[SimulationConfig]:
+    """One run config per sweep radius, for the fluid of *config*.
+
+    Each is a plain ``multiphase`` run — periodic, force-free, a single liquid
+    droplet — that saves only its final state and writes into the fluid's own
+    folder under :data:`SURFACE_TENSION_ROOT`, where :func:`find_sweep_runs`
+    gathers the finished run directories. Every one of them, and *config*
+    itself, has the same cache key: that is what lets
+    :func:`collect_calibration` file the result where *config* will look.
+    """
+    base = _calibration_config(config)
+    fluid_dir = SURFACE_TENSION_ROOT / fluid_label(config)
+    return [
+        replace(
+            base,
+            results_dir=str(fluid_dir),
+            # Only the final state enters the fit, and `pressure` is the very
+            # field the macroscopic operator computed it from.
+            save_interval=_N_ITERATIONS,
+            save_fields=["rho", "pressure"],
+            initialisation={**base.initialisation, "radii": [float(radius) / _CALIBRATION_SIDE]},
+            simulation_name=sweep_run_name(config, radius),
         )
-        initial_state = init_state(setup, f=f0)
-        if states_dir is not None:
-            _save_state(states_dir / f"radius_{radius:.2f}_init.npz", initial_state)
-        final_state = _run_to_final_state(setup, initial_state, _N_ITERATIONS)
-        if states_dir is not None:
-            _save_state(states_dir / f"radius_{radius:.2f}_final.npz", final_state)
-        rho_2d = _density_2d(final_state)
-        densities.append(rho_2d)
-        delta_p[i] = _pressure_jump(pressure_fn(rho_2d))
-
-    return radii, delta_p, densities
+        for radius in sweep_radii()
+    ]
 
 
-def _save_state(path: Path, state: State) -> None:
-    """Save every array field of *state* to an ``.npz`` snapshot."""
-    arrays = {name: np.asarray(value) for name, value in state._asdict().items() if hasattr(value, "shape")}
-    np.savez(path, **arrays)  # ty: ignore[invalid-argument-type]
+def find_sweep_runs(root: str | Path) -> dict[Path, list[Path]]:
+    """Sweep run directories under *root*, grouped by their fluid folder.
 
-
-def _run_to_final_state(setup: SimulationSetup, state: State, nt: int) -> State:
-    """Advance *nt* steps without stacking a trajectory.
-
-    ``pipeline.runner.run()`` without an ``io_handler`` materializes the full
-    per-step trajectory in memory (one stacked ``State`` per step) — for the
-    droplet sweep's large ``nt`` that overflows memory long before it
-    finishes. Only the final state is needed here, so the scan body discards
-    its per-step output instead.
+    A sweep run sits at ``<root>/<fluid>/<date>/<time>_<sweep name>``. Each
+    group is sorted, so a later run of the same radius follows an earlier one.
+    Run directories placed directly under *root* (``<root>/<date>/<run>``) are
+    one level too shallow to match, whatever they are named.
     """
-    import jax
+    groups: dict[Path, list[Path]] = {}
+    for run_dir in sorted(Path(root).glob("*/*/*")):
+        if _SWEEP_NAME_PATTERN.search(run_dir.name) is not None and (run_dir / CONFIG_FILENAME).is_file():
+            groups.setdefault(run_dir.parent.parent, []).append(run_dir)
+    return groups
 
-    if setup.step_fn is None:
-        msg = "step_fn is required in SimulationSetup to run simulation"
-        raise TypeError(msg)
-    step_fn = setup.step_fn
 
-    @jax.jit
-    def scan_body(state: State, _t: int) -> tuple[State, None]:
-        return step_fn(setup, state), None
+class _SweepSample(NamedTuple):
+    """What one finished sweep run contributes to the fit."""
 
-    final_state, _ = jax.lax.scan(scan_body, state, jax.numpy.arange(nt))
-    return final_state
+    key: str
+    index: int
+    radius: float
+    delta_p: float
+    density: np.ndarray
+
+
+def collect_calibration(run_dirs: Iterable[str | Path], out_dir: str | Path | None = None) -> float | None:
+    """Fit sigma from the finished sweep runs of one fluid and cache it.
+
+    Reads the final snapshot of each run, takes the Laplace jump from its
+    ``pressure`` field and fits ``dP = sigma / R`` over the radii. The cache
+    key is recomputed from the runs' own ``config.toml``, so the entry lands
+    exactly where the originating config looks it up, and a run's place in the
+    sweep is its configured radius — neither is read off the directory name.
+    When a radius was run more than once the last directory in sorted order —
+    the newest — wins. With *out_dir* (the fluid's folder) the fit figure and
+    its data are written there too.
+
+    Returns ``None``, storing nothing, until every radius of the sweep has a
+    finished run.
+
+    Raises:
+        ValueError: If the runs do not all describe the same fluid.
+    """
+    samples: dict[int, _SweepSample] = {}
+    for run_dir in sorted(Path(d) for d in run_dirs):
+        sample = _read_sweep_run(run_dir)
+        if sample is not None:
+            samples[sample.index] = sample
+
+    keys = {sample.key for sample in samples.values()}
+    if len(keys) > 1:
+        msg = "the sweep runs do not share one set of fluid parameters; collect one fluid at a time"
+        raise ValueError(msg)
+    if sorted(samples) != list(range(_N_RADII)):
+        console.print(f"[dim]Sweep incomplete: {len(samples)}/{_N_RADII} radii finished.[/dim]")
+        return None
+
+    ordered = [samples[index] for index in range(_N_RADII)]
+    key = ordered[0].key
+    radii = np.array([sample.radius for sample in ordered])
+    delta_p = np.array([sample.delta_p for sample in ordered])
+    sigma = _fit_sigma(radii, delta_p)
+    _store_cache(key, radii, delta_p, sigma, _CALIBRATION_GRID_SHAPE)
+    _store_fields(key, [sample.density for sample in ordered])
+    if out_dir is not None:
+        _save_plot(Path(out_dir) / _PLOT_FILENAME, radii, delta_p, sigma)
+        _save_data(Path(out_dir) / _DATA_FILENAME, radii, delta_p, sigma)
+    console.print(f"[bold green]Surface tension calibrated: σ = {sigma:.6g}[/bold green]")
+    return sigma
+
+
+def _read_sweep_run(run_dir: Path) -> _SweepSample | None:
+    """The fit sample of one sweep run, or ``None`` while it has not finished."""
+    from src.config.adapter_toml import TomlAdapter
+    from src.simulation_io.analysis.droplet_metrics import parse_timestep_from_path
+
+    config_path = run_dir / CONFIG_FILENAME
+    snapshots = sorted((run_dir / DATA_DIRNAME).glob(SNAPSHOT_GLOB), key=parse_timestep_from_path)
+    if not config_path.is_file() or not snapshots:
+        return None
+
+    config = TomlAdapter().load(str(config_path))
+    nx, ny = int(config.grid_shape[0]), int(config.grid_shape[1])
+    radius = float(config.initialisation["radii"][0]) * min(nx, ny)
+    matches = np.flatnonzero(np.isclose(sweep_radii(), radius))
+    if matches.size != 1:
+        return None
+    # A run cut short by its time limit has snapshots, but not an equilibrated one.
+    if parse_timestep_from_path(snapshots[-1]) < config.nt:
+        return None
+    with np.load(snapshots[-1]) as snapshot:
+        pressure = _field_2d(snapshot["pressure"])
+        density = _field_2d(snapshot["rho"])
+
+    return _SweepSample(
+        key=_cache_key(config),
+        index=int(matches[0]),
+        radius=radius,
+        delta_p=_pressure_jump(pressure),
+        density=density,
+    )
+
+
+def _field_2d(field: np.ndarray) -> np.ndarray:
+    """The ``(nx, ny)`` slice of a saved ``(nx, ny, 1, 1, 1)`` scalar field."""
+    return np.asarray(field, dtype=float)[:, :, 0, 0, 0]
 
 
 def _calibration_config(config: SimulationConfig) -> SimulationConfig:
@@ -368,7 +457,7 @@ def _calibration_config(config: SimulationConfig) -> SimulationConfig:
         config,
         sim_type="multiphase",
         bc_config=dict(_PERIODIC_BC),
-        grid_shape=_calibration_grid_shape(config),
+        grid_shape=_CALIBRATION_GRID_SHAPE,
         nt=_N_ITERATIONS,
         save_interval=0,
         skip_interval=0,
@@ -384,17 +473,10 @@ def _calibration_config(config: SimulationConfig) -> SimulationConfig:
         hysteresis_config=None,
         chemical_step_config=None,
         init_type="multiphase_bubbles",
+        init_dir=None,
         initialisation={"centres": [[0.5, 0.5]], "radii": [0.2], "dispersed": "liquid"},
         simulation_name=f"{config.simulation_name}_surface_tension",
     )
-
-
-def _density_2d(state: State) -> np.ndarray:
-    """Extract the 2-D density slice from a final :class:`State`."""
-    import jax.numpy as jnp
-
-    rho = state.rho if state.rho is not None else jnp.sum(state.f, axis=3, keepdims=True)
-    return np.asarray(rho)[:, :, 0, 0, 0]
 
 
 def sample_points(nx: int, ny: int) -> tuple[tuple[int, int], list[tuple[int, int]]]:
@@ -447,14 +529,15 @@ def _cache_path() -> Path:
     return _SHARED_CACHE_PATH
 
 
-def _cache_grid_shape(config: SimulationConfig) -> list[int]:
-    """The *calibration* box, not the run's grid — see :func:`_calibration_grid_shape`."""
-    return list(_calibration_grid_shape(config))
-
-
 def _cache_key(config: SimulationConfig) -> str:
+    """The fluid parameters that determine sigma, as canonical JSON.
+
+    ``grid_shape`` is the fixed calibration box rather than the run's grid, so
+    the key depends on the fluid alone; it stays in the key because the stored
+    entries carry it.
+    """
     values = {k: getattr(config, k, None) for k in _CACHE_KEYS}
-    values["grid_shape"] = _cache_grid_shape(config)
+    values["grid_shape"] = list(_CALIBRATION_GRID_SHAPE)
     return json.dumps(values, sort_keys=True)
 
 
@@ -464,7 +547,7 @@ def _sanitize_key(raw_key: str) -> str | None:
     Valid keys are the canonical JSON produced by :func:`_cache_key`: exactly
     the ``_CACHE_KEYS`` fields, with numeric or ``None`` values, a validated
     ``grid_shape``, and an EOS registered under the ``"pressure"`` kind. The returned key is
-    re-serialized from coerced primitives so nothing read from the cache file
+    re-serialised from coerced primitives so nothing read from the cache file
     is echoed back verbatim.
     """
     try:
@@ -568,15 +651,19 @@ def _store_cache(
 
 def _fields_path(key: str) -> Path:
     """Path of the cached density fields for *key*, under the user data root."""
-    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:_FIELDS_KEY_DIGEST_LEN]
-    return _FIELDS_CACHE_DIR / f"{digest}.npz"
+    return _FIELDS_CACHE_DIR / f"{_key_digest(key)}.npz"
+
+
+def _key_digest(key: str) -> str:
+    """Short stable name for a cache key, which is itself a JSON blob."""
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:_FIELDS_KEY_DIGEST_LEN]
 
 
 def _store_fields(key: str, densities: list[np.ndarray]) -> None:
     """Cache the equilibrated density fields under the user data root.
 
-    Stored as one stacked ``(n_radii, nx, ny)`` array so a later cache hit can
-    redraw the snapshot figures without re-running the sweep. Unlike the JSON
+    Stored as one stacked ``(n_radii, nx, ny)`` array so a run with a cached
+    sigma can draw the snapshot figures without the sweep's run directories. Unlike the JSON
     cache these are machine-local and never committed: multi-megabyte binaries
     do not belong in the checkout, and a peer missing them loses only the
     snapshot figures.
@@ -634,13 +721,13 @@ def _save_snapshots(
 ) -> None:
     """Write one snapshot figure per droplet, when the density fields are known.
 
-    A cache hit whose fields predate the field cache has nothing to draw; that
+    A cache entry measured on another machine has no fields here; that
     is reported rather than raised, since sigma itself is already measured.
     """
     if densities is None:
         console.print(
-            "[dim]No cached droplet fields for these parameters — snapshot "
-            "figures need a re-measurement (delete the cache entry to force one).[/dim]"
+            "[dim]No cached droplet fields for these parameters — snapshot figures are "
+            "skipped (the fields are machine-local; `tud-lbm calibration collect` writes them).[/dim]"
         )
         return
     from src.simulation_io.analysis.surface_tension.snapshot_figures import save_snapshot_figures

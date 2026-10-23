@@ -15,34 +15,35 @@ _SEAM = {
     "benchmark": "src.cli.commands.benchmark.run_benchmark",
     "animate": "src.cli.commands.visualise._validate_run_dir_has_config",
     "visualise": "src.cli.commands.visualise._validate_run_dir_has_config",
+    "setup-figure": "src.cli.commands.visualise._validate_run_dir_has_config",
     "compare": "src.cli.analysis_routing.analyse_tree",
     "regime-map": "src.simulation_io.plotting.regime_map_plot.build_regime_map",
     "analyse": "src.cli.commands.analysis._load_single_config",
+    "calibration": "src.cli.commands.calibration._load_raw_config",
 }
 
 _EXIT_INTERRUPTED = 130
 _EXIT_USAGE = 2
 
 
+#: Commands whose first argument is a file: (file name, arguments before it, arguments after it).
+_FILE_ARGS: dict[str, tuple[str, list[str], list[str]]] = {
+    "run": ("config.toml", [], []),
+    "regime-map": ("dirs.txt", [], []),
+    "benchmark": ("config.toml", [], []),
+    "calibration": ("config.toml", ["stage"], []),
+    "analyse": ("config.toml", [], ["--surface-tension"]),
+}
+
+
 def _args(name: str, tmp_path) -> list[str]:
     """Minimal valid arguments for *name*, enough to reach the seam."""
-    if name == "run":
-        cfg = tmp_path / "config.toml"
-        cfg.write_text("", encoding="utf-8")
-        return [name, str(cfg)]
-    if name == "regime-map":
-        txt = tmp_path / "dirs.txt"
-        txt.write_text("", encoding="utf-8")
-        return [name, str(txt)]
-    if name == "benchmark":
-        cfg = tmp_path / "config.toml"
-        cfg.write_text("", encoding="utf-8")
-        return [name, str(cfg)]
-    if name == "analyse":
-        cfg = tmp_path / "config.toml"
-        cfg.write_text("", encoding="utf-8")
-        return [name, str(cfg), "--surface-tension"]
-    return [name, str(tmp_path)]
+    if name not in _FILE_ARGS:
+        return [name, str(tmp_path)]
+    filename, before, after = _FILE_ARGS[name]
+    path = tmp_path / filename
+    path.write_text("", encoding="utf-8")
+    return [name, *before, str(path), *after]
 
 
 def test_every_command_has_a_seam():

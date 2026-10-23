@@ -1,7 +1,8 @@
 """Multiphase macroscopic field computation - pure function.
 
-Computes density, force-corrected velocity, and the interparticle
-(chemical-potential) force for diffuse-interface multiphase models.
+Computes density, force-corrected velocity, the interparticle
+(chemical-potential) force and the bulk pressure for diffuse-interface
+multiphase models.
 
 Bulk EOS handling is delegated to the macroscopic EOS subpackage,
 selected by ``mp.eos``.
@@ -11,26 +12,32 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from src.operators.macroscopic.eos import build_eos_fn
+from src.operators.macroscopic.eos import build_pressure_fn
 from src.registry import macroscopic_operator
 
 if TYPE_CHECKING:
+    from src.config.multiphase_params import MultiphaseParams
     from src.lattice.lattice import Lattice
-    from src.operators.macroscopic import MultiphaseParams
-    from src.operators.protocols import BoundDifferentialOperator
-    from src.operators.protocols import EOSFunction
+    from src.operators.protocols import DifferentialOperator
+    from src.operators.protocols import EosOperator
 
 
 def _compute_macroscopic_multiphase_impl(
     f: jnp.ndarray,
     lattice: Lattice,
     mp: MultiphaseParams,
-    eos_fn: EOSFunction,
+    eos_fn: EosOperator,
+    pressure_fn: EosOperator,
     force_ext: jnp.ndarray | None = None,
     *,
-    gradient_standard: BoundDifferentialOperator,
-    laplacian_density: BoundDifferentialOperator,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Generic multiphase macroscopic computation shared between EOS models."""
+    gradient_standard: DifferentialOperator,
+    laplacian_density: DifferentialOperator,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Generic multiphase macroscopic computation shared between EOS models.
+
+    *eos_fn* and *pressure_fn* are the chemical potential and bulk pressure of
+    the same EOS, so the force and the reported pressure share one free energy.
+    """
     # Density - zeroth moment
     rho = jnp.sum(f, axis=-2, keepdims=True)
 
@@ -53,7 +60,10 @@ def _compute_macroscopic_multiphase_impl(
     # Force-corrected velocity for equilibrium
     u_eq = u + force_total / (2.0 * rho)
 
-    return rho, u_eq, force_total
+    # Bulk pressure from the same EOS; the interfacial kappa terms are not included.
+    pressure = pressure_fn(rho)
+
+    return rho, u_eq, force_total, pressure
 
 
 @macroscopic_operator(name="multiphase")
@@ -63,16 +73,16 @@ def compute_macroscopic_multiphase(
     mp: MultiphaseParams,
     force_ext: jnp.ndarray | None = None,
     *,
-    gradient_standard: BoundDifferentialOperator,
-    laplacian_density: BoundDifferentialOperator,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Compute multiphase macroscopic fields using EOS selected from ``mp.eos``."""
-    eos_fn = build_eos_fn(mp.eos, mp)
+    gradient_standard: DifferentialOperator,
+    laplacian_density: DifferentialOperator,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Compute ``(rho, u, force, pressure)`` using the EOS selected by ``mp.eos``."""
     return _compute_macroscopic_multiphase_impl(
         f,
         lattice,
         mp,
-        eos_fn,
+        build_eos_fn(mp.eos, mp),
+        build_pressure_fn(mp),
         force_ext,
         gradient_standard=gradient_standard,
         laplacian_density=laplacian_density,

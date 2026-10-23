@@ -31,7 +31,7 @@ def main(config_path: str):
     # Build simulation setup
     setup = build_setup(config)
 
-    # Initialize state
+    # Initialise state
     state = init_state(setup)
 
     # Run simulation

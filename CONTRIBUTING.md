@@ -5,7 +5,7 @@ We welcome any kind of contribution to our software, from simple comment or ques
 A contribution can be one of the following cases:
 
 1. you have a question;
-1. you think you may have found a bug (including unexpected behavior);
+1. you think you may have found a bug (including unexpected behaviour);
 1. you want to make some kind of change to the code base (e.g. to fix a bug, to add a new feature, to update documentation);
 1. you want to make a new release of the code base.
 
@@ -74,6 +74,45 @@ Type checking uses [ty](https://github.com/astral-sh/ty). Suppress a finding wit
 
 `ruff` and `ty` also run as [pre-commit](https://pre-commit.com/) hooks; install them once with
 `uv run pre-commit install`.
+
+#### Sonar MCP prerequisites
+
+The fifth step of the gate is a SonarCloud scan through the `sonarqube-mcp` server, which an
+MCP-capable assistant (Claude Code) starts as a Docker container. It needs:
+
+- **Docker running.** On macOS that is `colima start`; the server exits at once without a daemon,
+  which shows up as `CONNECTION_CLOSED`.
+- **The image pulled once**, so the first start does not exceed the MCP startup timeout:
+  `docker pull mcp/sonarqube`.
+- **`SONARQUBE_TOKEN` exported** in the environment the assistant is launched from — a SonarCloud
+  user token of a member of the `szkuds` organisation. Never commit it or write it into a file in
+  this repository. Check it with
+  `curl -s -u "$SONARQUBE_TOKEN:" https://sonarcloud.io/api/authentication/validate`, which must
+  answer `{"valid":true}`.
+- Optionally `SONARQUBE_ORG` (defaults to `szkuds`). Do not set `SONARQUBE_URL`; the project is on
+  sonarcloud.io.
+
+`.mcp.json` is gitignored, so create it in the repository root:
+
+```json
+{
+  "mcpServers": {
+    "sonarqube-mcp": {
+      "type": "stdio",
+      "command": "docker",
+      "args": ["run", "--init", "-i", "--rm", "-e", "SONARQUBE_TOKEN", "-e", "SONARQUBE_ORG", "mcp/sonarqube"],
+      "env": {
+        "SONARQUBE_TOKEN": "${SONARQUBE_TOKEN}",
+        "SONARQUBE_ORG": "${SONARQUBE_ORG:-szkuds}"
+      }
+    }
+  }
+}
+```
+
+`claude mcp list` must then show `sonarqube-mcp` as connected. The server connects with any token,
+valid or not: a tool call that answers `Not authorized` means the token is expired or revoked, so
+generate a new one under *My Account → Security* on sonarcloud.io.
 
 ## Reporting a security vulnerability
 

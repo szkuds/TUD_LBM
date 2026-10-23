@@ -1,12 +1,13 @@
 r"""Equilibrium distribution computation — pure function.
 
 Extracted from :class:`simulation_operators.equilibrium.EquilibriumWB`.
-Implements the well-balanced equilibrium used throughout TUD-LBM:
+Implements the well-balanced equilibrium used by the multiphase runs. For the
+moving directions (``i > 0``):
 
 .. math::
 
     f_i^{\\text{eq}} = w_i \\rho \\left[
-        1 + \\frac{\\mathbf{c}_i \\cdot \\mathbf{u}}{c_s^2}
+        \\frac{\\mathbf{c}_i \\cdot \\mathbf{u}}{c_s^2}
         + \\frac{(\\mathbf{c}_i \\cdot \\mathbf{u})^2}{2 c_s^4}
         - \\frac{\\mathbf{u} \\cdot \\mathbf{u}}{2 c_s^2}
     \\right]
@@ -16,6 +17,11 @@ with :math:`c_s^2 = 1/3`.
 The *rest direction* (``i = 0``) is computed via mass conservation:
 ``feq_0 = rho - Σ_{i>0} feq_i``, which matches the legacy
 ``EquilibriumWB`` class exactly.
+
+There is no leading ``1`` in the bracket, so the second moment is ``rho * u u``
+with no isotropic ``cs^2 * rho``: this equilibrium carries no pressure. A
+multiphase run supplies it as the force ``-rho * grad(mu)``. A single-phase run
+has no such force and uses ``"standard_equilibrium"`` instead.
 """
 
 from __future__ import annotations

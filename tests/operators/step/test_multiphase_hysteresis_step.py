@@ -24,20 +24,24 @@ def _make_wetting_state() -> WettingState:
 
 
 def test_make_wetting_ops_forwards_live_wetting_params():
-    """Closure operators should forward all wetting parameters to setup operators."""
+    """Bound operators should pass the live wetting parameters to the setup operators."""
     calls: dict[str, tuple[float, float, float, float]] = {}
 
-    def grad_wetting(grid, phi_left, phi_right, d_rho_left, d_rho_right):
+    def grad_wetting(grid, wetting: WettingParams):
+        phi_left, phi_right = wetting.phi_left, wetting.phi_right
+        d_rho_left, d_rho_right = wetting.d_rho_left, wetting.d_rho_right
         calls["grad"] = (float(phi_left), float(phi_right), float(d_rho_left), float(d_rho_right))
         return grid + 1.0
 
-    def lap_wetting(grid, phi_left, phi_right, d_rho_left, d_rho_right):
+    def lap_wetting(grid, wetting: WettingParams):
+        phi_left, phi_right = wetting.phi_left, wetting.phi_right
+        d_rho_left, d_rho_right = wetting.d_rho_left, wetting.d_rho_right
         calls["lap"] = (float(phi_left), float(phi_right), float(d_rho_left), float(d_rho_right))
         return grid - 1.0
 
     setup = SimpleNamespace(
-        gradient_density_wetting=grad_wetting,
-        laplacian_density_wetting=lap_wetting,
+        gradient_density=grad_wetting,
+        laplacian_density=lap_wetting,
     )
     wetting = _make_wetting_state()
 
@@ -50,16 +54,20 @@ def test_make_wetting_ops_forwards_live_wetting_params():
     assert calls["lap"] == (1.0, 2.0, 3.0, 4.0)
 
 
-def test_trial_step_defaults_to_two_steps_and_uses_last_rho(monkeypatch):
-    """Default trial_steps=2 should select the last scan rho output."""
+def test_trial_step_two_steps_uses_last_rho(monkeypatch):
+    """trial_steps=2 (the config default) should select the last scan rho output."""
     grad_param_calls: list[tuple[float, float, float, float]] = []
     lap_param_calls: list[tuple[float, float, float, float]] = []
 
-    def grad_wetting(grid, phi_left, phi_right, d_rho_left, d_rho_right):
+    def grad_wetting(grid, wetting: WettingParams):
+        phi_left, phi_right = wetting.phi_left, wetting.phi_right
+        d_rho_left, d_rho_right = wetting.d_rho_left, wetting.d_rho_right
         grad_param_calls.append((float(phi_left), float(phi_right), float(d_rho_left), float(d_rho_right)))
         return grid + phi_left + phi_right + d_rho_left + d_rho_right
 
-    def lap_wetting(grid, phi_left, phi_right, d_rho_left, d_rho_right):
+    def lap_wetting(grid, wetting: WettingParams):
+        phi_left, phi_right = wetting.phi_left, wetting.phi_right
+        d_rho_left, d_rho_right = wetting.d_rho_left, wetting.d_rho_right
         lap_param_calls.append((float(phi_left), float(phi_right), float(d_rho_left), float(d_rho_right)))
         return grid - (phi_left + phi_right + d_rho_left + d_rho_right)
 
@@ -67,14 +75,14 @@ def test_trial_step_defaults_to_two_steps_and_uses_last_rho(monkeypatch):
         probe = jnp.array(10.0)
         _ = grad(probe)
         _ = lap(probe)
-        return carry_f + 1.0, carry_f + 100.0, jnp.array(-1.0), jnp.array(-2.0)
+        return carry_f + 1.0, carry_f + 100.0, jnp.array(-1.0), jnp.array(-2.0), jnp.array(-3.0)
 
     monkeypatch.setattr(mh, "_multiphase_pipeline", fake_pipeline)
 
     setup = SimpleNamespace(
-        config=SimpleNamespace(hysteresis_config={}),
-        gradient_density_wetting=grad_wetting,
-        laplacian_density_wetting=lap_wetting,
+        config=SimpleNamespace(hysteresis_config={"trial_steps": 2}),
+        gradient_density=grad_wetting,
+        laplacian_density=lap_wetting,
     )
     params = WettingParams(
         d_rho_left=jnp.array(3.0),
@@ -97,14 +105,14 @@ def test_trial_step_single_step_branch(monkeypatch):
     """trial_steps=1 should select rho_out_all[0] branch."""
 
     def fake_pipeline(_setup, carry_f, _force_ext, _grad, _lap):
-        return carry_f + 2.0, carry_f + 50.0, jnp.array(0.0), jnp.array(0.0)
+        return carry_f + 2.0, carry_f + 50.0, jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)
 
     monkeypatch.setattr(mh, "_multiphase_pipeline", fake_pipeline)
 
     setup = SimpleNamespace(
         config=SimpleNamespace(hysteresis_config={"trial_steps": 1}),
-        gradient_density_wetting=lambda *args: args[0],
-        laplacian_density_wetting=lambda *args: args[0],
+        gradient_density=lambda *args: args[0],
+        laplacian_density=lambda *args: args[0],
     )
     params = WettingParams(
         d_rho_left=jnp.array(0.0),
@@ -138,6 +146,7 @@ def test_step_multiphase_hysteresis_new_state_and_trial_partial(monkeypatch):
     rho_out = jnp.array(12.0)
     u_out = jnp.array(13.0)
     force_tot = jnp.array(14.0)
+    pressure_out = jnp.array(15.0)
 
     def fake_compute_total_force_ext(got_setup, got_state, got_forces):
         assert got_setup is setup
@@ -164,7 +173,7 @@ def test_step_multiphase_hysteresis_new_state_and_trial_partial(monkeypatch):
             grad is grad_sentinel,
             lap is lap_sentinel,
         ) == (1.0, 9.0, True, True)
-        return f_out, rho_out, u_out, force_tot
+        return f_out, rho_out, u_out, force_tot, pressure_out
 
     trial_calls: list[tuple[object, object, object, object]] = []
 
@@ -181,8 +190,9 @@ def test_step_multiphase_hysteresis_new_state_and_trial_partial(monkeypatch):
             float(new_state.u),
             float(new_state.force),
             float(new_state.force_ext),
+            float(new_state.pressure),
             int(new_state.t),
-        ) == (11.0, 12.0, 13.0, 14.0, 9.0, 8)
+        ) == (11.0, 12.0, 13.0, 14.0, 9.0, 15.0, 8)
         assert float(context["force_ext"]) == 9.0
         trial_step_fn = context["trial_step_fn"]
         assert isinstance(trial_step_fn, partial)
@@ -220,26 +230,26 @@ import pytest  # noqa: E402
 class TestMakeWettingOpsGuards:
     """_make_wetting_ops raises TypeError when required operators are absent."""
 
-    def test_raises_when_gradient_density_wetting_none(self):
-        setup = SimpleNamespace(gradient_density_wetting=None, laplacian_density_wetting=lambda *_a: None)
+    def test_raises_when_gradient_density_none(self):
+        setup = SimpleNamespace(gradient_density=None, laplacian_density=lambda *_a: None)
         wetting = _make_wetting_state()
-        with pytest.raises(TypeError, match="gradient_density_wetting is required"):
+        with pytest.raises(TypeError, match="gradient_density is required"):
             mh._make_wetting_ops(setup, wetting)  # ty: ignore[invalid-argument-type]
 
-    def test_raises_when_laplacian_density_wetting_none(self):
-        setup = SimpleNamespace(gradient_density_wetting=lambda *_a: None, laplacian_density_wetting=None)
+    def test_raises_when_laplacian_density_none(self):
+        setup = SimpleNamespace(gradient_density=lambda *_a: None, laplacian_density=None)
         wetting = _make_wetting_state()
-        with pytest.raises(TypeError, match="laplacian_density_wetting is required"):
+        with pytest.raises(TypeError, match="laplacian_density is required"):
             mh._make_wetting_ops(setup, wetting)  # ty: ignore[invalid-argument-type]
 
 
 class TestTrialStepGuards:
     """_trial_step raises TypeError when required setup fields are absent."""
 
-    def test_raises_when_gradient_density_wetting_none(self):
+    def test_raises_when_gradient_density_none(self):
         setup = SimpleNamespace(
-            gradient_density_wetting=None,
-            laplacian_density_wetting=lambda *_a: None,
+            gradient_density=None,
+            laplacian_density=lambda *_a: None,
             config=SimpleNamespace(hysteresis_config={}),
         )
         params = WettingParams(
@@ -249,13 +259,13 @@ class TestTrialStepGuards:
             d_rho_right=jnp.array(0.0),
         )
         f_t, force_ext = jnp.array(1.0), jnp.array(0.0)
-        with pytest.raises(TypeError, match="gradient_density_wetting is required"):
+        with pytest.raises(TypeError, match="gradient_density is required"):
             mh._trial_step(setup, f_t, force_ext, params)  # ty: ignore[invalid-argument-type]
 
-    def test_raises_when_laplacian_density_wetting_none(self):
+    def test_raises_when_laplacian_density_none(self):
         setup = SimpleNamespace(
-            gradient_density_wetting=lambda *_a: None,
-            laplacian_density_wetting=None,
+            gradient_density=lambda *_a: None,
+            laplacian_density=None,
             config=SimpleNamespace(hysteresis_config={}),
         )
         params = WettingParams(
@@ -265,13 +275,13 @@ class TestTrialStepGuards:
             d_rho_right=jnp.array(0.0),
         )
         f_t, force_ext = jnp.array(1.0), jnp.array(0.0)
-        with pytest.raises(TypeError, match="laplacian_density_wetting is required"):
+        with pytest.raises(TypeError, match="laplacian_density is required"):
             mh._trial_step(setup, f_t, force_ext, params)  # ty: ignore[invalid-argument-type]
 
     def test_raises_when_hysteresis_config_none(self):
         setup = SimpleNamespace(
-            gradient_density_wetting=lambda *_a: None,
-            laplacian_density_wetting=lambda *_a: None,
+            gradient_density=lambda *_a: None,
+            laplacian_density=lambda *_a: None,
             config=SimpleNamespace(hysteresis_config=None),
         )
         params = WettingParams(

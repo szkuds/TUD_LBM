@@ -56,7 +56,8 @@ def test_build_skips_unavailable_operators(plotting_run_dir):
     config = SimulationConfig(plot_fields=["density", "force"])
     builder = FigureBuilder(config, plotting_run_dir)
     data = {"rho": np.ones((8, 8, 1, 1, 1))}
-    path = builder.build(data, timestep=5)
+    with pytest.warns(UserWarning, match=r"no data for \['force'\]"):
+        path = builder.build(data, timestep=5)
     assert path is not None
     assert path.exists()
 

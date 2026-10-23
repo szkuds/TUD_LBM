@@ -73,7 +73,7 @@ class SimulationIO:
             "%(asctime)s | %(levelname)s | %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
-        file_handler = logging.FileHandler(log_file, mode="a")
+        file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(fmt)
 
@@ -95,12 +95,19 @@ class SimulationIO:
                 self._streams = streams
 
             def write(self, msg: str) -> None:
-                [s.write(msg) for s in self._streams]
+                for s in self._streams:
+                    try:
+                        s.write(msg)
+                    except UnicodeEncodeError:
+                        # A redirected Windows console is cp1252 and cannot take the
+                        # Greek the overview prints; degrade there, never fail the run.
+                        encoding = getattr(s, "encoding", None) or "ascii"
+                        s.write(msg.encode(encoding, errors="replace").decode(encoding))
 
             def flush(self) -> None:
                 [s.flush() for s in self._streams]
 
-        logfile_stream = Path(log_file).open("a", buffering=1)  # noqa: SIM115
+        logfile_stream = Path(log_file).open("a", buffering=1, encoding="utf-8")  # noqa: SIM115
         sys.stdout = _Tee(sys.__stdout__, logfile_stream)
         sys.stderr = _Tee(sys.__stderr__, logfile_stream)  # capture tracebacks too
 

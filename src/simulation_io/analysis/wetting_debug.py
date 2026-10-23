@@ -5,7 +5,8 @@ Enabled via the ``--debug-wetting`` CLI flag, which sets
 :mod:`src.operators.wetting.hysteresis.hysteresis` emits one fixed-width
 row per contact line per logged timestep: the measured CA against its
 hysteresis window, the CLL, which parameter ended up driving the wall
-(``mode``), the wetting parameters themselves, the residual loss, and how
+(``mode``), its regime (pinned, advancing or receding), the wetting
+parameters themselves, the residual loss, and how
 many inner optimiser iterations were spent against the cap — which is how
 you tell a converged solve from one that ran out of iterations.
 
@@ -15,7 +16,7 @@ sides of one timestep always appear together, and through
 is exactly one terminal line with columns that line up vertically across
 timesteps.
 
-``DEBUG_WETTING_INTERVAL`` (``--debug-wetting-interval``) rate-limits the
+``DEBUG_WETTING_INTERVAL`` (``--debug-wetting [INTERVAL]``) rate-limits the
 trace: the optimiser runs every timestep, but printing every timestep
 scrolls faster than it can be read.  The gate is a ``lax.cond`` on the
 timestep, and the sample values — two full trial steps' worth of loss
@@ -45,6 +46,8 @@ _MODE_D_RHO = 0
 _MODE_PHI = 1
 _MODE_FALLBACK = 2
 _MODE_NAMES = {_MODE_D_RHO: "d_rho", _MODE_PHI: "phi", _MODE_FALLBACK: "fb"}
+# Regime codes of the per-side row; the operator's REGIME_* constants.
+_REGIME_NAMES = {0: "pin", 1: "adv", 2: "rec", 3: "sat"}
 
 #: Order in which a side's scalars are packed into the callback vector.
 _FIELDS = (
@@ -52,6 +55,7 @@ _FIELDS = (
     "ca_adv",
     "ca_rec",
     "cll",
+    "regime",
     "phi",
     "d_rho",
     "loss",
@@ -81,6 +85,7 @@ _SIDE = Column("side", "side", 4)
 _CA = Column("ca", "CA", 7, fmt(".2f"))
 _WINDOW = Column("window", "rec,adv", 13, _render_window)
 _CLL = Column("cll", "CLL", 8, fmt(".3f"))
+_REGIME = Column("regime", "reg", 3)
 _MODE = Column("mode", "mode", 5)
 _PHI = Column("phi", "phi", 8, fmt(".6f"))
 _D_RHO = Column("d_rho", "d_rho", 9, fmt(".6f"))
@@ -88,10 +93,10 @@ _LOSS = Column("loss", "loss", 8, fmt(".2e"))
 _ITERS = Column("iters", "iters", 6, _render_iters)
 _FALLBACK = Column("fallback", "fb", 3, _render_fallback)
 
-#: 88 characters.
-_FULL = (_T, _SIDE, _CA, _WINDOW, _CLL, _MODE, _PHI, _D_RHO, _LOSS, _ITERS, _FALLBACK)
-#: 70 characters — drops the (constant-per-region) window and the fallback count.
-_COMPACT = (_T, _SIDE, _CA, _CLL, _MODE, _PHI, _D_RHO, _LOSS, _ITERS)
+#: 92 characters.
+_FULL = (_T, _SIDE, _CA, _WINDOW, _CLL, _REGIME, _MODE, _PHI, _D_RHO, _LOSS, _ITERS, _FALLBACK)
+#: 74 characters — drops the (constant-per-region) window and the fallback count.
+_COMPACT = (_T, _SIDE, _CA, _CLL, _REGIME, _MODE, _PHI, _D_RHO, _LOSS, _ITERS)
 
 _TABLE = DebugTable(_FULL, _COMPACT)
 
@@ -105,6 +110,7 @@ class SideDebugSample:
         ca_adv: Advancing bound of the active hysteresis window.
         ca_rec: Receding bound of the active hysteresis window.
         cll: Measured contact-line location.
+        regime: 0 pinned, 1 advancing, 2 receding, 3 saturated (optimiser skipped).
         phi: Final ``phi`` wetting parameter.
         d_rho: Final ``d_rho`` wetting parameter.
         phi_active: Whether ``phi`` was the parameter selected for this side.
@@ -119,6 +125,7 @@ class SideDebugSample:
     ca_adv: jnp.ndarray
     ca_rec: jnp.ndarray
     cll: jnp.ndarray
+    regime: jnp.ndarray
     phi: jnp.ndarray
     d_rho: jnp.ndarray
     phi_active: jnp.ndarray
@@ -184,6 +191,7 @@ def _row(side: str, t: np.ndarray, packed: np.ndarray) -> dict[str, Any]:
         "ca": values["ca"],
         "window": (values["ca_rec"], values["ca_adv"]),
         "cll": values["cll"],
+        "regime": _REGIME_NAMES.get(int(values["regime"]), "?"),
         "mode": _MODE_NAMES.get(int(values["mode"]), "?"),
         "phi": values["phi"],
         "d_rho": values["d_rho"],

@@ -1,6 +1,8 @@
-"""Forcing source term — pure function.
+"""Well-balanced forcing source term — pure function.
 
-Implements the well-balanced forcing scheme for LBM.
+Couples the total force into the populations as the collision source term; it
+is not itself a force, so it lives in its own package rather than under
+``operators/force``.
 
 Uses the density gradient operator for computing gravity corrections.
 """
@@ -9,21 +11,21 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import numpy as np
-from src.registry import force_model
+from src.registry import source_term_operator
 
 if TYPE_CHECKING:
     from src.lattice.lattice import Lattice
-    from src.operators.protocols import BoundDifferentialOperator
+    from src.operators.protocols import DifferentialOperator
 
 
-@force_model(name="source_term_wb")
-def source(
+@source_term_operator(name="wb")
+def compute_source(
     rho: jnp.ndarray,
     u: jnp.ndarray,
     force: jnp.ndarray,
     lattice: Lattice,
     *,
-    gradient: BoundDifferentialOperator,
+    gradient: DifferentialOperator,
 ) -> jnp.ndarray:
     """Compute the well-balanced forcing source term.
 

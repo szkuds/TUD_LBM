@@ -30,7 +30,7 @@ final_state, trajectory = run(setup, state, nt=config.nt)
 
 # - Boundaries: Periodic on all sides
 
-# - Initialization: Rest equilibrium
+# - Initialisation: Rest equilibrium
 
 # - Relaxation: tau=0.8 (nu = 0.1)
 
@@ -124,7 +124,7 @@ simulation_name="My Simulation", # optional
     # Optional physics: electric field
     electric_force=None,
 
-    # Initialization
+    # Initialisation
     init_type="standard",              # rest equilibrium
     initialisation={},                 # extra init params
 
@@ -149,7 +149,7 @@ for tau in [0.6, 0.8, 1.0, 1.2]:
 config = SimulationConfig(grid*shape=(64, 64), tau=tau, nt=1000)
 setup = build_setup(config)
 state = init_state(setup)
-final_state, * = run(setup, state, nt=config.nt) # Analyze or save results
+final_state, * = run(setup, state, nt=config.nt) # Analyse or save results
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -171,7 +171,7 @@ Public API Functions:
    - Returns: SimulationSetup (immutable, JAX-compatible)
 
 3. init_state(setup)
-   - What: Initialize simulation state
+   - What: Initialise simulation state
    - How: state = init_state(setup)
    - Returns: State NamedTuple (f, rho, u, forces, etc.)
 

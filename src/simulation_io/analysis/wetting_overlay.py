@@ -7,16 +7,17 @@ Wall band
     The ghost-row cells the wetting BC actually modifies, from
     :func:`~src.operators.wetting._apply_edge.wetting_edge_regions` run on the
     same stencil padding the wetting differential operators use, together with
-    the ``rho_lower``/``rho_upper`` bounds each side is clipped to. A second
+    the ``rho_lower``/``rho_upper`` bounds they are clipped to. A second
     definition of the region here could silently disagree with the solver, which
     is exactly what the overlay exists to check.
 
 Band contours
-    Those same per-side bounds, drawn as iso-density contours of the field. The
-    solver measures them per contact line from the densities local to it, so
-    there is no global band left to draw and no ``config``/``measured`` marker
-    choice for them — the left and right pairs generally differ, and the gap
-    between one side's two contours is the diffuse interface it acts on.
+    Those same bounds, drawn as iso-density contours of the field. The solver
+    measures them from the densities around both contact lines together, so both
+    sides report the same pair and the two contours coincide — the gap between
+    them is the diffuse interface the BC acts on. They are measured rather than
+    prescribed, so there is no ``config``/``measured`` marker choice for them;
+    that option still governs the separate ``interface`` contour.
 
 Contact angles
     The ``ca_*``/``cll_*`` values the simulation saved into the snapshot, or —
@@ -129,11 +130,10 @@ def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
 
     import jax.numpy as jnp
     from src.operators.differential._pad_utils import _apply_stencil_padding
-    from src.operators.differential._pad_utils import determine_pad_modes
     from src.operators.wetting._apply_edge import wetting_edge_regions
     from src.operators.wetting._edge_config import _resolve_wetting_edges
 
-    grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), tuple(determine_pad_modes(config.bc_config)))
+    grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), config.pad_modes)
     bands: list[WallBand] = []
     for edge, perp_start_periodic, perp_end_periodic in _resolve_wetting_edges(config.bc_config):
         regions = wetting_edge_regions(grid_padded, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v)

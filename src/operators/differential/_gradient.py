@@ -1,7 +1,6 @@
 r"""LBM-stencil gradient operator — pure function.
 
-Registered as ``("differential", "gradient")`` via ``@register_operator``.
-Auto-discovered by ``auto_load_operators('operators.differential')``.
+Resolved through :func:`~src.operators.differential.build_gradient_fn`.
 
 The gradient formula follows the standard LBM moment approach:
 
@@ -14,7 +13,7 @@ where the off-centre neighbours are obtained by slicing the padded array.
 Design
 ~~~~~~
 *pad_mode* is a tuple of four ``jnp.pad`` mode strings:
-``(right_y, left_y, bottom_x, top_x)`` applied in that order.  Because it
+``(top, bottom, right, left)``, i.e. ``(y_end, y_start, x_end, x_start)``.  Because it
 is a plain Python tuple of strings it must be treated as a *static* argument
 when JIT-compiling — use ``jax.jit(fn, static_argnames=("pad_mode",))`` or
 close over it to get a jittable closure.
@@ -25,13 +24,13 @@ from typing import TYPE_CHECKING
 import jax.numpy as jnp
 from src.operators.differential._pad_utils import _apply_stencil_padding
 from src.operators.differential._pad_utils import to_2d
-from src.registry import register_operator
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from src.operators.protocols import DifferentialOperator
+    from src.operators.wetting._params import WettingParams
 
 
-@register_operator("differential", name="gradient")
 def compute_gradient(
     grid: jnp.ndarray,
     w: jnp.ndarray,
@@ -51,13 +50,44 @@ def compute_gradient(
         grid: Scalar field, shape ``(nx, ny, nz, 1, 1)`` or ``(nx, ny)``.
         w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
         c: Lattice velocity vectors, shape ``(1, 1, 1, q, 2)``.
-        pad_mode: Four padding modes ``(right_y, left_y, bottom_x, top_x)``.
+        pad_mode: Four padding modes ``(top, bottom, right, left)``.
 
     Returns:
         Gradient field, shape ``(nx, ny, nz, 1, 2)``.
     """
     grid_padded = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
     return grad_core_2d(grid_padded, w, c)
+
+
+def reject_wetting(name: str, wetting: WettingParams | None) -> None:
+    """Refuse wetting parameters on an operator that has no wetting wall.
+
+    Runs in Python at trace time, so a hysteresis step handed a plain operator
+    fails loudly instead of optimising parameters nothing applies.
+    """
+    if wetting is not None:
+        msg = f"{name} has no wetting wall and does not accept wetting parameters"
+        raise TypeError(msg)
+
+
+def build_gradient(w: jnp.ndarray, c: jnp.ndarray, pad_mode: Sequence[str]) -> DifferentialOperator:
+    """Return the plain gradient closure over the lattice and *pad_mode*.
+
+    Args:
+        w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
+        c: Lattice velocity vectors, shape ``(1, 1, 1, q, 2)``.
+        pad_mode: Four padding modes ``(top, bottom, right, left)``.
+
+    Returns:
+        ``grad(grid) → (nx, ny, nz, 1, 2)``. Passing *wetting* raises :class:`TypeError`.
+    """
+    _pad_mode = tuple(pad_mode)
+
+    def gradient(grid: jnp.ndarray, wetting: WettingParams | None = None) -> jnp.ndarray:
+        reject_wetting("gradient", wetting)
+        return compute_gradient(grid, w, c, _pad_mode)
+
+    return gradient
 
 
 def grad_core_2d(

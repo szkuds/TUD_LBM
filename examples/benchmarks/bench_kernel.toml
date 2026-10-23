@@ -4,12 +4,16 @@
 # stencil work, no data-dependent control flow, no host interaction — the best
 # case for a GPU. If a GPU does not win here it will not win anywhere.
 #
-# Sweep the grid by hand, one benchmark per size, to find the crossover point
-# where the GPU overtakes the CPU:
+# Sweep the grid to find the crossover point where the GPU overtakes the CPU.
+# On DelftBlue, both backends and every size in one command:
 #
-#   tud-lbm benchmark examples/benchmarks/bench_kernel.toml \
+#   scripts/db_benchmark.sh --steps 200 --scales "1 2 4 8" \
+#       .claude/benchmarks/bench_kernel.toml
+#
+# Locally, one size at a time:
+#
+#   tud-lbm benchmark .claude/benchmarks/bench_kernel.toml \
 #       --override grid_shape=[128,128]  --label kernel_128
-#   ... 256, 512, 1024 (and 2048 on GPU only)
 #
 # `nt` is irrelevant here — `--steps` sets the measured scan length.
 
@@ -37,10 +41,5 @@ eos = "double-well"
 force_g = 0
 inclination_angle_deg = 90
 
-# No plot_fields: figure generation must never be reachable from a timed path.
-# results_dir matches the TUD_LBM_DATA_DIR default; it is spelled out because
-# scripts/db_new_job.sh rewrites this key when staging a DelftBlue job and
-# errors if it is absent.
 [output]
-results_dir = "~/TUD_LBM_data"
 save_fields = ["rho", "u"]

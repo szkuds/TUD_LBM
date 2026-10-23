@@ -43,7 +43,7 @@ class PlotOperator(ABC):
     accepts_overlays: bool = True
 
     def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:
-        """Initialize the plot operator with config and optional data directory.
+        """Initialise the plot operator with config and optional data directory.
 
         Args:
             config: Simulation configuration object.

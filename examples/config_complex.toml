@@ -18,8 +18,6 @@ left = "periodic"
 right = "periodic"
 top = "bounce-back"
 bottom = "wetting"
-front = "periodic"
-back = "periodic"
 
 [chemical_step]
 chemical_step_location = 0.5

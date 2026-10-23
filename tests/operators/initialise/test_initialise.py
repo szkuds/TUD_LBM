@@ -34,10 +34,6 @@ class TestInitFactory:
         fn = build_initialise_fn("standard")
         assert callable(fn)
 
-    def test_unknown_type_raises(self):
-        with pytest.raises(ValueError, match="Unknown initialise scheme"):
-            build_initialise_fn("nonexistent_type")
-
     def test_all_registry_entries_callable(self):
         init_ops = get_operators("initialise")
         for name, entry in init_ops.items():

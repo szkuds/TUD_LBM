@@ -5,7 +5,11 @@
 # pipeline passes. Expect this to cost one to two orders of magnitude more per
 # step than Case A on the same grid.
 #
-#   tud-lbm benchmark examples/benchmarks/bench_hysteresis.toml --breakdown \
+#   scripts/db_benchmark.sh --steps 20 .claude/benchmarks/bench_hysteresis.toml
+#
+# on DelftBlue (both backends, 256x64 / 512x128 / 1024x256), or locally:
+#
+#   tud-lbm benchmark .claude/benchmarks/bench_hysteresis.toml --breakdown \
 #       --override grid_shape=[256,64] --label hyst_256
 #   ... 512x128, 1024x256 (the largest may OOM under fp64 reverse-mode AD;
 #       record that as a result, not a failure)
@@ -67,9 +71,9 @@ force_g = 5e-06
 inclination_angle_deg = 60
 
 # No plot_fields: figure generation must never be reachable from a timed path.
-# results_dir matches the TUD_LBM_DATA_DIR default; it is spelled out because
-# scripts/db_new_job.sh rewrites this key when staging a DelftBlue job and
-# errors if it is absent.
+# No results_dir: it defaults to TUD_LBM_DATA_DIR, which is scratch on DelftBlue.
+# A "~/TUD_LBM_data" literal here beats that variable, so running this file
+# directly on the cluster wrote the benchmark record to the quota-limited home
+# dir. scripts/db_new_job.sh adds the key itself when staging a job.
 [output]
-results_dir = "~/TUD_LBM_data"
 save_fields = ["rho", "u"]

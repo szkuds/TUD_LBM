@@ -69,7 +69,7 @@ floor, 274× as a ceiling, and measure the middle by instrumenting a real run
 (`--debug-wetting` reports the actual `iters` against the cap in its per-side
 row; note each logged step evaluates two extra objectives, so use it for
 iteration counts and never for timing — and rate-limit it with
-`--debug-wetting-interval` to keep even that cost off most steps).
+`--debug-wetting INTERVAL` to keep even that cost off most steps).
 
 Either way the conclusion for GPU work is the same: **the LBM kernel is not the
 workload.** Even in the cheapest regime, collision, streaming and the

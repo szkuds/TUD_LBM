@@ -28,12 +28,13 @@ Usage::
 """
 
 from __future__ import annotations
-from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import Generic
 from typing import TypeVar
 
-OperatorTarget = Callable[..., object] | type
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # TypeVar for generic OperatorEntry
 T = TypeVar("T")
@@ -271,6 +272,15 @@ def equilibrium_operator(
     return register_operator("equilibrium", name=name, **meta)
 
 
+def source_term_operator(
+    *,
+    name: str | None = None,
+    **meta: object,
+) -> Callable[[_OT], _OT]:
+    """Register a forcing source-term operator (kind ``"source_term"``)."""
+    return register_operator("source_term", name=name, **meta)
+
+
 def simulation_type_operator(
     *,
     name: str | None = None,
@@ -303,7 +313,7 @@ def wetting_operator(
     name: str | None = None,
     **meta: object,
 ) -> Callable[[_OT], _OT]:
-    """Register a wetting operator (kind ``"wetting"``)."""
+    """Register a hysteresis wetting-state update (kind ``"wetting"``)."""
     return register_operator("wetting", name=name, **meta)
 
 

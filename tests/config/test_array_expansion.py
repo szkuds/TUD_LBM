@@ -363,42 +363,51 @@ class TestNestedSweepGravityForce:
 # ── Nested sweep: electric_force ──────────────────────────────────────────
 
 
+#: The keys ``ElectricParams`` requires; the sweeps below vary ``applied_voltage``.
+_ELECTRIC_REQUIRED = {
+    "permittivity_liquid": 80.0,
+    "permittivity_vapour": 1.0,
+    "conductivity_liquid": 0.01,
+    "conductivity_vapour": 0.001,
+}
+
+
 class TestNestedSweepElectricForce:
     """expand_config with electric_force sub-key arrays."""
 
     def test_single_subkey_sweep(self):
         cfg = _base_single_phase(
-            electric_force={"charge_density": 1.0, "field_strength": [0.01, 0.05, 0.1]},
+            electric_force={**_ELECTRIC_REQUIRED, "applied_voltage": [0.01, 0.05, 0.1]},
         )
         configs, meta = expand_config(cfg)
 
         assert len(configs) == 3
         assert meta is not None
-        assert "electric_force.field_strength" in meta.field_names
-        strengths = [c.electric_force["field_strength"] for c in configs]  # ty: ignore[not-subscriptable]
+        assert "electric_force.applied_voltage" in meta.field_names
+        strengths = [c.electric_force["applied_voltage"] for c in configs]  # ty: ignore[not-subscriptable]
         assert strengths == [0.01, 0.05, 0.1]
 
     def test_scalar_subkeys_preserved(self):
         cfg = _base_single_phase(
-            electric_force={"charge_density": 1.0, "field_strength": [0.01, 0.1]},
+            electric_force={**_ELECTRIC_REQUIRED, "applied_voltage": [0.01, 0.1]},
         )
         configs, _ = expand_config(cfg)
         for c in configs:
             assert c.electric_force is not None
-            assert c.electric_force["charge_density"] == 1.0
+            assert c.electric_force["permittivity_liquid"] == 80.0
 
     def test_cross_axis_with_gravity_force(self):
         """Sweep electric_force and gravity_force sub-keys simultaneously."""
         cfg = _base_single_phase(
             gravity_force={"force_g": 5e-7, "inclination_angle_deg": [30, 60]},
-            electric_force={"charge_density": 1.0, "field_strength": [0.01, 0.1]},
+            electric_force={**_ELECTRIC_REQUIRED, "applied_voltage": [0.01, 0.1]},
         )
         configs, meta = expand_config(cfg)
 
         assert len(configs) == 4  # 2 × 2
         assert meta is not None
         assert "gravity_force.inclination_angle_deg" in meta.field_names
-        assert "electric_force.field_strength" in meta.field_names
+        assert "electric_force.applied_voltage" in meta.field_names
 
 
 # ── Nested sweep: wetting_config ──────────────────────────────────────────

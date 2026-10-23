@@ -27,17 +27,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Protocol
+from typing import Self
 from typing import runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from pathlib import Path
     import jax.numpy as jnp
     import matplotlib.axes
     import numpy as np
-    from jax.typing import ArrayLike
     from src.config.simulation_config import SimulationConfig
     from src.lattice.lattice import Lattice
+    from src.operators.wetting._params import WettingParams
     from src.pipeline.state import State
     from src.pipeline.state import WettingState
 
@@ -97,14 +97,13 @@ class StreamingOperator(Protocol):
         self,
         f: jnp.ndarray,
         lattice: Lattice,
-        bc_config: dict | None = None,
+        /,
     ) -> jnp.ndarray:
         """Propagate populations across the domain.
 
         Args:
             f: Populations, shape ``(nx, ny, nz, q, 1)``.
             lattice: :class:`~setup.lattice.Lattice` with velocity vectors ``c``.
-            bc_config: Optional bc configuration, shape ``(nx, ny, nz, 1, 1)``.
 
         Returns:
             Post-streaming populations, same shape as *f*.
@@ -145,67 +144,103 @@ class EquilibriumOperator(Protocol):
 
 
 class MacroscopicOperator(Protocol):
-    """Macroscopic operator — computes ``(f, lattice) → (rho, u, ...)``.
+    """Macroscopic operator — computes ``(f, lattice) → (rho, u, force, pressure)``.
 
-    Macroscopic fields are the moments of the population distribution,
-    computed via summation over velocity directions.
+    Every macroscopic field is a function of the moments of the population
+    distribution, and every macroscopic operator returns the same four:
+
+    * ``rho`` — zeroth moment, shape ``(nx, ny, nz, 1, 1)``;
+    * ``u`` — first moment over ``rho``, force-corrected when a force acts,
+      shape ``(nx, ny, nz, 1, d)``;
+    * ``force`` — the total force, shape ``(nx, ny, nz, 1, d)``, or ``None``
+      when none acts (single-phase without an external force);
+    * ``pressure`` — the bulk pressure, shape ``(nx, ny, nz, 1, 1)``. The
+      multiphase operator takes it from the EOS's registered ``p_0(rho)``;
+      single-phase uses the lattice ideal gas ``cs^2 * rho``. Either way a
+      hydrostatic stratification shows up in it.
+
+    Operator-specific extras (an external force, multiphase parameters, bound
+    differential operators) follow the two shared positional arguments.
 
     Signature::
 
-        def compute_macroscopic(f, lattice, force=None) -> (rho, u, force)
+        def macroscopic_op(f, lattice, /, ...) -> (rho, u, force, pressure)
     """
 
     def __call__(
         self,
         f: jnp.ndarray,
         lattice: Lattice,
-        force: jnp.ndarray | None = None,
+        /,
+        *args: Any,
         **kwargs: Any,
-    ) -> tuple[jnp.ndarray, jnp.ndarray] | tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        """Compute density and velocity fields.
+    ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray]:
+        """Compute the macroscopic fields from the populations.
 
         Args:
             f: Populations, shape ``(nx, ny, nz, q, 1)``.
-            lattice: :class:`~setup.lattice.Lattice`.
-            force: Optional external force field.
-            **kwargs: Additional keyword arguments.
-            force: Optional external force field, shape ``(nx, ny, nz, 1, d)``.
-                When provided, velocity is corrected by ``u ← u + force / (2ρ)``.
+            lattice: :class:`~src.lattice.lattice.Lattice`.
+            *args: Operator-specific positional arguments.
+            **kwargs: Operator-specific keyword arguments.
 
         Returns:
-            Without *force*: ``(rho, u)`` where
-                - ``rho``: shape ``(nx, ny, nz, 1, 1)``
-                - ``u``: shape ``(nx, ny, nz, 1, d)``
+            ``(rho, u, force, pressure)``; see the class docstring.
+        """
+        ...
 
-            With *force*: ``(rho, u_eq, force)`` where *u_eq* includes the force correction.
+
+class BoundaryCondition(Protocol):
+    """One registered boundary condition, applied to a single domain edge.
+
+    Signature::
+
+        def apply_bc(f_streamed, f_collision, lattice, edge) -> f_bc
+    """
+
+    def __call__(
+        self,
+        f_streamed: jnp.ndarray,
+        f_collision: jnp.ndarray,
+        lattice: Lattice,
+        edge: str,
+        /,
+    ) -> jnp.ndarray:
+        """Apply this boundary condition on *edge*.
+
+        Args:
+            f_streamed: Post-streaming populations.
+            f_collision: Post-collision populations (for symmetry BC).
+            lattice: :class:`~src.lattice.lattice.Lattice`.
+            edge: Edge name, e.g. ``"bottom"``.
+
+        Returns:
+            Populations with the boundary condition applied on *edge*.
         """
         ...
 
 
 class BoundaryOperator(Protocol):
-    """Boundary-condition operator — applies edge BC rules to populations.
+    """Boundary-condition operator — applies every edge's BC to populations.
 
     Boundary conditions enforce Dirichlet/Neumann constraints or flux
     periodicity at domain edges. They are applied post-streaming.
 
     Signature::
 
-        def apply_bc(f_stream, f_col, bc_masks) -> f_bc
+        def apply_bcs(f_stream, f_col) -> f_bc
     """
 
     def __call__(
         self,
         f_stream: jnp.ndarray,
         f_col: jnp.ndarray,
-        bc_masks: Any,  # BCMasks NamedTuple
+        /,
     ) -> jnp.ndarray:
         """Apply boundary conditions to post-streaming populations.
 
         Args:
             f_stream: Post-streaming populations.
             f_col: Post-collision populations (for symmetry BC).
-            bc_masks: Pre-computed edge masks from
-                :class:`~setup.simulation_setup.BCMasks`.
 
         Returns:
             Populations with boundary conditions applied.
@@ -346,18 +381,57 @@ class HysteresisOperator(Protocol):
 
 @runtime_checkable
 class ForceOperator(Protocol):
-    """Unified protocol for force operator modules.
+    """A force bound to the payload it was built with.
 
-    Every force module exposes setup-time ``build`` and step-time
-    ``compute`` methods.
+    A registered force class is its own factory: the classmethod ``build``
+    reads the config-validated ``*_force`` section and returns an instance
+    carrying whatever ``compute`` needs (a template, band edges, electric
+    parameters). ``SimulationSetup.forces`` holds these instances, so there is
+    no separate container pairing a force with its payload.
     """
 
-    def build(self, params: Any, grid_shape: tuple[int, ...]) -> Any:
-        """Construct precomputed data for the force module."""
+    @classmethod
+    def build(
+        cls,
+        params: dict[str, Any],
+        grid_shape: tuple[int, ...],
+        *,
+        config: SimulationConfig,
+        lattice: Lattice,
+    ) -> Self:
+        """Build the bound force from a config-validated parameter section (setup-time)."""
         ...
 
-    def compute(self, state: Any, precomputed: Any, *, diff_ops: Any = None) -> jnp.ndarray:
-        """Compute the force contribution for the current state."""
+    def compute(
+        self,
+        state: State,
+        *,
+        gradient_standard: DifferentialOperator | None = None,
+        gradient_density: DifferentialOperator | None = None,
+        laplacian_density: DifferentialOperator | None = None,
+    ) -> jnp.ndarray:
+        """Return this force's contribution, shape ``(nx, ny, nz, 1, d)`` (step-time, jittable)."""
+        ...
+
+
+class SourceTermOperator(Protocol):
+    """Couples the total force into the populations as a collision source term.
+
+    Signature::
+
+        def source(rho, u, force, lattice, *, gradient) -> src   # (nx, ny, nz, q, 1)
+    """
+
+    def __call__(
+        self,
+        rho: jnp.ndarray,
+        u: jnp.ndarray,
+        force: jnp.ndarray,
+        lattice: Lattice,
+        *,
+        gradient: DifferentialOperator,
+    ) -> jnp.ndarray:
+        """Compute the source term."""
         ...
 
 
@@ -452,243 +526,64 @@ class ExtraStatePlugin(Protocol):
 
 
 class DifferentialOperator(Protocol):
-    """Differential operator — computes spatial derivatives.
+    """Differential operator — a built stencil closure over a scalar field.
 
-    Gradients and Laplacians on lattice grids, used for
-    multiphase chemical potential and interfacial stress.
+    Every gradient and Laplacian is built by a typed accessor in
+    :mod:`src.operators.differential`, which captures the lattice weights,
+    velocities, pad modes and — for the wetting variants — the static wetting
+    configuration. The only runtime arguments are the field and, optionally,
+    live wetting parameters.
 
-    Signature::
-
-        def compute_derivative(field) → derivative_field
-    """
-
-    def __call__(self, field: jnp.ndarray, *args: Any, **kwargs: Any) -> jnp.ndarray:
-        """Compute a spatial derivative.
-
-        Args:
-            field: Scalar or vector field, shape ``(nx, ny, 1, 1)`` or ``(nx, ny, 1, 2)``.
-            *args: Extra positional args accepted by parametric wetting variants.
-            **kwargs: Extra keyword args accepted by parametric wetting variants.
-
-        Returns:
-            Derivative field, matching or broadened shape.
-        """
-        ...
-
-
-class BoundDifferentialOperator(Protocol):
-    """Bound differential operator — a built closure over a single field.
-
-    This is what :func:`~src.operators.differential.build_diff_ops` returns and
-    what ``SimulationSetup.gradient_standard`` / ``gradient_density`` /
-    ``laplacian_density`` hold: the lattice weights, velocities and pad modes
-    are already captured, so the only runtime argument is the field.
-
-    Distinct from :class:`DifferentialOperator`, which describes the *raw*
-    registry targets — those still take ``(grid, w, [c,] pad_mode)`` and so keep
-    a permissive signature. Annotating a built closure as the raw protocol makes
-    a one-argument function stand in for a four-argument one.
+    * A wetting-aware operator applies *wetting* to the ghost row, or its
+      build-time default parameters when *wetting* is ``None``. The hysteresis
+      optimiser passes candidate parameters this way.
+    * A plain operator has no wetting wall and raises :class:`TypeError` when
+      given *wetting*, so a missing wetting operator is never silently ignored.
 
     Signature::
 
-        def bound_op(grid) -> derivative_field
+        def diff_op(grid, wetting=None) -> derivative_field
     """
 
-    def __call__(self, grid: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, grid: jnp.ndarray, wetting: WettingParams | None = None) -> jnp.ndarray:
         """Compute a spatial derivative of *grid*.
 
         Args:
             grid: Scalar field, shape ``(nx, ny, nz, 1, 1)``.
+            wetting: Live wetting parameters for a wetting-aware operator;
+                ``None`` uses the operator's build-time default.
 
         Returns:
             Derivative field, shape ``(nx, ny, nz, 1, 2)`` for a gradient or
             ``(nx, ny, nz, 1, 1)`` for a Laplacian.
-        """
-        ...
-
-
-class WettingDifferentialOperator(Protocol):
-    """Parametric wetting differential operator — an already-built closure.
-
-    Returned by the ``gradient_wetting`` / ``laplacian_wetting`` registry
-    builders — :class:`WettingGradientBuilder` and
-    :class:`WettingLaplacianBuilder` — which bake the static configuration
-    (lattice weights, pad modes, ``bc_config``, ``rho_l``, ``rho_v``) into the
-    closure.
-
-    Unlike :class:`DifferentialOperator`, the dynamic wetting parameters are
-    explicit rather than absorbed by ``*args``/``**kwargs``, so the arity is
-    fixed and a mismatched call is a type error.
-
-    Signature::
-
-        def wetting_op(grid, phi_l, phi_r, d_rho_l, d_rho_r) -> derivative_field
-    """
-
-    def __call__(
-        self,
-        grid: jnp.ndarray,
-        phi_l: ArrayLike,
-        phi_r: ArrayLike,
-        d_rho_l: ArrayLike,
-        d_rho_r: ArrayLike,
-    ) -> jnp.ndarray:
-        """Compute a wetting-corrected spatial derivative.
-
-        Args:
-            grid: Scalar field, shape ``(nx, ny, nz, 1, 1)``.
-            phi_l: Wetting potential for the left contact line. Any array-like
-                scalar — a Python float, a 0-d array, or a traced array (the
-                hysteresis optimiser passes tracers).
-            phi_r: Wetting potential for the right contact line.
-            d_rho_l: Density offset for the left contact line.
-            d_rho_r: Density offset for the right contact line.
-
-        Returns:
-            Derivative field, shape ``(nx, ny, nz, 1, 2)`` for a gradient or
-            ``(nx, ny, nz, 1, 1)`` for a Laplacian.
-        """
-        ...
-
-
-class WettingGradientBuilder(Protocol):
-    """Builder for the parametric wetting gradient — returns the operator.
-
-    Registered under ``("differential", "gradient_wetting")``. Unlike the plain
-    ``gradient`` entry, the registry target here is a *factory*: it takes the
-    static configuration and returns the closure that does the work.
-
-    Distinct from :class:`WettingLaplacianBuilder` because the gradient needs
-    the lattice velocities ``c`` and the Laplacian does not — the two arities
-    are why this cannot be one shared builder type.
-
-    Signature::
-
-        def build(w, c, pad_mode, bc_config=None, *, rho_l, rho_v) -> wetting_op
-    """
-
-    def __call__(
-        self,
-        w: jnp.ndarray,
-        c: jnp.ndarray,
-        pad_mode: Sequence[str],
-        bc_config: dict[str, Any] | None = None,
-        *,
-        rho_l: float,
-        rho_v: float,
-    ) -> WettingDifferentialOperator:
-        """Build a wetting-corrected gradient closure.
-
-        Args:
-            w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
-            c: Lattice velocity vectors, shape ``(1, 1, 1, q, 2)``.
-            pad_mode: Four padding modes ``(right_y, left_y, bottom_x, top_x)``.
-            bc_config: Boundary-condition edge map. ``None`` defaults to
-                bottom-only wetting.
-            rho_l: Liquid density, baked into the closure.
-            rho_v: Vapour density, baked into the closure.
-
-        Returns:
-            A :class:`WettingDifferentialOperator` producing shape
-            ``(nx, ny, nz, 1, 2)``.
-        """
-        ...
-
-
-class WettingLaplacianBuilder(Protocol):
-    """Builder for the parametric wetting Laplacian — returns the operator.
-
-    Registered under ``("differential", "laplacian_wetting")``. The Laplacian
-    stencil is isotropic and needs only the weights, so — unlike
-    :class:`WettingGradientBuilder` — it takes no lattice velocities.
-
-    Signature::
-
-        def build(w, pad_mode, bc_config=None, *, rho_l, rho_v) -> wetting_op
-    """
-
-    def __call__(
-        self,
-        w: jnp.ndarray,
-        pad_mode: Sequence[str],
-        bc_config: dict[str, Any] | None = None,
-        *,
-        rho_l: float,
-        rho_v: float,
-    ) -> WettingDifferentialOperator:
-        """Build a wetting-corrected Laplacian closure.
-
-        Args:
-            w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
-            pad_mode: Four padding modes ``(right_y, left_y, bottom_x, top_x)``.
-            bc_config: Boundary-condition edge map. ``None`` defaults to
-                bottom-only wetting.
-            rho_l: Liquid density, baked into the closure.
-            rho_v: Vapour density, baked into the closure.
-
-        Returns:
-            A :class:`WettingDifferentialOperator` producing shape
-            ``(nx, ny, nz, 1, 1)``.
         """
         ...
 
 
 @runtime_checkable
-class EOSFunction(Protocol):
-    """Bound EOS callable — evaluates bulk chemical potential for a density field.
+class EosOperator(Protocol):
+    """Bound EOS callable — a bulk thermodynamic function of the density field.
 
-    All EOS parameters are captured in the closure by
-    :func:`~src.operators.macroscopic.eos.build_eos_fn`; the only
-    runtime argument is the density field.
+    Each EOS registers two, both derivatives of the same bulk free energy and
+    built from the same parameters: the chemical potential ``mu_0(rho)``
+    (:func:`~src.operators.macroscopic.eos.build_eos_fn`) and the bulk pressure
+    ``p_0(rho)`` (:func:`~src.operators.macroscopic.eos.build_pressure_fn`).
+    All EOS parameters are captured in the closure; the only runtime argument
+    is the density field.
 
     Signature::
 
-        def eos_fn(rho) -> mu_0
+        def eos_fn(rho) -> mu_0 or p_0
     """
 
     def __call__(self, rho: jnp.ndarray) -> jnp.ndarray:
-        """Evaluate the bulk chemical potential μ₀(ρ).
+        """Evaluate the bound thermodynamic function of density.
 
         Args:
             rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
 
         Returns:
-            Bulk chemical potential ``μ₀``, same shape as *rho*.
-        """
-        ...
-
-
-@runtime_checkable
-class PressureFunction(Protocol):
-    """Bound bulk-pressure callable — evaluates ``p_0(rho)`` for a density field.
-
-    The thermodynamic partner of :class:`EOSFunction`: both are derivatives of
-    the same bulk free-energy density, so an EOS and its pressure must be
-    registered together to stay consistent. All parameters are captured in the
-    closure by :func:`~src.operators.macroscopic.eos.build_pressure_fn`.
-
-    This is the *bulk* pressure only — the interfacial ``-kappa`` terms are not
-    included, so ``p_0`` swings across a diffuse interface. Consumers needing
-    the full normal pressure add ``-kappa * (rho * lap(rho) + |grad rho|^2 / 2)``
-    themselves.
-
-    Accepts NumPy or JAX input; returns NumPy. Unlike :class:`EOSFunction`
-    this never runs inside a JIT trace — its consumers are the calibration and
-    the plotting layer, which both work in NumPy.
-
-    Signature::
-
-        def pressure_fn(rho) -> p_0
-    """
-
-    def __call__(self, rho: np.ndarray) -> np.ndarray:
-        """Evaluate the bulk thermodynamic pressure ``p_0(rho)``.
-
-        Args:
-            rho: Density field, any shape.
-
-        Returns:
-            Bulk pressure ``p_0``, same shape and array type as *rho*.
+            ``mu_0`` or ``p_0``, same shape as *rho*.
         """
         ...
 
@@ -778,7 +673,7 @@ class PlotOperator(Protocol):
     """Structural contract for Matplotlib plot operators.
 
     Plot operators render simulation snapshots onto matplotlib axes,
-    enabling flexible visualization strategies for different fields
+    enabling flexible visualisation strategies for different fields
     and use cases.
 
     Signature::
@@ -833,12 +728,11 @@ class PlotOperator(Protocol):
 
 __all__ = [
     # Core operators
-    "BoundDifferentialOperator",
     "BoundaryOperator",
     "CollisionOperator",
     "ConfigReader",
     "DifferentialOperator",
-    "EOSFunction",
+    "EosOperator",
     "EquilibriumOperator",
     "ExtraState",
     "ExtraStatePlugin",
@@ -849,11 +743,8 @@ __all__ = [
     "MacroscopicOperator",
     "MultiphaseStepOperator",
     "PlotOperator",
-    "PressureFunction",
     "SimulationRepository",
+    "SourceTermOperator",
     "StepOperator",
     "StreamingOperator",
-    "WettingDifferentialOperator",
-    "WettingGradientBuilder",
-    "WettingLaplacianBuilder",
 ]

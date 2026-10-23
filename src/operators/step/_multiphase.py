@@ -5,7 +5,7 @@ Registered as ``update_timestep:multiphase`` via the operator registry.
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from src.operators.force import compute_total_force_ext
+from src.operators.force._force_aggregator import compute_total_force_ext
 from src.operators.step._common import _multiphase_pipeline
 from src.pipeline.state import update_extra_state
 from src.registry import update_timestep_operator
@@ -46,7 +46,7 @@ def step_multiphase(setup: SimulationSetup, state: State) -> State:
     force_ext, state = compute_total_force_ext(setup, state, setup.forces)
 
     # 2. Run multiphase physics kernel
-    f_out, rho, u, force_tot = _multiphase_pipeline(
+    f_out, rho, u, force_tot, pressure = _multiphase_pipeline(
         setup,
         state.f,
         force_ext,
@@ -61,6 +61,7 @@ def step_multiphase(setup: SimulationSetup, state: State) -> State:
         u=u,
         force=force_tot,
         force_ext=force_ext,
+        pressure=pressure,
         t=state.t + 1,
     )
 

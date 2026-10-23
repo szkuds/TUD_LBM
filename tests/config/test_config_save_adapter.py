@@ -96,7 +96,7 @@ class TestTomlAdapterSave:
         adapter.save(cfg, str(dest))
 
         loaded = TomlAdapter().load(str(dest))
-        assert loaded.save_fields == ["rho", "u"]
+        assert loaded.save_fields == ["f", "rho", "u"]
 
     def test_save_creates_parent_dirs(self, tmp_path):
         """save() should create parent directories if they don't exist."""

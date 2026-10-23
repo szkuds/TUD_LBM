@@ -102,30 +102,24 @@ first applied for every chunk to agree on the same ramp.
 
 Usage::
 
-    # Via registry (preferred)
-    from operators.force import build_force_fn
+    from src.operators.force import build_forces
 
-    module = build_force_fn("gravity_masked_force")
-    pre = module.build({"force_g": 0.001}, (64, 64), config=config, lattice=lattice)
-    force = module.compute(state, pre)
-
-    # Direct (internal / testing)
-    from operators.force._gravity_masked import GravityForceModule
-
-    pre = GravityForceModule.build({"force_g": 0.001}, (64, 64), config=config, lattice=lattice)
-    force = GravityForceModule.compute(state, pre)
+    forces = build_forces(config, config.grid_shape, lattice)  # [gravity_masked_force] validated by the config
+    force = forces[0].compute(state)
 """
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import Any
 from typing import NamedTuple
-from typing import cast
+from typing import Self
 import jax.numpy as jnp
 from src.operators.force._gravity import _build_gravity_template
 from src.registry import force_model
 
 if TYPE_CHECKING:
     from src.config.simulation_config import SimulationConfig
+    from src.lattice.lattice import Lattice
     from src.pipeline.state import State
 
 # Fraction of the phase contrast by which the indicator's ramp is inset from
@@ -136,8 +130,33 @@ if TYPE_CHECKING:
 _PHASE_BAND = 0.1
 
 
-class GravityPrecomputed(NamedTuple):
-    """Container for gravity precomputed data.
+def _ramp_fraction(t: jnp.ndarray, force: GravityForceModule) -> jnp.ndarray | float:
+    """Fraction of the full force in effect at timestep ``t``.
+
+    ``ramp_steps`` is a build-time value, so an unramped run resolves to the
+    Python float ``1.0`` at trace time and puts nothing in the graph.
+    """
+    if force.ramp_steps is None:
+        return 1.0
+    return jnp.clip((t - force.ramp_start_t) / force.ramp_steps, 0.0, 1.0)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# ForceOperator protocol — registry-backed module
+# ══════════════════════════════════════════════════════════════════════
+
+
+@force_model(
+    name="gravity_masked_force",
+    required=("force_g",),
+    defaults={"inclination_angle_deg": 0.0, "ramp_start_t": 0.0},
+    optional=("ramp_steps",),
+    positive=("ramp_steps",),
+)
+class GravityForceModule(NamedTuple):
+    """Buoyancy-referenced gravity, bound to its template and band (:class:`ForceOperator`).
+
+    Stateless — it uses the default no force state hooks.
 
     Attributes:
         template: constant force field, shape (nx, ny, nz, 1, d)
@@ -156,122 +175,58 @@ class GravityPrecomputed(NamedTuple):
     ramp_steps: float | None = None
     ramp_start_t: float = 0.0
 
-
-def _ramp_fraction(t: jnp.ndarray, precomputed: GravityPrecomputed) -> jnp.ndarray | float:
-    """Fraction of the full force in effect at timestep ``t``.
-
-    ``ramp_steps`` is a build-time value, so an unramped run resolves to the
-    Python float ``1.0`` at trace time and puts nothing in the graph.
-    """
-    if precomputed.ramp_steps is None:
-        return 1.0
-    return jnp.clip((t - precomputed.ramp_start_t) / precomputed.ramp_steps, 0.0, 1.0)
-
-
-def _measured_phase_densities(config: SimulationConfig) -> tuple[float, float] | None:
-    """Phase densities read off the run's init field, for ``init_from_file``.
-
-    An equilibrated field's coexistence densities differ from the prescribed
-    ones, and the buoyancy contrast reported in ``physical_parameters.txt`` is
-    already measured off this same file — reusing its reader keeps the contrast
-    the force *injects* equal to the one the run's Bond number is *reported*
-    with. Imported lazily because ``build`` runs at setup time, outside JIT.
-    """
-    if config.init_type != "init_from_file":
-        return None
-    from src.simulation_io.analysis.physical_parameters import measure_init_phase_densities
-
-    return measure_init_phase_densities(config)
-
-
-def _phase_references(config: SimulationConfig) -> tuple[float, float] | None:
-    """Return ``(rho_lo, rho_hi)`` for the indicator, or None for single phase."""
-    if config.rho_v is None or config.rho_l is None:
-        return None
-    return _measured_phase_densities(config) or (float(config.rho_v), float(config.rho_l))
-
-
-# ══════════════════════════════════════════════════════════════════════
-# ForceOperator protocol — registry-backed module
-# ══════════════════════════════════════════════════════════════════════
-
-
-@force_model(name="gravity_masked_force")
-class GravityForceModule:
-    """Gravity force conforming to :class:`ForceOperator` protocol.
-
-    Stateless — it uses the default no force state hooks.
-    """
-
-    @staticmethod
+    @classmethod
     def build(
-        params: dict,
+        cls,
+        params: dict[str, Any],
         grid_shape: tuple[int, ...],
-        **kwargs: object,
-    ) -> GravityPrecomputed:
+        *,
+        config: SimulationConfig,
+        lattice: Lattice,
+    ) -> Self:
         """Build a constant gravity-force template and the indicator's band.
 
         Args:
-            params: Config dict from ``[gravity_masked_force]`` TOML section.
-                Required key: ``force_g``.
-                Optional keys: ``inclination_angle_deg`` (default 0),
-                ``ramp_steps`` (default None, meaning the force is applied at
-                full strength immediately) and ``ramp_start_t`` (default 0).
+            params: The validated ``[gravity_masked_force]`` section:
+                ``force_g``, ``inclination_angle_deg`` and ``ramp_start_t``
+                (defaulted by the config), and ``ramp_steps`` when a switch-on
+                ramp is configured (the config has checked it is positive).
             grid_shape: Spatial dimensions ``(nx, ny, nz, ...)``.
-            **kwargs: Additional arguments including ``lattice`` (for dimension info).
+            config: Simulation configuration; its ``phase_references`` band
+                the phase indicator.
+            lattice: The simulation lattice (for the velocity dimension).
 
         Returns:
-            A :class:`GravityPrecomputed` holding the constant template, the
-            band edges and contrast of the phase indicator (all ``None`` when
-            the config carries no phase densities) and the resolved switch-on
-            ramp.
-
-        Raises:
-            ValueError: If ``ramp_steps`` is set to a non-positive value.
+            The force bound to its constant template, the band edges and
+            contrast of the phase indicator (all ``None`` when the config
+            carries no phase densities) and the resolved switch-on ramp.
         """
-        template = _build_gravity_template(params, grid_shape, **kwargs)
-
-        # ``config`` arrives through ``**kwargs: object``; the concrete type is
-        # restored here rather than reading it back with ``getattr`` chains that
-        # would leave every field typed ``object``.
-        config = cast("SimulationConfig | None", kwargs.get("config"))
-        refs = _phase_references(config) if config is not None else None
-
-        ramp_steps = params.get("ramp_steps")
-        if ramp_steps is not None and float(ramp_steps) <= 0.0:
-            msg = f"'ramp_steps' must be positive, got {ramp_steps!r}. Omit the key for no ramp."
-            raise ValueError(msg)
+        template = _build_gravity_template(params, grid_shape, lattice)
 
         band_lo = band_hi = drho = None
-        if refs is not None:
+        if (refs := config.phase_references) is not None:
             rho_lo, rho_hi = refs
             drho = rho_hi - rho_lo
             band_lo = rho_lo + _PHASE_BAND * drho
             band_hi = rho_hi - _PHASE_BAND * drho
 
-        return GravityPrecomputed(
+        ramp_steps = params.get("ramp_steps")  # optional: absent means no ramp
+        return cls(
             template=template,
             band_lo=band_lo,
             band_hi=band_hi,
             drho=drho,
             ramp_steps=float(ramp_steps) if ramp_steps is not None else None,
-            ramp_start_t=float(params.get("ramp_start_t", 0.0)),
+            ramp_start_t=float(params["ramp_start_t"]),
         )
 
-    @staticmethod
-    def compute(
-        state: State,
-        precomputed: GravityPrecomputed,
-        **_kwargs: object,
-    ) -> jnp.ndarray:
+    def compute(self, state: State, **_kwargs: object) -> jnp.ndarray:
         """Compute the buoyancy-referenced body force (step-time, jittable).
 
         Args:
             state: Current simulation :class:`State`. Uses ``state.f`` (to
                 compute density) and ``state.t`` (for the switch-on ramp).
-            precomputed: Gravity template and band from :meth:`build`.
-
-            **_kwargs: Additional arguments (ignored).
+            **_kwargs: Differential operators (unused).
 
         Returns:
             Body force field, shape ``(nx, ny, nz, 1, d)``, weighted by the
@@ -281,18 +236,18 @@ class GravityForceModule:
         rho = jnp.sum(state.f, axis=-2, keepdims=True)
 
         weight: jnp.ndarray | float
-        if precomputed.drho is None:
+        if self.drho is None:
             # Single-phase runs carry no phase densities, leaving the plain
             # local weight rho*g.
             weight = rho
-        elif precomputed.drho <= 0.0:
+        elif self.drho <= 0.0:
             # Degenerate rho_l == rho_v: no contrast, hence no buoyancy. Branch
             # on the build-time float so the band's span never divides by zero.
             weight = 0.0
         else:
-            assert precomputed.band_lo is not None  # noqa: S101 - set together with drho
-            assert precomputed.band_hi is not None  # noqa: S101 - set together with drho
-            span = precomputed.band_hi - precomputed.band_lo
-            weight = precomputed.drho * jnp.clip((rho - precomputed.band_lo) / span, 0.0, 1.0)
+            assert self.band_lo is not None  # noqa: S101 - set together with drho
+            assert self.band_hi is not None  # noqa: S101 - set together with drho
+            span = self.band_hi - self.band_lo
+            weight = self.drho * jnp.clip((rho - self.band_lo) / span, 0.0, 1.0)
 
-        return -precomputed.template * _ramp_fraction(state.t, precomputed) * weight
+        return -self.template * _ramp_fraction(state.t, self) * weight

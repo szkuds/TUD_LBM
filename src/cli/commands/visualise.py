@@ -373,6 +373,70 @@ def animate(
     console.print(f"[bold green]Animation saved to:[/bold green] {output_path}")
 
 
+@cli.command("setup-figure")
+@click.argument("run_dir", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.option(
+    "--timestep",
+    "timesteps",
+    type=int,
+    multiple=True,
+    help="Snapshot timestep to draw; repeat for several. Defaults to the hysteresis snapshot and the last one.",
+)
+@click.option(
+    "--angle-tolerance",
+    default=1.0,
+    show_default=True,
+    help="Degrees within which the pre-step advancing/receding angles count as reached.",
+)
+@click.option(
+    "--draw-angle",
+    default=15.0,
+    show_default=True,
+    help="Schematic slope angle on the page, in degrees (not the run's inclination).",
+)
+@click.option(
+    "--output",
+    default=None,
+    help="Output file; the suffix sets the format. Defaults to plots/analysis/setup.pdf inside RUN_DIR.",
+)
+@cli_command(title="Setup figure", interrupt_message=_USER_INTERRUPT)
+def setup_figure(
+    run_dir: str,
+    timesteps: tuple[int, ...],
+    angle_tolerance: float,
+    draw_angle: float,
+    output: str | None,
+) -> None:
+    """Draw the setup schematic of RUN_DIR: interface, stepped wall, boundaries and incline."""
+    config = _load_run_config(run_dir)
+    from src.simulation_io.plotting.setup_figure import select_setup_timesteps
+    from src.simulation_io.plotting.setup_figure import snapshot_files
+    from src.simulation_io.plotting.setup_figure import write_setup_figure
+
+    available = list(snapshot_files(Path(run_dir)))
+    if unknown := [step for step in timesteps if step not in available]:
+        span = f"{available[0]}..{available[-1]}" if available else "none"
+        msg = f"No snapshot for --timestep {unknown}; available: {span}."
+        raise click.UsageError(msg)
+
+    console.print(f"[dim]Run directory : {run_dir}[/dim]")
+    if timesteps:
+        chosen = timesteps
+    else:
+        choice = select_setup_timesteps(config, Path(run_dir), angle_tolerance)
+        chosen = choice.timesteps
+        console.print(f"[dim]First droplet : {choice.reason}[/dim]")
+    console.print(f"[dim]Timesteps     : {', '.join(str(step) for step in chosen) or 'none'}[/dim]")
+    console.print(f"[dim]Slope angle   : {draw_angle:g} deg (schematic)[/dim]")
+    console.print()
+
+    path = write_setup_figure(config, run_dir, timesteps=chosen, draw_angle_deg=draw_angle, out_path=output)
+    if path is None:
+        console.print("[yellow]No figure produced: the run needs snapshots and two phase densities.[/yellow]")
+    else:
+        console.print(f"[bold green]Setup figure saved to:[/bold green] {path}")
+
+
 # Groups disable interspersed args by default, which would reject the natural
 # ``visualise RUN_DIR --no-prompt`` ordering. The subcommands take no options of
 # their own, so nothing is ambiguous.

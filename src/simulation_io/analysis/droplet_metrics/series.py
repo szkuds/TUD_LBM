@@ -17,6 +17,7 @@ from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import SNAPSHOT_GLOB
 from src.simulation_io.analysis.droplet_metrics._scales import MetricScales
 from src.simulation_io.analysis.droplet_metrics._scales import inclination_angle_deg
+from src.simulation_io.analysis.droplet_metrics._scales import measured_sigma_lg
 from src.simulation_io.analysis.droplet_metrics._scales import resolve_scales
 from src.simulation_io.analysis.droplet_metrics._snapshot import avg_x_location
 from src.simulation_io.analysis.droplet_metrics._snapshot import center_of_mass
@@ -367,7 +368,7 @@ def _config_fingerprint(config: SimulationConfig) -> tuple[object, ...]:
         config.init_dir,
         step_location,
         incl,
-        config.extra.get("surface_tension"),
+        measured_sigma_lg(config),
     )
 
 

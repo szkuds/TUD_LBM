@@ -3,12 +3,15 @@
 Resets populations at the inlet edge to the equilibrium distribution for
 a prescribed parabolic velocity profile. Simplest correct option for a
 worked channel-flow example — not a Zou-He pressure-coupled inlet.
+
+The inlet fixes ``rho_in = 1.0``, so it is a single-phase boundary and uses the
+single-phase ``"standard_equilibrium"``, which carries the pressure.
 """
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
-from src.operators.equilibrium._equilibrium_well_balanced import compute_equilibrium
+from src.operators.equilibrium._equilibrium import compute_equilibrium
 from src.registry import boundary_condition
 
 if TYPE_CHECKING:

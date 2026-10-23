@@ -47,14 +47,16 @@ def analytical_sigma_lg(config: SimulationConfig) -> float | None:
 
 
 def measured_sigma_lg(config: SimulationConfig) -> float | None:
-    """Calibrated surface tension measured at run time, when one is stored.
+    """Calibrated surface tension of the run's fluid, when one has been measured.
 
-    Written into ``config.extra["surface_tension"]`` by
-    :mod:`src.simulation_io.analysis.surface_tension`. Absent for runs that were never
-    calibrated.
+    Resolved by :func:`~src.simulation_io.analysis.surface_tension.cached_surface_tension`:
+    a run's ``config.toml`` does not store it, so it is looked up in the
+    calibration cache by the fluid's parameters. Absent for a fluid that was
+    never calibrated.
     """
-    measured = config.extra.get("surface_tension")
-    return None if measured is None else float(measured)
+    from src.simulation_io.analysis.surface_tension import cached_surface_tension
+
+    return cached_surface_tension(config)
 
 
 def resolve_r_zero(config: SimulationConfig) -> RZero:

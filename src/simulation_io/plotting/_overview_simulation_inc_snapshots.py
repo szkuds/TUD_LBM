@@ -10,15 +10,15 @@ from src.simulation_io.analysis.droplet_metrics import parse_timestep
 from src.simulation_io.plotting._analysis_common import _CONTACT_ANGLE_Y_LABEL
 from src.simulation_io.plotting._analysis_common import _set_empty_state
 from src.simulation_io.plotting._analysis_common import load_snapshot
+from src.simulation_io.plotting._ca_theta_plot import _CA_THETA_TITLE
+from src.simulation_io.plotting._ca_theta_plot import DualAxisStyle
+from src.simulation_io.plotting._ca_theta_plot import _compute_ca_theta_arrays
+from src.simulation_io.plotting._ca_theta_plot import _draw_dual_axis_on_ax
+from src.simulation_io.plotting._density import DensityPlotOperator
+from src.simulation_io.plotting._velocity import VelocityPlotOperator
 from src.simulation_io.plotting.base import AnalysisPlot
-from src.simulation_io.plotting.ca_theta_plot import _CA_THETA_TITLE
-from src.simulation_io.plotting.ca_theta_plot import DualAxisStyle
-from src.simulation_io.plotting.ca_theta_plot import _compute_ca_theta_arrays
-from src.simulation_io.plotting.ca_theta_plot import _draw_dual_axis_on_ax
-from src.simulation_io.plotting.density import DensityPlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 from src.simulation_io.plotting.figure_config import LABEL_X_AVG_NORM
-from src.simulation_io.plotting.velocity import VelocityPlotOperator
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -125,7 +125,7 @@ class SnapshotOverviewPlot(AnalysisPlot):
     is_multi_panel = True
 
     def __init__(self, config: SimulationConfig | None = None) -> None:
-        """Initialize with optional config; timesteps are set by the CLI prompt."""
+        """Initialise with optional config; timesteps are set by the CLI prompt."""
         super().__init__(config)
         self.timesteps: list[int] = []
 

@@ -25,6 +25,8 @@ if TYPE_CHECKING:
     import numpy as np
     from matplotlib.artist import Artist
     from src.config import SimulationConfig
+    from .base import AnalysisPlot
+    from .base import PlotOperator
 
 _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
     1: (1, 1),
@@ -110,7 +112,7 @@ class FigureBuilder:
         fields: list[str] | None = None,
         overlays: list[str] | None = None,
     ) -> None:
-        """Initialize figure builder with simulation config and output directory.
+        """Initialise figure builder with simulation config and output directory.
 
         Args:
             config: Simulation configuration object.
@@ -134,6 +136,10 @@ class FigureBuilder:
         self._analysis_operators: list = []
         self._analysis_export_operators: list = []
         self._overlay_operators: list = []
+        # Field operators already reported as dropped, so each is named once.
+        # Only a named selection is reported: the default set is a best effort.
+        self._reported_unavailable: set[str] = set()
+        self._fields_named = bool(fields or config.plot_fields)
 
         # Guard: plotting only supports 2D simulations (nz=1)
         nz = getattr(config, "nz", config.grid_shape[2] if len(config.grid_shape) > 2 else 1)  # noqa: PLR2004
@@ -210,6 +216,26 @@ class FigureBuilder:
                 f"No plot operator registered for '{name}'. Available: {known}",
                 stacklevel=2,
             )
+
+    def _report_unavailable(self, data: dict[str, np.ndarray], field_ops: list) -> None:
+        """Warn, once per operator, about a requested panel the snapshot cannot fill.
+
+        Without this a requested field just goes missing from the figure, which
+        reads as the selection having been ignored.
+        """
+        if not self._fields_named:
+            return
+        dropped = [
+            op.name for op in self._field_operators if op not in field_ops and op.name not in self._reported_unavailable
+        ]
+        if not dropped:
+            return
+        self._reported_unavailable.update(dropped)
+        warnings.warn(
+            f"FigureBuilder: no data for {dropped} in the snapshot (saved fields: {sorted(data)}); "
+            "those panels are left out. Add the field to save_fields to plot it.",
+            stacklevel=3,
+        )
 
     def sorted_timed_files(self) -> list[tuple[int, Path]]:
         """Return ``(timestep, path)`` pairs sorted by timestep."""
@@ -307,6 +333,34 @@ class FigureBuilder:
                     result = out
         return result
 
+    def _overlays_for(self, op: PlotOperator, data: dict[str, np.ndarray]) -> list[PlotOperator]:
+        """The overlays drawn on *op*'s panel: none if it refuses them, never its own."""
+        if not op.accepts_overlays:
+            return []
+        # Never onto its own panel: that would draw it twice.
+        return [
+            overlay for overlay in self._overlay_operators if overlay.name != op.name and overlay.is_available(data)
+        ]
+
+    def _draw_field_panel(self, ax: plt.Axes, op: PlotOperator, data: dict[str, np.ndarray], timestep: int) -> None:
+        """Draw one field panel and its overlays; a failure becomes that panel's error."""
+        try:
+            op(ax, data, timestep)
+            for overlay in self._overlays_for(op, data):
+                overlay.draw_overlay(ax, data, timestep)
+        except Exception as exc:  # noqa: BLE001
+            _render_error(ax, op.name, exc)
+
+    @staticmethod
+    def _draw_analysis_panel(ax: plt.Axes, op: AnalysisPlot, history_files: list[Path]) -> None:
+        """Draw one analysis panel; a failure becomes that panel's error."""
+        try:
+            op.update(ax, history_files)
+        except Exception as exc:  # noqa: BLE001
+            _render_error(ax, op.name, exc)
+        # Apply after render so ax.clear() inside render() doesn't reset it
+        ax.set_facecolor(_ANALYSIS_PANEL_FACECOLOR)
+
     def render_figure(
         self,
         data: dict[str, np.ndarray],
@@ -315,6 +369,7 @@ class FigureBuilder:
     ) -> plt.Figure | None:
         """Render one timestep into a Figure without saving it."""
         field_ops = [op for op in self._field_operators if op.is_available(data)]
+        self._report_unavailable(data, field_ops)
         analysis_ops = list(self._analysis_operators) if history_files is not None else []
         panels = field_ops + analysis_ops
 
@@ -332,26 +387,12 @@ class FigureBuilder:
 
         for idx, op in enumerate(field_ops):
             row, col = divmod(idx, ncols)
-            try:
-                op(axes[row][col], data, timestep)
-                if op.accepts_overlays:
-                    for overlay in self._overlay_operators:
-                        # Never onto its own panel: that would draw it twice.
-                        if overlay.name != op.name and overlay.is_available(data):
-                            overlay.draw_overlay(axes[row][col], data, timestep)
-            except Exception as exc:  # noqa: BLE001
-                _render_error(axes[row][col], op.name, exc)
+            self._draw_field_panel(axes[row][col], op, data, timestep)
 
-        offset = len(field_ops)
-        for idx, op in enumerate(analysis_ops):
-            row, col = divmod(offset + idx, ncols)
-            ax = axes[row][col]
-            try:
-                op.update(ax, history_files)
-            except Exception as exc:  # noqa: BLE001
-                _render_error(ax, op.name, exc)
-            # Apply after render so ax.clear() inside render() doesn't reset it
-            ax.set_facecolor(_ANALYSIS_PANEL_FACECOLOR)
+        if history_files is not None:
+            for idx, op in enumerate(analysis_ops, start=len(field_ops)):
+                row, col = divmod(idx, ncols)
+                self._draw_analysis_panel(axes[row][col], op, history_files)
 
         for idx in range(len(panels), nrows * ncols):
             row, col = divmod(idx, ncols)

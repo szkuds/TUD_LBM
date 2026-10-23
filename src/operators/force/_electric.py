@@ -4,35 +4,30 @@ Implements the leaky-dielectric model for electric-field-induced
 forces in multiphase flows.  The electric potential is solved via
 a secondary lattice Boltzmann sub-step (distribution ``hi``).
 
-The registry-backed :class:`ElectricForceModule` exposes setup-time
-``build`` and step-time ``compute`` methods directly.
+:class:`ElectricForceModule` is bound to its :class:`ElectricParams`:
+the classmethod ``build`` reads the config-validated section, and the
+instance's ``compute`` returns the force.
 
 Usage::
 
-    # Via registry (preferred)
-    from operators.force import build_force_fn
+    from src.operators.force import build_forces
 
-    module = build_force_fn("electric_force")
-    params = module.build(config_dict, (64, 64), config, lattice)
-    force = module.compute(state, params)
-
-    # Direct (internal / testing)
-    from operators.force._electric import ElectricForceModule
-
-    params = ElectricForceModule.build(config_dict, (64, 64), config, lattice)
-    force = ElectricForceModule.compute(state, params)
+    forces = build_forces(config, config.grid_shape, lattice)  # [electric_force] validated by the config
+    force = forces[0].compute(state, gradient_standard=setup.gradient_standard)
 """
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import Any
 from typing import NamedTuple
+from typing import Self
 import jax.numpy as jnp
 from src.registry import force_model
 
 if TYPE_CHECKING:
     from src import Lattice
     from src.config import SimulationConfig
-    from src.operators.protocols import BoundDifferentialOperator
+    from src.operators.protocols import DifferentialOperator
     from src.pipeline.state import State
 
 # ══════════════════════════════════════════════════════════════════════
@@ -124,44 +119,51 @@ def _equilibrium_h(
 # ══════════════════════════════════════════════════════════════════════
 
 
-@force_model(name="electric_force")
-class ElectricForceModule:
-    """Electric force conforming to :class:`ForceOperator` protocol.
+@force_model(
+    name="electric_force",
+    required=tuple(f for f in ElectricParams._fields if f not in ElectricParams._field_defaults),
+    defaults=ElectricParams._field_defaults,
+)
+class ElectricForceModule(NamedTuple):
+    """Electric force, bound to its parameters (:class:`ForceOperator`).
 
     Stateful — carries auxiliary electric potential distribution ``h``
     that evolves each time step via a secondary LBM sub-step.
+
+    Attributes:
+        params: The electric parameters built from the ``[electric_force]`` section.
     """
 
-    @staticmethod
+    params: ElectricParams
+
+    @classmethod
     def build(
-        params: dict,
-        _grid_shape: tuple[int, ...],
-        config: SimulationConfig,  # noqa: ARG004  # required by ForceOperator protocol
-        lattice: Lattice,  # noqa: ARG004  # required by ForceOperator protocol
-    ) -> ElectricParams:
+        cls,
+        params: dict[str, Any],
+        grid_shape: tuple[int, ...],  # noqa: ARG003  # required by ForceOperator protocol
+        *,
+        config: SimulationConfig,  # noqa: ARG003  # required by ForceOperator protocol
+        lattice: Lattice,  # noqa: ARG003  # required by ForceOperator protocol
+    ) -> Self:
         """Build electric parameters (setup-time, non-jitted).
 
         Args:
-            params: Config dict from ``[electric_force]`` TOML section.
-                Required keys: ``permittivity_liquid``, ``permittivity_vapour``,
-                ``conductivity_liquid``, ``conductivity_vapour``.
-                Optional keys: ``applied_voltage``, ``voltage_top``,
-                ``voltage_bottom``.
+            params: The validated ``[electric_force]`` section; its schema is
+                :class:`ElectricParams`' own fields and defaults.
             grid_shape: Spatial dimensions (unused, but required by protocol).
-            config: Full simulation configuration (for pad-mode resolution).
-            lattice: Simulation lattice (weights and velocities for diff ops).
+            config: Full simulation configuration (unused).
+            lattice: Simulation lattice (unused).
 
         Returns:
-            :class:`ElectricParams` NamedTuple with the electric parameters.
+            The force bound to its :class:`ElectricParams`.
         """
-        return ElectricParams(**params)
+        return cls(params=ElectricParams(**params))
 
-    @staticmethod
     def compute(
+        self,
         state: State,
-        precomputed: ElectricParams,
         *,
-        gradient_standard: BoundDifferentialOperator | None = None,
+        gradient_standard: DifferentialOperator | None = None,
         **_kwargs: object,
     ) -> jnp.ndarray:
         """Compute electric force (step-time, jittable).
@@ -172,7 +174,6 @@ class ElectricForceModule:
 
         Args:
             state: Current simulation :class:`State`.
-            precomputed: :class:`ElectricParams` from :meth:`build`.
             gradient_standard: Standard gradient closure injected by the force pipeline.
             **kwargs: Additional arguments (ignored).
 
@@ -192,8 +193,8 @@ class ElectricForceModule:
         rho_2d = rho_3d[:, :, 0, 0, 0]  # (nx, ny) - squeeze all singleton dims
         epsilon_2d = _rho_to_phi(
             rho_2d,
-            precomputed.permittivity_liquid,
-            precomputed.permittivity_vapour,
+            self.params.permittivity_liquid,
+            self.params.permittivity_vapour,
         )
 
         # Sum over q-axis for potential; extract z-slice to 2D

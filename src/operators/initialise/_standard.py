@@ -16,9 +16,7 @@ if TYPE_CHECKING:
 
 @initialise_operator(name="standard")
 def init_standard(
-    nx: int,
-    ny: int,
-    nz: int,
+    grid_shape: tuple[int, int, int],
     lattice: Lattice,
     *,
     density: float = 1.0,
@@ -28,9 +26,7 @@ def init_standard(
     """Initialise uniform density and velocity at equilibrium.
 
     Args:
-        nx: Grid size in x.
-        ny: Grid size in y.
-        nz: Grid size in z.
+        grid_shape: Spatial dimensions ``(nx, ny, nz)``.
         lattice: :class:`~setup.lattice.Lattice`.
         density: Uniform density value.
         velocity: Uniform velocity ``(ux, uy, uz)``.
@@ -39,6 +35,7 @@ def init_standard(
     Returns:
         Initial distribution ``f``, shape ``(nx, ny, nz, q, 1)``.
     """
+    nx, ny, nz = grid_shape
     equilibrium_fn = build_equilibrium_fn("wb")
     rho = jnp.full((nx, ny, nz, 1, 1), density)
     u = jnp.broadcast_to(jnp.array(velocity[: lattice.d]).reshape(1, 1, 1, 1, lattice.d), (nx, ny, nz, 1, lattice.d))

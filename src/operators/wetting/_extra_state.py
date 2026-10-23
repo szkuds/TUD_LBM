@@ -6,8 +6,7 @@ from typing import Any
 import jax.numpy as jnp
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
-from src.operators.wetting._params import NEUTRAL_WETTING_CONFIG
-from src.operators.wetting._params import wetting_scalar
+from src.operators.wetting._params import WettingParams
 from src.pipeline.state.state import State
 from src.pipeline.state.state import WettingState
 from src.registry import extra_state_plugin
@@ -29,9 +28,9 @@ class WettingExtraStatePlugin:
 
     @staticmethod
     def init_state(setup: SimulationSetup) -> dict[str, Any]:
-        wetting_cfg = setup.config.wetting_config
-        if wetting_cfg is None:
-            wetting_cfg = NEUTRAL_WETTING_CONFIG
+        defaults = setup.config.wetting_defaults
+        assert defaults is not None  # noqa: S101 - active only with a wetting_config (hysteresis gets a neutral one)
+        params = WettingParams.from_defaults(defaults)
 
         if setup.initial_f_fn is None:
             msg = "initial_f_fn is required for wetting initial state"
@@ -55,18 +54,22 @@ class WettingExtraStatePlugin:
             edge=edge,
         )
 
-        return {
-            "wetting": WettingState(
-                phi_left=jnp.array(wetting_scalar(wetting_cfg, "phi_left", "phi_l", default=1.0)),
-                phi_right=jnp.array(wetting_scalar(wetting_cfg, "phi_right", "phi_r", default=1.0)),
-                d_rho_left=jnp.array(wetting_scalar(wetting_cfg, "d_rho_left", "d_rho_l", default=0.0)),
-                d_rho_right=jnp.array(wetting_scalar(wetting_cfg, "d_rho_right", "d_rho_r", default=0.0)),
-                ca_left=ca_left,
-                ca_right=ca_right,
-                cll_left=cll_left,
-                cll_right=cll_right,
-            ),
-        }
+        wetting = WettingState(
+            phi_left=params.phi_left,
+            phi_right=params.phi_right,
+            d_rho_left=params.d_rho_left,
+            d_rho_right=params.d_rho_right,
+            ca_left=ca_left,
+            ca_right=ca_right,
+            cll_left=cll_left,
+            cll_right=cll_right,
+        )
+        # A hysteresis restart resumes the wall parameters and anchors it saved;
+        # the angles above are always measured off the field.
+        restored = setup.config.restored_wetting
+        if restored is not None:
+            wetting = wetting._replace(**{key: jnp.array(value) for key, value in restored.items()})
+        return {"wetting": wetting}
 
     @staticmethod
     def update_state(

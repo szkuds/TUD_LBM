@@ -58,18 +58,6 @@ MULTIPHASE_TOML = textwrap.dedent("""\
     top = "symmetry"
     bottom = "wetting"
 
-    [boundary_conditions.wetting_params]
-    phi_left = 1.0
-    phi_right = 1.0
-    d_rho_left = 0.0
-    d_rho_right = 0.0
-
-    [boundary_conditions.hysteresis_params]
-    ca_advancing = 90.0
-    ca_receding = 80.0
-    learning_rate = 0.05
-    max_iterations = 10
-
     [output]
     results_dir = "~/TUD_LBM_data/results"
 """)
@@ -100,7 +88,7 @@ MULTIPHASE_WITH_FORCE_TOML = textwrap.dedent("""\
 def simple_toml_file(tmp_path):
     """Write a simple TOML app_setup to a temp file and return its path."""
     p = tmp_path / "config_simple.toml"
-    p.write_text(SIMPLE_TOML)
+    p.write_text(SIMPLE_TOML, encoding="utf-8")
     return str(p)
 
 
@@ -108,7 +96,7 @@ def simple_toml_file(tmp_path):
 def multiphase_toml_file(tmp_path):
     """Write a multiphase TOML app_setup (no forces) to a temp file."""
     p = tmp_path / "config_multiphase.toml"
-    p.write_text(MULTIPHASE_TOML)
+    p.write_text(MULTIPHASE_TOML, encoding="utf-8")
     return str(p)
 
 
@@ -116,7 +104,7 @@ def multiphase_toml_file(tmp_path):
 def multiphase_force_toml_file(tmp_path):
     """Write a multiphase TOML app_setup with forces to a temp file."""
     p = tmp_path / "config_force.toml"
-    p.write_text(MULTIPHASE_WITH_FORCE_TOML)
+    p.write_text(MULTIPHASE_WITH_FORCE_TOML, encoding="utf-8")
     return str(p)
 
 
@@ -248,23 +236,26 @@ class TestTomlAdapterMultiphase:
         assert bc["bottom"] == "wetting"
         assert bc["top"] == "symmetry"
 
-    def test_wetting_params_nested(self, multiphase_toml_file):
-        bundle = TomlAdapter().load(multiphase_toml_file)
-        bc = bundle.bc_config
-        assert bc is not None
-        assert "wetting_params" in bc
-        wp = bc["wetting_params"]
-        assert wp["phi_left"] == 1.0
-        assert wp["d_rho_left"] == 0.0
+    def test_boundary_parameter_section_nested(self, tmp_path):
+        p = tmp_path / "config_inlet.toml"
+        p.write_text(
+            textwrap.dedent("""\
+                [simulation_type]
+                type = "single_phase"
+                grid_shape = [20, 10]
 
-    def test_hysteresis_params_nested(self, multiphase_toml_file):
-        bundle = TomlAdapter().load(multiphase_toml_file)
-        bc = bundle.bc_config
-        assert bc is not None
-        assert "hysteresis_params" in bc
-        hp = bc["hysteresis_params"]
-        assert hp["ca_advancing"] == 90.0
-        assert hp["ca_receding"] == 80.0
+                [boundary_conditions]
+                left = "velocity-inlet"
+                right = "outlet"
+
+                [boundary_conditions.left_velocity_inlet]
+                u0 = 0.02
+            """),
+            encoding="utf-8",
+        )
+        bundle = TomlAdapter().load(str(p))
+        assert bundle.bc_config is not None
+        assert bundle.bc_config["left_velocity_inlet"] == {"u0": 0.02}
 
 
 # ── TomlAdapter: multiphase with forces ──────────────────────────────
@@ -320,7 +311,7 @@ class TestTomlAdapterInitialisation:
             dispersed = "vapour"
         """)
         p = Path(tmp_path) / "init_params.toml"
-        p.write_text(content)
+        p.write_text(content, encoding="utf-8")
 
         bundle = TomlAdapter().load(str(p))
 
@@ -342,7 +333,7 @@ class TestTomlAdapterErrors:
 
     def test_missing_simulation_table(self, tmp_path):
         p: Path = tmp_path / "empty.toml"
-        p.write_text("[output]\nresults_dir = '/tmp'\n")
+        p.write_text("[output]\nresults_dir = '/tmp'\n", encoding="utf-8")
         p_str: str = str(p)
         adapter = TomlAdapter()
         with pytest.raises(
@@ -359,7 +350,7 @@ class TestTomlAdapterErrors:
             tau = 0.6
         """)
         p = tmp_path / "bad_type.toml"
-        p.write_text(content)
+        p.write_text(content, encoding="utf-8")
         p_str: str = str(p)
         adapter = TomlAdapter()
         with pytest.raises(ValueError, match="Unknown simulation type"):
@@ -383,7 +374,7 @@ class TestTomlAdapterErrors:
             strength = 1.0
         """)
         p = tmp_path / "bad_force.toml"
-        p.write_text(content)
+        p.write_text(content, encoding="utf-8")
         p_str: str = str(p)
         adapter = TomlAdapter()
         with pytest.raises(KeyError, match="Unknown force type"):
@@ -397,7 +388,7 @@ class TestTomlAdapterErrors:
             tau = 0.3
         """)
         p = tmp_path / "bad_tau.toml"
-        p.write_text(content)
+        p.write_text(content, encoding="utf-8")
         p_str: str = str(p)
         adapter = TomlAdapter()
         with pytest.raises(ValueError, match=r"tau must be > 0\.5"):

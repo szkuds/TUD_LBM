@@ -68,3 +68,9 @@ def apply_bounce_back(
         raise ValueError(msg)
 
     return f_streamed
+
+
+# A wetting wall is a bounce-back wall for the populations; the wetting itself is
+# applied in the density stencils, not here. An alias is a second registration,
+# not a remap inside the builder.
+boundary_condition(name="wetting", pad_edge_mode="edge")(apply_bounce_back)

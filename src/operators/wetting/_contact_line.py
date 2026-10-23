@@ -11,10 +11,8 @@ from __future__ import annotations
 import jax.numpy as jnp
 from src.operators.wetting._canonical_view import to_canonical
 from src.operators.wetting._interface_crossings import interface_crossings
-from src.registry import wetting_operator
 
 
-@wetting_operator(name="contact_line_location")
 def compute_contact_line_location(
     rho: jnp.ndarray,
     ca_left: jnp.ndarray,

@@ -8,9 +8,9 @@ from src.cli.analysis_routing import analyse_tree
 from src.config import SimulationConfig
 from src.simulation_io.analysis.droplet_metrics import DropletSeries
 from src.simulation_io.analysis.droplet_metrics import MetricScales
+from src.simulation_io.plotting._simulation_csv import build_simulation_csv
 from src.simulation_io.plotting.run_comparison import _clean_dir_label
 from src.simulation_io.plotting.run_comparison import _safe_load_config
-from src.simulation_io.plotting.simulation_csv import build_simulation_csv
 
 
 def _wetting_config() -> SimulationConfig:

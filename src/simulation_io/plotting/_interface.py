@@ -102,6 +102,11 @@ class InterfacePlotOperator(PlotOperator):
     supports_overlay = True
     overlay_label = "interface contour"
 
+    @classmethod
+    def overlay_prompt_default(cls, config: SimulationConfig) -> bool | None:
+        """Offer the overlay, defaulting to yes, only for a multiphase run."""
+        return True if config.is_multiphase else None
+
     def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:
         """Validate the configured interface markers up front, not inside a panel."""
         super().__init__(config, data_dir=data_dir)

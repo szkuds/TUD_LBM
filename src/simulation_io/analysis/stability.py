@@ -2,7 +2,8 @@
 
 Enabled via the ``--debug-stability`` CLI flag, which sets
 ``DEBUG_FLAG_STABILITY`` in :mod:`src.config.config_overview`.
-Every ``save_interval`` steps the runner samples a small vector of
+Every ``DEBUG_STABILITY_INTERVAL`` steps (``--debug-stability [INTERVAL]``,
+independent of ``save_interval``) the runner samples a small vector of
 on-device metrics and ships it to a host callback:
 
 * ``max|u|`` — maximum velocity magnitude
@@ -33,8 +34,8 @@ from src.simulation_io.analysis._debug_table import fmt
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from src.operators.macroscopic import MultiphaseParams
-    from src.operators.protocols import BoundDifferentialOperator
+    from src.config.multiphase_params import MultiphaseParams
+    from src.operators.protocols import DifferentialOperator
     from src.pipeline.state.state import State
 
 logger = logging.getLogger(__name__)
@@ -43,8 +44,8 @@ _CSV_NAME = "stability_log.csv"
 _CSV_HEADER = "t,max_u,max_grad_mu,rho_min,rho_max,checkerboard_amp,n_wake_cells\n"
 _METRIC_NAMES = ("max_u", "max_grad_mu", "rho_min", "rho_max", "checkerboard_amp")
 
-#: 60 characters — one line on any terminal, so consecutive samples stay
-#: column-aligned and a drifting metric is visible in place.
+#: One line per sample, so consecutive samples stay column-aligned and a
+#: drifting metric is visible in place.
 _TABLE = DebugTable(
     (
         Column("t", "t", 8, fmt("d")),
@@ -119,7 +120,7 @@ def wake_mask(
 def compute_stability_metrics(
     state: State,
     *,
-    gradient_density: BoundDifferentialOperator | None = None,
+    gradient_density: DifferentialOperator | None = None,
     mp: MultiphaseParams | None = None,
     vapor_frac: float = 0.2,
     grad_frac: float = 0.05,
@@ -204,7 +205,7 @@ def _host_check(out_dir: Path, metrics: np.ndarray, t: int) -> None:
 def make_stability_callback(
     out_dir: str | Path,
     *,
-    gradient_density: BoundDifferentialOperator | None,
+    gradient_density: DifferentialOperator | None,
     mp: MultiphaseParams | None,
     log_interval: int,
     vapor_frac: float,
@@ -221,7 +222,7 @@ def make_stability_callback(
         out_dir: Directory for ``stability_log.csv``.
         gradient_density: ``setup.gradient_density`` (``None`` for single-phase).
         mp: ``setup.multiphase_params`` (``None`` for single-phase).
-        log_interval: Steps between samples (the run's ``save_interval``).
+        log_interval: Steps between samples (``DEBUG_STABILITY_INTERVAL``).
         vapor_frac: See :func:`wake_mask`.
         grad_frac: See :func:`wake_mask`.
 
