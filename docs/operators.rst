@@ -58,7 +58,7 @@ Kind                        Decorator                       Resolved by
 ``stream``                  ``@stream_operator``            fixed (``"standard"``)
 ``differential``            ``@differential_operator``      built by ``build_diff_ops()``
 ``initialise``              ``@initialise_operator``        ``config.init_type``
-``wetting``                 ``@hysteresis_operator``       ``config.hysteresis_config``
+``wetting``                 ``@wetting_operator``           ``config.hysteresis_config``
 ``obstacle``                ``@obstacle_operator``          ``config.obstacle_config``
 ``lattice``                 ``@lattice_operator``           ``config.lattice_type``
 ``update_timestep``         ``@update_timestep_operator``   ``config.sim_type``

@@ -308,7 +308,7 @@ def update_timestep_operator(
     return register_operator("update_timestep", name=name, **meta)
 
 
-def hysteresis_operator(
+def wetting_operator(
     *,
     name: str | None = None,
     **meta: object,

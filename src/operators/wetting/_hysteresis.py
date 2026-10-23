@@ -51,7 +51,7 @@ from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
 from src.operators.wetting._interface_crossings import detect_bubble
 from src.operators.wetting._params import WettingParams
-from src.registry import hysteresis_operator
+from src.registry import wetting_operator
 from src.simulation_io.analysis import wetting_debug
 
 if TYPE_CHECKING:
@@ -672,7 +672,7 @@ def _measure(rho: jnp.ndarray, setup: SimulationSetup) -> tuple[jnp.ndarray, jnp
     return ca_left, ca_right, cll_left, cll_right
 
 
-@hysteresis_operator(name="hysteresis")
+@wetting_operator(name="hysteresis")
 def update_wetting_state(
     wetting: WettingState,
     rho_t_plus1: jnp.ndarray,
@@ -717,7 +717,7 @@ def update_wetting_state(
     )
 
 
-@hysteresis_operator(name="chemical_step_hysteresis")
+@wetting_operator(name="chemical_step_hysteresis")
 def update_wetting_state_chemical_step(
     wetting: WettingState,
     rho_t_plus1: jnp.ndarray,
