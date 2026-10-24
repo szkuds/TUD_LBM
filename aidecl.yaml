@@ -1,0 +1,29 @@
+# AI Declaration Format (aidecl)
+# Use a role or team name rather than a personal name for public declarations.
+
+schema_version: 1.0.0
+project:
+  name: TUD-LBM
+  repository: git@github.com:szkuds/TUD_LBM.git
+  content_type: software
+ai_usage:
+  used: true
+  summary: >-
+    The developers coded the core functionality, defined the architecture, design constraints, and quality
+    criteria, and reviewed the final result. AI assisted with code completion, partial
+    implementation, debugging and documentation  under that human guidance.
+  level: medium
+  tools:
+    - name: Claude
+      vendor: Anthropic
+      type: assistant
+      purpose:
+        - code completion
+        - code review
+        - documentation assistance
+        - debugging
+  scope:
+    code_completion: true
+declaration:
+  date: '2026-10-16'
+  declared_by: TUD-LBM maintainers
