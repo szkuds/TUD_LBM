@@ -82,7 +82,7 @@ def _initial_mass(config: SimulationConfig) -> float:
     from src.pipeline.runner import init_state
     from src.pipeline.setup import build_setup
 
-    return float(np.asarray(init_state(build_setup(config)).rho).sum())
+    return float(np.asarray(init_state(build_setup(config)).f).sum())
 
 
 @pytest.fixture(scope="module")

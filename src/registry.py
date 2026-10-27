@@ -281,15 +281,6 @@ def source_term_operator(
     return register_operator("source_term", name=name, **meta)
 
 
-def simulation_type_operator(
-    *,
-    name: str | None = None,
-    **meta: object,
-) -> Callable[[_OT], _OT]:
-    """Register a simulation type (kind ``"simulation_type"``)."""
-    return register_operator("simulation_type", name=name, **meta)
-
-
 def stream_operator(
     *,
     name: str | None = None,
@@ -299,22 +290,19 @@ def stream_operator(
     return register_operator("stream", name=name, **meta)
 
 
-def update_timestep_operator(
+def feature_operator(
     *,
     name: str | None = None,
     **meta: object,
 ) -> Callable[[_OT], _OT]:
-    """Register an update-timestep operator (kind ``"update_timestep"``)."""
-    return register_operator("update_timestep", name=name, **meta)
+    """Register a feature builder (kind ``"feature"``).
 
-
-def wetting_operator(
-    *,
-    name: str | None = None,
-    **meta: object,
-) -> Callable[[_OT], _OT]:
-    """Register a hysteresis wetting-state update (kind ``"wetting"``)."""
-    return register_operator("wetting", name=name, **meta)
+    The target is ``build(config, lattice) -> Contribution | None``: a
+    cross-cutting behaviour that fills the slots of
+    :class:`~src.features.contribution.Contribution`. The registered name is
+    the feature's key in ``State.ext``.
+    """
+    return register_operator("feature", name=name, **meta)
 
 
 def lattice_operator(
@@ -346,15 +334,6 @@ def analysis_operator(
     comparison is not an operator; see :mod:`src.simulation_io.plotting.run_comparison`.
     """
     return register_operator("analysis", name=name, **meta)
-
-
-def extra_state_plugin(
-    *,
-    name: str | None = None,
-    **meta: object,
-) -> Callable[[_OT], _OT]:
-    """Register an extra-state plugin (kind ``"extra_state"``)."""
-    return register_operator("extra_state", name=name, **meta)
 
 
 def dimensionless_operator(

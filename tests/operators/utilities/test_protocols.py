@@ -142,34 +142,30 @@ class TestSourceTermProtocol:
 
     def test_source_conformance(self, lattice_d2q9, grid_shape, test_state):
         """The ``wb`` source carries no mass."""
-        import src.pipeline  # noqa: F401 - enter through the pipeline (differential import cycle)
-        from src.operators.differential import build_gradient_fn
         from src.operators.source_term import build_source_fn
+        from tests.support.differential import bound_operators
 
         nx, ny = grid_shape
         source_fn = build_source_fn()
         _, rho, u = test_state
         force = jnp.full((nx, ny, 1, 1, 2), 1e-4)
 
-        source = source_fn(
-            rho, u, force, lattice_d2q9, gradient=build_gradient_fn(lattice_d2q9, ("wrap", "wrap", "wrap", "wrap"))
-        )
+        source = source_fn(rho, u, force, lattice_d2q9, gradient=bound_operators(lattice_d2q9)[0])
 
         assert source.shape == (nx, ny, 1, lattice_d2q9.q, 1)
         assert jnp.allclose(jnp.sum(source, axis=-2), 0.0, atol=1e-12)
 
     def test_standard_source_conformance(self, lattice_d2q9, grid_shape, test_state):
         """The single-phase ``standard_source`` source satisfies the same protocol and carries no mass."""
-        import src.pipeline  # noqa: F401 - enter through the pipeline (differential import cycle)
-        from src.operators.differential import build_gradient_fn
         from src.operators.source_term import build_source_fn
+        from tests.support.differential import bound_operators
 
         nx, ny = grid_shape
         _, rho, u = test_state
         force = jnp.full((nx, ny, 1, 1, 2), 1e-4)
 
         source = build_source_fn("standard_source")(
-            rho, u, force, lattice_d2q9, gradient=build_gradient_fn(lattice_d2q9, ("wrap", "wrap", "wrap", "wrap"))
+            rho, u, force, lattice_d2q9, gradient=bound_operators(lattice_d2q9)[0]
         )
 
         assert source.shape == (nx, ny, 1, lattice_d2q9.q, 1)

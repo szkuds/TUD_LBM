@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 from src.lattice.lattice import build_lattice
 from src.operators.boundary._outlet import apply_outlet
+from src.pipeline.step import observe
 
 NX, NY, NZ = 8, 6, 1
 
@@ -55,5 +56,5 @@ def test_outlet_finite_after_real_step() -> None:
     final_state, _ = run(setup, state, nt=cfg.nt)
 
     assert bool(jnp.all(jnp.isfinite(final_state.f)))
-    assert bool(jnp.all(jnp.isfinite(final_state.rho)))
-    assert bool(jnp.all(jnp.isfinite(final_state.u)))
+    assert bool(jnp.all(jnp.isfinite(observe(setup, final_state).rho)))
+    assert bool(jnp.all(jnp.isfinite(observe(setup, final_state).u)))

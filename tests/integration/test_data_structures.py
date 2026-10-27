@@ -109,25 +109,17 @@ class TestState:
     def _make_state(self):
         from src.pipeline.state import State
 
-        return State(
-            f=jnp.zeros((8, 8, 9, 1)),
-            rho=jnp.ones((8, 8, 1, 1)),
-            u=jnp.zeros((8, 8, 1, 2)),
-            t=jnp.array(0),
-        )
+        return State(f=jnp.zeros((8, 8, 9, 1)), t=jnp.array(0))
 
     def test_construction(self):
         s = self._make_state()
         assert s.f.shape == (8, 8, 9, 1)
-        assert s.rho.shape == (8, 8, 1, 1)
-        assert s.u.shape == (8, 8, 1, 2)
 
-    def test_optional_fields_default_none(self):
+    def test_carries_only_what_a_step_cannot_recompute(self):
+        """The carry is ``(f, t, ext)``; density, velocity, forces and pressure are derived."""
         s = self._make_state()
-        assert s.force is None
-        assert s.force_ext is None
-        assert s.h is None
-        assert s.wetting is None
+        assert s._fields == ("f", "t", "ext")
+        assert s.ext == {}
 
     def test_pytree_flatten_unflatten(self):
         s = self._make_state()
@@ -171,21 +163,18 @@ class TestWettingState:
         np.testing.assert_allclose(float(ws2.ca_left), float(ws.ca_left))
 
     def test_nested_in_state(self):
-        """WettingState can be nested inside State as a pytree leaf."""
+        """WettingState nests inside State as the wetting feature's ``ext`` substate."""
         from src.pipeline.state import State
 
         ws = self._make_wetting_state()
         s = State(
             f=jnp.zeros((8, 8, 9, 1)),
-            rho=jnp.ones((8, 8, 1, 1)),
-            u=jnp.zeros((8, 8, 1, 2)),
             t=jnp.array(0),
-            wetting=ws,
+            ext={"wetting": ws},
         )
         leaves, treedef = jax.tree_util.tree_flatten(s)
         s2 = treedef.unflatten(leaves)
-        assert s2.wetting is not None
-        np.testing.assert_allclose(float(s2.wetting.ca_left), float(ws.ca_left))
+        np.testing.assert_allclose(float(s2.ext["wetting"].ca_left), float(ws.ca_left))
 
 
 # =====================================================================

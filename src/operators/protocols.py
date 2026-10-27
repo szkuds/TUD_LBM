@@ -31,15 +31,14 @@ from typing import Self
 from typing import runtime_checkable
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
     import jax.numpy as jnp
     import matplotlib.axes
     import numpy as np
     from src.config.simulation_config import SimulationConfig
     from src.lattice.lattice import Lattice
-    from src.operators.wetting._params import WettingParams
     from src.pipeline.state import State
-    from src.pipeline.state import WettingState
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -311,69 +310,6 @@ class InitialiserOperator(Protocol):
         ...
 
 
-class StepOperator(Protocol):
-    """Step operator — executes one full LBM time step.
-
-    The step operator orchestrates the complete LBM algorithm:
-    collision, streaming, boundary conditions, and any
-    physics-specific updates (e.g., hysteresis in multiphase wetting).
-
-    Signature::
-
-        def step(setup, state) -> state_next
-    """
-
-    def __call__(
-        self,
-        setup: Any,  # setup.simulation_setup.SimulationSetup (Any avoids circular import)
-        state: State,
-    ) -> State:
-        """Execute one LBM time step.
-
-        Args:
-            setup: :class:`~setup.simulation_setup.SimulationSetup` containing
-                all pre-built operators and parameters.
-            state: Current :class:`~state.state.State`.
-
-        Returns:
-            Updated :class:`~state.state.State` after one time step.
-        """
-        ...
-
-
-class HysteresisOperator(Protocol):
-    """Hysteresis operator — updates wetting state via contact angle hysteresis.
-
-    The hysteresis operator applies dynamic contact angle adjustment based on
-    velocity direction (advancing/receding). It is only called when both wetting
-    and hysteresis configurations are present.
-
-    Signature::
-
-        def update_wetting_state(wetting, rho, setup, f_t, **kwargs) -> wetting_next
-    """
-
-    def __call__(
-        self,
-        wetting: Any,  # state.state.WettingState (Any avoids circular import)
-        rho: jnp.ndarray,
-        setup: Any,  # setup.simulation_setup.SimulationSetup (Any avoids circular import)
-        **kwargs: Any,
-    ) -> WettingState:  # state.state.WettingState
-        """Update wetting state with hysteresis.
-
-        Args:
-            wetting: Current :class:`~state.state.WettingState`.
-            rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
-            setup: :class:`~setup.simulation_setup.SimulationSetup`.
-            **kwargs: Operator-specific parameters (e.g., ``trial_step_fn``).
-
-        Returns:
-            Updated :class:`~state.state.WettingState`.
-        """
-        ...
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Supporting Operators
 # ══════════════════════════════════════════════════════════════════════════════
@@ -460,98 +396,53 @@ class InitialPopulationOperator(Protocol):
         ...
 
 
-class MultiphaseStepOperator(Protocol):
-    """Bound multiphase trial-step — advances ``f_t`` by one step.
-
-    This is the setup-bound closure stored on ``SimulationSetup.multiphase_step``.
-    The setup is already captured; callers pass the current populations and
-    optional physics fields.
-
-    Signature::
-
-        def multiphase_step(f_t, *, force_ext=None, wetting=None, ...) -> f_out
-    """
-
-    def __call__(
-        self,
-        f_t: jnp.ndarray,
-        *,
-        force_ext: jnp.ndarray | None = None,
-        wetting: Any = None,
-        gradient_density: Any = None,
-        laplacian_density: Any = None,
-    ) -> jnp.ndarray:
-        """Run one multiphase trial step.
-
-        Args:
-            f_t: Pre-step populations, shape ``(nx, ny, nz, q, 1)``.
-            force_ext: Optional external force, shape ``(nx, ny, nz, 1, d)``.
-            wetting: Optional :class:`~state.state.WettingState`.
-            gradient_density: Optional pre-built density gradient operator.
-            laplacian_density: Optional pre-built density Laplacian operator.
-
-        Returns:
-            Post-BC populations, shape ``(nx, ny, nz, q, 1)``.
-        """
-        ...
-
-
-@runtime_checkable
-class ExtraState(Protocol):
-    """Marker protocol for JAX-pytree-compatible extra state containers.
-
-    Implementations are intentionally unconstrained to support both
-    parameter-style containers (e.g. wetting scalars) and distribution-style
-    containers (e.g. electric potential populations).
-    """
-
-
-@runtime_checkable
-class ExtraStatePlugin(Protocol):
-    """Plugin contract for initialising and updating extra ``State`` fields."""
-
-    name: str
-
-    def is_active(self, config: Any) -> bool:
-        """Return whether this plugin should be enabled for the given config."""
-        ...
-
-    def init_state(self, setup: Any) -> dict[str, Any]:
-        """Create initial extra fields merged into :class:`state.state.State`."""
-        ...
-
-    def update_state(self, setup: Any, prev_state: Any, new_state: Any, **context: Any) -> Any:
-        """Apply per-step extra-state updates and return the updated state."""
-        ...
-
-
 class DifferentialOperator(Protocol):
-    """Differential operator — a built stencil closure over a scalar field.
+    """Differential operator bound to its run — what a consumer calls.
 
-    Every gradient and Laplacian is built by a typed accessor in
-    :mod:`src.operators.differential`, which captures the lattice weights,
-    velocities, pad modes and — for the wetting variants — the static wetting
-    configuration. The only runtime arguments are the field and, optionally,
-    live wetting parameters.
-
-    * A wetting-aware operator applies *wetting* to the ghost row, or its
-      build-time default parameters when *wetting* is ``None``. The hysteresis
-      optimiser passes candidate parameters this way.
-    * A plain operator has no wetting wall and raises :class:`TypeError` when
-      given *wetting*, so a missing wetting operator is never silently ignored.
+    The macroscopic operator, the source term and the forces receive the
+    gradient / Laplacian with the feature substates already bound (the kernel
+    binds ``State.ext`` with :func:`functools.partial`), so they see a plain
+    field-to-field map.
 
     Signature::
 
-        def diff_op(grid, wetting=None) -> derivative_field
+        def diff_op(grid) -> derivative_field
     """
 
-    def __call__(self, grid: jnp.ndarray, wetting: WettingParams | None = None) -> jnp.ndarray:
+    def __call__(self, grid: jnp.ndarray) -> jnp.ndarray:
         """Compute a spatial derivative of *grid*.
 
         Args:
             grid: Scalar field, shape ``(nx, ny, nz, 1, 1)``.
-            wetting: Live wetting parameters for a wetting-aware operator;
-                ``None`` uses the operator's build-time default.
+
+        Returns:
+            Derivative field, shape ``(nx, ny, nz, 1, 2)`` for a gradient or
+            ``(nx, ny, nz, 1, 1)`` for a Laplacian.
+        """
+        ...
+
+
+class ExtDifferentialOperator(Protocol):
+    """Differential operator as built — a stencil closure that also reads ``State.ext``.
+
+    Built by :func:`~src.operators.differential.build_differential`, which
+    captures the lattice, the pad modes and an optional *ghost fill*: the
+    composed ``ghost_fill`` slot of the active features, applied between
+    padding and the stencil. The fill reads the feature substates from *ext*
+    (the wetting wall reads ``ext["wetting"]``); an operator built without a
+    fill ignores *ext*.
+
+    Signature::
+
+        def diff_op(grid, ext) -> derivative_field
+    """
+
+    def __call__(self, grid: jnp.ndarray, ext: Mapping[str, Any]) -> jnp.ndarray:
+        """Compute a spatial derivative of *grid* under the feature substates *ext*.
+
+        Args:
+            grid: Scalar field, shape ``(nx, ny, nz, 1, 1)``.
+            ext: Feature substates, ``State.ext`` (or a candidate variant of it).
 
         Returns:
             Derivative field, shape ``(nx, ny, nz, 1, 2)`` for a gradient or
@@ -734,17 +625,13 @@ __all__ = [
     "DifferentialOperator",
     "EosOperator",
     "EquilibriumOperator",
-    "ExtraState",
-    "ExtraStatePlugin",
+    "ExtDifferentialOperator",
     "ForceOperator",
-    "HysteresisOperator",
     "InitialPopulationOperator",
     "InitialiserOperator",
     "MacroscopicOperator",
-    "MultiphaseStepOperator",
     "PlotOperator",
     "SimulationRepository",
     "SourceTermOperator",
-    "StepOperator",
     "StreamingOperator",
 ]

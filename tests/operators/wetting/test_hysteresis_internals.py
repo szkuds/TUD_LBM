@@ -206,7 +206,6 @@ def _fake_setup() -> SimpleNamespace:
     }
     return SimpleNamespace(
         multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.1, interface_width=5),
-        wetting_edge="bottom",
         config=SimpleNamespace(hysteresis_config=hc),
     )
 
@@ -228,6 +227,7 @@ def test_advancing_side_targets_its_bound_and_its_anchor_follows(monkeypatch):
         _wetting(phi_left=1.05),
         measured,
         _fake_setup(),  # ty: ignore[invalid-argument-type]
+        edge="bottom",
         trial_step_fn=_trial(9.0, 30.0),
     )
 
@@ -246,6 +246,7 @@ def test_plain_hysteresis_never_saturates(monkeypatch):
         _wetting(phi_left=1.05),
         measured,
         _fake_setup(),  # ty: ignore[invalid-argument-type]
+        edge="bottom",
         trial_step_fn=_trial(9.0, 30.0),
     )
 
@@ -321,6 +322,7 @@ def test_receding_at_the_advancing_bound_stays_pinned(monkeypatch):
         _wetting(phi_left=1.2, d_rho_left=0.05),
         measured,
         _fake_setup(),  # ty: ignore[invalid-argument-type]
+        edge="bottom",
         trial_step_fn=_trial(11.0, 30.0),
     )
 
@@ -335,4 +337,4 @@ def test_update_wetting_state_requires_a_hysteresis_config():
     setup = SimpleNamespace(config=SimpleNamespace(hysteresis_config=None))
     wetting, rho = _wetting(), jnp.ones((4, 4, 1, 1, 1))
     with pytest.raises(TypeError, match="hysteresis_config is required"):
-        update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))  # ty: ignore[invalid-argument-type]
+        update_wetting_state(wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho))  # ty: ignore[invalid-argument-type]

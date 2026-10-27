@@ -51,15 +51,14 @@ from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
 from src.operators.wetting._interface_crossings import detect_bubble
 from src.operators.wetting._params import WettingParams
-from src.registry import wetting_operator
 from src.simulation_io.analysis import wetting_debug
 
 if TYPE_CHECKING:
     import types
     from collections.abc import Callable
     from collections.abc import Mapping
+    from src.operators.wetting._params import WettingState
     from src.pipeline.setup import SimulationSetup
-    from src.pipeline.state.state import WettingState
 
 
 class _OptaxLike(Protocol):
@@ -471,6 +470,7 @@ def _update_wetting_state_impl(
     measured: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray],
     pins: tuple[jnp.ndarray, jnp.ndarray] | None = None,
     step_sides: tuple[StepSide, StepSide] | None = None,
+    edge: str,
     t: jnp.ndarray | None = None,
 ) -> WettingState:
     """Shared implementation for hysteresis wetting updates.
@@ -486,10 +486,10 @@ def _update_wetting_state_impl(
     ``hysteresis_config["saturation_gap"]`` from its bound (:func:`_step_saturation`).
 
     ``measured`` is ``(ca_left, ca_right, cll_left, cll_right)`` of
-    ``rho_t_plus1`` (:func:`_measure`). ``t`` is used only by the
-    ``--debug-wetting`` trace.
+    ``rho_t_plus1`` (:func:`_measure`) at the wall *edge*. ``t`` is used only by
+    the ``--debug-wetting`` trace.
     """
-    rho_mean, w, edge = _wall_constants(setup)
+    rho_mean, w = _wall_constants(setup)
     hc = setup.config.hysteresis_config
     if hc is None:
         msg = "hysteresis_config is required for hysteresis wetting update"
@@ -652,33 +652,30 @@ def wetting_params(wetting: WettingState) -> WettingParams:
     return WettingParams(**{name: getattr(wetting, name) for name in WettingParams._fields})
 
 
-def _wall_constants(setup: SimulationSetup) -> tuple[jnp.ndarray, jnp.ndarray, str]:
-    """``(rho_mean, interface_width, wetting_edge)`` of a hysteresis run."""
-    if setup.multiphase_params is None:
-        msg = "multiphase_params is required for hysteresis wetting update"
-        raise TypeError(msg)
-    if setup.wetting_edge is None:
-        msg = "wetting_edge is required for hysteresis wetting update"
-        raise TypeError(msg)
+def _wall_constants(setup: SimulationSetup) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """``(rho_mean, interface_width)`` of a hysteresis run."""
     mp = setup.multiphase_params
-    return jnp.array(0.5 * (mp.rho_l + mp.rho_v)), jnp.array(float(mp.interface_width)), setup.wetting_edge
+    assert mp is not None  # noqa: S101 - SimulationConfig rejects wetting on a single-phase run
+    return jnp.array(0.5 * (mp.rho_l + mp.rho_v)), jnp.array(float(mp.interface_width))
 
 
-def _measure(rho: jnp.ndarray, setup: SimulationSetup) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """``(ca_left, ca_right, cll_left, cll_right)`` of *rho* at the wetting wall."""
-    rho_mean, _w, edge = _wall_constants(setup)
+def _measure(
+    rho: jnp.ndarray, setup: SimulationSetup, edge: str
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """``(ca_left, ca_right, cll_left, cll_right)`` of *rho* at the wetting wall *edge*."""
+    rho_mean, _w = _wall_constants(setup)
     ca_left, ca_right = compute_contact_angle(rho, rho_mean, edge=edge)
     cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, rho_mean, edge=edge)
     return ca_left, ca_right, cll_left, cll_right
 
 
-@wetting_operator(name="hysteresis")
 def update_wetting_state(
     wetting: WettingState,
     rho_t_plus1: jnp.ndarray,
     setup: SimulationSetup,
     *,
     trial_step_fn: Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray]],
+    edge: str,
     t: jnp.ndarray | None = None,
 ) -> WettingState:
     """Pure JAX update of wetting / hysteresis parameters.
@@ -694,8 +691,9 @@ def update_wetting_state(
         wetting: Current :class:`WettingState`.
         rho_t_plus1: Density field, shape ``(nx, ny, nz, 1, 1)``.
         setup: :class:`~setup.simulation_setup.SimulationSetup` (closed-over, not traced).
-        trial_step_fn: ``(WettingParams) → (f_out, rho_out)``, a single
-            multiphase physics pass with trial wetting parameters.
+        trial_step_fn: ``(WettingParams) → (f_out, rho_out)``, the trial steps of
+            the kernel with candidate wall parameters.
+        edge: The wall the contact angles are measured at.
         t: Current timestep, for the ``--debug-wetting`` trace. Physics-inert.
 
     Returns:
@@ -712,18 +710,19 @@ def update_wetting_state(
         setup,
         trial_step_fn,
         windows=(window, window),
-        measured=_measure(rho_t_plus1, setup),
+        measured=_measure(rho_t_plus1, setup, edge),
+        edge=edge,
         t=t,
     )
 
 
-@wetting_operator(name="chemical_step_hysteresis")
 def update_wetting_state_chemical_step(
     wetting: WettingState,
     rho_t_plus1: jnp.ndarray,
     setup: SimulationSetup,
     *,
     trial_step_fn: Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray]],
+    edge: str,
     t: jnp.ndarray | None = None,
 ) -> WettingState:
     """Hysteresis update where CA targets are determined per-side by chemical step position.
@@ -736,7 +735,7 @@ def update_wetting_state_chemical_step(
     edge while the droplet stretches, until its angle falls to the post-step
     receding angle.
     """
-    measured = _measure(rho_t_plus1, setup)
+    measured = _measure(rho_t_plus1, setup, edge)
     wall = setup.config.chemical_step_wall
     assert wall is not None  # noqa: S101 - a chemical-step run has a wetting config and a step
     windows, pins, step_sides = [], [], []
@@ -757,5 +756,6 @@ def update_wetting_state_chemical_step(
         measured=measured,
         pins=(pins[0], pins[1]),
         step_sides=(step_sides[0], step_sides[1]),
+        edge=edge,
         t=t,
     )

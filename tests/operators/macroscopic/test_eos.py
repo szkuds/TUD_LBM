@@ -88,12 +88,9 @@ def _numpy_cs_mu0(rho: np.ndarray, a: float, b: float, r: float, t: float) -> np
 
 def _build_gradient_and_laplacian(lattice):
     """Return (gradient_standard, laplacian_density) operators for multiphase pipeline."""
-    from src.operators.differential import build_gradient_fn
-    from src.operators.differential import build_laplacian_fn
+    from tests.support.differential import bound_operators
 
-    return jax.jit(build_gradient_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))), jax.jit(
-        build_laplacian_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))
-    )
+    return bound_operators(lattice)
 
 
 # =====================================================================
@@ -368,7 +365,6 @@ class TestCsEosPipeline:
 
         assert setup.multiphase_params is not None
         assert setup.multiphase_params.eos == "carnahan-starling"
-        assert setup.step_fn is not None
 
     def test_cs_and_dw_produce_different_force(self, lattice, cs_mp, dw_mp):
         """CS and double-well EOS differ on a non-uniform density field (sanity check)."""

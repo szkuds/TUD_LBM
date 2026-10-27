@@ -25,6 +25,7 @@ from src.operators.equilibrium._equilibrium import compute_equilibrium
 from src.pipeline.runner import init_state
 from src.pipeline.runner import run
 from src.pipeline.setup import build_setup
+from src.pipeline.step import observe
 
 _NX, _NY = 16, 12
 _RHO_L, _RHO_V = 1.0, 0.33
@@ -54,7 +55,7 @@ def _seeded_state(setup):
     rho_2d = 0.5 * (_RHO_L + _RHO_V) + 0.5 * (_RHO_L - _RHO_V) * np.tanh((distance - 3.0) / 2.0)
     rho = jnp.asarray(rho_2d.reshape(_NX, _NY, 1, 1, 1))
     u = jnp.zeros((_NX, _NY, 1, 1, setup.lattice.d))
-    return init_state(setup)._replace(f=compute_equilibrium(rho, u, setup.lattice), rho=rho, u=u)
+    return init_state(setup)._replace(f=compute_equilibrium(rho, u, setup.lattice))
 
 
 @pytest.mark.parametrize(
@@ -81,18 +82,14 @@ def test_a_roll_along_a_periodic_axis_commutes_with_the_step(bc_config):
     setup = build_setup(config)
 
     state = _seeded_state(setup)
-    rolled = state._replace(
-        f=jnp.roll(state.f, _SHIFT, axis=0),
-        rho=jnp.roll(state.rho, _SHIFT, axis=0),
-        u=jnp.roll(state.u, _SHIFT, axis=0),
-    )
+    rolled = state._replace(f=jnp.roll(state.f, _SHIFT, axis=0))
 
     evolved, _ = run(setup, state, nt=_STEPS)
     evolved_rolled, _ = run(setup, rolled, nt=_STEPS)
 
     np.testing.assert_allclose(
-        np.asarray(jnp.roll(evolved.rho, _SHIFT, axis=0)),
-        np.asarray(evolved_rolled.rho),
+        np.asarray(jnp.roll(observe(setup, evolved).rho, _SHIFT, axis=0)),
+        np.asarray(observe(setup, evolved_rolled).rho),
         rtol=0.0,
         atol=1e-12,
     )

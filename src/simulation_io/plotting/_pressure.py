@@ -24,6 +24,7 @@ Both are opt-in: they only render when named in ``plot_fields`` /
 """
 
 from __future__ import annotations
+from functools import partial
 from typing import TYPE_CHECKING
 import numpy as np
 from src.registry import plotting_operator
@@ -128,15 +129,23 @@ class TotalPressurePlotOperator(_BasePressureOperator):
         this panel never renders.
         """
         if self._mp is None or self._diff_ops is None:
+            from src.features import build_features
+            from src.features.contribution import compose_ghost_fill
             from src.lattice.lattice import build_lattice
-            from src.operators.differential import build_diff_ops
+            from src.operators.differential import build_differential
+            from src.operators.wetting._params import WettingParams
 
             mp = self.config.multiphase_params
             assert mp is not None  # noqa: S101 - is_available admits multiphase configs only
             lattice = build_lattice(self.config.lattice_type)
-            _, gradient_density, laplacian_density = build_diff_ops(self.config, mp, lattice)
+            fill = compose_ghost_fill(build_features(self.config, lattice))
+            gradient_density, laplacian_density = build_differential(lattice, self.config.pad_modes, fill)
+            # A snapshot carries no live wall state here; the configured wall
+            # parameters stand in, as they do throughout a fixed-wetting run.
+            defaults = self.config.wetting_defaults
+            ext = {} if defaults is None else {"wetting": WettingParams.from_defaults(defaults)}
             self._mp = mp
-            self._diff_ops = (gradient_density, laplacian_density)
+            self._diff_ops = (partial(gradient_density, ext=ext), partial(laplacian_density, ext=ext))
         return self._mp, *self._diff_ops
 
     def _pressure_2d(self, data: dict[str, np.ndarray]) -> np.ndarray:

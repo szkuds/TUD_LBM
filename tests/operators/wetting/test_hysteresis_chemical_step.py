@@ -115,40 +115,6 @@ class TestGetHysteresisWindowChemicalStep:
 # ---------------------------------------------------------------------------
 
 
-def test_update_wetting_state_chemical_step_raises_when_multiphase_params_none():
-    from src.pipeline.state import WettingState
-
-    setup = SimpleNamespace(
-        multiphase_params=None,
-        config=SimpleNamespace(chemical_step_config=_CHEM_CFG, grid_shape=(100, 50, 1)),
-    )
-    dummy_wetting = WettingState(
-        phi_left=jnp.array(0.0),
-        phi_right=jnp.array(0.0),
-        d_rho_left=jnp.array(0.0),
-        d_rho_right=jnp.array(0.0),
-        ca_left=jnp.array(0.0),
-        ca_right=jnp.array(0.0),
-        cll_left=jnp.array(0.0),
-        cll_right=jnp.array(0.0),
-    )
-    rho = jnp.ones((4, 4, 1, 1, 1))
-    with pytest.raises(TypeError, match="multiphase_params is required"):
-        update_wetting_state_chemical_step(
-            dummy_wetting,
-            rho,
-            setup,  # ty: ignore[invalid-argument-type]
-            trial_step_fn=lambda _p: (jnp.array(0.0), jnp.array(0.0)),
-        )
-
-
-# ---------------------------------------------------------------------------
-# The logged failure: a receding line that has just crossed onto the more
-# wetting surface must stay pinned, not be driven to that surface's advancing
-# bound (which spread it back across the step and flipped the window).
-# ---------------------------------------------------------------------------
-
-
 def test_receding_line_just_past_the_step_stays_pinned(monkeypatch):
     from src.pipeline.state import WettingState
 
@@ -160,7 +126,6 @@ def test_receding_line_just_past_the_step_stays_pinned(monkeypatch):
     monkeypatch.setattr(hyst, "detect_bubble", lambda rho, _mean, edge: jnp.array(False))
     setup = SimpleNamespace(
         multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.001, interface_width=5),
-        wetting_edge="bottom",
         config=SimpleNamespace(
             chemical_step_config=_CHEM_CFG,
             grid_shape=(100, 50, 1),
@@ -183,6 +148,7 @@ def test_receding_line_just_past_the_step_stays_pinned(monkeypatch):
         wetting,
         measured,
         setup,  # ty: ignore[invalid-argument-type]
+        edge="bottom",
         trial_step_fn=lambda _p: (jnp.array(0.0), measured),
     )
 
@@ -202,7 +168,7 @@ def test_a_line_held_at_the_step_is_pinned_to_the_step_position(monkeypatch):
 
     # Left line at 49.6 (held at the step at 50), right line far into the post region.
     measured = (jnp.array(45.0), jnp.array(45.0), jnp.array(49.6), jnp.array(90.0))
-    monkeypatch.setattr(hyst, "_measure", lambda _rho, _setup: measured)
+    monkeypatch.setattr(hyst, "_measure", lambda _rho, _setup, _edge: measured)
     monkeypatch.setattr(hyst, "_update_wetting_state_impl", fake_impl)
     wetting = WettingState(*(jnp.array(v) for v in (1.0, 1.0, 0.0, 0.0, 45.0, 45.0, 49.6, 90.0)))
 
@@ -210,6 +176,7 @@ def test_a_line_held_at_the_step_is_pinned_to_the_step_position(monkeypatch):
         wetting,
         jnp.zeros(4),
         _make_setup(),  # ty: ignore[invalid-argument-type]
+        edge="bottom",
         trial_step_fn=lambda _p: (jnp.array(0.0), jnp.zeros(4)),
     )
 

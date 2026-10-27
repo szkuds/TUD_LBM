@@ -66,10 +66,10 @@ def __getattr__(name):  # noqa: PLR0911, ANN001, ANN202
     Lattice          : Velocity model (D2Q9, D3Q19, etc.)
     build_lattice()  : Factory to create lattice from config
     build_setup()    : Factory to create complete Setup from config
-    init_state()     : Initialise State or WettingState from setup
+    init_state()     : Initialise State from setup
     run()            : Execute simulation for N timesteps
     State            : Single-phase simulation state (rho, u, f, t)
-    WettingState     : Multiphase state for contact angle tracking
+    WettingState     : Wetting substate, State.ext["wetting"]
     """
     if name == "SimulationConfig":
         from src.config.simulation_config import SimulationConfig
@@ -100,7 +100,7 @@ def __getattr__(name):  # noqa: PLR0911, ANN001, ANN202
 
         return State
     if name == "WettingState":
-        from src.pipeline.state.state import WettingState
+        from src.operators.wetting._params import WettingState
 
         return WettingState
     msg = f"module {__name__!r} has no attribute {name!r}"

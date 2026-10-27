@@ -99,30 +99,62 @@ construction, and closure building happen here — once, outside the JIT
 boundary.
 
 ``SimulationSetup`` holds *built callables*, not raw configuration:
-``step_fn``, ``collision_fn``, ``equilibrium_fn``, ``macroscopic_fn``,
-``streaming_fn``, ``bc_fn``, ``initial_f_fn``, the differential-operator
-closures, ``bc_masks``, ``forces``, ``multiphase_params``,
-``extra_state_plugins``, and a reference back to ``config`` for anything that
-must not enter the trace.
+``collision_fn``, ``equilibrium_fn``, ``source_fn``, ``macroscopic_fn``,
+``streaming_fn``, ``bc_fn``, ``initial_f_fn``, the three differential
+operators, ``forces``, ``features``, ``multiphase_params``, and a reference
+back to ``config`` for anything that must not enter the trace.  The operators
+are always built, so they are not optional; only ``multiphase_params``, the
+obstacle and ``k_diag`` are ``None`` when the run has none.
 
-Many fields are typed ``| None`` because they do not apply to every
-``sim_type``.  For a given simulation type the relevant ones are always
-populated, and step code narrows them with ``assert x is not None``.
+``build_setup`` is a fixed recipe — lattice, feature merge, differential
+operators, forces, plain operators — and distinguishes two kinds of
+component:
+
+* **Plain operators** (collision, equilibrium, source term, streaming, BC,
+  obstacle, initialiser, force, macroscopic) are selectable and homogeneous:
+  each is a registry lookup of its configured name.
+* **Features** (registry kind ``feature``: ``wetting``, ``electric``) touch
+  several parts of a step.  Each returns a
+  :class:`~src.features.contribution.Contribution` — or ``None`` when its
+  config section is absent — that fills up to four fixed slots:
+
+  ============== ================================ ==========================
+  Slot           Shape                            Merge rule
+  ============== ================================ ==========================
+  ``ghost_fill`` ``(padded, ext) -> padded``      composed into the density
+                                                  gradient and Laplacian
+  ``forces``     tuple of force operators         appended to the forces
+  ``post_step``  ``(setup, prev, new) -> new``    run after the kernel
+  ``init_state`` ``(setup) -> substate``          ``State.ext[name]``
+  ============== ================================ ==========================
+
+  Features merge in name order and must be independent: each reads and writes
+  only its own ``State.ext`` entry.  Adding one is adding a
+  ``src/features/_*.py`` file; ``build_setup`` changes only for a new kind of
+  slot.  ``sim_type`` selects the phase (macroscopic operator, equilibrium /
+  source pair), never a feature: the ``[wetting]``, ``[hysteresis]`` and
+  ``[chemical_step]`` sections switch those on.
+
+.. note::
+
+   There is deliberately no slot from a force into the equilibrium.  A
+   reference pressure (as an improved well-balanced scheme needs) is resolved
+   from ``rho`` inside the equilibrium and the source term, never supplied by
+   a force, so the equilibrium/source pair stays a function of the moments.
 
 2. ``init_state(setup)`` — initialisation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :func:`~src.pipeline.runner.init_state` builds the starting
 :class:`~src.pipeline.state.state.State`.  Populations come from
-``setup.initial_f_fn`` (or a caller-supplied ``f``); density follows from the
-moments; velocity starts at zero.
+``setup.initial_f_fn`` (or a caller-supplied ``f``), the time from the init
+snapshot (or 0), and ``ext`` from the features' ``init_state`` slots.
 
 .. important::
 
-   Every optional field that will *ever* be written must be initialised to
-   zeros rather than left as ``None``.  ``lax.scan`` requires the carry
-   pytree to have identical structure on every iteration, so a field that
-   appears mid-run would change the structure and fail the trace.
+   ``lax.scan`` requires the carry pytree to have identical structure on every
+   iteration.  The carry holds only ``f``, ``t`` and ``ext``, and ``ext``'s
+   keys are fixed here, so nothing can appear mid-run.
 
 3. ``run(setup, state, nt)`` — the scanned loop
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -186,19 +218,27 @@ State management
 
     class State(NamedTuple):
         f: jnp.ndarray                 # (nx, ny, nz, q, 1)
-        rho: jnp.ndarray               # (nx, ny, nz, 1, 1)
-        u: jnp.ndarray                 # (nx, ny, nz, 1, d)
         t: jnp.ndarray                 # scalar — current timestep
-        force: jnp.ndarray | None      # multiphase interaction force
-        force_ext: jnp.ndarray | None  # external force
-        h: jnp.ndarray | None          # electric potential distributions
-        wetting: WettingState | None
+        ext: dict[str, Any]            # feature substates, keyed by feature name
 
-:class:`~src.pipeline.state.state.WettingState` is a nested ``NamedTuple``
-carrying the hysteresis parameters — ``phi_left``/``phi_right``,
-``d_rho_left``/``d_rho_right``, the measured angles ``ca_left``/``ca_right``,
-and the contact-line anchors ``cll_left``/``cll_right``.  Being part of the
-carry is what lets the optimiser's result persist from step to step.
+The carry holds only what a next step cannot recompute: the physics reads
+nothing else (checked by overwriting every other field with NaN before every
+step, which left ``f`` bit-identical).  Density, velocity, forces and pressure
+are derived on demand by :func:`~src.pipeline.step.observe`, which returns them
+all at the state's own time level — on save steps only in streaming I/O, and
+by mapping it over the trajectory in in-memory mode.  Snapshots keep the keys
+``rho``, ``u``, ``force``, ``force_ext`` and ``pressure``.
+
+``ext`` holds one entry per active feature, built by its ``init_state`` slot,
+so its keys are fixed for the whole scan.  ``ext["wetting"]`` is a
+:class:`~src.operators.wetting._params.WettingState` — the wall parameters
+``phi_left``/``phi_right``, ``d_rho_left``/``d_rho_right``, the measured
+angles ``ca_left``/``ca_right`` and the contact-line anchors
+``cll_left``/``cll_right`` — present for a fixed-wetting run as well as a
+hysteresis one; ``ext["electric"]`` is ``{"h": h}``, the electric-potential
+distributions.  Being part of the carry is what lets the optimiser's result
+persist from step to step.  Snapshots flatten each substate into top-level
+keys, so a saved run still carries ``ca_left``, ``phi_left`` and ``h``.
 
 Because ``NamedTuple`` is a pytree, the whole state maps cleanly through
 ``jit``, ``scan``, and ``vmap`` with no registration boilerplate.
@@ -206,7 +246,9 @@ Because ``NamedTuple`` is a pytree, the whole state maps cleanly through
 Multiphase physics
 ------------------
 
-The multiphase step (``src/operators/step/_multiphase.py``) runs:
+There is one step, :func:`~src.pipeline.step.step`: forces, then
+:func:`~src.pipeline.step.kernel`, then each feature's ``post_step``.  For a
+multiphase run the kernel runs:
 
 1. ``ρ`` and ``u`` from the moments of ``f``
 2. bulk chemical potential ``μ₀(ρ)`` from the configured EOS
@@ -214,8 +256,9 @@ The multiphase step (``src/operators/step/_multiphase.py``) runs:
 4. interparticle force ``F_int = −ρ∇μ``
 5. force-corrected velocity ``u_eq = u + F_total/(2ρ)``
 
-then equilibrium → collision → streaming → boundary conditions through the
-shared ``_multiphase_pipeline`` helper in ``_common.py``.
+then equilibrium → collision (+ source) → streaming → obstacle → boundary
+conditions, and the moments of the result.  The kernel binds ``State.ext``
+into the differential operators and names no feature.
 
 .. warning::
 
@@ -223,10 +266,12 @@ shared ``_multiphase_pipeline`` helper in ``_common.py``.
    viscous sink for a systematic net force, so it accumulates.  Droplet
    centres must be integer-aligned to preserve the D4 discrete symmetry.
 
-The wetting and hysteresis layers build on top: fixed wetting applies a
-contact-angle condition at the wall, while the hysteresis operators solve for
-the wetting parameters each step with a ``lax.while_loop`` around Adam,
-targeting an advancing/receding angle window.  See :doc:`operators` for the
+The wetting feature builds on top: its ``ghost_fill`` rewrites the wall ghost
+cells of the density stencils from ``ext["wetting"]``, and its ``post_step``
+either re-measures the angles (fixed wetting) or runs the hysteresis
+optimiser, which solves for the wall parameters each step with a
+``lax.while_loop`` around Adam on trial passes of the kernel under candidate
+parameters, targeting an advancing/receding angle window.  See :doc:`operators` for the
 per-operator detail.
 
 Why the split

@@ -1,91 +1,49 @@
-"""Dynamic simulation state — JAX pytrees.
+"""Dynamic simulation state — a JAX pytree.
 
-Both :class:`State` and :class:`WettingState` are
-:class:`typing.NamedTuple` subclasses and therefore automatically
-valid JAX pytrees.  They are designed to be the *carry* in a
-``jax.lax.scan`` time-stepping loop.
+:class:`State` is a :class:`typing.NamedTuple` and therefore automatically a
+valid JAX pytree. It is the *carry* in the ``jax.lax.scan`` time-stepping loop.
 
-Every field is either a ``jax.Array`` or ``None`` (which JAX treats
-as a static leaf).  No mutable Python objects are stored here.
+Every field is a ``jax.Array`` or, for ``ext``, a dict of feature substates.
+No mutable Python objects are stored here.
 
 Usage::
 
     import jax.numpy as jnp
-    from state.state import State
+    from src.pipeline.state import State
 
-    state = State(
-        f=jnp.zeros((64, 64, 1, 9, 1)),
-        rho=jnp.ones((64, 64, 1, 1, 1)),
-        u=jnp.zeros((64, 64, 1, 1, 2)),
-        t=jnp.array(0),
-    )
+    state = State(f=jnp.zeros((64, 64, 1, 9, 1)), t=jnp.array(0))
 """
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import Any
 from typing import NamedTuple
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
 
 
-class WettingState(NamedTuple):
-    """Dynamic wetting / hysteresis parameters — updated every step.
-
-    All fields are ``jax.Array`` scalars or small arrays so that the
-    state can flow through ``jax.lax.scan`` as part of the carry.
-
-    Attributes:
-        phi_left: Wetting potential parameter (left).
-        phi_right: Wetting potential parameter (right).
-        d_rho_left: Density offset parameter (left contact line).
-        d_rho_right: Density offset parameter (right contact line).
-        ca_left: Current contact angle — left.
-        ca_right: Current contact angle — right.
-        cll_left: Contact-line location — left. A coordinate *tangential* to the
-            wetting wall: x for bottom/top walls, y for left/right walls.
-        cll_right: Contact-line location — right. Tangential to the wetting wall
-            (see ``cll_left``).
-
-    ``cll_left`` / ``cll_right`` are the hysteresis *anchors*: they follow the
-    measured contact line only while it moves the way its exceeded window bound
-    allows, and hold still while it is pinned.
-    """
-
-    phi_left: jnp.ndarray
-    phi_right: jnp.ndarray
-    d_rho_left: jnp.ndarray
-    d_rho_right: jnp.ndarray
-    ca_left: jnp.ndarray
-    ca_right: jnp.ndarray
-    cll_left: jnp.ndarray
-    cll_right: jnp.ndarray
-
-
 class State(NamedTuple):
     """Complete dynamic simulation state — the *carry* in ``lax.scan``.
 
+    Only what a next step cannot recompute is carried. Density, velocity,
+    forces and pressure are functions of this state, evaluated by
+    :func:`~src.pipeline.step.observe` where they are wanted; the physics
+    itself reads only ``f``, ``t`` and ``ext``.
+
     Attributes:
         f: Population distributions, shape ``(nx, ny, nz, q, 1)``.
-        rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
-        u: Velocity field, shape ``(nx, ny, nz, 1, d)``.
-        t: Current timestep — scalar ``jax.Array``.
-        force: Interaction / body force field (optional), shape ``(nx, ny, nz, 1, d)``.
-        force_ext: External force field (optional), shape ``(nx, ny, nz, 1, d)``.
-        pressure: Bulk pressure from the macroscopic operator, shape
-            ``(nx, ny, nz, 1, 1)`` — the EOS ``p_0(rho)`` for multiphase runs,
-            ``cs^2 * rho`` for single-phase. Seeded as zeros by
-            :func:`~src.pipeline.runner.init_state`, like ``force``.
-        h: Electric potential field (optional), shape ``(nx, ny, nz, q, 1)``.
-        wetting: Dynamic wetting state (``None`` for non-wetting runs).
+        t: Current timestep — scalar ``jax.Array``. Not derivable: the gravity
+            ramps and restarts read it.
+        ext: Feature substates keyed by feature name, e.g. ``ext["wetting"]``
+            (a :class:`~src.operators.wetting._params.WettingState`) or
+            ``ext["electric"]`` (``{"h": ...}``). Not derivable: they carry their
+            own history. Each feature writes only its own key; empty for a run
+            with no active feature. The keys are fixed by
+            :func:`~src.pipeline.runner.init_state`, so the carry structure stays
+            constant across ``lax.scan`` iterations.
     """
 
     f: jnp.ndarray
-    rho: jnp.ndarray
-    u: jnp.ndarray
     t: jnp.ndarray
-    force: jnp.ndarray | None = None
-    force_ext: jnp.ndarray | None = None
-    pressure: jnp.ndarray | None = None
-    h: jnp.ndarray | None = None
-    wetting: WettingState | None = None
+    ext: dict[str, Any] = {}  # noqa: RUF012 - never mutated: features replace it with `ext | {...}`

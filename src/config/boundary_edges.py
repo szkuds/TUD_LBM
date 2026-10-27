@@ -101,11 +101,6 @@ def pad_modes(bc_config: Mapping[str, Any]) -> tuple[str, str, str, str]:
     Returns:
         Four ``jnp.pad`` mode strings.
     """
-    # The per-edge fallback is "edge", so an unpopulated registry would not raise
-    # — it would silently pad a periodic run as if it were walled. Import the
-    # package for its registration side effect first, as the eos/pressure kinds
-    # do. src.simulation_io.analysis.wetting_overlay reaches here without it, and
-    # would otherwise draw a band the solver never applied.
     import src.operators.boundary  # noqa: F401
 
     bc_ops = get_operators("boundary_condition")
@@ -114,7 +109,7 @@ def pad_modes(bc_config: Mapping[str, Any]) -> tuple[str, str, str, str]:
         metadata = bc_ops[bc_config[edge]].metadata or {}
         return str(metadata.get("pad_edge_mode", "edge"))
 
-    return (_mode("top"), _mode("bottom"), _mode("right"), _mode("left"))
+    return _mode("top"), _mode("bottom"), _mode("right"), _mode("left")
 
 
 def build_boundary_edges(bc_config: Mapping[str, Any]) -> tuple[BoundaryEdge, ...]:

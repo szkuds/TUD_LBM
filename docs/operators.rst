@@ -56,23 +56,20 @@ Kind                        Decorator                       Resolved by
 ``boundary_condition``      ``@boundary_condition``         ``config.bc_config`` per face
 ``force``                   ``@force_model``                ``*_force`` config sections
 ``stream``                  ``@stream_operator``            fixed (``"standard"``)
-``differential``            ``@differential_operator``      built by ``build_diff_ops()``
 ``initialise``              ``@initialise_operator``        ``config.init_type``
-``wetting``                 ``@wetting_operator``           ``config.hysteresis_config``
 ``obstacle``                ``@obstacle_operator``          ``config.obstacle_config``
 ``lattice``                 ``@lattice_operator``           ``config.lattice_type``
-``update_timestep``         ``@update_timestep_operator``   ``config.sim_type``
-``extra_state``             ``@extra_state_plugin``         active physics
+``feature``                 ``@feature_operator``           every one; active by config section
 ``plotting``                ``@plotting_operator``          ``config.plot_fields``
 ``analysis``                ``@analysis_operator``          ``config.plot_fields``
-``simulation_type``         ``@simulation_type_operator``   —
 ==========================  ==============================  ===========================================
 
 .. note::
 
-   The per-timestep step functions live in ``src/operators/step/`` but
-   register under the kind ``update_timestep``, not ``step``.  The factory
-   :func:`~src.operators.step.build_step_fn` hides this.
+   There is no step kind.  One step, :func:`~src.pipeline.step.step`, serves
+   every run; what differs between runs is which *features* are active
+   (``src/features/``, kind ``feature``) and the slots they fill — see
+   :doc:`architecture`.
 
 Auto-discovery
 --------------
@@ -189,9 +186,8 @@ streaming.  Faces you omit default to ``periodic``.
 
 The value ``"wetting"`` may also appear on a face.  It is not a
 boundary-condition operator: it marks which wall the wetting and hysteresis
-machinery acts on, and the first such face becomes
-``SimulationSetup.wetting_edge``, the wall against which contact angles are
-measured.
+machinery acts on, and the first such face is the wall against which the wetting feature measures
+contact angles.
 
 Streaming — ``stream``
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -259,41 +255,32 @@ specs with the resolved source term.
     The well-balanced forcing source term used by the collision operators.
 
 ``electric_force``
-    Electric potential carried by a second distribution ``h`` on the state,
-    supplied through an ``extra_state`` plugin.
+    Leaky-dielectric force from the electric potential, a second distribution
+    ``h`` in ``State.ext["electric"]`` that the ``electric`` feature
+    initialises and advances.
 
 Setting ``gravity_force`` and ``gravity_masked_force`` together is a
 configuration error.
 
-Differential — ``differential``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Differential operators
+~~~~~~~~~~~~~~~~~~~~~~
 
-Raw primitives ``gradient``, ``laplacian``, ``gradient_wetting``, and
-``laplacian_wetting`` are rarely used directly.  Instead
-:func:`~src.operators.differential.build_diff_ops` returns five closures with
-the boundary pad modes, lattice weights, and wetting parameters already
-bound:
+There is no registry kind: nothing is selected by configuration.
+:func:`~src.operators.differential.build_differential` returns the gradient
+and the Laplacian, ``op(grid, ext)``, with the lattice, the pad modes and an
+optional *ghost fill* bound.  The fill — the features' composed
+``ghost_fill`` slot — rewrites the padded field's ghost layer from the feature
+substates in ``ext`` between padding and the stencil; without one the stencil
+is plain and ignores ``ext``.  ``build_setup`` builds three:
 
-.. code-block:: python
+* ``gradient_standard`` — ∇μ, never with a fill.
+* ``gradient_density`` — ∇ρ for the source term, with the fill.
+* ``laplacian_density`` — ∇²ρ for the chemical potential, with the fill.
 
-    (gradient_standard,
-     gradient_density,
-     laplacian_density,
-     gradient_density_wetting,
-     laplacian_density_wetting) = build_diff_ops(config, mp_params, lattice)
-
-* ``gradient_standard(grid)`` — ∇μ, never wetting-corrected.
-* ``gradient_density(grid)`` — ∇ρ for the source term, wetting-corrected
-  when a wetting configuration is present.
-* ``laplacian_density(grid)`` — ∇²ρ for the chemical potential, likewise.
-* ``gradient_density_wetting(grid, phi_l, phi_r, d_rho_l, d_rho_r)`` and
-  ``laplacian_density_wetting(...)`` — the *parametric* forms the hysteresis
-  optimiser uses to build trial steps.  Both are ``None`` unless hysteresis
-  is configured.
-
-This is why :class:`~src.operators.protocols.DifferentialOperator` accepts
-``*args, **kwargs``: it has to cover both the one-argument and the
-five-argument call signature.
+The kernel binds ``State.ext`` into all three, so the macroscopic operator,
+the source term and the forces call them as ``op(grid)``
+(:class:`~src.operators.protocols.DifferentialOperator`); the unbound form is
+:class:`~src.operators.protocols.ExtDifferentialOperator`.
 
 Initialisation — ``initialise``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -326,18 +313,28 @@ Selected by ``init_type``; keyword arguments come from the
    domain any systematic net force accumulates without viscous dissipation,
    and breaking the D4 discrete symmetry is enough to produce spurious drift.
 
-Wetting — ``wetting``
-~~~~~~~~~~~~~~~~~~~~~
+Wetting — the ``wetting`` feature
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``wetting`` kind holds only the hysteresis updates, the one place
-configuration selects between wetting implementations; build one with
-``build_hysteresis_fn(scheme)``. The fixed-name helpers are imported directly
-from their modules: ``compute_contact_angle`` (``_contact_angle``),
-``compute_contact_line_location`` (``_contact_line``) and
-``build_wetting_applicator`` (``_applicator``), the builder that returns the
-wetting ghost-cell correction for a padded density array.
+Wetting is a feature (``src/features/_wetting.py``), active with a
+``[wetting]`` or ``[hysteresis]`` section, not an operator kind.  Its wall
+parameters always live in ``State.ext["wetting"]``, a fixed-wetting run
+included, so one kernel path serves both kinds of run and the optimiser's
+trial steps.  It fills three slots:
 
-``hysteresis``
+* ``ghost_fill`` — ``build_wetting_applicator`` (``operators/wetting/_applicator``)
+  rewrites the wall ghost cells of the density stencils from the four wall
+  parameters in ``ext``;
+* ``init_state`` — the configured (or, on a hysteresis restart, the saved)
+  parameters and the measured initial angles;
+* ``post_step`` — without ``[hysteresis]``, re-measures the contact angles
+  and lines (``compute_contact_angle``, ``compute_contact_line_location``);
+  with it, runs one of the two optimisers in ``operators/wetting/_hysteresis``
+  below, on trial passes of the kernel under candidate parameters.  The
+  config sections choose, not ``sim_type``: ``[chemical_step]`` selects the
+  chemical-step variant.
+
+``update_wetting_state`` (``[hysteresis]``)
     Per-step solve for the wetting parameters ``phi``/``d_rho`` against a
     global advancing/receding angle window, using ``jax.lax.while_loop``
     around an Adam optimiser.  A side is pinned to its anchor
@@ -349,7 +346,7 @@ wetting ghost-cell correction for a padded density array.
     ``loss_tol``, ``trial_steps``, ``saturation_gap``); any other key is
     rejected.
 
-``chemical_step_hysteresis``
+``update_wetting_state_chemical_step`` (``[hysteresis]`` + ``[chemical_step]``)
     Same machinery, with each contact line's window taken from the surface it
     is on: the post-step window once the line is within ``edge_width``
     (default 1 cell) of the step or past it.  The step itself is a property
@@ -370,18 +367,17 @@ Over 2 steps the optimiser random-walks ``phi``.  Use tens of steps where the
 angle must actually reach its bound; the cost is linear in ``trial_steps``.
 
 Contact-angle bookkeeping lives on
-:class:`~src.pipeline.state.state.WettingState`, which is carried through
-``lax.scan`` alongside the fields.
+:class:`~src.operators.wetting._params.WettingState`, the feature's
+``State.ext["wetting"]``, which is carried through ``lax.scan`` alongside the
+fields.
 
-Step operators — ``update_timestep``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step
+~~~~
 
-One per ``sim_type``: ``single_phase``, ``multiphase``,
-``multiphase_wetting``, ``multiphase_hysteresis``, and
-``multiphase_hysteresis_chemical_step``.  Each has signature
-``(setup, state) → state`` and all multiphase variants route through the
-shared ``_multiphase_pipeline`` helper, which sequences
-equilibrium → collision → streaming → boundary conditions.
+One step, :func:`~src.pipeline.step.step` ``(setup, state) → state``, for
+every run: the forces, then :func:`~src.pipeline.step.kernel` (macroscopic,
+equilibrium, collision + source, streaming, obstacle, BCs, macroscopic of the
+result), then the features' ``post_step`` hooks in name order.
 
 Obstacle — ``obstacle``
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -448,11 +444,11 @@ Protocols
 satisfy them by shape, not by inheritance.  The main ones are
 ``CollisionOperator``, ``StreamingOperator``, ``EquilibriumOperator``,
 ``MacroscopicOperator``, ``BoundaryOperator``, ``ObstacleOperator``,
-``InitialiserOperator``, ``InitialPopulationOperator``, ``StepOperator``,
-``MultiphaseStepOperator``, ``HysteresisOperator``, ``ForceOperator``,
-``DifferentialOperator``, ``EOSFunction``, ``ExtraState``,
-``ExtraStatePlugin``, ``PlotOperator``, ``ConfigReader``, and
-``SimulationRepository``.
+``InitialiserOperator``, ``InitialPopulationOperator``, ``ForceOperator``,
+``SourceTermOperator``, ``DifferentialOperator``, ``ExtDifferentialOperator``,
+``EosOperator``, ``PlotOperator``, ``ConfigReader``, and
+``SimulationRepository``.  The feature slots are typed in
+:mod:`src.features.contribution`.
 
 Conformance is exercised by the tests marked ``conformance`` in the test
 suite.

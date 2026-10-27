@@ -35,8 +35,9 @@ from src.simulation_io.analysis._debug_table import fmt
 if TYPE_CHECKING:
     from collections.abc import Callable
     from src.config.multiphase_params import MultiphaseParams
-    from src.operators.protocols import DifferentialOperator
+    from src.operators.protocols import ExtDifferentialOperator
     from src.pipeline.state.state import State
+    from src.pipeline.step import Observables
 
 logger = logging.getLogger(__name__)
 
@@ -119,19 +120,27 @@ def wake_mask(
 
 def compute_stability_metrics(
     state: State,
+    observables: Observables,
     *,
-    gradient_density: DifferentialOperator | None = None,
+    gradient_density: ExtDifferentialOperator | None = None,
     mp: MultiphaseParams | None = None,
     vapor_frac: float = 0.2,
     grad_frac: float = 0.05,
 ) -> jnp.ndarray:
     """Compute the stability-metric vector for one state.
 
-    ``max|grad mu|`` is derived from the stored force rather than
-    recomputed: the multiphase step stores ``force = -rho*grad(mu) +
-    force_ext`` with ``force_ext`` kept separately, so ``grad mu =
-    -(force - force_ext) / rho``. Single-phase states (``force is
-    None``) report 0.
+    ``max|grad mu|`` is read off the observed force rather than recomputed:
+    for a multiphase run ``force = -rho*grad(mu) + force_ext``, with
+    ``force_ext`` observed separately, so ``grad mu = -(force - force_ext) /
+    rho``. Single-phase states (``force is None``) report 0.
+
+    Args:
+        state: The state, for its ``ext`` (the density gradient's ghost fill).
+        observables: ``observe(setup, state)``.
+        gradient_density: ``setup.gradient_density``, for the wake mask (``None``: whole domain).
+        mp: ``setup.multiphase_params`` (``None`` for single-phase: whole domain).
+        vapor_frac: See :func:`wake_mask`.
+        grad_frac: See :func:`wake_mask`.
 
     Without multiphase parameters the checkerboard mask falls back to
     the whole domain.
@@ -140,25 +149,26 @@ def compute_stability_metrics(
         Flat vector ``[max_u, max_grad_mu, rho_min, rho_max,
         checkerboard_amp, n_wake_cells]``.
     """
-    max_u = jnp.max(jnp.sqrt(jnp.sum(state.u**2, axis=-1)))
+    rho, u, force, force_ext = observables.rho, observables.u, observables.force, observables.force_ext
+    max_u = jnp.max(jnp.sqrt(jnp.sum(u**2, axis=-1)))
 
-    if state.force is not None:
-        f_int = state.force if state.force_ext is None else state.force - state.force_ext
-        grad_mu = -f_int / jnp.maximum(state.rho, 1e-12)
+    if force is not None:
+        f_int = force if force_ext is None else force - force_ext
+        grad_mu = -f_int / jnp.maximum(rho, 1e-12)
         max_grad_mu = jnp.max(jnp.sqrt(jnp.sum(grad_mu**2, axis=-1)))
     else:
         max_grad_mu = jnp.zeros(())
 
-    rho_min = jnp.min(state.rho)
-    rho_max = jnp.max(state.rho)
+    rho_min = jnp.min(rho)
+    rho_max = jnp.max(rho)
 
     if mp is not None and gradient_density is not None:
-        mask = wake_mask(state.rho, gradient_density(state.rho), mp.rho_l, mp.rho_v, vapor_frac, grad_frac)
+        mask = wake_mask(rho, gradient_density(rho, state.ext), mp.rho_l, mp.rho_v, vapor_frac, grad_frac)
     else:
-        mask = jnp.ones_like(state.rho, dtype=bool)
+        mask = jnp.ones_like(rho, dtype=bool)
 
-    cb_amp = checkerboard_amplitude(state.rho, mask)
-    n_wake = jnp.sum(mask).astype(state.rho.dtype)
+    cb_amp = checkerboard_amplitude(rho, mask)
+    n_wake = jnp.sum(mask).astype(rho.dtype)
 
     return jnp.stack([max_u, max_grad_mu, rho_min, rho_max, cb_amp, n_wake])
 
@@ -205,7 +215,8 @@ def _host_check(out_dir: Path, metrics: np.ndarray, t: int) -> None:
 def make_stability_callback(
     out_dir: str | Path,
     *,
-    gradient_density: DifferentialOperator | None,
+    observe_fn: Callable[[State], Observables],
+    gradient_density: ExtDifferentialOperator | None,
     mp: MultiphaseParams | None,
     log_interval: int,
     vapor_frac: float,
@@ -220,6 +231,7 @@ def make_stability_callback(
 
     Args:
         out_dir: Directory for ``stability_log.csv``.
+        observe_fn: ``partial(observe, setup)``; evaluated on sample steps only.
         gradient_density: ``setup.gradient_density`` (``None`` for single-phase).
         mp: ``setup.multiphase_params`` (``None`` for single-phase).
         log_interval: Steps between samples (``DEBUG_STABILITY_INTERVAL``).
@@ -241,6 +253,7 @@ def make_stability_callback(
     def _fire(state: State, t: jnp.ndarray) -> None:
         metrics = compute_stability_metrics(
             state,
+            observe_fn(state),
             gradient_density=gradient_density,
             mp=mp,
             vapor_frac=vapor_frac,

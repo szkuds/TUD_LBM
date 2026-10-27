@@ -400,13 +400,9 @@ class TestComputeMacroscopicMultiphase:
 
     def _gradient_and_laplacian(self, lattice):
         """Build the all-periodic gradient and Laplacian operators."""
-        import jax
-        from src.operators.differential import build_gradient_fn
-        from src.operators.differential import build_laplacian_fn
+        from tests.support.differential import bound_operators
 
-        return jax.jit(build_gradient_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))), jax.jit(
-            build_laplacian_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))
-        )
+        return bound_operators(lattice)
 
     def test_returns_triple(self, lattice):
         from src.operators.macroscopic._multiphase import compute_macroscopic_multiphase

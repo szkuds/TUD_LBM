@@ -36,6 +36,7 @@ from src.config.simulation_config import SimulationConfig
 from src.pipeline.runner import init_state
 from src.pipeline.runner import run
 from src.pipeline.setup import build_setup
+from src.pipeline.step import observe
 
 # ── Test parameters ──────────────────────────────────────────────────
 
@@ -100,6 +101,7 @@ def poiseuille_simulation():
 
     return {
         "final_state": final_state,
+        "u": observe(setup, final_state).u,
         "config": config,
     }
 
@@ -117,9 +119,7 @@ def test_poiseuille_parabolic_profile(poiseuille_simulation):
 
     Acceptance: L2 relative error < 2%
     """
-    final_state = poiseuille_simulation["final_state"]
-
-    u = np.array(final_state.u)  # (nx, ny, nz, 1, 2)
+    u = np.array(poiseuille_simulation["u"])  # (nx, ny, nz, 1, 2)
     ux = u[:, :, :, 0, 0]  # (nx, ny, nz) — x-velocity component
     ux_mean = ux.mean(axis=(0, 2))  # average over periodic directions (x and z)
 
@@ -143,9 +143,7 @@ def test_poiseuille_symmetry(poiseuille_simulation):
 
     Acceptance: asymmetry < 1%
     """
-    final_state = poiseuille_simulation["final_state"]
-
-    u = np.array(final_state.u)
+    u = np.array(poiseuille_simulation["u"])
     ux_mean = u[:, :, :, 0, 0].mean(axis=(0, 2))  # average over x and z periodic directions
 
     # Normalise before checking symmetry
@@ -163,8 +161,7 @@ def test_poiseuille_no_nan(poiseuille_simulation):
 
     Acceptance: All values are finite
     """
-    final_state = poiseuille_simulation["final_state"]
-    f = np.array(final_state.f)
+    f = np.array(poiseuille_simulation["final_state"].f)
 
     assert not np.isnan(f).any(), "NaN in distribution function"
 

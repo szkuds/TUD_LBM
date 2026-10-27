@@ -20,8 +20,8 @@ Usage (strategy 2)::
 
     # Outside jit:
     io_handler = SimulationIO(...)
-    should_save, do_save = make_save_callback(
-        io_handler, save_interval=100, skip_interval=0,
+    do_save = make_save_callback(
+        io_handler, partial(observe, setup), save_interval=100, skip_interval=0,
     )
 
     # Inside scan body:
@@ -39,38 +39,44 @@ import numpy as np
 if TYPE_CHECKING:
     from collections.abc import Callable
     from src.pipeline.state import State
+    from src.pipeline.step import Observables
     from src.simulation_io.save import SimulationIO
 
 
-def _state_to_numpy(state: State, fields: tuple | None = None, t: int | None = None) -> dict[str, np.ndarray]:
-    """Convert a :class:`~state.state.State` pytree to a NumPy dict.
+def _state_to_numpy(
+    state: State, observables: Observables, fields: tuple | None = None, t: int | None = None
+) -> dict[str, np.ndarray]:
+    """Convert a :class:`~src.pipeline.state.state.State` and its derived fields to a NumPy dict.
 
-    Only includes non-``None`` array fields suitable for saving.
-    Detects and raises on NaN values.
+    A snapshot carries the carry (``f``, ``t``), the fields
+    :func:`~src.pipeline.step.observe` derived from it (``rho``, ``u``,
+    ``force``, ``force_ext``, ``pressure``) and the feature substates, under the
+    keys they have always had. Only non-``None`` arrays are written, filtered by
+    *fields*. Detects and raises on NaN values.
 
     Args:
-        state: The state object to convert.
+        state: The state to convert.
+        observables: ``observe(setup, state)``.
         fields: Optional tuple of field names to include. If None, includes all.
         t: Optional timestep for error messages.
 
     Raises:
         FloatingPointError: If NaN values are detected.
     """
-    data = {
-        k: np.asarray(v)
-        for k, v in state._asdict().items()
-        if v is not None and hasattr(v, "shape") and (fields is None or k in fields)
-    }
+    arrays = {"f": state.f, "t": state.t} | observables._asdict()
+    data = {k: np.asarray(v) for k, v in arrays.items() if v is not None and (fields is None or k in fields)}
 
-    # Persist wetting scalars explicitly so plotting/analysis can read them from snapshots.
-    # Note: wetting fields (ca_left, ca_right, cll_left, cll_right) are ALWAYS saved
-    # because they are needed for analysis plots. They are scalar-valued metadata, not
-    # large field arrays, so the storage overhead is negligible. Users can control which
-    # analysis plots are created via config.plot_fields in the [output] section.
-    wetting = getattr(state, "wetting", None)
-    if wetting is not None:
-        for key, value in wetting._asdict().items():
-            data[key] = np.asarray(value)
+    # Feature substates are flattened into top-level keys, so a snapshot carries the
+    # same names it always has (``ca_left``, ``phi_left``, ``h``, ...). Scalar
+    # substate entries (the wetting angles, contact lines and wall parameters) are
+    # ALWAYS saved: analysis plots read them, and they cost a few bytes. Field-sized
+    # entries (the electric ``h``) follow ``fields`` like the core fields do.
+    for substate in state.ext.values():
+        items = substate._asdict() if hasattr(substate, "_asdict") else substate
+        for key, value in items.items():
+            array = np.asarray(value)
+            if array.ndim == 0 or fields is None or key in fields:
+                data[key] = array
 
     bad = [k for k, v in data.items() if np.isnan(v).any()]
     if bad:
@@ -81,6 +87,7 @@ def _state_to_numpy(state: State, fields: tuple | None = None, t: int | None = N
 
 def make_save_callback(
     io_handler: SimulationIO,
+    observe_fn: Callable[[State], Observables],
     save_interval: int,
     skip_interval: int = 0,
     save_fields: tuple | None = None,
@@ -93,6 +100,8 @@ def make_save_callback(
 
     Args:
         io_handler: A :class:`~util.simulation_io.SimulationIO` instance.
+        observe_fn: ``partial(observe, setup)``; derives the saved fields from
+            the state, on device and only on save steps.
         save_interval: How often to save.
         skip_interval: Steps to skip before first save.
         save_fields: Optional tuple of field names to save.
@@ -103,7 +112,7 @@ def make_save_callback(
 
     Example::
 
-        do_save = make_save_callback(io_handler, save_interval=100)
+        do_save = make_save_callback(io_handler, partial(observe, setup), save_interval=100)
 
         def scan_body(state, _t):
             new_state = step_fn(state)
@@ -111,16 +120,19 @@ def make_save_callback(
             return new_state, None
     """
 
-    def _host_save(state: State, t: int) -> None:
+    def _host_save(state: State, observables: Observables, t: int) -> None:
         """Write state to disk; interval already checked on-device."""
         it = int(t)
-        data = _state_to_numpy(state, fields=save_fields, t=it)
+        data = _state_to_numpy(state, observables, fields=save_fields, t=it)
         io_handler.save_data_step(it, data)
+
+    def _save(state: State, t: int) -> None:
+        jax.debug.callback(_host_save, state, observe_fn(state), t, ordered=True)
 
     def do_save(state: State, t: int) -> None:
         jax.lax.cond(
             (t > skip_interval) & (t % save_interval == 0),
-            lambda _s, _t: jax.debug.callback(_host_save, state, t, ordered=True),
+            _save,
             lambda _s, _t: None,
             state,
             t,

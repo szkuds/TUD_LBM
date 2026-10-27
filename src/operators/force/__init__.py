@@ -3,7 +3,7 @@
 Public API: build_forces()
 
 Implementation modules (_electric.py, _gravity.py, _gravity_masked.py,
-_extra_state.py, _force_aggregator.py) are internal; use the factory to access.
+_force_aggregator.py) are internal; use the factory to access.
 What each force needs from its config section is declared at its registration
 and checked by ``SimulationConfig``, never here.
 

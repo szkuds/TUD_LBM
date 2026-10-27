@@ -1,6 +1,6 @@
 r"""LBM-stencil Laplacian operator — pure function.
 
-Resolved through :func:`~src.operators.differential.build_laplacian_fn`.
+Resolved through :func:`~src.operators.differential.build_differential`.
 
 The Laplacian formula follows the standard LBM isotropic stencil:
 
@@ -15,14 +15,15 @@ lattice (``c_s^2 = 1/3``).
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
-from src.operators.differential._gradient import reject_wetting
 from src.operators.differential._pad_utils import _apply_stencil_padding
 from src.operators.differential._pad_utils import to_2d
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from collections.abc import Sequence
-    from src.operators.protocols import DifferentialOperator
-    from src.operators.wetting._params import WettingParams
+    from typing import Any
+    from src.features.contribution import GhostFill
+    from src.operators.protocols import ExtDifferentialOperator
 
 
 def compute_laplacian(
@@ -51,21 +52,27 @@ def compute_laplacian(
     return lap_core_2d(grid_padded, w)
 
 
-def build_laplacian(w: jnp.ndarray, pad_mode: Sequence[str]) -> DifferentialOperator:
-    """Return the plain Laplacian closure over the lattice weights and *pad_mode*.
+def build_laplacian(
+    w: jnp.ndarray, pad_mode: Sequence[str], ghost_fill: GhostFill | None = None
+) -> ExtDifferentialOperator:
+    """Return the Laplacian closure over the lattice weights, *pad_mode* and an optional ghost fill.
 
     Args:
         w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
         pad_mode: Four padding modes ``(top, bottom, right, left)``.
+        ghost_fill: Rewrites the padded field's ghost layer from ``ext`` before
+            the stencil, or ``None`` for the plain stencil.
 
     Returns:
-        ``lap(grid) → (nx, ny, nz, 1, 1)``. Passing *wetting* raises :class:`TypeError`.
+        ``lap(grid, ext) → (nx, ny, nz, 1, 1)``. Without a fill, *ext* is ignored.
     """
     _pad_mode = tuple(pad_mode)
 
-    def laplacian(grid: jnp.ndarray, wetting: WettingParams | None = None) -> jnp.ndarray:
-        reject_wetting("laplacian", wetting)
-        return compute_laplacian(grid, w, _pad_mode)
+    def laplacian(grid: jnp.ndarray, ext: Mapping[str, Any]) -> jnp.ndarray:
+        padded = _apply_stencil_padding(to_2d(grid), _pad_mode)
+        if ghost_fill is not None:
+            padded = ghost_fill(padded, ext)
+        return lap_core_2d(padded, w)
 
     return laplacian
 
@@ -75,8 +82,6 @@ def lap_core_2d(
     w: jnp.ndarray,
 ) -> jnp.ndarray:
     """Laplacian kernel on an already-padded ``(nx+2, ny+2)`` array.
-
-    Public so the wetting addon can reuse it after modifying ghost cells.
 
     Args:
         padded: Shape ``(nx + 2, ny + 2)``.

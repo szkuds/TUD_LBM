@@ -177,6 +177,10 @@ class SimulationConfig:
     """
 
     # ── Simulation identity ──────────────────────────────────────
+    # Means the phase only: "single_phase" vs any "multiphase*" value picks the
+    # macroscopic operator and the equilibrium/source pair. The multiphase
+    # variants all load (saved configs carry them), but they select nothing: the
+    # [wetting], [hysteresis] and [chemical_step] sections switch those features on.
     sim_type: Literal[
         "single_phase",
         "multiphase",
@@ -293,7 +297,7 @@ class SimulationConfig:
         """Fill in fields computed from other, already-validated fields.
 
         Runs after validation, not in ``_normalise()``: a derivation may assume
-        its inputs are well formed, which is the validators' job to guarantee.
+        its inputs are well-formed, which is the validators' job to guarantee.
         """
         self._couple_mrt_shear_to_tau()
 

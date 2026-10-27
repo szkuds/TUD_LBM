@@ -11,6 +11,7 @@ from src.pipeline.runner import init_state
 from src.pipeline.runner import run
 from src.pipeline.setup import build_setup
 from src.pipeline.state.state import State
+from src.pipeline.step import Observables
 from src.simulation_io.analysis.stability import StabilityAbortError
 from src.simulation_io.analysis.stability import _host_check
 from src.simulation_io.analysis.stability import checkerboard_amplitude
@@ -90,9 +91,10 @@ class TestWakeMask:
 # =====================================================================
 
 
-def _state(rho, u, force=None, force_ext=None) -> State:
-    f = jnp.zeros((*rho.shape[:3], 9, 1))
-    return State(f=f, rho=rho, u=u, t=jnp.array(0), force=force, force_ext=force_ext)
+def _sample(rho, u, force=None, force_ext=None) -> tuple[State, Observables]:
+    """A state and the derived fields ``observe`` would give it, set directly."""
+    state = State(f=jnp.zeros((*rho.shape[:3], 9, 1)), t=jnp.array(0))
+    return state, Observables(rho=rho, u=u, force=force, force_ext=force_ext, pressure=jnp.zeros_like(rho))
 
 
 class TestComputeStabilityMetrics:
@@ -108,7 +110,7 @@ class TestComputeStabilityMetrics:
         force_ext = jnp.full((nx, ny, 1, 1, 2), 1e-3)
         force = -rho * grad_mu + force_ext
 
-        metrics = np.asarray(compute_stability_metrics(_state(rho, u, force, force_ext)))
+        metrics = np.asarray(compute_stability_metrics(*_sample(rho, u, force, force_ext)))
         max_u, max_grad_mu, rho_min, rho_max, cb_amp, n_wake = metrics
 
         assert max_u == pytest.approx(0.5)  # |(0.3, 0.4)|
@@ -121,7 +123,7 @@ class TestComputeStabilityMetrics:
     def test_single_phase_reports_zero_grad_mu(self):
         rho = jnp.ones((4, 4, 1, 1, 1))
         u = jnp.zeros((4, 4, 1, 1, 2))
-        metrics = np.asarray(compute_stability_metrics(_state(rho, u)))
+        metrics = np.asarray(compute_stability_metrics(*_sample(rho, u)))
         assert metrics[1] == pytest.approx(0.0)
 
 
