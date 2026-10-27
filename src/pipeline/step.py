@@ -1,14 +1,14 @@
 """The one time step: :func:`kernel` and :func:`step`, and :func:`observe` for the derived fields.
 
 ``kernel`` is the physics pass, a pure function of the populations, the
-external force and the feature substates: macroscopic fields, equilibrium,
+external force and the addon substates: macroscopic fields, equilibrium,
 collision (+ source when a force acts), streaming, obstacle and boundary
 conditions. It passes ``ext`` to the differential operators and knows no
-feature by name.
+addon by name.
 
 ``step`` is the skeleton around it: the forces, the kernel, the new
-:class:`~src.pipeline.state.state.State`, then each feature's ``post_step`` hook
-in feature-name order (:mod:`src.features.contribution`). The hysteresis
+:class:`~src.pipeline.state.state.State`, then each addon's ``post_step`` hook
+in addon-name order (:mod:`src.addons.hooks`). The hysteresis
 optimiser re-enters ``kernel`` from its hook for its trial steps.
 
 The carry is only ``(f, t, ext)``: the physics reads nothing else. Every other
@@ -57,7 +57,7 @@ def _moments(
     force_ext: jnp.ndarray | None,
     ext: Mapping[str, Any],
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray]:
-    """``(rho, u, force, pressure)`` of *f* under *force_ext* and the feature substates *ext*."""
+    """``(rho, u, force, pressure)`` of *f* under *force_ext* and the addon substates *ext*."""
     if setup.multiphase_params is None:
         return setup.macroscopic_fn(f, setup.lattice, force=force_ext)
     return setup.macroscopic_fn(
@@ -82,7 +82,7 @@ def kernel(
         setup: Closed-over :class:`~src.pipeline.setup.SimulationSetup`.
         f: Populations, shape ``(nx, ny, nz, q, 1)``.
         force_ext: External force, shape ``(nx, ny, nz, 1, d)``, or ``None``.
-        ext: Feature substates (``State.ext``, or a candidate variant of it),
+        ext: Addon substates (``State.ext``, or a candidate variant of it),
             bound into the differential operators.
 
     Returns:
@@ -123,7 +123,7 @@ def observe(setup: SimulationSetup, state: State) -> Observables:
 
 
 def step(setup: SimulationSetup, state: State) -> State:
-    """One LBM time step: forces, kernel, then the features' ``post_step`` hooks.
+    """One LBM time step: forces, kernel, then the addons' ``post_step`` hooks.
 
     Args:
         setup: Closed-over :class:`~src.pipeline.setup.SimulationSetup`.
@@ -134,7 +134,7 @@ def step(setup: SimulationSetup, state: State) -> State:
     """
     f_next = kernel(setup, state.f, compute_total_force_ext(setup, state), state.ext)
     new_state = state._replace(f=f_next, t=state.t + 1)
-    for _name, contribution in setup.features:
-        if contribution.post_step is not None:
-            new_state = contribution.post_step(setup, state, new_state)
+    for _name, hooks in setup.addons:
+        if hooks.post_step is not None:
+            new_state = hooks.post_step(setup, state, new_state)
     return new_state

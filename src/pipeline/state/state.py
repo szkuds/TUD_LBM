@@ -3,7 +3,7 @@
 :class:`State` is a :class:`typing.NamedTuple` and therefore automatically a
 valid JAX pytree. It is the *carry* in the ``jax.lax.scan`` time-stepping loop.
 
-Every field is a ``jax.Array`` or, for ``ext``, a dict of feature substates.
+Every field is a ``jax.Array`` or, for ``ext``, a dict of addon substates.
 No mutable Python objects are stored here.
 
 Usage::
@@ -35,15 +35,15 @@ class State(NamedTuple):
         f: Population distributions, shape ``(nx, ny, nz, q, 1)``.
         t: Current timestep — scalar ``jax.Array``. Not derivable: the gravity
             ramps and restarts read it.
-        ext: Feature substates keyed by feature name, e.g. ``ext["wetting"]``
+        ext: Addon substates keyed by addon name, e.g. ``ext["wetting"]``
             (a :class:`~src.operators.wetting._params.WettingState`) or
-            ``ext["electric"]`` (``{"h": ...}``). Not derivable: they carry their
-            own history. Each feature writes only its own key; empty for a run
-            with no active feature. The keys are fixed by
+            ``ext["electric"]`` (an :class:`~src.addons._electric.ElectricState`). Not derivable: they carry their
+            own history. Each addon writes only its own key; empty for a run
+            with no active addon. The keys are fixed by
             :func:`~src.pipeline.runner.init_state`, so the carry structure stays
             constant across ``lax.scan`` iterations.
     """
 
     f: jnp.ndarray
     t: jnp.ndarray
-    ext: dict[str, Any] = {}  # noqa: RUF012 - never mutated: features replace it with `ext | {...}`
+    ext: dict[str, Any] = {}  # noqa: RUF012 - never mutated: addons replace it with `ext | {...}`

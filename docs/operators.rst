@@ -59,7 +59,7 @@ Kind                        Decorator                       Resolved by
 ``initialise``              ``@initialise_operator``        ``config.init_type``
 ``obstacle``                ``@obstacle_operator``          ``config.obstacle_config``
 ``lattice``                 ``@lattice_operator``           ``config.lattice_type``
-``feature``                 ``@feature_operator``           every one; active by config section
+``addon``                 ``@addon_operator``           every one; active by config section
 ``plotting``                ``@plotting_operator``          ``config.plot_fields``
 ``analysis``                ``@analysis_operator``          ``config.plot_fields``
 ==========================  ==============================  ===========================================
@@ -67,8 +67,8 @@ Kind                        Decorator                       Resolved by
 .. note::
 
    There is no step kind.  One step, :func:`~src.pipeline.step.step`, serves
-   every run; what differs between runs is which *features* are active
-   (``src/features/``, kind ``feature``) and the slots they fill — see
+   every run; what differs between runs is which *addons* are active
+   (``src/addons/``, kind ``addon``) and the slots they fill — see
    :doc:`architecture`.
 
 Auto-discovery
@@ -186,7 +186,7 @@ streaming.  Faces you omit default to ``periodic``.
 
 The value ``"wetting"`` may also appear on a face.  It is not a
 boundary-condition operator: it marks which wall the wetting and hysteresis
-machinery acts on, and the first such face is the wall against which the wetting feature measures
+machinery acts on, and the first such face is the wall against which the wetting addon measures
 contact angles.
 
 Streaming — ``stream``
@@ -256,7 +256,7 @@ specs with the resolved source term.
 
 ``electric_force``
     Leaky-dielectric force from the electric potential, a second distribution
-    ``h`` in ``State.ext["electric"]`` that the ``electric`` feature
+    ``h`` in ``State.ext["electric"]`` that the ``electric`` addon
     initialises and advances.
 
 Setting ``gravity_force`` and ``gravity_masked_force`` together is a
@@ -268,8 +268,8 @@ Differential operators
 There is no registry kind: nothing is selected by configuration.
 :func:`~src.operators.differential.build_differential` returns the gradient
 and the Laplacian, ``op(grid, ext)``, with the lattice, the pad modes and an
-optional *ghost fill* bound.  The fill — the features' composed
-``ghost_fill`` slot — rewrites the padded field's ghost layer from the feature
+optional *ghost fill* bound.  The fill — the addons' composed
+``ghost_fill`` slot — rewrites the padded field's ghost layer from the addon
 substates in ``ext`` between padding and the stencil; without one the stencil
 is plain and ignores ``ext``.  ``build_setup`` builds three:
 
@@ -313,10 +313,10 @@ Selected by ``init_type``; keyword arguments come from the
    domain any systematic net force accumulates without viscous dissipation,
    and breaking the D4 discrete symmetry is enough to produce spurious drift.
 
-Wetting — the ``wetting`` feature
+Wetting — the ``wetting`` addon
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Wetting is a feature (``src/features/_wetting.py``), active with a
+Wetting is an addon (``src/addons/_wetting.py``), active with a
 ``[wetting]`` or ``[hysteresis]`` section, not an operator kind.  Its wall
 parameters always live in ``State.ext["wetting"]``, a fixed-wetting run
 included, so one kernel path serves both kinds of run and the optimiser's
@@ -367,7 +367,7 @@ Over 2 steps the optimiser random-walks ``phi``.  Use tens of steps where the
 angle must actually reach its bound; the cost is linear in ``trial_steps``.
 
 Contact-angle bookkeeping lives on
-:class:`~src.operators.wetting._params.WettingState`, the feature's
+:class:`~src.operators.wetting._params.WettingState`, the addon's
 ``State.ext["wetting"]``, which is carried through ``lax.scan`` alongside the
 fields.
 
@@ -377,7 +377,7 @@ Step
 One step, :func:`~src.pipeline.step.step` ``(setup, state) → state``, for
 every run: the forces, then :func:`~src.pipeline.step.kernel` (macroscopic,
 equilibrium, collision + source, streaming, obstacle, BCs, macroscopic of the
-result), then the features' ``post_step`` hooks in name order.
+result), then the addons' ``post_step`` hooks in name order.
 
 Obstacle — ``obstacle``
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -447,8 +447,8 @@ satisfy them by shape, not by inheritance.  The main ones are
 ``InitialiserOperator``, ``InitialPopulationOperator``, ``ForceOperator``,
 ``SourceTermOperator``, ``DifferentialOperator``, ``ExtDifferentialOperator``,
 ``EosOperator``, ``PlotOperator``, ``ConfigReader``, and
-``SimulationRepository``.  The feature slots are typed in
-:mod:`src.features.contribution`.
+``SimulationRepository``.  The addon slots are typed in
+:mod:`src.addons.hooks`.
 
 Conformance is exercised by the tests marked ``conformance`` in the test
 suite.

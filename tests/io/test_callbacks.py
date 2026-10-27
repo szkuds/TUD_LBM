@@ -5,6 +5,7 @@ from typing import Any
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from src.addons._electric import ElectricState
 from src.pipeline.state import State
 from src.pipeline.state import WettingState
 from src.pipeline.step import Observables
@@ -54,7 +55,7 @@ def test_state_to_numpy_flattens_field_substates_under_their_own_keys():
     from src.simulation_io import callbacks
 
     h = jnp.full((2, 2, 1, 9, 1), 0.5)
-    state = _state_with_wetting()._replace(ext={"electric": {"h": h}})
+    state = _state_with_wetting()._replace(ext={"electric": ElectricState(h=h)})
     observables = _observables()
 
     np.testing.assert_array_equal(callbacks._state_to_numpy(state, observables, t=7)["h"], np.asarray(h))

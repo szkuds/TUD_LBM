@@ -128,7 +128,7 @@ class ElectricForceModule(NamedTuple):
     """Electric force, bound to its parameters (:class:`ForceOperator`).
 
     Reads the electric potential distribution ``h`` from ``state.ext["electric"]``,
-    which the electric feature (:mod:`src.features._electric`) evolves each step.
+    which the electric addon (:mod:`src.addons._electric`) evolves each step.
 
     Attributes:
         params: The electric parameters built from the ``[electric_force]`` section.
@@ -168,7 +168,7 @@ class ElectricForceModule(NamedTuple):
     ) -> jnp.ndarray:
         """Compute electric force (step-time, jittable).
 
-        Reads ``state.f`` for density and ``state.ext["electric"]["h"]`` for the current
+        Reads ``state.f`` for density and ``state.ext["electric"].h`` for the current
         electric potential distribution.  Uses the ``gradient_standard``
         passed via keyword argument from :func:`compute_total_force_ext`.
 
@@ -195,7 +195,7 @@ class ElectricForceModule(NamedTuple):
         )
 
         # Sum over q-axis for potential; extract z-slice to 2D
-        potential_3d = jnp.sum(state.ext["electric"]["h"], axis=3, keepdims=True)  # (nx, ny, nz, 1, 1)
+        potential_3d = jnp.sum(state.ext["electric"].h, axis=3, keepdims=True)  # (nx, ny, nz, 1, 1)
         potential_3d_for_grad = potential_3d[:, :, :1, :, :]  # (nx, ny, 1, 1, 1) - take z slice for gradient
 
         # Gradient of potential → electric field

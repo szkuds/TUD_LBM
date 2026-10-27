@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from collections.abc import Sequence
     from typing import Any
-    from src.features.contribution import GhostFill
+    from src.addons.hooks import ExtGhostFill
     from src.operators.protocols import ExtDifferentialOperator
 
 
@@ -53,7 +53,7 @@ def compute_laplacian(
 
 
 def build_laplacian(
-    w: jnp.ndarray, pad_mode: Sequence[str], ghost_fill: GhostFill | None = None
+    w: jnp.ndarray, pad_mode: Sequence[str], ghost_fill: ExtGhostFill | None = None
 ) -> ExtDifferentialOperator:
     """Return the Laplacian closure over the lattice weights, *pad_mode* and an optional ghost fill.
 

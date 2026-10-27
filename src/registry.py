@@ -290,19 +290,19 @@ def stream_operator(
     return register_operator("stream", name=name, **meta)
 
 
-def feature_operator(
+def addon_operator(
     *,
     name: str | None = None,
     **meta: object,
 ) -> Callable[[_OT], _OT]:
-    """Register a feature builder (kind ``"feature"``).
+    """Register an addon builder (kind ``"addon"``).
 
-    The target is ``build(config, lattice) -> Contribution | None``: a
+    The target is ``build(config) -> Hooks | None``: a
     cross-cutting behaviour that fills the slots of
-    :class:`~src.features.contribution.Contribution`. The registered name is
-    the feature's key in ``State.ext``.
+    :class:`~src.addons.hooks.Hooks`. The registered name is
+    the addon's key in ``State.ext``.
     """
-    return register_operator("feature", name=name, **meta)
+    return register_operator("addon", name=name, **meta)
 
 
 def lattice_operator(

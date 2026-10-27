@@ -97,7 +97,7 @@ def init_state(
     ``init_type``.  For ``"standard"`` this is the rest equilibrium
     (``f_i = w_i``); for multiphase types it produces a tanh density
     profile at equilibrium.  The time comes from the init snapshot (or 0)
-    and ``ext`` from the features' ``init_state`` slots; nothing else is
+    and ``ext`` from the addons' ``init_state`` slots; nothing else is
     carried (:func:`~src.pipeline.step.observe` derives the rest).
 
     Args:
@@ -113,8 +113,8 @@ def init_state(
     """
     if f is None:
         f = setup.initial_f_fn(init_kwargs)
-    # Each feature's substate, keyed by its name; the keys stay fixed for the whole scan.
-    ext = {name: c.init_state(setup) for name, c in setup.features if c.init_state is not None}
+    # Each addon's substate, keyed by its name; the keys stay fixed for the whole scan.
+    ext = {name: c.init_state(setup) for name, c in setup.addons if c.init_state is not None}
     return State(f=f, t=_t_from_snapshot(setup.config), ext=ext)
 
 

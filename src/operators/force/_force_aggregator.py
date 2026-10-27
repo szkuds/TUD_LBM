@@ -1,4 +1,4 @@
-"""Step-time sum of the external force contributions.
+"""Step-time sum of the external force hooks.
 
 Registers nothing; it is the running counterpart of
 :func:`~src.operators.force.build_forces`, whose bound
@@ -19,7 +19,7 @@ def compute_total_force_ext(setup: SimulationSetup, state: State) -> jnp.ndarray
     """Sum the run's forces (``setup.forces``) on *state*.
 
     The differential operators are handed to each force with the state's
-    feature substates (``state.ext``) bound, so a force sees the same wall
+    addon substates (``state.ext``) bound, so a force sees the same wall
     ghost cells as the macroscopic operator.
 
     Args:
@@ -38,11 +38,11 @@ def compute_total_force_ext(setup: SimulationSetup, state: State) -> jnp.ndarray
 
     total_force: jnp.ndarray | None = None
     for force in setup.forces:
-        contribution = force.compute(
+        hooks = force.compute(
             state,
             gradient_standard=gradient_standard,
             gradient_density=gradient_density,
             laplacian_density=laplacian_density,
         )
-        total_force = contribution if total_force is None else total_force + contribution
+        total_force = hooks if total_force is None else total_force + hooks
     return total_force

@@ -1,8 +1,8 @@
 """Dynamic simulation state for TUD-LBM.
 
 Provides :class:`State`, the pytree carry used inside ``jax.lax.scan``: the
-populations, the time and the feature substates (``State.ext``), which the
-features initialise through their ``init_state`` slot (:mod:`src.features`).
+populations, the time and the addon substates (``State.ext``), which the
+addons initialise through their ``init_state`` slot (:mod:`src.addons`).
 Every other field is derived by :func:`src.pipeline.step.observe`.
 
 Public API::

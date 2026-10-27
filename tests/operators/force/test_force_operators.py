@@ -6,6 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from src.addons._electric import ElectricState
 from src.config.simulation_config import SimulationConfig
 from src.lattice.lattice import build_lattice
 from src.pipeline.state.state import State
@@ -46,7 +47,7 @@ def electric_force(lattice, sim_config):
 
 def make_state(lattice, rho_value=1.0, h=None):
     f = jnp.ones((NX, NY, NZ, lattice.q, 1)) * (rho_value / lattice.q)
-    return State(f=f, t=jnp.array(0), ext={} if h is None else {"electric": {"h": h}})
+    return State(f=f, t=jnp.array(0), ext={} if h is None else {"electric": ElectricState(h=h)})
 
 
 _ELECTRIC = {
@@ -59,14 +60,14 @@ _ELECTRIC = {
 }
 
 
-def electric_feature(lattice, section=None):
-    """The electric feature's contribution for an ``electric_force`` *section*."""
-    from src.features._electric import build_electric_feature
+def electric_addon(lattice, section=None):
+    """The electric addon's hooks for an ``electric_force`` *section*."""
+    from src.addons._electric import build_electric_addon
 
     config = SimulationConfig(grid_shape=(NX, NY, NZ), electric_force=dict(section or _ELECTRIC))
-    contribution = build_electric_feature(config, lattice)
-    assert contribution is not None
-    return contribution
+    hooks = build_electric_addon(config)
+    assert hooks is not None
+    return hooks
 
 
 def plain_gradient(lattice, config):
@@ -481,24 +482,24 @@ class TestElectricParams:
 
 
 class TestElectricFeatureInit:
-    """The electric feature's ``init_state`` builds the plate-to-plate potential."""
+    """The electric addon's ``init_state`` builds the plate-to-plate potential."""
 
     def test_shape(self, lattice, electric_force):
         setup = make_electric_setup(lattice, electric_force)
-        hi = electric_feature(lattice).init_state(setup)["h"]
+        hi = electric_addon(lattice).init_state(setup).h
         assert hi.shape == (NX, NY, NZ, 9, 1)
 
     def test_linear_profile(self, lattice, electric_force):
         setup = make_electric_setup(lattice, electric_force)
-        hi = electric_feature(lattice).init_state(setup)["h"]
+        hi = electric_addon(lattice).init_state(setup).h
         potential = jnp.sum(hi, axis=3, keepdims=True)
         np.testing.assert_allclose(float(potential[0, 0, 0, 0, 0]), 0.0, atol=1e-10)
         np.testing.assert_allclose(float(potential[0, -1, 0, 0, 0]), 1.0, atol=1e-10)
 
     def test_inactive_without_an_electric_force(self, lattice, sim_config):
-        from src.features._electric import build_electric_feature
+        from src.addons._electric import build_electric_addon
 
-        assert build_electric_feature(sim_config, lattice) is None
+        assert build_electric_addon(sim_config) is None
 
 
 # =====================================================================
@@ -511,7 +512,7 @@ class TestComputeElectricForce:
 
     def test_shape(self, lattice, sim_config, electric_force):
         setup = make_electric_setup(lattice, electric_force)
-        hi = electric_feature(lattice).init_state(setup)["h"]
+        hi = electric_addon(lattice).init_state(setup).h
         state = make_state(lattice, rho_value=1.0, h=hi)
 
         force = electric_force.compute(state, gradient_standard=plain_gradient(lattice, sim_config))
@@ -530,7 +531,7 @@ class TestComputeElectricForce:
         }
         params = ElectricForceModule.build(section, (NX, NY, NZ), config=sim_config, lattice=lattice)
         setup = make_electric_setup(lattice, params)
-        hi = electric_feature(lattice, section).init_state(setup)["h"]
+        hi = electric_addon(lattice, section).init_state(setup).h
         state = make_state(lattice, rho_value=1.0, h=hi)
 
         force = params.compute(state, gradient_standard=plain_gradient(lattice, sim_config))
@@ -539,7 +540,7 @@ class TestComputeElectricForce:
     def test_jittable(self, lattice, sim_config, electric_force):
         gradient_standard = plain_gradient(lattice, sim_config)
         setup = make_electric_setup(lattice, electric_force)
-        hi = electric_feature(lattice).init_state(setup)["h"]
+        hi = electric_addon(lattice).init_state(setup).h
         state = make_state(lattice, rho_value=1.0, h=hi)
 
         jitted = jax.jit(lambda s: electric_force.compute(s, gradient_standard=gradient_standard))
@@ -553,33 +554,33 @@ class TestComputeElectricForce:
 
 
 class TestElectricFeatureUpdate:
-    """The electric feature's ``post_step`` advances ``h`` from the state before the step."""
+    """The electric addon's ``post_step`` advances ``h`` from the state before the step."""
 
     def test_shape(self, lattice, electric_force):
         setup = make_electric_setup(lattice, electric_force)
-        feature = electric_feature(lattice)
-        hi = feature.init_state(setup)["h"]
+        addon = electric_addon(lattice)
+        hi = addon.init_state(setup).h
         state = make_state(lattice, rho_value=1.0, h=hi)
 
-        state_new = feature.post_step(setup, state, state)
-        assert state_new.ext["electric"]["h"].shape == hi.shape
+        state_new = addon.post_step(setup, state, state)
+        assert state_new.ext["electric"].h.shape == hi.shape
 
     def test_reads_the_populations_before_the_step(self, lattice, electric_force):
         """Sigma comes from the same time level as h(t): the previous state's f, not the new one."""
         setup = make_electric_setup(lattice, electric_force)
-        feature = electric_feature(lattice)
+        addon = electric_addon(lattice)
         # Off equilibrium, so the conductivity-dependent relaxation has something to relax.
-        hi = feature.init_state(setup)["h"].at[:, :, :, 1].add(0.01)
+        hi = addon.init_state(setup).h.at[:, :, :, 1].add(0.01)
         prev = make_state(lattice, rho_value=1.0, h=hi)
         # Conductivity is normalised by the field's own density range, so the
         # other state needs two phases to differ from a uniform one.
         liquid = prev._replace(f=prev.f.at[: NX // 2].multiply(5.0))
 
-        from_prev = feature.post_step(setup, prev, liquid).ext["electric"]["h"]
-        from_liquid = feature.post_step(setup, liquid, prev).ext["electric"]["h"]
+        from_prev = addon.post_step(setup, prev, liquid).ext["electric"].h
+        from_liquid = addon.post_step(setup, liquid, prev).ext["electric"].h
         assert not np.allclose(np.asarray(from_prev), np.asarray(from_liquid))
         np.testing.assert_array_equal(
-            np.asarray(from_prev), np.asarray(feature.post_step(setup, prev, prev).ext["electric"]["h"])
+            np.asarray(from_prev), np.asarray(addon.post_step(setup, prev, prev).ext["electric"].h)
         )
 
 
@@ -587,7 +588,7 @@ class TestElectricForceSetupWiring:
     """build_setup wires gradient_standard for electric-force runs.
 
     Regression guard: the electric force needs the standard gradient closure
-    and the electric feature's ``h``. If either were missing, every electric
+    and the electric addon's ``h``. If either were missing, every electric
     compute would raise at step time.
     """
 
@@ -612,8 +613,8 @@ class TestElectricForceSetupWiring:
         )
         return build_setup(config)
 
-    def test_the_electric_feature_is_active(self, electric_setup):
-        assert [name for name, _ in electric_setup.features] == ["electric"]
+    def test_the_electric_addon_is_active(self, electric_setup):
+        assert [name for name, _ in electric_setup.addons] == ["electric"]
 
     def test_gradient_standard_is_built(self, electric_setup):
         assert electric_setup.gradient_standard is not None

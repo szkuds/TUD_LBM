@@ -129,8 +129,8 @@ class TotalPressurePlotOperator(_BasePressureOperator):
         this panel never renders.
         """
         if self._mp is None or self._diff_ops is None:
-            from src.features import build_features
-            from src.features.contribution import compose_ghost_fill
+            from src.addons import build_addons
+            from src.addons.hooks import compose_ghost_fill
             from src.lattice.lattice import build_lattice
             from src.operators.differential import build_differential
             from src.operators.wetting._params import WettingParams
@@ -138,7 +138,7 @@ class TotalPressurePlotOperator(_BasePressureOperator):
             mp = self.config.multiphase_params
             assert mp is not None  # noqa: S101 - is_available admits multiphase configs only
             lattice = build_lattice(self.config.lattice_type)
-            fill = compose_ghost_fill(build_features(self.config, lattice))
+            fill = compose_ghost_fill(build_addons(self.config))
             gradient_density, laplacian_density = build_differential(lattice, self.config.pad_modes, fill)
             # A snapshot carries no live wall state here; the configured wall
             # parameters stand in, as they do throughout a fixed-wetting run.

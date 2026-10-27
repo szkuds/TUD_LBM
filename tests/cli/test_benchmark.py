@@ -149,24 +149,24 @@ def test_fingerprint_captures_hysteresis_work_per_step(tmp_path):
 
 
 def test_breakdown_isolates_the_optimiser_for_hysteresis(tmp_path):
-    """Each rung replaces only the wetting feature's post_step; its wall and everything else stay."""
+    """Each rung replaces only the wetting addon's post_step; its wall and everything else stay."""
     from src.cli.config_loading import _load_single_config
     from src.pipeline.setup import build_setup
 
     setup = build_setup(_load_single_config(str(_write_config(tmp_path, _HYSTERESIS))))
     variants = {name: ablated for name, ablated, _why in _breakdown_variants(setup)}
-    configured = dict(setup.features)["wetting"]
+    configured = dict(setup.addons)["wetting"]
 
     assert set(variants) == {"no_optimiser", "no_measurement"}
-    no_optimiser = dict(variants["no_optimiser"].features)["wetting"]
-    no_measurement = dict(variants["no_measurement"].features)["wetting"]
+    no_optimiser = dict(variants["no_optimiser"].addons)["wetting"]
+    no_measurement = dict(variants["no_measurement"].addons)["wetting"]
     assert no_optimiser.post_step is not None
     assert no_optimiser.post_step is not configured.post_step
     assert no_measurement.post_step is None
     for ablated in (no_optimiser, no_measurement):
         assert ablated.ghost_fill is configured.ghost_fill
         assert ablated.init_state is configured.init_state
-    assert variants["no_optimiser"]._replace(features=setup.features) == setup
+    assert variants["no_optimiser"]._replace(addons=setup.addons) == setup
 
 
 def test_breakdown_is_empty_for_a_plain_multiphase_run(tmp_path):

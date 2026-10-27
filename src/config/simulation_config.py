@@ -180,7 +180,7 @@ class SimulationConfig:
     # Means the phase only: "single_phase" vs any "multiphase*" value picks the
     # macroscopic operator and the equilibrium/source pair. The multiphase
     # variants all load (saved configs carry them), but they select nothing: the
-    # [wetting], [hysteresis] and [chemical_step] sections switch those features on.
+    # [wetting], [hysteresis] and [chemical_step] sections switch those addons on.
     sim_type: Literal[
         "single_phase",
         "multiphase",

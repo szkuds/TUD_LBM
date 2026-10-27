@@ -163,7 +163,7 @@ class TestWettingState:
         np.testing.assert_allclose(float(ws2.ca_left), float(ws.ca_left))
 
     def test_nested_in_state(self):
-        """WettingState nests inside State as the wetting feature's ``ext`` substate."""
+        """WettingState nests inside State as the wetting addon's ``ext`` substate."""
         from src.pipeline.state import State
 
         ws = self._make_wetting_state()

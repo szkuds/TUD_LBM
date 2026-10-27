@@ -172,15 +172,15 @@ class TestRegistryPopulated:
         }
         assert names >= expected
 
-    def test_features_registered(self):
-        """Each feature module registers its builder under the ``feature`` kind, by its ``State.ext`` key."""
-        import src.features
+    def test_addons_registered(self):
+        """Each addon module registers its builder under the ``addon`` kind, by its ``State.ext`` key."""
+        import src.addons
 
-        assert get_operator_names("feature") == {"electric", "wetting"}
+        assert get_operator_names("addon") == {"electric", "wetting"}
 
     def test_the_step_and_plugin_kinds_are_gone(self):
-        """The feature slots replaced the step variants, the hysteresis kind and the extra-state plugins."""
-        import src.features
+        """The addon slots replaced the step variants, the hysteresis kind and the extra-state plugins."""
+        import src.addons
 
         assert get_operator_category().isdisjoint({"update_timestep", "wetting", "extra_state"})
 

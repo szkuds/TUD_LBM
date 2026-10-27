@@ -1,6 +1,6 @@
 """Wetting containers: the four wall parameters and the per-step wetting state.
 
-:class:`WettingState` is the wetting feature's substate, ``State.ext["wetting"]``.
+:class:`WettingState` is the wetting addon's substate, ``State.ext["wetting"]``.
 It carries the same four parameter names as :class:`WettingParams`, so the wall
 ghost fill reads either one: the live state, or the hysteresis optimiser's
 candidate parameters.

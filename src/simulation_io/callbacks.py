@@ -50,7 +50,7 @@ def _state_to_numpy(
 
     A snapshot carries the carry (``f``, ``t``), the fields
     :func:`~src.pipeline.step.observe` derived from it (``rho``, ``u``,
-    ``force``, ``force_ext``, ``pressure``) and the feature substates, under the
+    ``force``, ``force_ext``, ``pressure``) and the addon substates, under the
     keys they have always had. Only non-``None`` arrays are written, filtered by
     *fields*. Detects and raises on NaN values.
 
@@ -66,14 +66,13 @@ def _state_to_numpy(
     arrays = {"f": state.f, "t": state.t} | observables._asdict()
     data = {k: np.asarray(v) for k, v in arrays.items() if v is not None and (fields is None or k in fields)}
 
-    # Feature substates are flattened into top-level keys, so a snapshot carries the
+    # Addon substates are flattened into top-level keys, so a snapshot carries the
     # same names it always has (``ca_left``, ``phi_left``, ``h``, ...). Scalar
     # substate entries (the wetting angles, contact lines and wall parameters) are
     # ALWAYS saved: analysis plots read them, and they cost a few bytes. Field-sized
     # entries (the electric ``h``) follow ``fields`` like the core fields do.
     for substate in state.ext.values():
-        items = substate._asdict() if hasattr(substate, "_asdict") else substate
-        for key, value in items.items():
+        for key, value in substate._asdict().items():
             array = np.asarray(value)
             if array.ndim == 0 or fields is None or key in fields:
                 data[key] = array

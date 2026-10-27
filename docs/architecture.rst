@@ -101,38 +101,37 @@ boundary.
 ``SimulationSetup`` holds *built callables*, not raw configuration:
 ``collision_fn``, ``equilibrium_fn``, ``source_fn``, ``macroscopic_fn``,
 ``streaming_fn``, ``bc_fn``, ``initial_f_fn``, the three differential
-operators, ``forces``, ``features``, ``multiphase_params``, and a reference
+operators, ``forces``, ``addons``, ``multiphase_params``, and a reference
 back to ``config`` for anything that must not enter the trace.  The operators
 are always built, so they are not optional; only ``multiphase_params``, the
 obstacle and ``k_diag`` are ``None`` when the run has none.
 
-``build_setup`` is a fixed recipe — lattice, feature merge, differential
+``build_setup`` is a fixed recipe — lattice, addon merge, differential
 operators, forces, plain operators — and distinguishes two kinds of
 component:
 
 * **Plain operators** (collision, equilibrium, source term, streaming, BC,
   obstacle, initialiser, force, macroscopic) are selectable and homogeneous:
   each is a registry lookup of its configured name.
-* **Features** (registry kind ``feature``: ``wetting``, ``electric``) touch
+* **Addons** (registry kind ``addon``: ``wetting``, ``electric``) touch
   several parts of a step.  Each returns a
-  :class:`~src.features.contribution.Contribution` — or ``None`` when its
-  config section is absent — that fills up to four fixed slots:
+  :class:`~src.addons.hooks.Hooks` — or ``None`` when its
+  config section is absent — that fills up to three fixed slots:
 
   ============== ================================ ==========================
   Slot           Shape                            Merge rule
   ============== ================================ ==========================
-  ``ghost_fill`` ``(padded, ext) -> padded``      composed into the density
+  ``ghost_fill`` ``(padded, substate) -> padded`` composed into the density
                                                   gradient and Laplacian
-  ``forces``     tuple of force operators         appended to the forces
   ``post_step``  ``(setup, prev, new) -> new``    run after the kernel
   ``init_state`` ``(setup) -> substate``          ``State.ext[name]``
   ============== ================================ ==========================
 
-  Features merge in name order and must be independent: each reads and writes
+  Addons merge in name order and must be independent: each reads and writes
   only its own ``State.ext`` entry.  Adding one is adding a
-  ``src/features/_*.py`` file; ``build_setup`` changes only for a new kind of
+  ``src/addons/_*.py`` file; ``build_setup`` changes only for a new kind of
   slot.  ``sim_type`` selects the phase (macroscopic operator, equilibrium /
-  source pair), never a feature: the ``[wetting]``, ``[hysteresis]`` and
+  source pair), never an addon: the ``[wetting]``, ``[hysteresis]`` and
   ``[chemical_step]`` sections switch those on.
 
 .. note::
@@ -148,7 +147,7 @@ component:
 :func:`~src.pipeline.runner.init_state` builds the starting
 :class:`~src.pipeline.state.state.State`.  Populations come from
 ``setup.initial_f_fn`` (or a caller-supplied ``f``), the time from the init
-snapshot (or 0), and ``ext`` from the features' ``init_state`` slots.
+snapshot (or 0), and ``ext`` from the addons' ``init_state`` slots.
 
 .. important::
 
@@ -219,7 +218,7 @@ State management
     class State(NamedTuple):
         f: jnp.ndarray                 # (nx, ny, nz, q, 1)
         t: jnp.ndarray                 # scalar — current timestep
-        ext: dict[str, Any]            # feature substates, keyed by feature name
+        ext: dict[str, Any]            # addon substates, keyed by addon name
 
 The carry holds only what a next step cannot recompute: the physics reads
 nothing else (checked by overwriting every other field with NaN before every
@@ -229,13 +228,13 @@ all at the state's own time level — on save steps only in streaming I/O, and
 by mapping it over the trajectory in in-memory mode.  Snapshots keep the keys
 ``rho``, ``u``, ``force``, ``force_ext`` and ``pressure``.
 
-``ext`` holds one entry per active feature, built by its ``init_state`` slot,
+``ext`` holds one entry per active addon, built by its ``init_state`` slot,
 so its keys are fixed for the whole scan.  ``ext["wetting"]`` is a
 :class:`~src.operators.wetting._params.WettingState` — the wall parameters
 ``phi_left``/``phi_right``, ``d_rho_left``/``d_rho_right``, the measured
 angles ``ca_left``/``ca_right`` and the contact-line anchors
 ``cll_left``/``cll_right`` — present for a fixed-wetting run as well as a
-hysteresis one; ``ext["electric"]`` is ``{"h": h}``, the electric-potential
+hysteresis one; ``ext["electric"]`` is ``ElectricState(h)``, the electric-potential
 distributions.  Being part of the carry is what lets the optimiser's result
 persist from step to step.  Snapshots flatten each substate into top-level
 keys, so a saved run still carries ``ca_left``, ``phi_left`` and ``h``.
@@ -247,7 +246,7 @@ Multiphase physics
 ------------------
 
 There is one step, :func:`~src.pipeline.step.step`: forces, then
-:func:`~src.pipeline.step.kernel`, then each feature's ``post_step``.  For a
+:func:`~src.pipeline.step.kernel`, then each addon's ``post_step``.  For a
 multiphase run the kernel runs:
 
 1. ``ρ`` and ``u`` from the moments of ``f``
@@ -258,7 +257,7 @@ multiphase run the kernel runs:
 
 then equilibrium → collision (+ source) → streaming → obstacle → boundary
 conditions, and the moments of the result.  The kernel binds ``State.ext``
-into the differential operators and names no feature.
+into the differential operators and names no addon.
 
 .. warning::
 
@@ -266,7 +265,7 @@ into the differential operators and names no feature.
    viscous sink for a systematic net force, so it accumulates.  Droplet
    centres must be integer-aligned to preserve the D4 discrete symmetry.
 
-The wetting feature builds on top: its ``ghost_fill`` rewrites the wall ghost
+The wetting addon builds on top: its ``ghost_fill`` rewrites the wall ghost
 cells of the density stencils from ``ext["wetting"]``, and its ``post_step``
 either re-measures the angles (fixed wetting) or runs the hysteresis
 optimiser, which solves for the wall parameters each step with a

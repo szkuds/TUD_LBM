@@ -1,10 +1,10 @@
-"""Invariants of the feature-slot step: one kernel, one step, features through fixed slots.
+"""Invariants of the addon-slot step: one kernel, one step, addons through fixed slots.
 
-* ``State.ext`` holds exactly the active features' substates, and the scan carry
+* ``State.ext`` holds exactly the active addons' substates, and the scan carry
   keeps its structure across steps;
 * the ghost fill reaches the density operators, never the chemical-potential gradient;
-* the kernel is a pure function of its arguments and names no feature;
-* a registered feature is picked up, merged in name order, and its hook sees the
+* the kernel is a pure function of its arguments and names no addon;
+* a registered addon is picked up, merged in name order, and its hook sees the
   state before and after the step.
 """
 
@@ -15,8 +15,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from src.addons.hooks import Hooks
 from src.config.simulation_config import SimulationConfig
-from src.features.contribution import Contribution
 from src.pipeline.runner import init_state
 from src.pipeline.setup import build_setup
 from src.pipeline.step import kernel
@@ -67,7 +67,7 @@ _CASES: dict[str, tuple[dict[str, Any], set[str]]] = {
 
 @pytest.fixture(scope="module", params=sorted(_CASES))
 def case(request):
-    """``(setup, initial state, expected ext keys)`` for one feature combination."""
+    """``(setup, initial state, expected ext keys)`` for one addon combination."""
     kwargs, expected = _CASES[request.param]
     setup = build_setup(SimulationConfig(**kwargs))
     return setup, init_state(setup), expected
@@ -83,10 +83,10 @@ def wetting_setup():
 # ── ext structure ────────────────────────────────────────────────────
 
 
-def test_ext_holds_exactly_the_active_features(case):
+def test_ext_holds_exactly_the_active_addons(case):
     setup, state, expected = case
     assert set(state.ext) == expected
-    assert [name for name, _ in setup.features] == sorted(expected)
+    assert [name for name, _ in setup.addons] == sorted(expected)
 
 
 def test_the_carry_keeps_its_structure_across_a_step(case):
@@ -143,41 +143,41 @@ def test_the_kernel_reads_the_wall_from_its_ext_argument(wetting_setup):
     assert not np.allclose(np.asarray(f_live), np.asarray(f_candidate))
 
 
-def test_the_step_module_names_no_feature():
-    import src.features
+def test_the_step_module_names_no_addon():
+    import src.addons
     import src.pipeline.step
     from src.registry import get_operator_names
 
     source = inspect.getsource(src.pipeline.step)
-    assert src.features is not None
-    for name in get_operator_names("feature"):
+    assert src.addons is not None
+    for name in get_operator_names("addon"):
         assert f'"{name}"' not in source
 
 
 # ── registration and hooks ───────────────────────────────────────────
 
 
-def test_a_registered_feature_is_merged_in_name_order_and_sees_both_states():
-    """A new feature is one registration: no edit to build_setup, the step or the runner."""
+def test_a_registered_addon_is_merged_in_name_order_and_sees_both_states():
+    """A new addon is one registration: no edit to build_setup, the step or the runner."""
     seen: list[tuple[int, int]] = []
 
     def post_step(setup, prev, new):
         seen.append((int(prev.t), int(new.t)))
         return new._replace(ext=new.ext | {"zz_probe": new.ext["zz_probe"] + 1.0})
 
-    def build(config, lattice):
-        return Contribution(post_step=post_step, init_state=lambda setup: jnp.array(0.0))
+    def build(config):
+        return Hooks(post_step=post_step, init_state=lambda setup: jnp.array(0.0))
 
-    register_operator("feature", name="zz_probe")(build)
+    register_operator("addon", name="zz_probe")(build)
     try:
         kwargs, _ = _CASES["wetting"]
         setup = build_setup(SimulationConfig(**kwargs))
         state = init_state(setup)
         new_state = step(setup, state)
     finally:
-        unregister_operator("feature", "zz_probe")
+        unregister_operator("addon", "zz_probe")
 
-    assert [name for name, _ in setup.features] == ["wetting", "zz_probe"]
+    assert [name for name, _ in setup.addons] == ["wetting", "zz_probe"]
     assert float(new_state.ext["zz_probe"]) == 1.0
     assert seen == [(0, 1)]
 

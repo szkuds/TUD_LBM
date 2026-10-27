@@ -9,18 +9,17 @@ The pattern ``build_setup`` follows
 * **Plain operators** (collision, equilibrium, source term, streaming, BC,
   obstacle, initialiser, force, macroscopic) are homogeneous and selectable:
   each is a registry lookup of the configured name. They need no coupling.
-* **Features** (registry kind ``feature``; wetting, electric potential) add
-  behaviour that touches several parts of a step. Every registered feature is
+* **Addons** (registry kind ``addon``; wetting, electric potential) add
+  behaviour that touches several parts of a step. Every registered addon is
   built, and those the config uses return a
-  :class:`~src.features.contribution.Contribution` filling up to four fixed slots:
+  :class:`~src.addons.hooks.Hooks` filling up to three fixed slots:
 
   - ``ghost_fill`` — composed into the density gradient and Laplacian;
-  - ``forces`` — appended to the configured forces;
   - ``post_step`` — run by :func:`~src.pipeline.step.step` after the kernel;
-  - ``init_state`` — the feature's ``State.ext`` entry.
+  - ``init_state`` — the addon's ``State.ext`` entry.
 
-  Features are merged in **name order** and must be independent of each other.
-  Adding a feature is adding a ``src/features/_*.py`` file; ``build_setup`` is
+  Addons are merged in **name order** and must be independent of each other.
+  Adding an addon is adding a ``src/addons/_*.py`` file; ``build_setup`` is
   edited only to add a new *kind* of slot.
 
 Usage::
@@ -37,14 +36,14 @@ import functools
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 import jax.numpy as jnp
-from src.features.contribution import compose_ghost_fill
+from src.addons.hooks import compose_ghost_fill
 from src.lattice.lattice import Lattice
 from src.lattice.lattice import build_lattice
 
 if TYPE_CHECKING:
+    from src.addons.hooks import Hooks
     from src.config.multiphase_params import MultiphaseParams
     from src.config.simulation_config import SimulationConfig
-    from src.features.contribution import Contribution
     from src.operators.protocols import BoundaryOperator
     from src.operators.protocols import CollisionOperator
     from src.operators.protocols import EquilibriumOperator
@@ -70,17 +69,17 @@ class SimulationSetup(NamedTuple):
         grid_shape: Spatial dimensions ``(nx, ny, nz)``.
         tau: Relaxation time (> 0.5).
         collision_scheme: Name of the collision model (``"bgk"`` / ``"mrt"``).
-        features: The active features as ``(name, contribution)`` pairs, in name
-            order; the name is the feature's ``State.ext`` key.
-        forces: Configured forces plus the features' ``forces`` slot.
+        addons: The active addons as ``(name, hooks)`` pairs, in name
+            order; the name is the addon's ``State.ext`` key.
+        forces: The configured forces.
         collision_fn / equilibrium_fn / source_fn / macroscopic_fn /
             streaming_fn / bc_fn: The plain operators, resolved at setup time.
         gradient_standard: Gradient of the chemical potential, ``∇μ``. Never
             carries a ghost fill.
         gradient_density: Density gradient ``∇ρ`` (source term), with the
-            features' ghost fill.
+            addons' ghost fill.
         laplacian_density: Density Laplacian ``∇²ρ`` (chemical potential), with
-            the features' ghost fill.
+            the addons' ghost fill.
         initial_f_fn: Initial-population closure.
         k_diag: MRT relaxation rates (``None`` for BGK); already bound into
             ``collision_fn``.
@@ -93,7 +92,7 @@ class SimulationSetup(NamedTuple):
     grid_shape: tuple[int, ...]
     tau: float
     collision_scheme: str
-    features: tuple[tuple[str, Contribution], ...]
+    addons: tuple[tuple[str, Hooks], ...]
     forces: tuple[ForceOperator, ...]
     collision_fn: CollisionOperator
     equilibrium_fn: EquilibriumOperator
@@ -147,9 +146,9 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     Returns:
         An immutable :class:`SimulationSetup` ready for the jitted step.
     """
-    # Function-local: importing the operator and feature packages at module level
+    # Function-local: importing the operator and addon packages at module level
     # closes an import cycle back into src.pipeline.
-    from src.features import build_features
+    from src.addons import build_addons
     from src.operators.boundary import build_bc
     from src.operators.collision import build_collision_fn
     from src.operators.differential import build_differential
@@ -164,18 +163,16 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     lattice = build_lattice(config.lattice_type)
     mp_params = config.multiphase_params
 
-    # 2. Feature merge: every registered feature the config uses, in name order.
-    #    Consumed below: ghost_fill (3), forces (4); post_step by step(), init_state by init_state().
-    features = build_features(config, lattice)
+    # 2. Addon merge: every registered addon the config uses, in name order.
+    #    Consumed below: ghost_fill (3); post_step by step(), init_state by init_state().
+    addons = build_addons(config)
 
     # 3. Differential: ∇μ is always plain; the density operators carry the composed ghost fill.
     gradient_standard, _ = build_differential(lattice, config.pad_modes)
-    gradient_density, laplacian_density = build_differential(lattice, config.pad_modes, compose_ghost_fill(features))
+    gradient_density, laplacian_density = build_differential(lattice, config.pad_modes, compose_ghost_fill(addons))
 
-    # 4. Forces: the configured *_force sections, then the features' forces slot.
-    forces = build_forces(config, tuple(config.grid_shape), lattice) + tuple(
-        force for _, contribution in features for force in contribution.forces
-    )
+    # 4. Forces: the configured *_force sections.
+    forces = build_forces(config, tuple(config.grid_shape), lattice)
 
     # 5. Plain operators. The equilibrium and source term are a pair chosen by phase:
     #    single-phase keeps the pressure cs^2*rho in its equilibrium, multiphase ("wb")
@@ -200,7 +197,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         grid_shape=tuple(config.grid_shape),
         tau=config.tau,
         collision_scheme=config.collision_scheme,
-        features=features,
+        addons=addons,
         forces=forces,
         collision_fn=collision_fn,
         equilibrium_fn=equilibrium_fn,

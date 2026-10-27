@@ -1,12 +1,12 @@
-"""The wetting feature: its initial substate and which post_step the config sections select."""
+"""The wetting addon: its initial substate and which post_step the config sections select."""
 
 from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 import jax.numpy as jnp
 import pytest
+from src.addons import _wetting
 from src.config.simulation_config import SimulationConfig
-from src.features import _wetting
 from src.lattice.lattice import build_lattice
 
 _MULTIPHASE: dict[str, Any] = {
@@ -57,20 +57,20 @@ def _init_setup(restored_wetting=None) -> SimpleNamespace:
     )
 
 
-def _feature(lattice, **sections):
-    contribution = _wetting.build_wetting_feature(SimulationConfig(**_MULTIPHASE, **sections), lattice)
-    assert contribution is not None
-    return contribution
+def _addon(lattice, **sections):
+    hooks = _wetting.build_wetting_addon(SimulationConfig(**_MULTIPHASE, **sections))
+    assert hooks is not None
+    return hooks
 
 
 def test_inactive_without_a_wetting_section(lattice):
     config = SimulationConfig(**{k: v for k, v in _MULTIPHASE.items() if k != "bc_config"})
-    assert _wetting.build_wetting_feature(config, lattice) is None
+    assert _wetting.build_wetting_addon(config) is None
 
 
 def test_init_state_seeds_parameters_from_the_config_and_measures_the_angles(lattice, fixed_measurements):
-    feature = _feature(lattice, wetting_config=_WETTING)
-    wetting = feature.init_state(_init_setup())
+    addon = _addon(lattice, wetting_config=_WETTING)
+    wetting = addon.init_state(_init_setup())
 
     assert (float(wetting.phi_left), float(wetting.phi_right)) == (1.2, 1.0)
     assert (float(wetting.ca_left), float(wetting.ca_right)) == (75.0, 85.0)
@@ -86,8 +86,8 @@ def test_init_state_resumes_the_saved_wetting_state_on_a_hysteresis_restart(latt
         "cll_left": 11.5,
         "cll_right": 29.0,
     }
-    feature = _feature(lattice, wetting_config=_WETTING, hysteresis_config=_HYSTERESIS)
-    wetting = feature.init_state(_init_setup(restored_wetting=saved))
+    addon = _addon(lattice, wetting_config=_WETTING, hysteresis_config=_HYSTERESIS)
+    wetting = addon.init_state(_init_setup(restored_wetting=saved))
 
     for key, value in saved.items():
         assert float(getattr(wetting, key)) == value
@@ -121,7 +121,7 @@ def test_the_config_sections_select_the_hysteresis_update(monkeypatch, sections,
 
     setup = build_setup(SimulationConfig(**_MULTIPHASE, wetting_config=_WETTING, **sections))
     state = init_state(setup)
-    post_step = dict(setup.features)["wetting"].post_step
+    post_step = dict(setup.addons)["wetting"].post_step
     assert post_step is not None
     post_step(setup, state, state)
 
@@ -138,7 +138,7 @@ def test_a_fixed_wetting_wall_only_remeasures():
     seeded = state.ext["wetting"]._replace(ca_left=jnp.array(-1.0))
     state = state._replace(ext={"wetting": seeded})
 
-    post_step = dict(setup.features)["wetting"].post_step
+    post_step = dict(setup.addons)["wetting"].post_step
     assert post_step is not None
     after = post_step(setup, state, state).ext["wetting"]
 
@@ -149,4 +149,4 @@ def test_a_fixed_wetting_wall_only_remeasures():
 def test_a_single_phase_run_cannot_carry_a_wetting_wall(lattice):
     config = SimulationConfig(grid_shape=(8, 8), bc_config={"bottom": "wetting"}, wetting_config=_WETTING)
     with pytest.raises(ValueError, match="multiphase"):
-        _wetting.build_wetting_feature(config, lattice)
+        _wetting.build_wetting_addon(config)

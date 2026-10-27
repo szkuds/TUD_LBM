@@ -4,10 +4,10 @@ Public API: build_differential()
 
 Both operators are ``op(grid, ext)``, built with the lattice, the pad modes and
 an optional *ghost fill* already bound. The fill is the composed ``ghost_fill``
-slot of the active features (:mod:`src.features.contribution`): it rewrites the
-padded field's ghost layer from the feature substates in *ext* between padding
+slot of the active addons (:mod:`src.addons.hooks`): it rewrites the
+padded field's ghost layer from the addon substates in *ext* between padding
 and the stencil, which is how the wetting wall reaches the stencils. Without a
-fill the stencil is plain and ignores *ext*. The package knows no feature by
+fill the stencil is plain and ignores *ext*. The package knows no addon by
 name. The closures live in the implementation modules (_gradient.py,
 _laplacian.py); there is no ``differential`` registry kind, because nothing is
 selected between by configuration.
@@ -25,20 +25,20 @@ from src.operators.differential._gradient import build_gradient
 from src.operators.differential._laplacian import build_laplacian
 
 if TYPE_CHECKING:
-    from src.features.contribution import GhostFill
+    from src.addons.hooks import ExtGhostFill
     from src.lattice.lattice import Lattice
     from src.operators.protocols import ExtDifferentialOperator
 
 
 def build_differential(
-    lattice: Lattice, pad_modes: tuple[str, ...], ghost_fill: GhostFill | None = None
+    lattice: Lattice, pad_modes: tuple[str, ...], ghost_fill: ExtGhostFill | None = None
 ) -> tuple[ExtDifferentialOperator, ExtDifferentialOperator]:
     """Return ``(gradient, laplacian)`` over *pad_modes*, with *ghost_fill* applied after padding.
 
     Args:
         lattice: The simulation :class:`Lattice` (weights, velocities).
         pad_modes: ``SimulationConfig.pad_modes``, ``(top, bottom, right, left)``.
-        ghost_fill: The features' composed ghost fill, or ``None`` for the plain stencils.
+        ghost_fill: The addons' composed ghost fill, or ``None`` for the plain stencils.
 
     Returns:
         ``grad(grid, ext) → (nx, ny, nz, 1, 2)`` and ``lap(grid, ext) → (nx, ny, nz, 1, 1)``.

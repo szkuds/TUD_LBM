@@ -1013,7 +1013,7 @@ class TestUpdateWettingStateBubble:
 
 
 class TestStepMultiphaseWithWetting:
-    """``step`` carries the wetting feature's substate, ``State.ext["wetting"]``."""
+    """``step`` carries the wetting addon's substate, ``State.ext["wetting"]``."""
 
     @staticmethod
     def _setup_and_state():

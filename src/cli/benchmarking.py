@@ -39,8 +39,8 @@ from src.cli.display import BOLD_CYAN
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from src.addons.hooks import PostStepHook
     from src.config import SimulationConfig
-    from src.features.contribution import PostStepHook
     from src.pipeline.setup import SimulationSetup
     from src.pipeline.state.state import State
 
@@ -319,14 +319,14 @@ def _static_analysis(compiled: Any) -> tuple[dict[str, Any] | None, dict[str, An
 
 
 def _with_wetting_post_step(setup: SimulationSetup, post_step: PostStepHook | None) -> SimulationSetup:
-    """*setup* with the wetting feature's ``post_step`` slot replaced by *post_step*."""
-    from src.features._wetting import NAME as WETTING
+    """*setup* with the wetting addon's ``post_step`` slot replaced by *post_step*."""
+    from src.addons._wetting import NAME as WETTING
 
-    features = tuple(
-        (name, dataclasses.replace(contribution, post_step=post_step) if name == WETTING else contribution)
-        for name, contribution in setup.features
+    addons = tuple(
+        (name, dataclasses.replace(hooks, post_step=post_step) if name == WETTING else hooks)
+        for name, hooks in setup.addons
     )
-    return setup._replace(features=features)
+    return setup._replace(addons=addons)
 
 
 def _breakdown_variants(setup: SimulationSetup) -> list[tuple[str, SimulationSetup, str]]:
@@ -335,13 +335,13 @@ def _breakdown_variants(setup: SimulationSetup) -> list[tuple[str, SimulationSet
     Each rung removes exactly one layer from the *same* setup, so successive
     differences in wall time attribute cost to that layer:
 
-    * ``no_optimiser`` — the wetting feature's ``post_step`` becomes the
+    * ``no_optimiser`` — the wetting addon's ``post_step`` becomes the
       measurement-only hook a fixed-wetting run uses, so the Adam/AD hysteresis
       optimiser — and with it its chained trial passes of the kernel — never
       enters the graph. Nothing else changes.
     * ``no_measurement`` — additionally drops that hook, and with it the per-step
       contact-angle/contact-line measurement. The wetting wall itself survives:
-      it is the feature's ``ghost_fill``, so this rung is not "wetting off".
+      it is the addon's ``ghost_fill``, so this rung is not "wetting off".
 
     Rungs identical to the configured setup are omitted, so a run without
     wetting yields an empty ladder and a single-phase config never reaches here.
@@ -352,10 +352,10 @@ def _breakdown_variants(setup: SimulationSetup) -> list[tuple[str, SimulationSet
     Returns:
         ``(label, ablated_setup, what_it_removes)`` triples.
     """
-    from src.features._wetting import NAME as WETTING
-    from src.features._wetting import build_measurement_hook
+    from src.addons._wetting import NAME as WETTING
+    from src.addons._wetting import build_measurement_hook
 
-    if not setup.config.is_multiphase or WETTING not in dict(setup.features):
+    if not setup.config.is_multiphase or WETTING not in dict(setup.addons):
         return []
 
     variants: list[tuple[str, SimulationSetup, str]] = []

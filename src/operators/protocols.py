@@ -346,7 +346,7 @@ class ForceOperator(Protocol):
         gradient_density: DifferentialOperator | None = None,
         laplacian_density: DifferentialOperator | None = None,
     ) -> jnp.ndarray:
-        """Return this force's contribution, shape ``(nx, ny, nz, 1, d)`` (step-time, jittable)."""
+        """Return this force's hooks, shape ``(nx, ny, nz, 1, d)`` (step-time, jittable)."""
         ...
 
 
@@ -400,7 +400,7 @@ class DifferentialOperator(Protocol):
     """Differential operator bound to its run — what a consumer calls.
 
     The macroscopic operator, the source term and the forces receive the
-    gradient / Laplacian with the feature substates already bound (the kernel
+    gradient / Laplacian with the addon substates already bound (the kernel
     binds ``State.ext`` with :func:`functools.partial`), so they see a plain
     field-to-field map.
 
@@ -427,8 +427,8 @@ class ExtDifferentialOperator(Protocol):
 
     Built by :func:`~src.operators.differential.build_differential`, which
     captures the lattice, the pad modes and an optional *ghost fill*: the
-    composed ``ghost_fill`` slot of the active features, applied between
-    padding and the stencil. The fill reads the feature substates from *ext*
+    composed ``ghost_fill`` slot of the active addons, applied between
+    padding and the stencil. The fill reads the addon substates from *ext*
     (the wetting wall reads ``ext["wetting"]``); an operator built without a
     fill ignores *ext*.
 
@@ -438,11 +438,11 @@ class ExtDifferentialOperator(Protocol):
     """
 
     def __call__(self, grid: jnp.ndarray, ext: Mapping[str, Any]) -> jnp.ndarray:
-        """Compute a spatial derivative of *grid* under the feature substates *ext*.
+        """Compute a spatial derivative of *grid* under the addon substates *ext*.
 
         Args:
             grid: Scalar field, shape ``(nx, ny, nz, 1, 1)``.
-            ext: Feature substates, ``State.ext`` (or a candidate variant of it).
+            ext: Addon substates, ``State.ext`` (or a candidate variant of it).
 
         Returns:
             Derivative field, shape ``(nx, ny, nz, 1, 2)`` for a gradient or

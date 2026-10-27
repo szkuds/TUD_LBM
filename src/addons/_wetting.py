@@ -1,4 +1,4 @@
-"""Wetting feature — the wetting wall, contact-angle measurement and hysteresis.
+"""Wetting addon — the wetting wall, contact-angle measurement and hysteresis.
 
 The wall parameters always live in ``State.ext["wetting"]``
 (:class:`~src.operators.wetting._params.WettingState`), for a fixed-wetting run
@@ -6,7 +6,7 @@ as well as a hysteresis one, so a single kernel path serves both and the
 optimiser's trial steps.
 
 * ``ghost_fill``: the wetting applicator rewrites the wall ghost cells of the
-  density gradient and Laplacian from the four wall parameters in ``ext``.
+  density gradient and Laplacian from the four wall parameters of its substate.
 * ``init_state``: the configured (or restored) parameters and the measured
   initial angles.
 * ``post_step``: with ``[hysteresis]``, the optimiser (per-side windows from the
@@ -16,10 +16,9 @@ optimiser's trial steps.
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from typing import Any
 import jax
 import jax.numpy as jnp
-from src.features.contribution import Contribution
+from src.addons.hooks import Hooks
 from src.operators.wetting._applicator import build_wetting_applicator
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
@@ -28,34 +27,34 @@ from src.operators.wetting._hysteresis import update_wetting_state
 from src.operators.wetting._hysteresis import update_wetting_state_chemical_step
 from src.operators.wetting._params import WettingParams
 from src.operators.wetting._params import WettingState
-from src.registry import feature_operator
+from src.registry import addon_operator
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from src.addons.hooks import GhostFill
+    from src.addons.hooks import InitStateHook
+    from src.addons.hooks import PostStepHook
     from src.config.simulation_config import SimulationConfig
-    from src.features.contribution import GhostFill
-    from src.features.contribution import InitStateHook
-    from src.features.contribution import PostStepHook
-    from src.lattice.lattice import Lattice
     from src.pipeline.setup import SimulationSetup
     from src.pipeline.state.state import State
 
-#: This feature's ``State.ext`` key, and its registered name.
+#: This addon's ``State.ext`` key, and its registered name.
 NAME = "wetting"
 
+#: What the ghost fill reads: the live state, or a candidate of the optimiser's trial steps.
+WallParams = WettingParams | WettingState
 
-def wetting_ghost_fill(config: SimulationConfig) -> GhostFill:
-    """The wall ghost-cell rewrite, reading the four wall parameters from ``ext["wetting"]``.
 
-    ``ext["wetting"]`` may be the live :class:`WettingState` or a candidate
+def wetting_ghost_fill(config: SimulationConfig) -> GhostFill[WallParams]:
+    """The wall ghost-cell rewrite, from the four wall parameters of the substate.
+
+    The substate may be the live :class:`WettingState` or a candidate
     :class:`WettingParams`; both carry the four parameter names.
     """
     mp = config.multiphase_params
-    assert mp is not None  # noqa: S101 - build_wetting_feature checks the phase first (_wall)
+    assert mp is not None  # noqa: S101 - build_wetting_addon checks the phase first (_wall)
     apply = build_wetting_applicator(mp.rho_l, mp.rho_v, config.bc_config, config.chemical_step_wall)
 
-    def ghost_fill(padded: jnp.ndarray, ext: Mapping[str, Any]) -> jnp.ndarray:
-        wall = ext[NAME]
+    def ghost_fill(padded: jnp.ndarray, wall: WallParams) -> jnp.ndarray:
         return apply(padded, wall.phi_left, wall.phi_right, wall.d_rho_left, wall.d_rho_right)
 
     return ghost_fill
@@ -96,10 +95,10 @@ def _measure(rho: jnp.ndarray, rho_mean: float, edge: str) -> dict[str, jnp.ndar
     return {"ca_left": ca_left, "ca_right": ca_right, "cll_left": cll_left, "cll_right": cll_right}
 
 
-def _init_state(config: SimulationConfig, rho_mean: float, edge: str) -> InitStateHook:
+def _init_state(config: SimulationConfig, rho_mean: float, edge: str) -> InitStateHook[WettingState]:
     """The configured wall parameters, the measured initial angles and, on a restart, the saved state."""
     defaults = config.wetting_defaults
-    assert defaults is not None  # noqa: S101 - the feature is built only with wetting defaults
+    assert defaults is not None  # noqa: S101 - the addon is built only with wetting defaults
     params = WettingParams.from_defaults(defaults)
 
     def init_state(setup: SimulationSetup) -> WettingState:
@@ -137,7 +136,7 @@ def _optimiser(config: SimulationConfig, edge: str) -> PostStepHook:
     trial_steps: int = hc["trial_steps"]
 
     def post_step(setup: SimulationSetup, prev: State, new: State) -> State:
-        # Function-local: the pipeline imports the features package through build_setup.
+        # Function-local: the pipeline imports the addons package through build_setup.
         from src.operators.force._force_aggregator import compute_total_force_ext
         from src.pipeline.step import kernel
 
@@ -159,14 +158,14 @@ def _optimiser(config: SimulationConfig, edge: str) -> PostStepHook:
     return post_step
 
 
-@feature_operator(name=NAME)
-def build_wetting_feature(config: SimulationConfig, lattice: Lattice) -> Contribution | None:  # noqa: ARG001 - feature builder shape
-    """The wetting contribution, or ``None`` without a ``[wetting]`` / ``[hysteresis]`` section."""
+@addon_operator(name=NAME)
+def build_wetting_addon(config: SimulationConfig) -> Hooks[WallParams] | None:
+    """The wetting hooks, or ``None`` without a ``[wetting]`` / ``[hysteresis]`` section."""
     if config.wetting_defaults is None:
         return None
     rho_mean, edge = _wall(config)
     post_step = build_measurement_hook(config) if config.hysteresis_config is None else _optimiser(config, edge)
-    return Contribution(
+    return Hooks(
         ghost_fill=wetting_ghost_fill(config),
         post_step=post_step,
         init_state=_init_state(config, rho_mean, edge),
