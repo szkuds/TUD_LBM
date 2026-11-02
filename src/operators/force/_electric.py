@@ -27,8 +27,8 @@ from src.registry import force_model
 if TYPE_CHECKING:
     from src import Lattice
     from src.config import SimulationConfig
-    from src.operators.protocols import DifferentialOperator
     from src.pipeline.state import State
+    from src.protocols import DifferentialOperator
 
 # ══════════════════════════════════════════════════════════════════════
 # Data types

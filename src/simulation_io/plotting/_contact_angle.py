@@ -23,6 +23,7 @@ the scatter-only rule for data-series plots.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from matplotlib.collections import LineCollection
+from src.protocols import PlotOperator
 from src.registry import plotting_operator
 from src.simulation_io.analysis.droplet_metrics import extract_rho_2d
 from src.simulation_io.analysis.interface_contour import interface_lines
@@ -33,7 +34,6 @@ from src.simulation_io.analysis.wetting_overlay import band_cell_segments
 from src.simulation_io.analysis.wetting_overlay import contact_angles
 from src.simulation_io.analysis.wetting_overlay import wall_bands
 from src.simulation_io.analysis.wetting_overlay import wetting_edge
-from src.simulation_io.plotting.base import PlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:

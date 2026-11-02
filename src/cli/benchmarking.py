@@ -39,10 +39,10 @@ from src.cli.display import BOLD_CYAN
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from src.addons.hooks import PostStepHook
     from src.config import SimulationConfig
     from src.pipeline.setup import SimulationSetup
     from src.pipeline.state.state import State
+    from src.protocols import PostStepHook
 
 #: Sub-directory of ``results_dir`` that JSON records are written to.  Never
 #: inside the repo — ``results_dir`` defaults to ``TUD_LBM_DATA_DIR``.

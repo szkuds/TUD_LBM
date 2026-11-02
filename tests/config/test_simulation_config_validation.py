@@ -225,6 +225,47 @@ def test_invalid_config_raises(kwargs, match):
 # ---------------------------------------------------------------------------
 
 
+class TestValidateEquilibrium:
+    """The equilibrium is named in the config; its source term is the pair it registered."""
+
+    @pytest.mark.parametrize(
+        ("kwargs", "expected"),
+        [
+            pytest.param({}, "standard_equilibrium", id="single_phase_default"),
+            pytest.param(
+                {"sim_type": "multiphase", "eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33}
+                | {"interface_width": 4},
+                "wb",
+                id="multiphase_default",
+            ),
+            pytest.param({"equilibrium": "wb"}, "wb", id="named"),
+        ],
+    )
+    def test_default_by_phase_or_named(self, kwargs: dict[str, Any], expected: str) -> None:
+        assert SimulationConfig(grid_shape=(8, 8), **kwargs).equilibrium == expected
+
+    def test_unregistered_equilibrium_raises(self) -> None:
+        with pytest.raises(ValueError, match="equilibrium must be one of"):
+            SimulationConfig(grid_shape=(8, 8), equilibrium="nonexistent")
+
+    @pytest.mark.parametrize(("equilibrium", "source"), [("standard_equilibrium", "standard_source"), ("wb", "wb")])
+    def test_each_equilibrium_declares_its_source_term(self, equilibrium: str, source: str) -> None:
+        from src.config.equilibrium import source_term_for
+
+        assert source_term_for(equilibrium) == source
+
+    def test_an_equilibrium_without_a_source_term_pair_raises(self) -> None:
+        from src.registry import register_operator
+        from src.registry import unregister_operator
+
+        register_operator("equilibrium", name="zz_unpaired")(lambda rho, u, lattice: rho)
+        try:
+            with pytest.raises(ValueError, match="registers no source_term pair"):
+                SimulationConfig(grid_shape=(8, 8), equilibrium="zz_unpaired")
+        finally:
+            unregister_operator("equilibrium", "zz_unpaired")
+
+
 class TestValidateForces:
     """Tests for _validate_forces: conflicting gravity force config."""
 

@@ -8,7 +8,7 @@ from src.registry import pressure_operator
 
 if TYPE_CHECKING:
     from src.config.multiphase_params import MultiphaseParams
-    from src.operators.protocols import EosOperator
+    from src.protocols import EosOperator
 
 
 def _cs_params(mp: MultiphaseParams) -> tuple[float, float, float, float]:

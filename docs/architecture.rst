@@ -19,7 +19,7 @@ Core design principles
 4. **Registry over factories.**  Operators self-register at import time, so
    no module has to import every implementation.
 5. **Protocols, not inheritance.**  Operators satisfy structural contracts
-   from :mod:`src.operators.protocols`.
+   from :mod:`src.protocols`.
 6. **scipy/numpy at setup time, JAX inside the loop.**  One-time computation
    happens before the JIT boundary; everything inside ``lax.scan`` is
    traceable.
@@ -130,8 +130,8 @@ component:
   Addons merge in name order and must be independent: each reads and writes
   only its own ``State.ext`` entry.  Adding one is adding a
   ``src/addons/_*.py`` file; ``build_setup`` changes only for a new kind of
-  slot.  ``sim_type`` selects the phase (macroscopic operator, equilibrium /
-  source pair), never an addon: the ``[wetting]``, ``[hysteresis]`` and
+  slot.  ``sim_type`` selects the phase (macroscopic operator, default
+  equilibrium), never an addon: the ``[wetting]``, ``[hysteresis]`` and
   ``[chemical_step]`` sections switch those on.
 
 .. note::

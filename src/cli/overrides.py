@@ -20,7 +20,7 @@ _T = TypeVar("_T")
 
 #: TOML section name -> the ``SimulationConfig`` field it flattens to (``""`` for
 #: sections merged straight into the top level). Mirrors the section handling in
-#: :meth:`src.config.adapter_base.ConfigAdapter._merge_sections`, so an override
+#: :func:`src.config.sections.merge_sections`, so an override
 #: path can be written with the same section names the config file uses.
 #: ``tests/cli/test_cli.py::TestSectionAliasMap`` pins the two together — the
 #: ``obstacle`` entry was missing here for exactly that reason.

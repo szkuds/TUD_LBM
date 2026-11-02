@@ -25,8 +25,8 @@ if TYPE_CHECKING:
     import numpy as np
     from matplotlib.artist import Artist
     from src.config import SimulationConfig
-    from .base import AnalysisPlot
-    from .base import PlotOperator
+    from src.protocols import AnalysisPlot
+    from src.protocols import PlotOperator
 
 _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
     1: (1, 1),

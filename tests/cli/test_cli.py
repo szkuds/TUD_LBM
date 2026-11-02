@@ -1866,14 +1866,14 @@ class TestOverrideFieldValidation:
 
 
 class TestSectionAliasMap:
-    """Pin the alias map to the sections ``_merge_sections`` actually flattens.
+    """Pin the alias map to the sections ``merge_sections`` actually flattens.
 
     The map is a hand-written mirror of that method; ``obstacle`` was missing
     from it, so ``--override obstacle.x=1`` built a top-level key no config
     field ever reads.
     """
 
-    #: The section names ``ConfigAdapter._merge_sections`` consumes.
+    #: The section names ``src.config.sections.merge_sections`` consumes.
     _MERGED_SECTIONS = (
         "simulation_type",
         "multiphase",

@@ -14,7 +14,8 @@ Usage::
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Any
-from src.config.adapter_base import ConfigAdapter
+from src.config.sections import merge_sections
+from src.protocols import ConfigAdapter
 
 if TYPE_CHECKING:
     from src.config.simulation_config import SimulationConfig
@@ -37,7 +38,7 @@ class DictAdapter(ConfigAdapter):
     def load_raw(self, source: dict[str, Any]) -> dict[str, Any]:
         """Return a flat config dict from *source*, handling both flat and nested shapes."""
         if isinstance(source.get("simulation_type"), dict):
-            return self._merge_sections(source)
+            return merge_sections(source)
         return dict(source)
 
     def save(self, config: SimulationConfig, path: str) -> None:

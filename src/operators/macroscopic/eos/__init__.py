@@ -29,7 +29,7 @@ from src.registry import get_operators
 
 if TYPE_CHECKING:
     from src.config.multiphase_params import MultiphaseParams
-    from src.operators.protocols import EosOperator
+    from src.protocols import EosOperator
 
 # Auto-discover EOS modules in this subpackage.
 auto_load_operators("src.operators.macroscopic.eos")
@@ -44,7 +44,7 @@ def build_eos_fn(eos: str, mp: MultiphaseParams) -> EosOperator:
             all EOS-specific scalars.
 
     Returns:
-        A bound :class:`~src.operators.protocols.EosOperator`
+        A bound :class:`~src.protocols.EosOperator`
         ``eos_fn(rho) -> mu_0``.
     """
     return get_operators("eos")[eos].target(mp)
@@ -63,7 +63,7 @@ def build_pressure_fn(mp: MultiphaseParams) -> EosOperator:
             EOS name and its scalars.
 
     Returns:
-        A bound :class:`~src.operators.protocols.EosOperator`
+        A bound :class:`~src.protocols.EosOperator`
         ``pressure_fn(rho) -> p_0``. The multiphase macroscopic operator
         evaluates it every step and returns it as the pressure field.
 

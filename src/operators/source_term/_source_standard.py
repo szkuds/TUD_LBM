@@ -26,7 +26,7 @@ from src.registry import source_term_operator
 
 if TYPE_CHECKING:
     from src.lattice.lattice import Lattice
-    from src.operators.protocols import DifferentialOperator
+    from src.protocols import DifferentialOperator
 
 
 @source_term_operator(name="standard_source")

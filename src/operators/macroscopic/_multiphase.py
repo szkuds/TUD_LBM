@@ -18,44 +18,51 @@ from src.registry import macroscopic_operator
 if TYPE_CHECKING:
     from src.config.multiphase_params import MultiphaseParams
     from src.lattice.lattice import Lattice
-    from src.operators.protocols import DifferentialOperator
-    from src.operators.protocols import EosOperator
+    from src.protocols import DifferentialOperator
 
 
-def _compute_macroscopic_multiphase_impl(
+@macroscopic_operator(name="multiphase")
+def compute_macroscopic_multiphase(
     f: jnp.ndarray,
     lattice: Lattice,
-    mp: MultiphaseParams,
-    eos_fn: EosOperator,
-    pressure_fn: EosOperator,
-    force_ext: jnp.ndarray | None = None,
+    force: jnp.ndarray | None = None,
     *,
     gradient_standard: DifferentialOperator,
     laplacian_density: DifferentialOperator,
+    mp: MultiphaseParams,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Generic multiphase macroscopic computation shared between EOS models.
+    """Compute ``(rho, u, force, pressure)`` using the EOS selected by ``mp.eos``.
 
-    *eos_fn* and *pressure_fn* are the chemical potential and bulk pressure of
-    the same EOS, so the force and the reported pressure share one free energy.
+    *mp* is not part of :class:`~src.protocols.MacroscopicOperator`;
+    :func:`~src.operators.macroscopic.build_multiphase_macroscopic_fn` binds it.
+    The chemical potential and the bulk pressure come from the same EOS, so the
+    force and the reported pressure share one free energy.
+
+    Args:
+        f: Populations, shape ``(nx, ny, nz, q, 1)``.
+        lattice: :class:`~src.lattice.lattice.Lattice`.
+        force: External force, shape ``(nx, ny, nz, 1, d)``, or ``None``.
+        gradient_standard: Gradient for the chemical potential.
+        laplacian_density: Laplacian of the density.
+        mp: The run's multiphase parameters.
     """
+    eos_fn = build_eos_fn(mp.eos, mp)
+    pressure_fn = build_pressure_fn(mp)
+
     # Density - zeroth moment
     rho = jnp.sum(f, axis=-2, keepdims=True)
 
     # Momentum - first moment
     u = jnp.sum(f * lattice.c, axis=-2, keepdims=True) / rho
 
-    # Bulk chemical potential from EOS
-    mu_0 = eos_fn(rho)
-
-    # Total chemical potential with Laplacian correction
-    mu = mu_0 - mp.kappa * laplacian_density(rho)
+    # Total chemical potential: bulk EOS with the Laplacian correction
+    mu = eos_fn(rho) - mp.kappa * laplacian_density(rho)
 
     # Interparticle force from chemical potential gradient
-    grad_mu = gradient_standard(mu)
-    force_int = -rho * grad_mu
+    force_int = -rho * gradient_standard(mu)
 
     # Total force
-    force_total = force_int if force_ext is None else force_int + force_ext
+    force_total = force_int if force is None else force_int + force
 
     # Force-corrected velocity for equilibrium
     u_eq = u + force_total / (2.0 * rho)
@@ -64,26 +71,3 @@ def _compute_macroscopic_multiphase_impl(
     pressure = pressure_fn(rho)
 
     return rho, u_eq, force_total, pressure
-
-
-@macroscopic_operator(name="multiphase")
-def compute_macroscopic_multiphase(
-    f: jnp.ndarray,
-    lattice: Lattice,
-    mp: MultiphaseParams,
-    force_ext: jnp.ndarray | None = None,
-    *,
-    gradient_standard: DifferentialOperator,
-    laplacian_density: DifferentialOperator,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Compute ``(rho, u, force, pressure)`` using the EOS selected by ``mp.eos``."""
-    return _compute_macroscopic_multiphase_impl(
-        f,
-        lattice,
-        mp,
-        build_eos_fn(mp.eos, mp),
-        build_pressure_fn(mp),
-        force_ext,
-        gradient_standard=gradient_standard,
-        laplacian_density=laplacian_density,
-    )

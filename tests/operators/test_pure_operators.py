@@ -414,7 +414,7 @@ class TestComputeMacroscopicMultiphase:
         rho, u_eq, force_total, _ = compute_macroscopic_multiphase(
             f,
             lattice,
-            mp,
+            mp=mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_field,
         )
@@ -436,7 +436,7 @@ class TestComputeMacroscopicMultiphase:
         _, _, force_total, _ = compute_macroscopic_multiphase(
             f,
             lattice,
-            mp,
+            mp=mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_field,
         )
@@ -474,8 +474,8 @@ class TestComputeMacroscopicMultiphase:
         _rho, _u_eq, force_total, _ = compute_macroscopic_multiphase(
             f,
             lattice,
-            mp,
-            force_ext=force_ext,
+            mp=mp,
+            force=force_ext,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_field,
         )

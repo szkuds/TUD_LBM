@@ -30,12 +30,12 @@ from src.operators.wetting._params import WettingState
 from src.registry import addon_operator
 
 if TYPE_CHECKING:
-    from src.addons.hooks import GhostFill
-    from src.addons.hooks import InitStateHook
-    from src.addons.hooks import PostStepHook
     from src.config.simulation_config import SimulationConfig
     from src.pipeline.setup import SimulationSetup
     from src.pipeline.state.state import State
+    from src.protocols import GhostFill
+    from src.protocols import InitStateHook
+    from src.protocols import PostStepHook
 
 #: This addon's ``State.ext`` key, and its registered name.
 NAME = "wetting"

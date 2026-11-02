@@ -44,16 +44,15 @@ if TYPE_CHECKING:
     from src.addons.hooks import Hooks
     from src.config.multiphase_params import MultiphaseParams
     from src.config.simulation_config import SimulationConfig
-    from src.operators.protocols import BoundaryOperator
-    from src.operators.protocols import CollisionOperator
-    from src.operators.protocols import EquilibriumOperator
-    from src.operators.protocols import ExtDifferentialOperator
-    from src.operators.protocols import ForceOperator
-    from src.operators.protocols import InitialPopulationOperator
-    from src.operators.protocols import MacroscopicOperator
-    from src.operators.protocols import ObstacleOperator
-    from src.operators.protocols import SourceTermOperator
-    from src.operators.protocols import StreamingOperator
+    from src.protocols import BoundaryOperator
+    from src.protocols import CollisionOperator
+    from src.protocols import EquilibriumOperator
+    from src.protocols import ExtDifferentialOperator
+    from src.protocols import ForceOperator
+    from src.protocols import InitialPopulationOperator
+    from src.protocols import MacroscopicOperator
+    from src.protocols import SourceTermOperator
+    from src.protocols import StreamingOperator
 
 
 class SimulationSetup(NamedTuple):
@@ -84,7 +83,7 @@ class SimulationSetup(NamedTuple):
         k_diag: MRT relaxation rates (``None`` for BGK); already bound into
             ``collision_fn``.
         multiphase_params: ``None`` for single-phase runs.
-        obstacle_mask / obstacle_fn: ``None`` without an obstacle.
+        obstacle_mask: ``None`` without an obstacle; its bounce-back heads ``bc_fn``.
     """
 
     config: SimulationConfig
@@ -107,7 +106,6 @@ class SimulationSetup(NamedTuple):
     k_diag: tuple[float, ...] | None = None
     multiphase_params: MultiphaseParams | None = None
     obstacle_mask: jnp.ndarray | None = None
-    obstacle_fn: ObstacleOperator | None = None
 
 
 def _build_initial_f_fn(
@@ -149,13 +147,14 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     # Function-local: importing the operator and addon packages at module level
     # closes an import cycle back into src.pipeline.
     from src.addons import build_addons
+    from src.config.equilibrium import source_term_for
     from src.operators.boundary import build_bc
     from src.operators.collision import build_collision_fn
     from src.operators.differential import build_differential
     from src.operators.equilibrium import build_equilibrium_fn
     from src.operators.force import build_forces
     from src.operators.macroscopic import build_macroscopic_fn
-    from src.operators.obstacle import build_obstacle_fn
+    from src.operators.macroscopic import build_multiphase_macroscopic_fn
     from src.operators.source_term import build_source_fn
     from src.operators.streaming import build_streaming_fn
 
@@ -174,20 +173,18 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     # 4. Forces: the configured *_force sections.
     forces = build_forces(config, tuple(config.grid_shape), lattice)
 
-    # 5. Plain operators. The equilibrium and source term are a pair chosen by phase:
-    #    single-phase keeps the pressure cs^2*rho in its equilibrium, multiphase ("wb")
-    #    takes it from the force -rho*grad(mu).
+    # 5. Plain operators. The equilibrium is the configured one and the source term
+    #    the pair it registered (src.config.equilibrium); the macroscopic operator
+    #    is the multiphase one exactly when the run has multiphase parameters.
     collision_fn = build_collision_fn(config.collision_scheme)
     if config.k_diag is not None:
         # A keyword the protocol lacks is bound, not typed: the configured rates
         # (shear entries already coupled to the relaxation time) reach collide_mrt.
         collision_fn = functools.partial(collision_fn, k_diag=jnp.asarray(config.k_diag))
-    if config.is_multiphase:
-        equilibrium_fn, source_fn = build_equilibrium_fn("wb"), build_source_fn("wb")
-        macroscopic_fn = build_macroscopic_fn("multiphase")
-    else:
-        equilibrium_fn, source_fn = build_equilibrium_fn("standard_equilibrium"), build_source_fn("standard_source")
-        macroscopic_fn = build_macroscopic_fn("standard")
+    assert config.equilibrium is not None  # noqa: S101 - SimulationConfig._apply_defaults fills it in
+    equilibrium_fn = build_equilibrium_fn(config.equilibrium)
+    source_fn = build_source_fn(source_term_for(config.equilibrium))
+    macroscopic_fn = build_macroscopic_fn() if mp_params is None else build_multiphase_macroscopic_fn(mp_params)
     obstacle_mask = config.obstacle_mask
 
     # 6. Step: the setup the kernel and step() close over.
@@ -204,7 +201,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         source_fn=source_fn,
         macroscopic_fn=macroscopic_fn,
         streaming_fn=build_streaming_fn(config.periodic_axes),
-        bc_fn=build_bc(config.boundary_edges, lattice),
+        bc_fn=build_bc(config.boundary_edges, lattice, obstacle_mask),
         gradient_standard=gradient_standard,
         gradient_density=gradient_density,
         laplacian_density=laplacian_density,
@@ -212,5 +209,4 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         k_diag=config.k_diag,
         multiphase_params=mp_params,
         obstacle_mask=obstacle_mask,
-        obstacle_fn=build_obstacle_fn(obstacle_mask, lattice),
     )

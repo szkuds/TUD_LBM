@@ -18,7 +18,7 @@ from src.operators._loader import auto_load_operators
 from src.registry import get_operators
 
 if TYPE_CHECKING:
-    from src.operators.protocols import InitialiserOperator
+    from src.protocols import InitialiserOperator
 
 # Auto-discover and import private operator modules for registry registration.
 auto_load_operators("src.operators.initialise")

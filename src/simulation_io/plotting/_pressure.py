@@ -27,15 +27,15 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 import numpy as np
+from src.protocols import PlotOperator
 from src.registry import plotting_operator
-from src.simulation_io.plotting.base import PlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
     import matplotlib.axes
     from src.config.multiphase_params import MultiphaseParams
-    from src.operators.protocols import DifferentialOperator
-    from src.operators.protocols import EosOperator
+    from src.protocols import DifferentialOperator
+    from src.protocols import EosOperator
 
 
 class _BasePressureOperator(PlotOperator):

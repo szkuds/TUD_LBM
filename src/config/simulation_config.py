@@ -34,6 +34,8 @@ from src.config.boundary_edges import periodic_axes
 from src.config.chemical_step import ChemicalStepWall
 from src.config.chemical_step import build_chemical_step_wall
 from src.config.config_overview import BASE_RESULTS_DIR
+from src.config.equilibrium import DEFAULT_EQUILIBRIUM
+from src.config.equilibrium import validate_equilibrium
 from src.config.init_field import load_init_wetting
 from src.config.init_field import measure_init_phase_densities
 from src.config.multiphase_params import MultiphaseParams
@@ -205,6 +207,9 @@ class SimulationConfig:
     collision_scheme: str = array_field(default="bgk")
     k_diag: tuple[float, ...] | None = field(default=None)
 
+    # ── Equilibrium (its source term is the pair it registered) ──
+    equilibrium: str | None = None
+
     # ── Boundary conditions (ONLY topology: which BC on which face) ──
     bc_config: dict[str, Any] | None = field(
         default=None,
@@ -320,6 +325,9 @@ class SimulationConfig:
 
     def _apply_defaults(self) -> None:
         self._apply_force_defaults()
+        if self.equilibrium is None:
+            phase = "multiphase" if self.is_multiphase else "single_phase"
+            object.__setattr__(self, "equilibrium", DEFAULT_EQUILIBRIUM[phase])
         if self.save_interval == 0:
             object.__setattr__(self, "save_interval", self.nt // 10)
         if self.bc_config is None:
@@ -549,6 +557,8 @@ class SimulationConfig:
         if self.collision_scheme == "mrt" and self.k_diag is None:
             msg = "k_diag must be provided when using MRT collision scheme"
             raise ValueError(msg)
+        assert self.equilibrium is not None  # noqa: S101 - _apply_defaults fills it in
+        validate_equilibrium(self.equilibrium)
 
     def _validate_init(self) -> None:
         """Validate initialisation parameters."""

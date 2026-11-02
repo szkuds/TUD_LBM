@@ -1,44 +1,60 @@
-"""Protocol (structural) types for LBM operators.
+"""Every interface in the codebase: operator protocols, addon hooks and the base classes.
 
-These protocols define the contract that each operator category must fulfil.
-They enable loose coupling: code depending on `CollisionOperator` can work
-with any function/class implementing that protocol, without importing
-the specific implementation.
+One file holds the contracts so a reader finds every extension point in one
+place:
 
-Design principle: Operator protocols are intentionally minimal — they
-capture the bare essentials (signatures, docstrings) without dictating
-implementation details like decorators or registry membership.
+* **Operator protocols** — the structural type each registry kind's
+  implementations satisfy (``CollisionOperator``, ``BoundaryCondition``, ...).
+* **Addon hooks** — the slot types of :class:`~src.addons.hooks.Hooks`.
+* **Analysis** — :data:`DimensionlessNumberOperator`.
+* **Wetting** — :class:`OptaxLike`, the part of an ``optax`` optimiser the
+  hysteresis loop uses.
+* **Base classes** — the ABCs subclassed by plotting operators, config
+  adapters and output writers, shared implementation included.
+
+Import constraint: at runtime this module imports only the standard library,
+``jax`` and ``numpy``. Everything else (matplotlib, ``SimulationConfig``,
+``State``, ...) is imported under ``TYPE_CHECKING`` or inside a method, so
+importing the core never pulls in plotting and no import cycle forms here.
 
 Usage::
 
-    from operators.protocols import CollisionOperator
-    from registry import get_operators
+    from src.protocols import CollisionOperator
+    from src.registry import get_operators
 
-    collision_ops = get_operators("collision_models")
-    bgk_fn = collision_ops["bgk"].target
-
-    # Static type-checkers and isinstance() will accept bgk_fn
-    # as a CollisionOperator
-    def my_collision_logic(collision_op: CollisionOperator):
-        ...
+    def build_collision_fn(scheme: str) -> CollisionOperator:
+        return get_operators("collision_models")[scheme].target
 """
 
 from __future__ import annotations
+from abc import ABC
+from abc import abstractmethod
+from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
+from typing import ClassVar
 from typing import Protocol
 from typing import Self
+from typing import TypeVar
 from typing import runtime_checkable
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Mapping
-    from pathlib import Path
     import jax.numpy as jnp
     import matplotlib.axes
+    import matplotlib.figure
     import numpy as np
     from src.config.simulation_config import SimulationConfig
     from src.lattice.lattice import Lattice
+    from src.operators.wetting._params import WettingParams
+    from src.pipeline.setup import SimulationSetup
     from src.pipeline.state import State
+    from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessInputs
+
+    #: An obstacle shape: ``(params, grid_shape) -> mask``, a boolean ``(nx, ny, nz, 1, 1)``
+    #: solid-cell array, built once at setup time in NumPy.
+    ObstacleMaskBuilder = Callable[[dict[str, Any], tuple[int, int, int]], np.ndarray]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -158,29 +174,33 @@ class MacroscopicOperator(Protocol):
       single-phase uses the lattice ideal gas ``cs^2 * rho``. Either way a
       hydrostatic stratification shows up in it.
 
-    Operator-specific extras (an external force, multiphase parameters, bound
-    differential operators) follow the two shared positional arguments.
+    Both operators share one signature. The differential operators come with
+    the addon substates already bound; a single-phase operator ignores them,
+    and a multiphase one has its parameters bound at build time.
 
     Signature::
 
-        def macroscopic_op(f, lattice, /, ...) -> (rho, u, force, pressure)
+        def macroscopic_op(f, lattice, force, *, gradient_standard, laplacian_density)
+            -> (rho, u, force, pressure)
     """
 
     def __call__(
         self,
         f: jnp.ndarray,
         lattice: Lattice,
-        /,
-        *args: Any,
-        **kwargs: Any,
+        force: jnp.ndarray | None,
+        *,
+        gradient_standard: DifferentialOperator,
+        laplacian_density: DifferentialOperator,
     ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray]:
         """Compute the macroscopic fields from the populations.
 
         Args:
             f: Populations, shape ``(nx, ny, nz, q, 1)``.
             lattice: :class:`~src.lattice.lattice.Lattice`.
-            *args: Operator-specific positional arguments.
-            **kwargs: Operator-specific keyword arguments.
+            force: External force, shape ``(nx, ny, nz, 1, d)``, or ``None``.
+            gradient_standard: Gradient for the chemical potential, ``grad(mu)``.
+            laplacian_density: Laplacian of the density, ``lap(rho)``.
 
         Returns:
             ``(rho, u, force, pressure)``; see the class docstring.
@@ -243,35 +263,6 @@ class BoundaryOperator(Protocol):
 
         Returns:
             Populations with boundary conditions applied.
-        """
-        ...
-
-
-class ObstacleOperator(Protocol):
-    """Obstacle operator — applies bounce-back at interior solid cells.
-
-    Unlike :class:`BoundaryOperator`, which applies whole-edge BC rules,
-    this operator reverses populations at an arbitrary per-cell mask of
-    solid (obstacle) nodes. Applied post-streaming, pre-edge-BC.
-
-    Signature::
-
-        def apply_obstacle(f_stream, f_col) -> f_stream
-    """
-
-    def __call__(
-        self,
-        f_stream: jnp.ndarray,
-        f_col: jnp.ndarray,
-    ) -> jnp.ndarray:
-        """Apply bounce-back at masked interior solid cells.
-
-        Args:
-            f_stream: Post-streaming populations.
-            f_col: Post-collision populations.
-
-        Returns:
-            Populations with obstacle bounce-back applied.
         """
         ...
 
@@ -480,148 +471,258 @@ class EosOperator(Protocol):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# IO / Persistence Ports
+# Addon hooks
+# ══════════════════════════════════════════════════════════════════════════════
+
+#: An addon's substate, ``State.ext[name]``.
+S = TypeVar("S")
+
+if TYPE_CHECKING:
+    #: Rewrites the ghost layer of a padded scalar field from the addon's own substate.
+    GhostFill = Callable[[jnp.ndarray, S], jnp.ndarray]
+    #: The addons' fills composed: reads each substate off ``ext`` by name.
+    ExtGhostFill = Callable[[jnp.ndarray, Mapping[str, Any]], jnp.ndarray]
+    #: Runs after the kernel: ``(setup, state before the step, state after it) -> state``.
+    PostStepHook = Callable[[SimulationSetup, State, State], State]
+    #: Builds the addon's initial substate, ``State.ext[name]``.
+    InitStateHook = Callable[[SimulationSetup], S]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Analysis
+# ══════════════════════════════════════════════════════════════════════════════
+
+if TYPE_CHECKING:
+    #: A registered ``dimensionless`` operator: pure, total, and ``None`` rather
+    #: than raising when this run cannot supply the number.
+    DimensionlessNumberOperator = Callable[[DimensionlessInputs], float | None]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Wetting
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-class SimulationRepository(Protocol):
-    """Persistence port: writes simulation state and metadata to disk.
+class OptaxLike(Protocol):
+    """Minimal structural type for optax-compatible optimisers."""
 
-    Abstracts the storage mechanism (HDF5, NumPy .npz, Parquet, etc.).
-
-    Typical operations:
-    - Save trajectory snapshots at specified intervals
-    - Write metadata (config, simulation parameters)
-    - Recover state for restart
-
-    Signature::
-
-        class MyRepository(SimulationRepository):
-            def save_snapshot(self, state, time_step, field_names):
-                # write to disk
-            def load_snapshot(self, time_step):
-                # read from disk and return State object
-    """
-
-    def save_snapshot(
-        self,
-        state: State,
-        time_step: int,
-        field_names: tuple[str, ...] | None = None,
-    ) -> None:
-        """Persist a simulation state snapshot.
-
-        Args:
-            state: Current :class:`~state.state.State`.
-            time_step: Current iteration number (for naming/indexing).
-            field_names: Which fields to save (e.g., ``("rho", "u")``).
-                ``None`` means save all fields.
-        """
+    def init(self, params: WettingParams) -> object:
+        """Initial optimiser state for *params*."""
         ...
 
-    def load_snapshot(self, time_step: int) -> State:
-        """Load a previously saved snapshot.
-
-        Args:
-            time_step: Iteration number of the snapshot to retrieve.
-
-        Returns:
-            Reconstructed :class:`~state.state.State`.
-        """
+    def update(
+        self, updates: WettingParams, state: object, params: WettingParams | None = ...
+    ) -> tuple[WettingParams, object]:
+        """Transformed updates and the next optimiser state."""
         ...
 
 
-class ConfigReader(Protocol):
-    """Parsing port: reads and validates configuration from external format.
-
-    Abstracts the input format (TOML, JSON, YAML, dict, etc.).
-
-    Typical operations:
-    - Parse a config file
-    - Validate against schema
-    - Return a :class:`~config.simulation_config.SimulationConfig`
-
-    Signature::
-
-        class TomlConfigReader(ConfigReader):
-            def load(self, path):
-                # read TOML file and return SimulationConfig
-    """
-
-    def load(self, source: str) -> Any:  # SimulationConfig
-        """Read and parse a configuration.
-
-        Args:
-            source: Configuration source (filepath, dict, URL, etc.).
-
-        Returns:
-            A validated :class:`~config.simulation_config.SimulationConfig`.
-        """
-        ...
+# ══════════════════════════════════════════════════════════════════════════════
+# Base classes
+# ══════════════════════════════════════════════════════════════════════════════
 
 
-class PlotOperator(Protocol):
-    """Structural contract for Matplotlib plot operators.
-
-    Plot operators render simulation snapshots onto matplotlib axes,
-    enabling flexible visualisation strategies for different fields
-    and use cases.
-
-    Signature::
-
-        class MyPlotter(PlotOperatorProtocol):
-            def __call__(self, ax, data, timestep):
-                # render to axes
-    """
+class PlotOperator(ABC):
+    """Base class for a single-panel plotting operator."""
 
     name: str
-    config: SimulationConfig
 
-    def __init__(
-        self,
-        config: SimulationConfig,
-        data_dir: str | Path | None = None,
-    ) -> None:
-        """Initialise the plot operator.
+    #: Excluded from the "every registered plotting operator" default that
+    #: :class:`~src.simulation_io.plotting.figure_builder.FigureBuilder` falls
+    #: back on when ``plot_fields`` is unset. An opt-in operator only renders
+    #: when it is named explicitly.
+    opt_in: bool = False
+
+    #: May be named in ``overlay_fields``: :meth:`draw_overlay` then draws this
+    #: operator on top of every other field panel. Overlays are a capability of
+    #: a plotting operator, not a separate registry kind.
+    supports_overlay: bool = False
+
+    #: Only drawn as an overlay: never a standalone panel, and hidden from field
+    #: selection. Implies :attr:`supports_overlay`.
+    overlay_only: bool = False
+
+    #: Wording for the interactive overlay question; falls back to :attr:`name`.
+    overlay_label: str = ""
+
+    #: Whether overlays are drawn onto this operator's own panel. Independently
+    #: of this flag, an overlay is never drawn onto its own standalone panel, so
+    #: an overlay-capable panel (``interface``) still carries the *other*
+    #: overlays without drawing itself twice.
+    accepts_overlays: bool = True
+
+    def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:
+        """Initialise the plot operator with config and optional data directory.
 
         Args:
-            config: :class:`~config.simulation_config.SimulationConfig`.
-            data_dir: Optional directory path for data-dependent visualisations.
+            config: Simulation configuration object.
+            data_dir: Optional path to data directory for loading snapshots.
         """
-        ...
+        self.config = config
+        self.data_dir = Path(data_dir) if data_dir is not None else None
 
-    def is_available(self, data: dict[str, np.ndarray]) -> bool:
-        """Return whether this operator can render the provided snapshot.
-
-        Args:
-            data: Snapshot dictionary with field names as keys (e.g., ``"rho"``, ``"u"``).
-
-        Returns:
-            ``True`` if all required fields are present; ``False`` otherwise.
-        """
-        ...
-
+    @abstractmethod
     def __call__(
         self,
         ax: matplotlib.axes.Axes,
         data: dict[str, np.ndarray],
         timestep: int,
     ) -> None:
-        """Render one panel onto the provided axes.
+        """Draw this operator on the provided axes."""
+
+    @classmethod
+    def overlay_prompt_default(cls, config: SimulationConfig) -> bool | None:  # noqa: ARG003
+        """Default answer to the interactive overlay question for *config*.
+
+        ``None`` means the question is not offered at all, because the overlay
+        has nothing to show for this run. Only consulted when
+        :attr:`supports_overlay` is set.
+        """
+        return True
+
+    def draw_overlay(
+        self,
+        ax: matplotlib.axes.Axes,
+        data: dict[str, np.ndarray],
+        timestep: int,
+    ) -> None:
+        """Draw this operator on top of another panel's axes.
+
+        Only called when :attr:`supports_overlay` is set. Must add artists only —
+        no colorbar, title or axis-limit change — so the host panel is unchanged.
+        """
+        msg = f"Plot operator {self.name!r} does not support being drawn as an overlay."
+        raise NotImplementedError(msg)
+
+    def is_available(self, data: dict[str, np.ndarray]) -> bool:  # noqa: ARG002
+        """Whether this operator has enough data to render."""
+        return True
+
+
+class AnalysisPlot(ABC):
+    """Base class for analysis plots computed from saved snapshot history."""
+
+    name: str
+    is_multi_panel: bool = False
+
+    def __init__(self, config: SimulationConfig | None = None) -> None:
+        """Initialise with optional simulation config.
 
         Args:
-            ax: Matplotlib axes object to draw onto.
-            data: Snapshot dictionary with computed fields.
-            timestep: Current iteration number (for annotations).
+            config: Simulation configuration object. Required by config-aware
+                operators (for example, capillary-number or normalised
+                contact-line operators). Operators that do not need config can
+                ignore it.
         """
+        self.config = config
+        self._primed_xlim: tuple[float, float] | None = None
+        self._primed_ylims: list[tuple[float, float]] | None = None
+
+    @abstractmethod
+    def compute(self, files: list[Path]) -> dict[str, np.ndarray]:
+        """Compute time-series arrays from snapshot files."""
+
+    @abstractmethod
+    def render(self, ax: matplotlib.axes.Axes, precomputed: dict[str, np.ndarray]) -> None:
+        """Render the full analysis plot from precomputed arrays."""
+
+    def render_figure(self, files: list[Path]) -> matplotlib.figure.Figure:
+        """Build and return a complete standalone figure.
+
+        Only called when ``is_multi_panel`` is True; overrides the
+        compute()/render(ax) flow used by single-panel analysis plots.
+        """
+        raise NotImplementedError
+
+    def prime(self, files: list[Path]) -> None:
+        """Cache axis limits from the full dataset so animation frames use fixed axes."""
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+        try:
+            self.render(ax, self.compute(files))
+            self._primed_xlim = ax.get_xlim()
+            self._primed_ylims = [a.get_ylim() for a in fig.axes]
+        finally:
+            plt.close(fig)
+
+    def update(self, ax: matplotlib.axes.Axes, files: list[Path]) -> None:
+        """Render a prefix of snapshot files with fixed (primed) axis limits."""
+        self.render(ax, self.compute(files))
+        if self._primed_xlim is not None:
+            ax.set_xlim(self._primed_xlim)
+        if self._primed_ylims:
+            ax.set_ylim(self._primed_ylims[0])
+            if len(self._primed_ylims) > 1:
+                # Apply twin-axis y-limits (e.g. dual-axis Ca/θ plots use twinx())
+                siblings = ax.get_shared_x_axes().get_siblings(ax)
+                twins = [a for a in siblings if a is not ax]
+                for i, twin in enumerate(twins, start=1):
+                    if i < len(self._primed_ylims):
+                        twin.set_ylim(self._primed_ylims[i])
+
+
+class OutputWriter(ABC):
+    """Abstract base class for output writer implementations."""
+
+    registry: ClassVar[dict[str, type[OutputWriter]]] = {}
+    data_dir: str
+
+    def __init_subclass__(cls, **kwargs: dict) -> None:
+        """Register OutputWriter subclasses in the registry.
+
+        Args:
+            **kwargs: Keyword arguments passed to parent class.
+        """
+        super().__init_subclass__(**kwargs)
+
+        # Skip base class itself
+        if cls is OutputWriter:
+            return
+        key = cls.__name__.lower()
+        # Prevent duplicate names
+        if key in OutputWriter.registry:
+            msg = f"Output writer '{key}' already registered."
+            raise ValueError(msg)
+
+        OutputWriter.registry[key] = cls
+
+    @abstractmethod
+    def save_data_step(self, iteration: int, data: dict[str, np.ndarray]) -> None:
+        """Save output data for a specific iteration."""
+
+
+class ConfigAdapter(ABC):
+    """Converts a config source into a SimulationConfig and back.
+
+    A subclass reads its format into the nested section layout and writes it
+    back; the mapping between that layout and the config fields belongs to the
+    config package (:mod:`src.config.sections`).
+    """
+
+    @abstractmethod
+    def load_raw(self, source: Any) -> dict[str, Any]:
+        """Parse *source* and return a flat config dict without instantiating SimulationConfig."""
         ...
+
+    @abstractmethod
+    def save(self, config: SimulationConfig, path: str) -> None:
+        """Save a :class:`SimulationConfig` to *path*."""
+        ...
+
+    def load(self, source: Any) -> SimulationConfig:
+        """Parse *source* and return a validated :class:`SimulationConfig`."""
+        from src.config.sections import config_from_flat
+
+        return config_from_flat(self.load_raw(source))
 
 
 __all__ = [
-    # Core operators
+    "AnalysisPlot",
+    "BoundaryCondition",
     "BoundaryOperator",
     "CollisionOperator",
-    "ConfigReader",
+    "ConfigAdapter",
     "DifferentialOperator",
     "EosOperator",
     "EquilibriumOperator",
@@ -630,8 +731,10 @@ __all__ = [
     "InitialPopulationOperator",
     "InitialiserOperator",
     "MacroscopicOperator",
+    "OptaxLike",
+    "OutputWriter",
     "PlotOperator",
-    "SimulationRepository",
+    "S",
     "SourceTermOperator",
     "StreamingOperator",
 ]

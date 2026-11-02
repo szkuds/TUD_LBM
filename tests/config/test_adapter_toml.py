@@ -10,10 +10,11 @@ Tests validate that:
 import textwrap
 from pathlib import Path
 import pytest
-from src.config.adapter_base import ConfigAdapter
 from src.config.adapter_base import get_adapter
 from src.config.adapter_toml import TomlAdapter
+from src.config.sections import merge_sections
 from src.config.simulation_config import SimulationConfig
+from src.protocols import ConfigAdapter
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -483,12 +484,13 @@ class TestTomlAdapterSave:
             adapter.save(config, "/tmp/ignored.toml")
 
 
-# ── _validate_and_process_forces: TypeError branch ───────────────────
+# ── force sections: TypeError branch ─────────────────────────────────
 
 
-class TestValidateAndProcessForces:
-    """Tests for _validate_and_process_forces static helper."""
+class TestForceSections:
+    """A ``[*_force]`` entry must be a table."""
 
     def test_non_dict_force_value_raises_type_error(self):
+        raw = {"simulation_type": {"grid_shape": [8, 8]}, "gravity_force": "not_a_dict"}
         with pytest.raises(TypeError, match="must be a table"):
-            TomlAdapter._process_forces({"gravity_force": "not_a_dict"}, {})
+            merge_sections(raw)

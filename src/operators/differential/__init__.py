@@ -25,9 +25,9 @@ from src.operators.differential._gradient import build_gradient
 from src.operators.differential._laplacian import build_laplacian
 
 if TYPE_CHECKING:
-    from src.addons.hooks import ExtGhostFill
     from src.lattice.lattice import Lattice
-    from src.operators.protocols import ExtDifferentialOperator
+    from src.protocols import ExtDifferentialOperator
+    from src.protocols import ExtGhostFill
 
 
 def build_differential(

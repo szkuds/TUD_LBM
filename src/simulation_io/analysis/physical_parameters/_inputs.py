@@ -10,11 +10,11 @@ next to the resolvers it composes.
 """
 
 from __future__ import annotations
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 from typing import NamedTuple
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     import numpy as np
 
 
@@ -53,8 +53,3 @@ class DimensionlessInputs(NamedTuple):
     angle_deg: float | None
     domain: tuple[float, float] | None = None
     pressure: Callable[[np.ndarray], np.ndarray] | None = None
-
-
-#: A registered ``dimensionless`` operator: pure, total, and ``None`` rather
-#: than raising when this run cannot supply the number.
-DimensionlessNumberOperator = Callable[[DimensionlessInputs], float | None]

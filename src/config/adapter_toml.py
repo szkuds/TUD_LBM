@@ -23,7 +23,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Any as _Any
-from src.config.adapter_base import ConfigAdapter
+from src.config.sections import build_sections
+from src.config.sections import merge_sections
+from src.protocols import ConfigAdapter
 
 if TYPE_CHECKING:
     from src.config.simulation_config import SimulationConfig
@@ -44,13 +46,13 @@ class TomlAdapter(ConfigAdapter):
             raise FileNotFoundError(msg)
         with path_obj.open("rb") as fh:
             raw = tomllib.load(fh)
-        return self._merge_sections(raw)
+        return merge_sections(raw)
 
     def save(self, config: SimulationConfig, path: str) -> None:
         """Serialise *config* to a ``.toml`` file at *path*.
 
         Delegates the field → section bucketing to
-        :meth:`~ConfigAdapter.build_sections` (shared by all adapters)
+        :func:`~src.config.sections.build_sections` (shared by all adapters)
         and writes the result with ``tomli_w``.
 
         Args:
@@ -68,7 +70,7 @@ class TomlAdapter(ConfigAdapter):
         path_obj: Path = Path(path).expanduser()
         path_obj.parent.mkdir(parents=True, exist_ok=True)
 
-        doc = self.build_sections(config)
+        doc = build_sections(config)
 
         with path_obj.open("wb") as fh:
             tomli_w.dump(doc, fh)

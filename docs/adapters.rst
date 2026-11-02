@@ -11,7 +11,7 @@ Configuration input
 -------------------
 
 All input adapters subclass
-:class:`~src.config.adapter_base.ConfigAdapter` and implement two methods:
+:class:`~src.protocols.ConfigAdapter` and implement two methods:
 
 ``load_raw(source) -> dict``
     Parse the source into a flat kwargs dict, without instantiating anything.
@@ -69,7 +69,7 @@ to write.
 Section mapping
 ~~~~~~~~~~~~~~~
 
-``_merge_sections`` flattens the nested representation onto config fields.
+:func:`~src.config.sections.merge_sections` flattens the nested representation onto config fields.
 The mapping is:
 
 =========================  ===============================================
@@ -103,7 +103,7 @@ Rules worth knowing:
   carried alongside a run.
 
 The reverse direction is driven by the same metadata.  Every field carries a
-``CONFIG_SECTION`` entry, and ``build_sections()`` buckets fields back into
+``CONFIG_SECTION`` entry, and :func:`~src.config.sections.build_sections` buckets fields back into
 sections so that a saved config round-trips to the shape it was loaded from.
 
 Defaults applied on construction
@@ -257,7 +257,7 @@ Adding a format
 ---------------
 
 **Input**: subclass ``ConfigAdapter``, implement ``load_raw`` and ``save``,
-and register the extension in ``_ADAPTER_MAP``.  Reuse ``_merge_sections``
+and register the extension in ``_ADAPTER_MAP``.  Reuse :func:`~src.config.sections.merge_sections`
 if your format has the same section structure.
 
 **Output**: add a module to ``src/simulation_io/output_data/`` with an

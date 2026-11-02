@@ -22,7 +22,7 @@ from src.registry import get_operators
 if TYPE_CHECKING:
     from src.config import SimulationConfig
     from src.lattice.lattice import Lattice
-    from src.operators.protocols import ForceOperator
+    from src.protocols import ForceOperator
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("src.operators.force")
@@ -46,7 +46,7 @@ def build_forces(
         lattice: The simulation lattice.
 
     Returns:
-        One bound :class:`~src.operators.protocols.ForceOperator` per configured
+        One bound :class:`~src.protocols.ForceOperator` per configured
         force; empty when the run has none.
     """
     return tuple(

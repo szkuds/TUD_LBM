@@ -22,8 +22,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from collections.abc import Sequence
     from typing import Any
-    from src.addons.hooks import ExtGhostFill
-    from src.operators.protocols import ExtDifferentialOperator
+    from src.protocols import ExtDifferentialOperator
+    from src.protocols import ExtGhostFill
 
 
 def compute_laplacian(

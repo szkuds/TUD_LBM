@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from pathlib import Path
     import matplotlib.axes
     from src.config import SimulationConfig
-    from src.simulation_io.plotting.base import PlotOperator
+    from src.protocols import PlotOperator
 
 _PANEL_FIGSIZE = (5.0, 4.5)
 _MARKER_SIZE = 9

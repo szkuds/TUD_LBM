@@ -24,6 +24,8 @@ from itertools import pairwise
 from typing import TYPE_CHECKING
 import numpy as np
 from matplotlib.collections import LineCollection
+from src.protocols import AnalysisPlot
+from src.protocols import PlotOperator
 from src.registry import analysis_operator
 from src.registry import plotting_operator
 from src.simulation_io.analysis.droplet_metrics import extract_rho_2d
@@ -34,8 +36,6 @@ from src.simulation_io.analysis.interface_contour import interface_lines
 from src.simulation_io.analysis.interface_contour import level_value
 from src.simulation_io.analysis.interface_contour import resolve_interface_levels
 from src.simulation_io.plotting._analysis_common import _set_empty_state
-from src.simulation_io.plotting.base import AnalysisPlot
-from src.simulation_io.plotting.base import PlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:

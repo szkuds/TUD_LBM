@@ -255,7 +255,7 @@ class TestCsEosPipeline:
         rho, u_eq, force_total, pressure = compute_macroscopic_multiphase(
             f,
             lattice,
-            cs_mp,
+            mp=cs_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )
@@ -276,7 +276,7 @@ class TestCsEosPipeline:
         rho, _, _, pressure = compute_macroscopic_multiphase(
             f,
             lattice,
-            cs_mp,
+            mp=cs_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )
@@ -295,7 +295,7 @@ class TestCsEosPipeline:
         _, _, force_total, _ = compute_macroscopic_multiphase(
             f,
             lattice,
-            cs_mp,
+            mp=cs_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )
@@ -311,7 +311,7 @@ class TestCsEosPipeline:
         rho, u_eq, force_total, pressure = compute_macroscopic_multiphase(
             f,
             lattice,
-            cs_mp,
+            mp=cs_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )
@@ -382,14 +382,14 @@ class TestCsEosPipeline:
         _, _, force_cs, _ = compute_macroscopic_multiphase(
             rho_field,
             lattice,
-            cs_mp,
+            mp=cs_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )
         _, _, force_dw, _ = compute_macroscopic_multiphase(
             rho_field,
             lattice,
-            dw_mp,
+            mp=dw_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )

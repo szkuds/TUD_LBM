@@ -1,47 +1,41 @@
-"""Interior-obstacle operators — implementations of ObstacleOperator protocol.
+"""Interior-obstacle shapes — implementations of the ObstacleMaskBuilder signature.
 
-Public API: build_obstacle_fn()
+Public API: build_obstacle_mask_fn()
 
-Implementation modules (_circle.py, _obstacle_aggregator.py) are internal. The
-solid-cell mask is built by the configuration, ``SimulationConfig.obstacle_mask``
-— see :mod:`src.config.obstacle_mask`.
+Each ``_*.py`` module registers one shape under the ``obstacle`` kind. The
+configuration builds the run's solid-cell mask with it
+(``SimulationConfig.obstacle_mask``, see :mod:`src.config.obstacle_mask`), and
+the bounce-back on that mask is the first link of the boundary chain
+(:func:`src.operators.boundary.build_bc`).
 
 Example:
-    from src.operators.obstacle import build_obstacle_fn
+    from src.operators.obstacle import build_obstacle_mask_fn
 
-    obstacle_fn = build_obstacle_fn(config.obstacle_mask, lattice)
-    f_stream = obstacle_fn(f_stream, f_collision)
+    mask = build_obstacle_mask_fn("circle")(obstacle_config, grid_shape)
 """
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from src.operators._loader import auto_load_operators
-from src.operators.obstacle._obstacle_aggregator import ObstacleBounceBack
+from src.registry import get_operators
 
 if TYPE_CHECKING:
-    import jax.numpy as jnp
-    from src.lattice.lattice import Lattice
-    from src.operators.protocols import ObstacleOperator
+    from src.protocols import ObstacleMaskBuilder
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("src.operators.obstacle")
 
 
-def build_obstacle_fn(mask: jnp.ndarray | None, lattice: Lattice) -> ObstacleOperator | None:
-    """Return the obstacle bounce-back operator for *mask*.
+def build_obstacle_mask_fn(shape: str) -> ObstacleMaskBuilder:
+    """Return the mask builder registered for the obstacle *shape*.
 
     Args:
-        mask: :attr:`SimulationConfig.obstacle_mask
-            <src.config.simulation_config.SimulationConfig.obstacle_mask>`;
-            ``None`` means the run has no obstacle.
-        lattice: :class:`~src.lattice.lattice.Lattice`.
+        shape: The validated ``obstacle_config["shape"]``.
 
     Returns:
-        ``obstacle_fn(f_stream, f_col) -> f_stream``, or ``None`` without an obstacle.
+        ``build(params, grid_shape) -> mask``, a boolean array of shape ``(nx, ny, nz, 1, 1)``.
     """
-    if mask is None:
-        return None
-    return ObstacleBounceBack(mask=mask, lattice=lattice)
+    return get_operators("obstacle")[shape].target
 
 
-__all__ = ["build_obstacle_fn"]
+__all__ = ["build_obstacle_mask_fn"]

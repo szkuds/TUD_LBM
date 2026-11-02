@@ -10,7 +10,6 @@ operator package.
 from __future__ import annotations
 from typing import Any
 import jax.numpy as jnp
-from src.registry import get_operators
 
 
 def build_obstacle_mask(
@@ -30,7 +29,7 @@ def build_obstacle_mask(
     """
     if obstacle_config is None:
         return None
-    import src.operators.obstacle  # noqa: F401 - registers the obstacle shapes
+    from src.operators.obstacle import build_obstacle_mask_fn
 
-    mask = get_operators("obstacle")[obstacle_config["shape"]].target(obstacle_config, grid_shape)
+    mask = build_obstacle_mask_fn(obstacle_config["shape"])(obstacle_config, grid_shape)
     return jnp.asarray(mask, dtype=bool)

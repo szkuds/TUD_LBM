@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
 from src.config.run_config import SIMULATION_CSV_FILENAME
+from src.protocols import AnalysisPlot
 from src.registry import analysis_operator
 from src.simulation_io.analysis.droplet_metrics import droplet_series_for_run
 from src.simulation_io.plotting._analysis_common import _set_empty_state
-from src.simulation_io.plotting.base import AnalysisPlot
 
 if TYPE_CHECKING:
     import matplotlib.axes

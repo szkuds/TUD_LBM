@@ -30,27 +30,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Generic
-from typing import TypeVar
+from src.protocols import S
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from collections.abc import Mapping
     import jax.numpy as jnp
-    from src.pipeline.setup import SimulationSetup
-    from src.pipeline.state.state import State
-
-#: An addon's substate, ``State.ext[name]``.
-S = TypeVar("S")
-
-if TYPE_CHECKING:
-    #: Rewrites the ghost layer of a padded scalar field from the addon's own substate.
-    GhostFill = Callable[[jnp.ndarray, S], jnp.ndarray]
-    #: The addons' fills composed: reads each substate off ``ext`` by name.
-    ExtGhostFill = Callable[[jnp.ndarray, Mapping[str, Any]], jnp.ndarray]
-    #: Runs after the kernel: ``(setup, state before the step, state after it) -> state``.
-    PostStepHook = Callable[[SimulationSetup, State, State], State]
-    #: Builds the addon's initial substate, ``State.ext[name]``.
-    InitStateHook = Callable[[SimulationSetup], S]
+    from src.protocols import ExtGhostFill
+    from src.protocols import GhostFill
+    from src.protocols import InitStateHook
+    from src.protocols import PostStepHook
 
 
 @dataclass(frozen=True, eq=False)

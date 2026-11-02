@@ -20,7 +20,6 @@ from datetime import UTC
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
-from typing import cast
 import numpy as np
 from src.config.init_field import load_init_field
 from src.operators.macroscopic.eos import analytical_surface_tension
@@ -37,8 +36,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Mapping
     from src.config.simulation_config import SimulationConfig
+    from src.protocols import DimensionlessNumberOperator
     from src.registry import OperatorEntry
-    from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessNumberOperator
 
 _CS2 = 1.0 / 3.0  # Speed of sound squared for D2Q9/D3Q19
 
@@ -517,6 +516,11 @@ def dimensionless_label(key: str) -> str:
     return str(_meta_of(entry).get("label", key))
 
 
+def _number_operator(entry: OperatorEntry) -> DimensionlessNumberOperator:
+    """The registered number of *entry*, typed by its contract."""
+    return entry.target
+
+
 def _evaluate_dimensionless(inputs: DimensionlessInputs) -> dict[str, float | None]:
     """Call every registered number, recording a failure as an unresolved value.
 
@@ -525,7 +529,7 @@ def _evaluate_dimensionless(inputs: DimensionlessInputs) -> dict[str, float | No
     """
     values: dict[str, float | None] = {}
     for entry in _dimensionless_entries():
-        operator = cast("DimensionlessNumberOperator", entry.target)
+        operator = _number_operator(entry)
         try:
             values[entry.name] = operator(inputs)
         except (ArithmeticError, TypeError, ValueError):

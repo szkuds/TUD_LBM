@@ -10,10 +10,10 @@ Covers:
 
 from pathlib import Path
 import pytest
-from src.config.adapter_base import ConfigAdapter
 from src.config.adapter_base import get_adapter
 from src.config.adapter_toml import TomlAdapter
 from src.config.simulation_config import SimulationConfig
+from src.protocols import ConfigAdapter
 
 
 class TestTomlAdapterSave:

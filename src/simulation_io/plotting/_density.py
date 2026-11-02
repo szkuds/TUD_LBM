@@ -4,8 +4,8 @@ from __future__ import annotations
 import matplotlib.axes
 import matplotlib.colors
 import numpy as np
+from src.protocols import PlotOperator
 from src.registry import plotting_operator
-from src.simulation_io.plotting.base import PlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 # Density ratio threshold for using log scale

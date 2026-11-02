@@ -13,7 +13,7 @@ from src.operators.differential import build_differential
 
 if TYPE_CHECKING:
     from src.lattice.lattice import Lattice
-    from src.operators.protocols import DifferentialOperator
+    from src.protocols import DifferentialOperator
 
 PERIODIC = ("wrap", "wrap", "wrap", "wrap")
 

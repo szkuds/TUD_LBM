@@ -50,7 +50,7 @@ Each kind has a convenience decorator in :mod:`src.registry`:
 Kind                        Decorator                       Resolved by
 ==========================  ==============================  ===========================================
 ``collision_models``        ``@collision_model``            ``config.collision_scheme``
-``equilibrium``             ``@equilibrium_operator``       fixed (``"wb"``)
+``equilibrium``             ``@equilibrium_operator``       ``config.equilibrium``
 ``macroscopic``             ``@macroscopic_operator``       single-phase vs. multiphase
 ``eos``                     ``@eos_operator``               ``config.eos``
 ``boundary_condition``      ``@boundary_condition``         ``config.bc_config`` per face
@@ -59,7 +59,7 @@ Kind                        Decorator                       Resolved by
 ``initialise``              ``@initialise_operator``        ``config.init_type``
 ``obstacle``                ``@obstacle_operator``          ``config.obstacle_config``
 ``lattice``                 ``@lattice_operator``           ``config.lattice_type``
-``addon``                 ``@addon_operator``           every one; active by config section
+``addon``                   ``@addon_operator``             every one; active by config section
 ``plotting``                ``@plotting_operator``          ``config.plot_fields``
 ``analysis``                ``@analysis_operator``          ``config.plot_fields``
 ==========================  ==============================  ===========================================
@@ -94,7 +94,7 @@ implementation files must be named with a leading underscore to be
 discovered.
 
 Every per-kind factory looks up ``get_operators(kind)[name].target`` and is
-annotated with the relevant protocol from :mod:`src.operators.protocols`; no
+annotated with the relevant protocol from :mod:`src.protocols`; no
 cast is needed. Names are validated by :class:`~src.config.simulation_config.SimulationConfig`
 before a factory sees them, so an unknown name reaching a factory is a bare
 ``KeyError``.
@@ -117,29 +117,41 @@ Collision — ``collision_models``
 Equilibrium — ``equilibrium``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Named by ``equilibrium`` in ``[simulation_type]``; without it a run takes
+``standard_equilibrium`` single-phase and ``wb`` multiphase
+(:data:`~src.config.equilibrium.DEFAULT_EQUILIBRIUM`).  The source term is not
+configured separately: each equilibrium declares its pair at registration
+(``@equilibrium_operator(name=..., source_term=...)``), because the pairing is
+about where the pressure lives and mixing the pairs loses it or counts it
+twice.  :mod:`src.config.equilibrium` reads and checks the pairing.
+
 ``wb``
     Well-balanced second-order Maxwell–Boltzmann equilibrium.  The rest
     population is recovered from mass conservation,
     ``f₀ = ρ − Σ_{i>0} feq_i``, which keeps a static interface at rest
-    exactly.  ``build_setup()`` always selects this one; there is no
-    configuration key for it.
+    exactly.  It carries no pressure; a multiphase run supplies it as the
+    force ``−ρ∇μ``.  Pairs with the ``wb`` source term.
 
 ``standard_equilibrium``
-    Textbook second-order equilibrium, including the rest direction.
-    Registered and available through
-    :func:`~src.operators.equilibrium.build_equilibrium_fn`, but not wired
-    into any simulation type.
+    Textbook second-order equilibrium, including the rest direction, so it
+    carries the ideal-gas pressure ``cs²ρ``.  Pairs with ``standard_source``
+    (Guo forcing).
 
 Macroscopic — ``macroscopic``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Both share one signature, ``(f, lattice, force, *, gradient_standard,
+laplacian_density)``; the step calls whichever the run has without a phase
+branch.
+
 ``standard``
     ``ρ = Σᵢ fᵢ``, ``u = Σᵢ fᵢcᵢ / ρ``, with optional force correction
-    ``u_eq = u + F/(2ρ)``.
+    ``u_eq = u + F/(2ρ)``.  Takes the differential operators and ignores them.
 
 ``multiphase``
     Additionally computes the chemical potential and the interparticle force
-    using the configured EOS.
+    using the configured EOS.  The multiphase parameters are bound at build
+    time (:func:`~src.operators.macroscopic.build_multiphase_macroscopic_fn`).
 
 Equation of state — ``eos``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -279,8 +291,8 @@ is plain and ignores ``ext``.  ``build_setup`` builds three:
 
 The kernel binds ``State.ext`` into all three, so the macroscopic operator,
 the source term and the forces call them as ``op(grid)``
-(:class:`~src.operators.protocols.DifferentialOperator`); the unbound form is
-:class:`~src.operators.protocols.ExtDifferentialOperator`.
+(:class:`~src.protocols.DifferentialOperator`); the unbound form is
+:class:`~src.protocols.ExtDifferentialOperator`.
 
 Initialisation — ``initialise``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -386,6 +398,10 @@ Obstacle — ``obstacle``
     Circular interior obstacle, from ``[obstacle]``.  2-D only (``nz == 1``),
     and the configuration is validated to fit inside the grid.
 
+The registered shapes only build the solid-cell mask.  The bounce-back on it
+is the first link of the boundary chain: :func:`~src.operators.boundary.build_bc`
+puts it ahead of the edge BCs, with the same ``(f_stream, f_col)`` shape.
+
 Plotting and analysis
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -419,7 +435,7 @@ Adding a new operator
 1. Create ``src/operators/<category>/_my_operator.py`` — the leading
    underscore is what makes auto-discovery pick it up.
 2. Decorate the implementation with the kind's decorator and give it a name.
-3. Match the corresponding protocol in :mod:`src.operators.protocols`.
+3. Match the corresponding protocol in :mod:`src.protocols`.
 
 .. code-block:: python
 
@@ -440,15 +456,18 @@ appears in ``tud-lbm run --list-simulation-operators``.
 Protocols
 ---------
 
-:mod:`src.operators.protocols` defines the structural contracts — operators
-satisfy them by shape, not by inheritance.  The main ones are
-``CollisionOperator``, ``StreamingOperator``, ``EquilibriumOperator``,
-``MacroscopicOperator``, ``BoundaryOperator``, ``ObstacleOperator``,
-``InitialiserOperator``, ``InitialPopulationOperator``, ``ForceOperator``,
-``SourceTermOperator``, ``DifferentialOperator``, ``ExtDifferentialOperator``,
-``EosOperator``, ``PlotOperator``, ``ConfigReader``, and
-``SimulationRepository``.  The addon slots are typed in
-:mod:`src.addons.hooks`.
+:mod:`src.protocols` holds every interface in the codebase.  The operator
+protocols are structural contracts — operators satisfy them by shape, not by
+inheritance: ``CollisionOperator``, ``StreamingOperator``,
+``EquilibriumOperator``, ``MacroscopicOperator``, ``BoundaryCondition``,
+``BoundaryOperator``, ``InitialiserOperator``, ``InitialPopulationOperator``,
+``ForceOperator``, ``SourceTermOperator``, ``DifferentialOperator``,
+``ExtDifferentialOperator`` and ``EosOperator``.  It also holds the addon hook
+types (``GhostFill``, ``PostStepHook``, ``InitStateHook``), the analysis
+``DimensionlessNumberOperator``, the wetting ``OptaxLike``, and the base classes
+``PlotOperator``, ``AnalysisPlot``, ``ConfigAdapter`` and ``OutputWriter``.
+At runtime it imports only the standard library, ``jax`` and ``numpy``
+(``tests/test_import_constraints.py``).
 
 Conformance is exercised by the tests marked ``conformance`` in the test
 suite.

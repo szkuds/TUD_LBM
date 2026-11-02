@@ -58,12 +58,9 @@ def _moments(
     ext: Mapping[str, Any],
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray]:
     """``(rho, u, force, pressure)`` of *f* under *force_ext* and the addon substates *ext*."""
-    if setup.multiphase_params is None:
-        return setup.macroscopic_fn(f, setup.lattice, force=force_ext)
     return setup.macroscopic_fn(
         f,
         setup.lattice,
-        setup.multiphase_params,
         force_ext,
         gradient_standard=partial(setup.gradient_standard, ext=ext),
         laplacian_density=partial(setup.laplacian_density, ext=ext),
@@ -99,9 +96,6 @@ def kernel(
         f_col = setup.collision_fn(f, feq, setup.tau, source)
 
     f_stream = setup.streaming_fn(f_col, lattice)
-    if setup.obstacle_fn is not None:
-        # Interior obstacle bounce-back, before the edge BCs.
-        f_stream = setup.obstacle_fn(f_stream, f_col)
     return setup.bc_fn(f_stream, f_col)
 
 

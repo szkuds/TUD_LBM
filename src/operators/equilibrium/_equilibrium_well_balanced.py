@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from src.lattice import Lattice
 
 
-@equilibrium_operator(name="wb")
+@equilibrium_operator(name="wb", source_term="wb")
 def compute_equilibrium(
     rho: jnp.ndarray,
     u: jnp.ndarray,

@@ -2,7 +2,7 @@
 
 Registers nothing; it is the running counterpart of
 :func:`~src.operators.force.build_forces`, whose bound
-:class:`~src.operators.protocols.ForceOperator` instances this sums.
+:class:`~src.protocols.ForceOperator` instances this sums.
 """
 
 from __future__ import annotations

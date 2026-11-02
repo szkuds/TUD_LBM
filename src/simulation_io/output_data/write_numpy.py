@@ -3,7 +3,7 @@
 from pathlib import Path
 import numpy as np
 from src.config.run_config import SNAPSHOT_PREFIX
-from .base import OutputWriter
+from src.protocols import OutputWriter
 
 
 class Numpy(OutputWriter):

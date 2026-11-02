@@ -9,10 +9,10 @@ modules (``scalar_history_plot.py``, ``contact_angle_plot.py``,
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
+from src.protocols import AnalysisPlot
 from src.simulation_io.analysis.droplet_metrics import extract_velocity_components_2d
 from src.simulation_io.analysis.droplet_metrics import parse_timestep
 from src.simulation_io.analysis.droplet_metrics import series_for_files
-from src.simulation_io.plotting.base import AnalysisPlot
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:

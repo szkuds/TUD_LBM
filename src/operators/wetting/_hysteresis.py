@@ -42,7 +42,6 @@ docstring).
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import NamedTuple
-from typing import Protocol
 import jax
 import jax.numpy as jnp
 from src.config.chemical_step import D_RHO_SPAN_W
@@ -59,15 +58,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from src.operators.wetting._params import WettingState
     from src.pipeline.setup import SimulationSetup
-
-
-class _OptaxLike(Protocol):
-    """Minimal structural type for optax-compatible optimisers."""
-
-    def init(self, params: WettingParams) -> object: ...
-    def update(
-        self, updates: WettingParams, state: object, params: WettingParams | None = ...
-    ) -> tuple[WettingParams, object]: ...
+    from src.protocols import OptaxLike
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -351,7 +342,7 @@ def _optimise_single_param(
     objective_fn: Callable[[WettingParams], jnp.ndarray],
     initial_params: WettingParams,
     grad_mask_fn: Callable[[WettingParams], WettingParams],
-    optimiser: _OptaxLike,
+    optimiser: OptaxLike,
     max_iterations: int | jnp.ndarray,
     w: jnp.ndarray,
     loss_tol: float = 1e-4,
@@ -454,7 +445,7 @@ class _Side(NamedTuple):
     advancing: jnp.ndarray
     phi_active: jnp.ndarray
     max_iter: jnp.ndarray
-    optimiser: _OptaxLike
+    optimiser: OptaxLike
     saturated: jnp.ndarray
     sat_phi: jnp.ndarray
     sat_d_rho: jnp.ndarray

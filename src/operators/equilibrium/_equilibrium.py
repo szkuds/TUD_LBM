@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from src.lattice.lattice import Lattice
 
 
-@equilibrium_operator(name="standard_equilibrium")
+@equilibrium_operator(name="standard_equilibrium", source_term="standard_source")
 def compute_equilibrium(
     rho: jnp.ndarray,
     u: jnp.ndarray,
