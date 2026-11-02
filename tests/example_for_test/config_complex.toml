@@ -17,7 +17,14 @@ grid_shape = [201, 201]
 lattice_type = "D2Q9"
 tau = 0.99
 nt = 100
-init_type = "wetting"
+init_type = "multiphase_bubbles"
+
+# A droplet on the bottom wall: radius ny/3.33, its interface steeper than W.
+[initialisation]
+centres = [[0.5, 0.0]]
+radii = [0.3003003003003003]
+dispersed = "liquid"
+interface_width = 2.5
 
 [multiphase]
 kappa = 0.017

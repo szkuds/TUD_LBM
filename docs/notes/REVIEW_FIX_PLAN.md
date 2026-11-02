@@ -125,6 +125,7 @@ Each phase is completed fully before the next. Order rationale: renames first so
 - For each legacy initialiser (`wetting`, `wetting_drop_top`, `wetting_chem_step`, `multiphase_bubble_top`), show that the general initialiser reproduces its field (array equality on a few parameter sets). The general one is `multiphase_bubbles` (decision 12).
 - Remove those that are reproduced; migrate the example configs, tests and `cli/wetting_init.py` to the general initialiser.
 - Any that cannot be reproduced stay, with the reason recorded here.
+- Outcome: all four removed; none stay. `tests/operators/initialise/test_legacy_equivalence.py` pins array equality against each removed formula on three parameter sets. The three wall droplets need `interface_width` halved in `[initialisation]`, because their tanh was twice as steep. Other grids and densities differ by up to 2e-15, from two rounding causes: a radius fraction times `min(nx, ny)` cannot always hit the old radius, and `avg - amp` can land an ulp below `rho_v`, which `multiphase_bubbles` clamps. No run under `~/TUD_LBM_data` used any of the four, so the legacy adapter maps nothing.
 
 **Phase 5: 3D support** (scope fixed by decision 13)
 Today 2D-only: BC application order (4 edges), every BC, streaming periodicity (x, y), padding (4 faces), the gradient and Laplacian stencils (`to_2d`, `grad_core_2d`), the well-balanced source term, the electric force, all wetting code, and the wetting initialisers.

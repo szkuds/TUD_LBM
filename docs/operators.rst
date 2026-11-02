@@ -308,13 +308,7 @@ Selected by ``init_type``; keyword arguments come from the
     ``centres`` (``[fx, fy]`` fractions of the domain) and ``radii``
     (fractions of ``min(nx, ny)``); ``dispersed`` selects ``"vapour"``
     inclusions in liquid (the default) or ``"liquid"`` inclusions in vapour.
-
-``multiphase_bubble_top``
-    Inclusion attached to the top wall.
-
-``wetting``, ``wetting_drop_top``, ``wetting_chem_step``
-    Sessile configurations against the wetting wall; the chemical-step
-    variant places the drop relative to the step.
+    A centre on a wall (``fy`` of 0 or 1) gives a sessile inclusion.
 
 ``init_from_file``
     Resumes from a saved ``.npz`` snapshot.  Requires ``init_dir``.

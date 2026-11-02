@@ -166,8 +166,6 @@ class TestRegistryPopulated:
         expected = {
             "standard",
             "multiphase_bubbles",
-            "wetting",
-            "wetting_chem_step",
             "init_from_file",
         }
         assert names >= expected

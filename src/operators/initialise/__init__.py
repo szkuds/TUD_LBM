@@ -2,7 +2,7 @@
 
 Public API: build_initialise_fn()
 
-Implementation modules (_standard.py, _multiphase_bubble.py, ...) are internal;
+Implementation modules (_standard.py, _multiphase_bubbles.py, ...) are internal;
 use the factory to access.
 
 Example:
@@ -28,7 +28,7 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
     """Return an initialisation operator satisfying InitialiserOperator protocol.
 
     Args:
-        scheme: Initialisation type name ("standard", "multiphase_bubble", ...).
+        scheme: Initialisation type name ("standard", "multiphase_bubbles", ...).
                 Defaults to "standard".
 
     Returns:

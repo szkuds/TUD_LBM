@@ -42,7 +42,15 @@ _ELECTRIC: dict[str, Any] = {
     "voltage_top": 1.0e-3,
     "voltage_bottom": 0.0,
 }
-_DROPLET: dict[str, Any] = {"init_type": "wetting", "initialisation": {"r": 8}}
+_DROPLET: dict[str, Any] = {
+    "init_type": "multiphase_bubbles",
+    "initialisation": {
+        "centres": [[16 / 31, 0.0]],
+        "radii": [1 / 3.33],
+        "dispersed": "liquid",
+        "interface_width": 2.0,
+    },
+}
 
 _CASES: dict[str, tuple[dict[str, Any], set[str]]] = {
     "single_phase": ({"grid_shape": (16, 16), "tau": 0.8, "nt": 3}, set()),
