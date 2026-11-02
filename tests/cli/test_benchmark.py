@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 _KERNEL = """
 [simulation_type]
 simulation_name = "bench test"
-type = "multiphase"
 grid_shape = [32, 32]
 lattice_type = "D2Q9"
 tau = 0.99
@@ -49,7 +48,6 @@ save_fields = ["rho", "u"]
 _HYSTERESIS = """
 [simulation_type]
 simulation_name = "bench hysteresis test"
-type = "multiphase_hysteresis"
 grid_shape = [32, 16]
 lattice_type = "D2Q9"
 tau = 0.99
@@ -140,7 +138,7 @@ def test_fingerprint_captures_hysteresis_work_per_step(tmp_path):
     config = _load_single_config(str(_write_config(tmp_path, _HYSTERESIS)))
     fingerprint = _fingerprint(config)
 
-    assert fingerprint["sim_type"] == "multiphase_hysteresis"
+    assert fingerprint["phase"] == "multiphase"
     assert fingerprint["max_iterations"] == 2
     assert fingerprint["loss_tol"] == 0.0
 

@@ -11,6 +11,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from src.config.multiphase import is_multiphase
+from src.config.multiphase import multiphase_params
 
 # =====================================================================
 # Lattice
@@ -189,7 +191,7 @@ class TestSimulationConfigDefaults:
         from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(grid_shape=(64, 64))
-        assert cfg.sim_type == "single_phase"
+        assert cfg.multiphase is None
         assert cfg.lattice_type == "D2Q9"
         assert cfg.tau == 1.0
         assert cfg.nt == 1000
@@ -206,16 +208,16 @@ class TestSimulationConfigDefaults:
         from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(grid_shape=(8, 8))
-        assert cfg.bc_config is not None
+        assert cfg.boundary_conditions is not None
         for edge in ("top", "bottom", "left", "right"):
-            assert cfg.bc_config[edge] == "periodic"
+            assert cfg.boundary_conditions[edge] == "periodic"
 
     def test_is_single_phase_property(self):
         from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(grid_shape=(8, 8))
-        assert cfg.is_single_phase is True
-        assert cfg.is_multiphase is False
+        assert cfg.multiphase is None
+        assert is_multiphase(cfg) is False
 
 
 class TestSimulationConfigValidation:
@@ -296,28 +298,19 @@ class TestSimulationConfigMultiphase:
         from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
             grid_shape=(64, 64),
             tau=0.99,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=1.0,
-            rho_v=0.33,
-            interface_width=4,
         )
-        assert cfg.is_multiphase is True
+        assert is_multiphase(cfg) is True
 
     def test_multiphase_missing_kappa_raises(self):
         from src.config.simulation_config import SimulationConfig
 
         with pytest.raises(ValueError, match="'kappa' is required"):
             SimulationConfig(
-                sim_type="multiphase",
+                multiphase={"eos": "double-well", "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
                 grid_shape=(8, 8),
-                eos="double-well",
-                rho_l=1.0,
-                rho_v=0.33,
-                interface_width=4,
             )
 
     def test_multiphase_missing_eos_raises(self):
@@ -325,12 +318,8 @@ class TestSimulationConfigMultiphase:
 
         with pytest.raises(ValueError, match="'eos' is required"):
             SimulationConfig(
-                sim_type="multiphase",
+                multiphase={"kappa": 0.1, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
                 grid_shape=(8, 8),
-                kappa=0.1,
-                rho_l=1.0,
-                rho_v=0.33,
-                interface_width=4,
             )
 
     def test_multiphase_invalid_densities_raises(self):
@@ -338,13 +327,8 @@ class TestSimulationConfigMultiphase:
 
         with pytest.raises(ValueError, match=r"rho_l.*must be greater than rho_v"):
             SimulationConfig(
-                sim_type="multiphase",
+                multiphase={"eos": "double-well", "kappa": 0.1, "rho_l": 0.1, "rho_v": 1.0, "interface_width": 4},
                 grid_shape=(8, 8),
-                eos="double-well",
-                kappa=0.1,
-                rho_l=0.1,
-                rho_v=1.0,
-                interface_width=4,
             )
 
 
@@ -356,7 +340,7 @@ class TestSimulationConfigToDict:
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         d = cfg.to_dict()
-        assert d["simulation_type"] == "single_phase"
+        assert d["multiphase"] is None
 
     def test_to_dict_contains_core_fields(self):
         from src.config.simulation_config import SimulationConfig
@@ -402,14 +386,9 @@ class TestBuildSetup:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
             grid_shape=(64, 64),
             tau=0.99,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=1.0,
-            rho_v=0.33,
-            interface_width=4,
         )
         setup = build_setup(cfg)
 
@@ -459,12 +438,12 @@ class TestBuildSetup:
             "left": "periodic",
             "right": "periodic",
         }
-        cfg = SimulationConfig(grid_shape=(8, 8), bc_config=bc)
+        cfg = SimulationConfig(grid_shape=(8, 8), boundary_conditions=bc)
         setup = build_setup(cfg)
 
-        assert setup.config.bc_config is not None
-        assert setup.config.bc_config["top"] == "symmetry"
-        assert setup.config.bc_config["bottom"] == "bounce-back"
+        assert setup.config.boundary_conditions is not None
+        assert setup.config.boundary_conditions["top"] == "symmetry"
+        assert setup.config.boundary_conditions["bottom"] == "bounce-back"
 
     def test_operator_closures_present_single_phase(self):
         """build_setup must attach all five operator closures for single-phase."""
@@ -535,16 +514,11 @@ class TestConfigMultiphaseParams:
         from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
             grid_shape=(8, 8),
             tau=0.99,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=1.0,
-            rho_v=0.33,
-            interface_width=4,
         )
-        mp = cfg.multiphase_params
+        mp = multiphase_params(cfg)
         assert mp is not None
         assert mp.eos == "double-well"
         assert mp.kappa == 0.017
@@ -556,28 +530,29 @@ class TestConfigMultiphaseParams:
         from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            multiphase={
+                "eos": "carnahan-starling",
+                "kappa": 0.01,
+                "rho_l": 12.18,
+                "rho_v": 0.015,
+                "interface_width": 5,
+                "a_eos": 0.1,
+                "b_eos": 0.2,
+                "r_eos": 1.0,
+                "t_eos": 0.3,
+            },
             grid_shape=(8, 8),
             tau=0.99,
-            eos="carnahan-starling",
-            kappa=0.01,
-            rho_l=12.18,
-            rho_v=0.015,
-            interface_width=5,
-            a_eos=0.1,
-            b_eos=0.2,
-            r_eos=1.0,
-            t_eos=0.3,
         )
-        mp = cfg.multiphase_params
+        mp = multiphase_params(cfg)
         assert mp is not None
         assert (mp.a_eos, mp.b_eos, mp.r_eos, mp.t_eos) == (0.1, 0.2, 1.0, 0.3)
 
     def test_none_for_single_phase(self):
         from src.config.simulation_config import SimulationConfig
 
-        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.99, kappa=0.017, rho_l=1.0, rho_v=0.33)
-        assert cfg.multiphase_params is None
+        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.99)
+        assert multiphase_params(cfg) is None
 
     def test_missing_field_is_rejected_by_the_config(self):
         """A multiphase config without a required field never exists, so nothing else guards it."""
@@ -585,17 +560,13 @@ class TestConfigMultiphaseParams:
 
         with pytest.raises(ValueError, match="'rho_v' is required"):
             SimulationConfig(
-                sim_type="multiphase",
+                multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "interface_width": 4},
                 grid_shape=(8, 8),
                 tau=0.99,
-                eos="double-well",
-                kappa=0.017,
-                rho_l=1.0,
-                interface_width=4,
             )
 
     def test_multiphase_params_is_pytree(self):
-        from src.config.multiphase_params import MultiphaseParams
+        from src.config.multiphase import MultiphaseParams
 
         mp = MultiphaseParams(
             eos="double-well",

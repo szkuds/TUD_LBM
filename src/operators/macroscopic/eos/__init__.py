@@ -23,12 +23,13 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from src.config.multiphase import multiphase_params
 from src.operators._loader import auto_load_operators
 from src.registry import get_operator_names
 from src.registry import get_operators
 
 if TYPE_CHECKING:
-    from src.config.multiphase_params import MultiphaseParams
+    from src.config.multiphase import MultiphaseParams
     from src.protocols import EosOperator
 
 # Auto-discover EOS modules in this subpackage.
@@ -105,4 +106,5 @@ __all__ = [
     "build_eos_fn",
     "build_pressure_fn",
     "has_analytical_surface_tension",
+    "multiphase_params",
 ]

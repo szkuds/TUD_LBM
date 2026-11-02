@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from matplotlib.collections import LineCollection
 from src.config import SimulationConfig
+from src.config.boundary import pad_modes
 from src.operators.differential._pad_utils import _apply_stencil_padding
 from src.operators.wetting._apply_edge import _apply_wetting_edge
 from src.operators.wetting._contact_angle import compute_contact_angle
@@ -19,6 +20,7 @@ from src.simulation_io.analysis.wetting_overlay import contact_angles
 from src.simulation_io.analysis.wetting_overlay import to_physical
 from src.simulation_io.analysis.wetting_overlay import wall_bands
 from src.simulation_io.plotting import FigureBuilder
+from tests.support.config import merge_overrides
 
 _NX, _NY = 60, 30
 _RHO_L, _RHO_V = 1.0, 0.1
@@ -30,16 +32,11 @@ _EDGES = ("bottom", "top", "left", "right")
 
 def _config(edge: str | None = "bottom", shape: tuple[int, int] = (_NX, _NY), **overrides: object) -> SimulationConfig:
     params: dict[str, object] = {
-        "sim_type": "multiphase",
+        "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 4},
         "grid_shape": shape,
-        "eos": "double-well",
-        "kappa": 0.02,
-        "interface_width": 4,
-        "rho_l": _RHO_L,
-        "rho_v": _RHO_V,
-        "bc_config": {edge: "wetting"} if edge else None,
+        "boundary_conditions": {edge: "wetting"} if edge else None,
     }
-    params.update(overrides)
+    merge_overrides(params, overrides)
     return SimulationConfig(**params)  # ty: ignore[invalid-argument-type]
 
 
@@ -72,7 +69,7 @@ def test_band_cells_are_exactly_the_cells_the_applicator_changes():
     config = _config()
     (band,) = wall_bands(rho, config)
 
-    gp = _apply_stencil_padding(jnp.asarray(rho), config.pad_modes)
+    gp = _apply_stencil_padding(jnp.asarray(rho), pad_modes(config))
 
     # A modification that moves every banded cell, so changed == modified region.
     def _apply(d_rho: float) -> jnp.ndarray:
@@ -118,7 +115,7 @@ def test_no_band_without_densities_or_wetting_wall():
     rho = _droplet()
 
     assert wall_bands(rho, _config(edge=None)) == []
-    assert wall_bands(rho, SimulationConfig(grid_shape=(_NX, _NY), bc_config={"bottom": "wetting"})) == []
+    assert wall_bands(rho, SimulationConfig(grid_shape=(_NX, _NY), boundary_conditions={"bottom": "wetting"})) == []
 
 
 # --- contact angles --------------------------------------------------------

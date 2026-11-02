@@ -20,7 +20,6 @@
 
 [simulation_type]
 simulation_name = 'Tau parameter sweep'
-type = "single_phase"
 grid_shape = [100, 100]
 lattice_type = "D2Q9"
 
@@ -75,7 +74,6 @@ plot_fields = ["density"]
 # Uncomment to switch to multiphase. Valid EOS: "double-well"
 #
 # [simulation_type]
-# type = "multiphase"
 # eos = "double-well"
 #
 # [multiphase]

@@ -20,7 +20,8 @@ import sys
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from src.config.boundary_edges import pad_modes
+from src.config import SimulationConfig
+from src.config.boundary import pad_modes
 from src.lattice.lattice import build_lattice
 from src.operators.differential._gradient import compute_gradient
 from src.operators.differential._laplacian import compute_laplacian
@@ -122,9 +123,10 @@ def test_pad_modes_resolve_without_the_caller_importing_the_boundary_package():
     the registry.
     """
     source = (
-        "from src.config.boundary_edges import pad_modes;"
-        "print(pad_modes({'left': 'periodic', 'right': 'periodic',"
-        " 'top': 'wetting', 'bottom': 'bounce-back'}))"
+        "from src.config.boundary import pad_modes;"
+        "from types import SimpleNamespace;"
+        "print(pad_modes(SimpleNamespace(boundary_conditions={'left': 'periodic', 'right': 'periodic',"
+        " 'top': 'wetting', 'bottom': 'bounce-back'})))"
     )
     result = subprocess.run(  # noqa: S603 - the argv is this module's own literal, not input
         [sys.executable, "-c", source], capture_output=True, text=True, encoding="utf-8", check=True
@@ -135,7 +137,11 @@ def test_pad_modes_resolve_without_the_caller_importing_the_boundary_package():
 
 def test_pad_modes_are_returned_in_the_order_the_padding_expects(field):
     """``(top, bottom, right, left)`` — wrapping x must pad axis 0, not axis 1."""
-    modes = pad_modes({"left": "periodic", "right": "periodic", "top": "symmetry", "bottom": "bounce-back"})
+    modes = pad_modes(
+        SimulationConfig(
+            boundary_conditions={"left": "periodic", "right": "periodic", "top": "symmetry", "bottom": "bounce-back"}
+        )
+    )
     padded = _apply_stencil_padding(field, modes)
 
     np.testing.assert_array_equal(np.asarray(padded[0, 1:-1]), np.asarray(field[-1]))

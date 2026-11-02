@@ -81,7 +81,7 @@ def _potential_update(params: ElectricParams) -> PostStepHook:
 @addon_operator(name=NAME)
 def build_electric_addon(config: SimulationConfig) -> Hooks[ElectricState] | None:
     """The electric-potential hooks, or ``None`` without an ``electric_force`` section."""
-    section = config.active_forces.get("electric_force")
+    section = config.forces.get("electric_force")
     if section is None:
         return None
     params = ElectricParams(**section)

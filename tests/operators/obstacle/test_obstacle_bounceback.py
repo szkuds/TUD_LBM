@@ -3,12 +3,18 @@
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from src.config.boundary_edges import build_boundary_edges
+from src.config import SimulationConfig
+from src.config.boundary import boundary_edges
 from src.lattice.lattice import build_lattice
 from src.operators.boundary import build_bc
 
+
+def _edges_of(section):
+    return boundary_edges(SimulationConfig(boundary_conditions=section))
+
+
 NX, NY, NZ = 8, 8, 1
-_PERIODIC = build_boundary_edges(dict.fromkeys(("top", "bottom", "left", "right"), "periodic"))
+_PERIODIC = _edges_of(dict.fromkeys(("top", "bottom", "left", "right"), "periodic"))
 
 
 @pytest.fixture(scope="module")

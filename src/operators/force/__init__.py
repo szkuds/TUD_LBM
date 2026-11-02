@@ -4,8 +4,8 @@ Public API: build_forces()
 
 Implementation modules (_electric.py, _gravity.py, _gravity_masked.py,
 _force_aggregator.py) are internal; use the factory to access.
-What each force needs from its config section is declared at its registration
-and checked by ``SimulationConfig``, never here.
+What each force needs from its config section is declared and checked in
+:mod:`src.config.forces`, never here.
 
 Example:
     from operators.force import build_forces
@@ -36,8 +36,8 @@ def build_forces(
     """Build every configured force, each bound to its payload.
 
     *config* is a validated :class:`~src.config.simulation_config.SimulationConfig`,
-    whose ``active_forces`` holds only the configured ``*_force`` sections,
-    each checked and defaulted against the schema its module registered — so
+    whose ``forces`` holds the configured ``*_force`` sections, each checked and
+    defaulted against its schema in :mod:`src.config.forces` — so
     this factory only looks up and binds.
 
     Args:
@@ -51,7 +51,7 @@ def build_forces(
     """
     return tuple(
         get_operators("force")[name].target.build(params, grid_shape, config=config, lattice=lattice)
-        for name, params in config.active_forces.items()
+        for name, params in config.forces.items()
     )
 
 

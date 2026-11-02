@@ -26,15 +26,10 @@ from src.registry import register_operator
 from src.registry import unregister_operator
 
 _MULTIPHASE: dict[str, Any] = {
-    "sim_type": "multiphase",
+    "multiphase": {"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
     "grid_shape": (32, 24),
     "tau": 0.99,
     "nt": 3,
-    "eos": "double-well",
-    "kappa": 0.017,
-    "rho_l": 1.0,
-    "rho_v": 0.33,
-    "interface_width": 4,
 }
 _WALL: dict[str, Any] = {"bottom": "wetting", "top": "bounce-back", "left": "periodic", "right": "periodic"}
 _WETTING: dict[str, Any] = {"phi_left": 1.2, "phi_right": 1.2, "d_rho_left": 0.05, "d_rho_right": 0.05}
@@ -52,14 +47,16 @@ _DROPLET: dict[str, Any] = {"init_type": "wetting", "initialisation": {"r": 8}}
 _CASES: dict[str, tuple[dict[str, Any], set[str]]] = {
     "single_phase": ({"grid_shape": (16, 16), "tau": 0.8, "nt": 3}, set()),
     "multiphase": (_MULTIPHASE, set()),
-    "wetting": (_MULTIPHASE | _DROPLET | {"bc_config": _WALL, "wetting_config": _WETTING}, {"wetting"}),
+    "wetting": (_MULTIPHASE | _DROPLET | {"boundary_conditions": _WALL, "wetting": _WETTING}, {"wetting"}),
     "hysteresis": (
-        _MULTIPHASE | _DROPLET | {"bc_config": _WALL, "wetting_config": _WETTING, "hysteresis_config": _HYSTERESIS},
+        _MULTIPHASE | _DROPLET | {"boundary_conditions": _WALL, "wetting": _WETTING, "hysteresis": _HYSTERESIS},
         {"wetting"},
     ),
-    "electric": (_MULTIPHASE | {"electric_force": _ELECTRIC}, {"electric"}),
+    "electric": (_MULTIPHASE | {"forces": {"electric_force": _ELECTRIC}}, {"electric"}),
     "wetting_and_electric": (
-        _MULTIPHASE | _DROPLET | {"bc_config": _WALL, "wetting_config": _WETTING, "electric_force": _ELECTRIC},
+        _MULTIPHASE
+        | _DROPLET
+        | {"forces": {"electric_force": _ELECTRIC}, "boundary_conditions": _WALL, "wetting": _WETTING},
         {"electric", "wetting"},
     ),
 }
@@ -194,7 +191,7 @@ def test_observed_fields_belong_to_the_state_they_were_observed_on():
     from src.operators.force._force_aggregator import compute_total_force_ext
     from src.pipeline.runner import run
 
-    config = SimulationConfig(**_MULTIPHASE, gravity_masked_force={"force_g": 1e-5, "ramp_steps": 10})
+    config = SimulationConfig(forces={"gravity_masked_force": {"force_g": 1e-5, "ramp_steps": 10}}, **_MULTIPHASE)
     setup = build_setup(config)
     state, _ = run(setup, init_state(setup), nt=4)
     observed = observe(setup, state)

@@ -9,6 +9,7 @@ from src.config.run_config import ANALYSIS_DIRNAME
 from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import SETUP_FIGURE_FILENAME
 from src.config.run_config import SIMULATION_CSV_FILENAME
+from src.config.wetting import chemical_step_wall
 from src.simulation_io.plotting import setup_figure
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 from src.simulation_io.plotting.setup_figure import edge_labels
@@ -17,10 +18,11 @@ from src.simulation_io.plotting.setup_figure import page_rotation_deg
 from src.simulation_io.plotting.setup_figure import rotate
 from src.simulation_io.plotting.setup_figure import select_setup_timesteps
 from src.simulation_io.plotting.setup_figure import write_setup_figure
+from tests.support.config import merge_overrides
 from tests.support.run_dirs import GRID_NX
 from tests.support.run_dirs import UNIFORM_ITERATIONS
 from tests.support.run_dirs import build_run_dir
-from tests.support.run_dirs import wetting_config
+from tests.support.run_dirs import wetting
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -35,20 +37,19 @@ _CSV_HEADER = "iteration,cll_left,cll_right,ca_left,ca_right"
 def step_config(**overrides: object) -> SimulationConfig:
     """A chemical-step run on an incline: 120/100 before the step, 70/50 after."""
     params: dict[str, object] = {
-        "sim_type": "multiphase_hysteresis_chemical_step",
-        "wetting_config": {"phi_left": 1.0, "phi_right": 1.0, "d_rho_left": 0.0, "d_rho_right": 0.0},
-        "chemical_step_config": {
+        "wetting": {"phi_left": 1.0, "phi_right": 1.0, "d_rho_left": 0.0, "d_rho_right": 0.0},
+        "chemical_step": {
             "chemical_step_location": _STEP_LOCATION,
             "ca_advancing_pre_step": 120.0,
             "ca_receding_pre_step": 100.0,
             "ca_advancing_post_step": 70.0,
             "ca_receding_post_step": 50.0,
         },
-        "bc_config": {"bottom": "wetting", "top": "symmetry"},
+        "boundary_conditions": {"bottom": "wetting", "top": "symmetry"},
         "plot_fields": ["density"],
     }
-    params.update(overrides)
-    return wetting_config(**params)
+    merge_overrides(params, overrides)
+    return wetting(**params)
 
 
 def _write_csv(run_dir: Path, rows: list[tuple[int, float, float, float, float]]) -> None:
@@ -127,7 +128,7 @@ def test_falls_back_to_first_snapshot(tmp_path, rows):
 
 
 def test_single_surface_wall_draws_only_the_last_snapshot(tmp_path):
-    config = wetting_config()
+    config = wetting()
     run_dir = build_run_dir(tmp_path, config=config)
 
     assert select_setup_timesteps(config, run_dir).timesteps == (UNIFORM_ITERATIONS[-1],)
@@ -143,7 +144,7 @@ def test_no_snapshots_selects_nothing(tmp_path):
 @pytest.mark.parametrize("draw_angle", [5.0, 15.0, 40.0])
 @pytest.mark.parametrize("inclination", [30.0, -30.0])
 def test_rotation_puts_schematic_gravity_straight_down(draw_angle, inclination):
-    config = step_config(gravity_force={"force_g": 1e-6, "inclination_angle_deg": inclination})
+    config = step_config(forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": inclination}})
     schematic = np.radians(np.copysign(draw_angle, inclination))
     gravity = np.array([[np.sin(schematic), -np.cos(schematic)]])
 
@@ -153,10 +154,10 @@ def test_rotation_puts_schematic_gravity_straight_down(draw_angle, inclination):
 
 
 def test_flat_or_gravity_free_run_is_not_rotated():
-    flat = step_config(gravity_force={"force_g": 1e-6, "inclination_angle_deg": 0.0})
+    flat = step_config(forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 0.0}})
 
     assert page_rotation_deg(flat, 15.0) == 0.0
-    assert page_rotation_deg(step_config(gravity_force=None), 15.0) == 0.0
+    assert page_rotation_deg(step_config(forces={}), 15.0) == 0.0
 
 
 def test_edge_labels_come_from_the_config():
@@ -200,13 +201,13 @@ def test_explicit_timestep_draws_one_interface(tmp_path, monkeypatch):
 
 
 def test_wall_is_split_into_two_surfaces_at_the_step(tmp_path, monkeypatch):
-    config = step_config(gravity_force=None)
+    config = step_config(forces={})
     _, fig = _render(config, tmp_path, monkeypatch)
 
     patches = {patch.get_gid(): patch for patch in fig.axes[0].patches}
 
     assert set(patches) == {"pre", "post"}
-    wall = config.chemical_step_wall
+    wall = chemical_step_wall(config)
     assert wall is not None
     step_x = wall.step_x
     assert patches["pre"].get_xy()[:, 0].max() == pytest.approx(step_x)
@@ -215,13 +216,13 @@ def test_wall_is_split_into_two_surfaces_at_the_step(tmp_path, monkeypatch):
 
 
 def test_wall_without_a_step_is_one_surface(tmp_path, monkeypatch):
-    _, fig = _render(wetting_config(), tmp_path, monkeypatch)
+    _, fig = _render(wetting(), tmp_path, monkeypatch)
 
     assert [patch.get_gid() for patch in fig.axes[0].patches] == ["plain"]
 
 
 def test_gravity_free_run_has_no_arrow_and_no_incline(tmp_path, monkeypatch):
-    path, fig = _render(step_config(gravity_force=None), tmp_path, monkeypatch)
+    path, fig = _render(step_config(forces={}), tmp_path, monkeypatch)
 
     assert path.is_file()
     assert not _lines(fig, "alpha")

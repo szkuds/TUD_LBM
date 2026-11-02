@@ -5,6 +5,7 @@ import math
 import warnings
 from pathlib import Path
 import matplotlib as mpl
+from src.config.wetting import has_wetting_wall
 
 mpl.use("Agg")
 
@@ -35,13 +36,6 @@ _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
     4: (2, 2),
 }
 
-_WETTING_SIM_TYPES: frozenset[str] = frozenset(
-    {
-        "multiphase_wetting",
-        "multiphase_hysteresis",
-        "multiphase_hysteresis_chemical_step",
-    }
-)
 
 _ANALYSIS_PANEL_FACECOLOR = "#f5f5f5"
 
@@ -156,7 +150,7 @@ class FigureBuilder:
 
         requested = fields or self.config.plot_fields
         if not requested:
-            if self.config.sim_type in _WETTING_SIM_TYPES:
+            if has_wetting_wall(self.config):
                 # Wetting default: density field for droplet visibility + dual-axis Ca/θ vs position.
                 requested = ["density", "ca_theta_vs_x"]
             else:

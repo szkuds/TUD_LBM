@@ -29,45 +29,28 @@ _VARIANTS = [
         id="single_phase_mrt",
     ),
     pytest.param(
-        {"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 0.0}},
+        {"forces": {"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 0.0}}},
         {"has_forces": True, "has_mp_params": False, "addons": ()},
         id="single_phase_gravity",
     ),
     pytest.param(
-        {
-            "sim_type": "multiphase",
-            "eos": "double-well",
-            "kappa": 0.017,
-            "rho_l": 1.0,
-            "rho_v": 0.33,
-            "interface_width": 4,
-        },
+        {"multiphase": {"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4}},
         {"has_forces": False, "has_mp_params": True, "addons": ()},
         id="multiphase_no_force",
     ),
     pytest.param(
         {
-            "sim_type": "multiphase",
-            "eos": "double-well",
-            "kappa": 0.017,
-            "rho_l": 1.0,
-            "rho_v": 0.33,
-            "interface_width": 4,
-            "gravity_force": {"force_g": 2e-6, "inclination_angle_deg": 0.0},
+            "multiphase": {"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
+            "forces": {"gravity_force": {"force_g": 2e-6, "inclination_angle_deg": 0.0}},
         },
         {"has_forces": True, "has_mp_params": True, "addons": ()},
         id="multiphase_with_gravity",
     ),
     pytest.param(
         {
-            "sim_type": "multiphase_wetting",
-            "eos": "double-well",
-            "kappa": 0.017,
-            "rho_l": 1.0,
-            "rho_v": 0.33,
-            "interface_width": 4,
-            "bc_config": {"bottom": "wetting"},
-            "wetting_config": {
+            "multiphase": {"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
+            "boundary_conditions": {"bottom": "wetting"},
+            "wetting": {
                 "phi_left": 1.0,
                 "phi_right": 1.0,
                 "d_rho_left": 0.0,
@@ -111,8 +94,8 @@ def test_build_setup_rejects_wetting_without_multiphase() -> None:
     """A wetting wall modifies the multiphase stencils, so a single-phase run cannot have one."""
     kwargs: dict[str, Any] = {
         **_BASE,
-        "bc_config": {"bottom": "wetting"},
-        "wetting_config": {"phi_left": 1.0, "phi_right": 1.0, "d_rho_left": 0.0, "d_rho_right": 0.0},
+        "boundary_conditions": {"bottom": "wetting"},
+        "wetting": {"phi_left": 1.0, "phi_right": 1.0, "d_rho_left": 0.0, "d_rho_right": 0.0},
     }
     config = SimulationConfig(**kwargs)
     with pytest.raises(ValueError, match="Wetting"):
@@ -122,14 +105,9 @@ def test_build_setup_rejects_wetting_without_multiphase() -> None:
 def test_build_setup_rejects_wetting_without_a_wetting_edge() -> None:
     """The config accepts it, but a run would apply its wall nowhere and have nothing to measure."""
     kwargs: dict[str, Any] = {
+        "multiphase": {"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
         **_BASE,
-        "sim_type": "multiphase",
-        "eos": "double-well",
-        "kappa": 0.017,
-        "rho_l": 1.0,
-        "rho_v": 0.33,
-        "interface_width": 4,
-        "wetting_config": {"phi_left": 1.0, "phi_right": 1.0, "d_rho_left": 0.0, "d_rho_right": 0.0},
+        "wetting": {"phi_left": 1.0, "phi_right": 1.0, "d_rho_left": 0.0, "d_rho_right": 0.0},
     }
     config = SimulationConfig(**kwargs)
     with pytest.raises(ValueError, match="wetting"):
@@ -149,8 +127,7 @@ def test_build_setup_grid_shape_stored_correctly() -> None:
         pytest.param({}, "standard_equilibrium", "standard_source", id="single_phase"),
         pytest.param({"equilibrium": "wb"}, "wb", "wb", id="single_phase_named_wb"),
         pytest.param(
-            {"sim_type": "multiphase", "eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33}
-            | {"interface_width": 4},
+            {"multiphase": {"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4}},
             "wb",
             "wb",
             id="multiphase",

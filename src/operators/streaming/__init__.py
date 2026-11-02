@@ -7,7 +7,7 @@ Implementation modules (_streaming.py) are internal; use the factory to access.
 Example:
     from src.operators.streaming import build_streaming_fn
 
-    stream_op = build_streaming_fn(config.periodic_axes)
+    stream_op = build_streaming_fn(periodic_axes(config))
     f_streamed = stream_op(f, lattice)
 """
 
@@ -29,8 +29,7 @@ def build_streaming_fn(periodic_axes: tuple[bool, bool], scheme: str = "standard
 
     Args:
         periodic_axes: Per-axis periodicity ``(x, y)`` —
-            :attr:`SimulationConfig.periodic_axes
-            <src.config.simulation_config.SimulationConfig.periodic_axes>`.
+            ``periodic_axes(config)``.
         scheme: Streaming model name. Defaults to "standard" (pull-style streaming).
 
     Returns:

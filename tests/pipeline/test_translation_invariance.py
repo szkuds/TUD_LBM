@@ -33,18 +33,13 @@ _SHIFT = 5
 _STEPS = 6
 
 
-def _config(bc_config: dict[str, Any] | None) -> SimulationConfig:
+def _config(boundary_conditions: dict[str, Any] | None) -> SimulationConfig:
     return SimulationConfig(
+        multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 4},
         grid_shape=(_NX, _NY),
         tau=0.8,
         nt=_STEPS,
-        sim_type="multiphase",
-        eos="double-well",
-        kappa=0.017,
-        rho_l=_RHO_L,
-        rho_v=_RHO_V,
-        interface_width=4,
-        bc_config=bc_config,
+        boundary_conditions=boundary_conditions,
     )
 
 
@@ -59,7 +54,7 @@ def _seeded_state(setup):
 
 
 @pytest.mark.parametrize(
-    "bc_config",
+    "boundary_conditions",
     [
         pytest.param(None, id="all-periodic"),
         pytest.param(
@@ -68,7 +63,7 @@ def _seeded_state(setup):
         ),
     ],
 )
-def test_a_roll_along_a_periodic_axis_commutes_with_the_step(bc_config):
+def test_a_roll_along_a_periodic_axis_commutes_with_the_step(boundary_conditions):
     """Exact, not approximate: there is no tolerance to hide a seam behind.
 
     The wetting band is deliberately not exercised here. Its window, contiguity
@@ -78,7 +73,7 @@ def test_a_roll_along_a_periodic_axis_commutes_with_the_step(bc_config):
     production config, three orders below the seam this padding fix removed.
     Making that band periodic-aware is separate work.
     """
-    config = _config(bc_config)
+    config = _config(boundary_conditions)
     setup = build_setup(config)
 
     state = _seeded_state(setup)

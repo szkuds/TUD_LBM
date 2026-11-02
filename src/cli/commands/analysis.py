@@ -12,6 +12,7 @@ from src.cli._console import success
 from src.cli.app import cli
 from src.cli.config_loading import _load_single_config
 from src.cli.field_select import prompt_fields_marked
+from src.config.multiphase import is_multiphase
 from src.config.run_config import COMPARISON_DIRNAME
 from src.config.run_config import PHYSICAL_PARAMETERS_FILENAME
 
@@ -77,7 +78,7 @@ def compare(parent_dir: str, no_prompt: bool, label_params: tuple[str, ...]) -> 
         console.print("[yellow]No simulation run directories found.[/yellow]")
         return
     if n_ok == 0:
-        console.print("[yellow]No runs produced CSV data. Check sim_type and snapshot files.[/yellow]")
+        console.print("[yellow]No runs produced CSV data. Check the [wetting] section and snapshot files.[/yellow]")
         return
 
     out_dir = Path(parent_dir) / COMPARISON_DIRNAME
@@ -186,8 +187,8 @@ def regime_map(
 
 def _analyse_surface_tension(config: SimulationConfig, out_dir: Path) -> None:
     """Write the Young-Laplace calibration artefacts for *config* and report sigma."""
-    if not config.is_multiphase:
-        msg = f"surface tension requires a multiphase configuration; got sim_type='{config.sim_type}'"
+    if not is_multiphase(config):
+        msg = "surface tension requires a multiphase configuration; got no [multiphase] section"
         raise ValueError(msg)
 
     from src.config.jax_config import configure_jax

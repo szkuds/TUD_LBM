@@ -11,7 +11,7 @@ has the edge BCs' ``(f_stream, f_col)`` shape and runs before them.
 Example:
     from src.operators.boundary import build_bc
 
-    bc_fn = build_bc(config.boundary_edges, lattice, config.obstacle_mask)
+    bc_fn = build_bc(boundary_edges(config), lattice, obstacle_mask(config))
     f = bc_fn(f_stream, f_col)
 """
 
@@ -24,7 +24,7 @@ from src.registry import get_operators
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
-    from src.config.boundary_edges import BoundaryEdge
+    from src.config.boundary import BoundaryEdge
     from src.lattice.lattice import Lattice
     from src.protocols import BoundaryOperator
 
@@ -39,11 +39,9 @@ def build_bc(
 
     Args:
         edges: Each edge's BC and parameters, in application order —
-            :attr:`SimulationConfig.boundary_edges
-            <src.config.simulation_config.SimulationConfig.boundary_edges>`.
+            ``boundary_edges(config)``.
         lattice: :class:`~src.lattice.lattice.Lattice`.
-        obstacle_mask: :attr:`SimulationConfig.obstacle_mask
-            <src.config.simulation_config.SimulationConfig.obstacle_mask>`;
+        obstacle_mask: ``obstacle_mask(config)``;
             ``None`` means the run has no obstacle.
 
     Returns:

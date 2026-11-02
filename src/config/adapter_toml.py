@@ -18,17 +18,22 @@ Example usage::
 
 from __future__ import annotations
 import contextlib
+import logging
 import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Any as _Any
+from src.config.run_config import CONFIG_FILENAME
 from src.config.sections import build_sections
-from src.config.sections import merge_sections
+from src.config.sections import config_from_flat
+from src.config.sections import load_sections
 from src.protocols import ConfigAdapter
 
 if TYPE_CHECKING:
     from src.config.simulation_config import SimulationConfig
+
+logger = logging.getLogger(__name__)
 
 tomli_w: _Any = None
 with contextlib.suppress(ImportError):
@@ -46,7 +51,30 @@ class TomlAdapter(ConfigAdapter):
             raise FileNotFoundError(msg)
         with path_obj.open("rb") as fh:
             raw = tomllib.load(fh)
-        return merge_sections(raw)
+        flat, upgraded = load_sections(raw)
+        if upgraded and path_obj.name == CONFIG_FILENAME:
+            self._write_back(dict(flat), path_obj)
+        return flat
+
+    def _write_back(self, flat: dict[str, Any], path: Path) -> None:
+        """Convert an old-layout run directory's ``config.toml`` in place, once.
+
+        Only a run directory's file is rewritten, so an input TOML never changes
+        behind the user's back. The file is replaced whole, because concurrent
+        analyses may be reading it. Failing to write only leaves the conversion
+        to the next load: an archived run on a read-only disk must still load.
+        A file that is no single valid run is left for the caller to report.
+        """
+        try:
+            config = config_from_flat(flat)
+        except (TypeError, ValueError):
+            return
+        converted = path.with_name(f"{path.name}.upgraded")
+        try:
+            self.save(config, str(converted))
+            converted.replace(path)
+        except (ImportError, OSError) as exc:
+            logger.warning("Could not write the upgraded config back to %s: %s", path, exc)
 
     def save(self, config: SimulationConfig, path: str) -> None:
         """Serialise *config* to a ``.toml`` file at *path*.

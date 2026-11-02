@@ -17,18 +17,17 @@ from src.pipeline.step import observe
 @pytest.mark.slow
 def test_von_karman_pipeline_smoke() -> None:
     cfg = SimulationConfig(
-        sim_type="single_phase",
         grid_shape=(80, 30, 1),
         tau=0.524,
         nt=50,
-        bc_config={
+        boundary_conditions={
             "top": "bounce-back",
             "bottom": "bounce-back",
             "left": "velocity-inlet",
             "right": "outlet",
             "left_velocity_inlet": {"u0": 0.04},
         },
-        obstacle_config={"center_x": 20, "center_y": 15, "radius": 5},
+        obstacle={"center_x": 20, "center_y": 15, "radius": 5},
     )
 
     setup = build_setup(cfg)

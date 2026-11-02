@@ -37,12 +37,17 @@ from typing import TYPE_CHECKING
 from typing import NamedTuple
 import jax.numpy as jnp
 from src.addons.hooks import compose_ghost_fill
+from src.config.boundary import boundary_edges
+from src.config.boundary import pad_modes
+from src.config.boundary import periodic_axes
+from src.config.multiphase import multiphase_params
+from src.config.obstacle import obstacle_mask
 from src.lattice.lattice import Lattice
 from src.lattice.lattice import build_lattice
 
 if TYPE_CHECKING:
     from src.addons.hooks import Hooks
-    from src.config.multiphase_params import MultiphaseParams
+    from src.config.multiphase import MultiphaseParams
     from src.config.simulation_config import SimulationConfig
     from src.protocols import BoundaryOperator
     from src.protocols import CollisionOperator
@@ -160,15 +165,15 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
 
     # 1. Lattice.
     lattice = build_lattice(config.lattice_type)
-    mp_params = config.multiphase_params
+    mp_params = multiphase_params(config)
 
     # 2. Addon merge: every registered addon the config uses, in name order.
     #    Consumed below: ghost_fill (3); post_step by step(), init_state by init_state().
     addons = build_addons(config)
 
     # 3. Differential: ∇μ is always plain; the density operators carry the composed ghost fill.
-    gradient_standard, _ = build_differential(lattice, config.pad_modes)
-    gradient_density, laplacian_density = build_differential(lattice, config.pad_modes, compose_ghost_fill(addons))
+    gradient_standard, _ = build_differential(lattice, pad_modes(config))
+    gradient_density, laplacian_density = build_differential(lattice, pad_modes(config), compose_ghost_fill(addons))
 
     # 4. Forces: the configured *_force sections.
     forces = build_forces(config, tuple(config.grid_shape), lattice)
@@ -185,7 +190,7 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
     equilibrium_fn = build_equilibrium_fn(config.equilibrium)
     source_fn = build_source_fn(source_term_for(config.equilibrium))
     macroscopic_fn = build_macroscopic_fn() if mp_params is None else build_multiphase_macroscopic_fn(mp_params)
-    obstacle_mask = config.obstacle_mask
+    solid_mask = obstacle_mask(config)
 
     # 6. Step: the setup the kernel and step() close over.
     return SimulationSetup(
@@ -200,13 +205,13 @@ def build_setup(config: SimulationConfig) -> SimulationSetup:
         equilibrium_fn=equilibrium_fn,
         source_fn=source_fn,
         macroscopic_fn=macroscopic_fn,
-        streaming_fn=build_streaming_fn(config.periodic_axes),
-        bc_fn=build_bc(config.boundary_edges, lattice, obstacle_mask),
+        streaming_fn=build_streaming_fn(periodic_axes(config)),
+        bc_fn=build_bc(boundary_edges(config), lattice, solid_mask),
         gradient_standard=gradient_standard,
         gradient_density=gradient_density,
         laplacian_density=laplacian_density,
         initial_f_fn=_build_initial_f_fn(config, mp_params, lattice),
         k_diag=config.k_diag,
         multiphase_params=mp_params,
-        obstacle_mask=obstacle_mask,
+        obstacle_mask=solid_mask,
     )

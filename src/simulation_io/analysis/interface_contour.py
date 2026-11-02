@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import contourpy
 import numpy as np
+from src.config.multiphase import multiphase_params
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
@@ -55,9 +56,8 @@ def resolve_interface_levels(config: SimulationConfig) -> tuple[str, ...]:
 
 def config_rho_mean(config: SimulationConfig) -> float | None:
     """``(rho_l + rho_v) / 2`` from *config*, or ``None`` when either is unset."""
-    if config.rho_l is None or config.rho_v is None:
-        return None
-    return 0.5 * (float(config.rho_l) + float(config.rho_v))
+    params = multiphase_params(config)
+    return None if params is None else 0.5 * (float(params.rho_l) + float(params.rho_v))
 
 
 def measured_phase_densities(rho_2d: np.ndarray, rho_mean: float) -> tuple[float, float] | None:
@@ -98,9 +98,8 @@ def level_densities(name: str, config: SimulationConfig, rho_2d: np.ndarray) -> 
     config still gets a measured contour.
     """
     if name == LEVEL_CONFIG:
-        if config.rho_l is None or config.rho_v is None:
-            return None
-        return float(config.rho_l), float(config.rho_v)
+        params = multiphase_params(config)
+        return None if params is None else (float(params.rho_l), float(params.rho_v))
     if name == LEVEL_MEASURED:
         rho = np.asarray(rho_2d, dtype=float)
         from_config = config_rho_mean(config)

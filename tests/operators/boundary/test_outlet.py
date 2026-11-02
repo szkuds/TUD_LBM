@@ -39,11 +39,10 @@ def test_outlet_finite_after_real_step() -> None:
     from src.pipeline.setup import build_setup
 
     cfg = SimulationConfig(
-        sim_type="single_phase",
         grid_shape=(20, 10, 1),
         tau=0.8,
         nt=5,
-        bc_config={
+        boundary_conditions={
             "top": "bounce-back",
             "bottom": "bounce-back",
             "left": "velocity-inlet",

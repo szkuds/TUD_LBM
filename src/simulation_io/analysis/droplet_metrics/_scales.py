@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from typing import NamedTuple
+from src.config.multiphase import multiphase_params
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
@@ -34,12 +35,10 @@ def analytical_sigma_lg(config: SimulationConfig) -> float | None:
     width is effectively zero. This is the *formula* only — it makes no
     judgement about whether a measured value should be preferred.
     """
-    kappa = config.kappa
-    width = config.interface_width
-    rho_l = config.rho_l
-    rho_v = config.rho_v
-    if kappa is None or width is None or rho_l is None or rho_v is None:
+    params = multiphase_params(config)
+    if params is None:
         return None
+    kappa, width, rho_l, rho_v = params.kappa, params.interface_width, params.rho_l, params.rho_v
     if abs(float(width)) < _WIDTH_EPS:
         return None
     drho = float(rho_l) - float(rho_v)
@@ -82,7 +81,7 @@ def resolve_r_zero(config: SimulationConfig) -> RZero:
 
 def resolve_step_x(config: SimulationConfig) -> float | None:
     """Chemical-step x-position in lattice units, or ``None`` when unset."""
-    chem = config.chemical_step_config
+    chem = config.chemical_step
     if not chem or not isinstance(chem, dict):
         return None
     loc = chem.get("chemical_step_location")
@@ -95,7 +94,7 @@ def inclination_angle_deg(config: SimulationConfig) -> float:
     """Gravity inclination angle in degrees, or ``0.0`` when not configured.
 
     Delegates so that ``[gravity_masked_force]`` counts too. Reading only
-    ``config.gravity_force`` left every masked-force run at ``0.0``, which
+    ``[gravity_force]`` left every masked-force run at ``0.0``, which
     silently turned ``Ca_norm`` back into plain ``Ca``.
     """
     from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_inclination
@@ -148,7 +147,8 @@ def resolve_scales(config: SimulationConfig) -> MetricScales | None:
     # :func:`resolve_r_zero` does.
     from src.simulation_io.analysis.physical_parameters.physical_parameters import resolve_wall_edge
 
-    if config.rho_l is None or config.rho_v is None:
+    params = multiphase_params(config)
+    if params is None:
         return None
     sigma_measured = measured_sigma_lg(config)
     sigma_analytical = analytical_sigma_lg(config)
@@ -158,7 +158,7 @@ def resolve_scales(config: SimulationConfig) -> MetricScales | None:
     r_zero = resolve_r_zero(config)
     step_x = resolve_step_x(config)
     return MetricScales(
-        rho_mean=(float(config.rho_l) + float(config.rho_v)) / 2.0,
+        rho_mean=(float(params.rho_l) + float(params.rho_v)) / 2.0,
         sigma_measured=sigma_measured,
         sigma_analytical=sigma_analytical,
         nu=(float(config.tau) - 0.5) / 3.0,

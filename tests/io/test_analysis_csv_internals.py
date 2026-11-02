@@ -65,16 +65,11 @@ def _droplet_rho_5d(nx: int = 30, ny: int = 10) -> np.ndarray:
 
 def _wetting_config() -> SimulationConfig:
     return SimulationConfig(
-        sim_type="multiphase_wetting",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 2},
         grid_shape=(30, 10),
         tau=0.8,
         nt=100,
         save_interval=10,
-        eos="double-well",
-        kappa=0.02,
-        rho_l=_RHO_L,
-        rho_v=_RHO_V,
-        interface_width=2,
         initialisation={"radii": [0.3]},
     )
 
@@ -89,15 +84,10 @@ def test_resolve_r_zero_from_contact_line_length(tmp_path):
     npz = tmp_path / "init.npz"
     np.savez(npz, rho=rho)
     cfg = SimulationConfig(
-        sim_type="multiphase_wetting",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 2},
         grid_shape=(30, 10),
         tau=0.8,
         nt=100,
-        eos="double-well",
-        kappa=0.02,
-        rho_l=_RHO_L,
-        rho_v=_RHO_V,
-        interface_width=2,
         init_type="init_from_file",
         init_dir=str(npz),
     )
@@ -107,15 +97,10 @@ def test_resolve_r_zero_from_contact_line_length(tmp_path):
 
 def test_resolve_r_zero_from_init_radii():
     cfg = SimulationConfig(
-        sim_type="multiphase_wetting",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 2},
         grid_shape=(30, 10),
         tau=0.8,
         nt=100,
-        eos="double-well",
-        kappa=0.02,
-        rho_l=_RHO_L,
-        rho_v=_RHO_V,
-        interface_width=2,
         initialisation={"radii": [0.3]},
     )
     r = resolve_r_zero(cfg)
@@ -125,15 +110,10 @@ def test_resolve_r_zero_from_init_radii():
 
 def test_resolve_r_zero_fallback_27():
     cfg = SimulationConfig(
-        sim_type="multiphase_wetting",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 2},
         grid_shape=(30, 10),
         tau=0.8,
         nt=100,
-        eos="double-well",
-        kappa=0.02,
-        rho_l=_RHO_L,
-        rho_v=_RHO_V,
-        interface_width=2,
         initialisation={},
     )
     assert resolve_r_zero(cfg) == RZero(value=27.0, used_fallback=True)
@@ -145,7 +125,7 @@ def test_resolve_r_zero_fallback_27():
 
 
 def test_inclination_angle_from_gravity_force():
-    cfg = SimulationConfig(gravity_force={"force_g": 1e-6, "inclination_angle_deg": 45.0})
+    cfg = SimulationConfig(forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 45.0}})
     assert inclination_angle_deg(cfg) == pytest.approx(45.0)
 
 
@@ -161,15 +141,10 @@ def test_inclination_angle_defaults_zero_when_no_force():
 
 def test_analytical_sigma_lg_computation():
     cfg = SimulationConfig(
-        sim_type="multiphase_wetting",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
         grid_shape=(8, 8),
         tau=0.8,
         nt=10,
-        eos="double-well",
-        kappa=0.02,
-        rho_l=1.0,
-        rho_v=0.5,
-        interface_width=2,
     )
     expected = (2.0 / 3.0) * (0.02 / 2) * (0.5**2)
     assert analytical_sigma_lg(cfg) == pytest.approx(expected)
@@ -431,15 +406,10 @@ def test_simulation_csv_export_render_shows_placeholder():
 
 def test_build_simulation_csv_skips_wrong_sim_type(tmp_path):
     cfg = SimulationConfig(
-        sim_type="single",  # ty: ignore[invalid-argument-type]
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
         grid_shape=(8, 8),
         tau=0.8,
         nt=10,
-        eos="double-well",
-        kappa=0.02,
-        rho_l=1.0,
-        rho_v=0.5,
-        interface_width=2,
     )
     result = build_simulation_csv(tmp_path, cfg)
     assert result is None
@@ -447,15 +417,10 @@ def test_build_simulation_csv_skips_wrong_sim_type(tmp_path):
 
 def test_build_simulation_csv_skips_missing_data_dir(tmp_path):
     cfg = SimulationConfig(
-        sim_type="multiphase_wetting",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 2},
         grid_shape=(8, 8),
         tau=0.8,
         nt=10,
-        eos="double-well",
-        kappa=0.02,
-        rho_l=_RHO_L,
-        rho_v=_RHO_V,
-        interface_width=2,
     )
     result = build_simulation_csv(tmp_path, cfg)
     assert result is None
@@ -465,15 +430,10 @@ def test_build_simulation_csv_skips_empty_data_dir(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     cfg = SimulationConfig(
-        sim_type="multiphase_wetting",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 2},
         grid_shape=(8, 8),
         tau=0.8,
         nt=10,
-        eos="double-well",
-        kappa=0.02,
-        rho_l=_RHO_L,
-        rho_v=_RHO_V,
-        interface_width=2,
     )
     result = build_simulation_csv(tmp_path, cfg)
     assert result is None
@@ -493,17 +453,13 @@ def test_build_simulation_csv_writes_file(tmp_path):
         np.savez(data_dir / f"timestep_{step}.npz", rho=rho, u=u)
 
     cfg = SimulationConfig(
-        sim_type="multiphase_wetting",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 2},
         grid_shape=(30, 10),
         tau=0.8,
         nt=100,
         save_interval=10,
-        eos="double-well",
-        kappa=0.02,
-        rho_l=_RHO_L,
-        rho_v=_RHO_V,
-        interface_width=2,
         initialisation={"radii": [0.3]},
+        wetting={"phi_left": 1.0},
     )
 
     result = build_simulation_csv(tmp_path, cfg)
@@ -550,16 +506,11 @@ def test_analyse_tree_counts_valid_run(tmp_path):
     np.savez(data_dir / "timestep_10.npz", rho=rho, u=u)
 
     cfg = SimulationConfig(
-        sim_type="multiphase_wetting",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 2},
         grid_shape=(30, 10),
         tau=0.8,
         nt=100,
         save_interval=10,
-        eos="double-well",
-        kappa=0.02,
-        rho_l=_RHO_L,
-        rho_v=_RHO_V,
-        interface_width=2,
         initialisation={"radii": [0.3]},
         simulation_name="test_run",
     )

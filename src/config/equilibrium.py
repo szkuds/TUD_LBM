@@ -17,9 +17,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from src.registry import OperatorEntry
 
-#: The equilibrium a run gets when it names none, by phase.
-DEFAULT_EQUILIBRIUM = {"single_phase": "standard_equilibrium", "multiphase": "wb"}
-
 
 def _registry() -> dict[str, OperatorEntry]:
     """The ``equilibrium`` registry, after importing the package for its registration side effect."""

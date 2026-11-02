@@ -62,9 +62,9 @@ class ElectricParams(NamedTuple):
     permittivity_vapour: float
     conductivity_liquid: float
     conductivity_vapour: float
-    applied_voltage: float = 0.0
-    voltage_top: float = 0.0
-    voltage_bottom: float = 0.0
+    applied_voltage: float
+    voltage_top: float
+    voltage_bottom: float
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -119,11 +119,7 @@ def equilibrium_h(
 # ══════════════════════════════════════════════════════════════════════
 
 
-@force_model(
-    name="electric_force",
-    required=tuple(f for f in ElectricParams._fields if f not in ElectricParams._field_defaults),
-    defaults=ElectricParams._field_defaults,
-)
+@force_model(name="electric_force")
 class ElectricForceModule(NamedTuple):
     """Electric force, bound to its parameters (:class:`ForceOperator`).
 
@@ -148,8 +144,8 @@ class ElectricForceModule(NamedTuple):
         """Build electric parameters (setup-time, non-jitted).
 
         Args:
-            params: The validated ``[electric_force]`` section; its schema is
-                :class:`ElectricParams`' own fields and defaults.
+            params: The validated ``[electric_force]`` section; its schema and
+                defaults are in :mod:`src.config.forces`.
             grid_shape: Spatial dimensions (unused, but required by protocol).
             config: Full simulation configuration (unused).
             lattice: Simulation lattice (unused).

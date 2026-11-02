@@ -20,8 +20,11 @@ from datetime import UTC
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import Any
 import numpy as np
 from src.config.init_field import load_init_field
+from src.config.multiphase import is_multiphase
+from src.config.multiphase import multiphase_params
 from src.operators.macroscopic.eos import analytical_surface_tension
 from src.operators.macroscopic.eos import build_pressure_fn
 from src.operators.macroscopic.eos import has_analytical_surface_tension
@@ -60,7 +63,7 @@ def _add_simulation_section(lines: list[str], config: SimulationConfig) -> None:
     lines.append(_section("Simulation"))
     if config.simulation_name:
         lines.append(_row("Name:", config.simulation_name))
-    lines.append(_row("Type:", config.sim_type))
+    lines.append(_row("Type:", "multiphase" if is_multiphase(config) else "single_phase"))
     lines.append(_row("Lattice:", config.lattice_type))
 
 
@@ -134,14 +137,14 @@ _MIN_CROSSINGS = 2
 #: ``x == 0.0``, which is the one case that never needed guarding.
 _MIN_CROSSING_SLOPE = 1e-9
 
-#: Order in which ``bc_config`` is scanned for the wetting wall. Matches
+#: Order in which ``[boundary_conditions]`` is scanned for the wetting wall. Matches
 #: :func:`src.operators.wetting._edge_config._resolve_wetting_edges`, so the wall
 #: reported here is the one the solver actually measured at.
 _EDGE_SCAN_ORDER = ("bottom", "top", "left", "right")
 
 
 def resolve_wall_edge(config: SimulationConfig) -> str:
-    """The single wall marked ``"wetting"`` in ``bc_config``, else ``"bottom"``.
+    """The single wall marked ``"wetting"`` in ``[boundary_conditions]``, else ``"bottom"``.
 
     Config validation guarantees exactly one wetting wall for wetting runs;
     non-wetting runs fall back to ``"bottom"``, for which the canonical
@@ -151,7 +154,7 @@ def resolve_wall_edge(config: SimulationConfig) -> str:
     module — which ``_scales`` already imports from lazily — does not have to
     import back into ``droplet_metrics``.
     """
-    bc = config.bc_config or {}
+    bc = config.boundary_conditions or {}
     for edge in _EDGE_SCAN_ORDER:
         if bc.get(edge) == "wetting":
             return edge
@@ -289,36 +292,24 @@ def _get_droplet_area(config: SimulationConfig) -> tuple[float, str] | None:
     return (area, "init geometry") if area is not None else None
 
 
-def _ensure_single_gravity_force_source(config: SimulationConfig) -> None:
-    """Reject configs that define both gravity force variants simultaneously."""
-    if config.gravity_force is not None and config.gravity_masked_force is not None:
-        msg = "Only one gravity force can be applied: set either gravity_force or gravity_masked_force, not both."
-        raise ValueError(msg)
+def _gravity_section(config: SimulationConfig) -> dict[str, Any] | None:
+    """The run's gravity force section; ``SimulationConfig`` allows at most one."""
+    return next((params for name, params in config.forces.items() if name.startswith("gravity")), None)
 
 
 def _resolve_gravity_value(config: SimulationConfig) -> float | None:
     """Resolve gravity from config.g or known force dictionaries."""
-    _ensure_single_gravity_force_source(config)
-
-    if config.g is not None:
-        return float(config.g)
-
-    for force_name in ("gravity_force", "gravity_masked_force"):
-        force_dict = getattr(config, force_name, None)
-        if force_dict and isinstance(force_dict, dict) and "force_g" in force_dict:
-            return float(force_dict["force_g"])
-    return None
+    params = multiphase_params(config)
+    if params is not None and params.g is not None:
+        return float(params.g)
+    section = _gravity_section(config)
+    return None if section is None else float(section["force_g"])
 
 
 def _resolve_gravity_inclination(config: SimulationConfig) -> float:
     """Return inclination_angle_deg from the active force config, or 0.0."""
-    _ensure_single_gravity_force_source(config)
-
-    for force_name in ("gravity_force", "gravity_masked_force"):
-        force_dict = getattr(config, force_name, None)
-        if force_dict and isinstance(force_dict, dict):
-            return float(force_dict.get("inclination_angle_deg", 0.0))
-    return 0.0
+    section = _gravity_section(config)
+    return 0.0 if section is None else float(section["inclination_angle_deg"])
 
 
 def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, float] | None:
@@ -330,14 +321,14 @@ def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, floa
     names in this module. ``None`` likewise for a non-multiphase run, or when
     the interface width cannot define an interface.
     """
-    params = config.multiphase_params
+    params = multiphase_params(config)
     if params is None:
         return None
 
     gamma = analytical_surface_tension(params)
-    if gamma is None or config.rho_l is None or config.rho_v is None:
+    if gamma is None:
         return None
-    return float(config.rho_l) - float(config.rho_v), gamma
+    return float(params.rho_l) - float(params.rho_v), gamma
 
 
 def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, str] | None:
@@ -351,9 +342,10 @@ def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, st
     drho^2``). The buoyancy contrast in Bo/Ar/Re comes from
     :func:`_resolve_buoyancy_delta_rho` instead.
     """
-    if config.rho_l is None or config.rho_v is None:
+    params = multiphase_params(config)
+    if params is None:
         return None
-    drho = float(config.rho_l) - float(config.rho_v)
+    drho = float(params.rho_l) - float(params.rho_v)
 
     from src.simulation_io.analysis.surface_tension import cached_surface_tension
 
@@ -380,9 +372,8 @@ def _resolve_buoyancy_delta_rho(config: SimulationConfig) -> tuple[float, str] |
         field = load_init_field(config)
         if field is not None:
             return field.drho, "measured"
-    if config.rho_l is not None and config.rho_v is not None:
-        return float(config.rho_l) - float(config.rho_v), "config"
-    return None
+    params = multiphase_params(config)
+    return None if params is None else (float(params.rho_l) - float(params.rho_v), "config")
 
 
 def _resolve_bulk_pressure(config: SimulationConfig) -> Callable[[np.ndarray], np.ndarray] | None:
@@ -394,10 +385,8 @@ def _resolve_bulk_pressure(config: SimulationConfig) -> Callable[[np.ndarray], n
     :func:`build_pressure_fn` above performs the registration side-effect import
     that query needs.
     """
-    if config.eos is None or config.eos not in get_operator_names("pressure"):
-        return None
-    params = config.multiphase_params
-    if params is None:
+    params = multiphase_params(config)
+    if params is None or params.eos not in get_operator_names("pressure"):
         return None
     import jax
     import jax.numpy as jnp
@@ -460,7 +449,8 @@ def resolve_dimensionless_inputs(config: SimulationConfig) -> DimensionlessInput
     _drho_config, gamma, gamma_source = resolved
 
     buoyancy = _resolve_buoyancy_delta_rho(config)
-    if buoyancy is None or config.rho_l is None:
+    params = multiphase_params(config)
+    if buoyancy is None or params is None:
         return None
     drho, drho_source = buoyancy
 
@@ -474,7 +464,7 @@ def resolve_dimensionless_inputs(config: SimulationConfig) -> DimensionlessInput
         length=length,
         length_label=length_label,
         nu=_nu(float(config.tau)),
-        rho_l=float(config.rho_l),
+        rho_l=float(params.rho_l),
         g=g_val,
         angle_deg=None if g_val is None else _resolve_gravity_inclination(config),
         domain=(float(config.grid_shape[0]), float(config.grid_shape[1])),
@@ -622,11 +612,11 @@ def _format_critical_inclination_angle_row(config: SimulationConfig, gamma: floa
     identical for a bubble and a droplet.
     """
     g_val = _resolve_gravity_value(config)
-    if config.chemical_step_config is None or g_val is None:
-        msg = "chemical_step_config and a gravity force must be set"
+    if config.chemical_step is None or g_val is None:
+        msg = "[chemical_step] and a gravity force must be set"
         raise RuntimeError(msg)
-    ca_adv = math.radians(float(config.chemical_step_config["ca_advancing_pre_step"]))
-    ca_rec = math.radians(float(config.chemical_step_config["ca_receding_pre_step"]))
+    ca_adv = math.radians(float(config.chemical_step["ca_advancing_pre_step"]))
+    ca_rec = math.radians(float(config.chemical_step["ca_receding_pre_step"]))
     hysteresis = math.cos(ca_rec) - math.cos(ca_adv)
 
     area_resolved = _get_droplet_area(config)
@@ -675,25 +665,26 @@ def _add_buoyancy_delta_rho_row(lines: list[str], config: SimulationConfig) -> N
 
 
 def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
-    if "multiphase" not in config.sim_type:
+    params = multiphase_params(config)
+    if params is None:
         return
     lines.extend(
         [
             _section("Multiphase"),
-            _row("EOS:", config.eos or "-"),
-            _row("kappa:", config.kappa),
-            _row("rho_liquid:", config.rho_l),
-            _row("rho_vapour:", config.rho_v),
-            _row("Interface width:", config.interface_width),
+            _row("EOS:", params.eos),
+            _row("kappa:", params.kappa),
+            _row("rho_liquid:", params.rho_l),
+            _row("rho_vapour:", params.rho_v),
+            _row("Interface width:", params.interface_width),
         ]
     )
     _add_measured_density_rows(lines, config)
-    if config.g is not None:
-        lines.append(_row("g (gravity):", config.g))
+    if params.g is not None:
+        lines.append(_row("g (gravity):", params.g))
 
     resolved = _resolve_surface_tension(config)
     if resolved is None:
-        if not has_analytical_surface_tension(config.eos):
+        if not has_analytical_surface_tension(params.eos):
             lines.append(_row("gamma (surface tension):", "requires Young–Laplace calibration"))
         return
     _drho_config, gamma, source = resolved
@@ -702,7 +693,7 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
 
     _add_buoyancy_delta_rho_row(lines, config)
     lines.extend(_dimensionless_rows(config))
-    if config.chemical_step_config is not None and _resolve_gravity_value(config) is not None:
+    if config.chemical_step is not None and _resolve_gravity_value(config) is not None:
         lines.append(_format_critical_inclination_angle_row(config, gamma))
 
 
@@ -715,15 +706,14 @@ def _add_key_value_section(lines: list[str], title: str, values: dict | None) ->
 
 
 def _add_forces_section(lines: list[str], config: SimulationConfig) -> None:
-    force_fields = [
-        f for f in ("gravity_force", "electric_force", "gravity_masked_force") if getattr(config, f, None) is not None
-    ]
-    if not force_fields:
+    if not config.forces:
         return
     lines.append(_section("Forces"))
-    for fname in force_fields:
+    for fname in ("gravity_force", "electric_force", "gravity_masked_force"):
+        if fname not in config.forces:
+            continue
         lines.append(f"  {fname}:")
-        for k, v in getattr(config, fname).items():
+        for k, v in config.forces[fname].items():
             lines.append(_row(f"{k}:", v, indent=4))
 
 
@@ -743,10 +733,10 @@ def build_overview(config: SimulationConfig) -> str:
     _add_grid_section(lines, config)
     _add_collision_section(lines, config)
     _add_multiphase_section(lines, config)
-    _add_key_value_section(lines, "Boundary Conditions", config.bc_config)
-    _add_key_value_section(lines, "Wetting", config.wetting_config)
-    _add_key_value_section(lines, "Hysteresis", config.hysteresis_config)
-    _add_key_value_section(lines, "Chemical Step", config.chemical_step_config)
+    _add_key_value_section(lines, "Boundary Conditions", config.boundary_conditions)
+    _add_key_value_section(lines, "Wetting", config.wetting)
+    _add_key_value_section(lines, "Hysteresis", config.hysteresis)
+    _add_key_value_section(lines, "Chemical Step", config.chemical_step)
     _add_forces_section(lines, config)
 
     lines.append("\n" + sep)

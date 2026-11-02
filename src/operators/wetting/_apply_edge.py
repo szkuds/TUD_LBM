@@ -13,7 +13,7 @@ from src.operators.wetting._wetting_modification import wetting_regions
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
-    from src.config.chemical_step import ChemicalStepWall
+    from src.config.wetting import ChemicalStepWall
     from src.operators.wetting._wetting_modification import WettingRegion
 
 

@@ -13,7 +13,6 @@
 
 [simulation_type]
 simulation_name = 'Test simple simulation'
-type = "single_phase"
 grid_shape = [100, 100, 1]
 lattice_type = "D2Q9"
 tau = 0.6

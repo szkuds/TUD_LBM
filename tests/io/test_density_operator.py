@@ -9,13 +9,8 @@ from src.simulation_io.plotting._density import DensityPlotOperator
 
 def test_density_operator_uses_log_scale_for_large_multiphase_ratio():
     cfg = SimulationConfig(
-        sim_type="multiphase",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1000.0, "rho_v": 1.0, "interface_width": 2},
         grid_shape=(8, 8),
-        eos="double-well",
-        kappa=0.02,
-        rho_l=1000.0,
-        rho_v=1.0,
-        interface_width=2,
     )
     op = DensityPlotOperator(cfg)
     rng = np.random.default_rng(123)

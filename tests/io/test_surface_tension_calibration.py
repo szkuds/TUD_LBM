@@ -19,6 +19,7 @@ from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import SNAPSHOTS_DIRNAME
 from src.simulation_io.analysis.surface_tension import surface_tension as st
+from tests.support.config import merge_overrides
 
 # Captured at import, before the autouse fixture in tests/conftest.py redirects
 # it, so the "never inside the checkout" invariant is asserted against the value
@@ -29,18 +30,20 @@ _REAL_FIELDS_CACHE_DIR = st._FIELDS_CACHE_DIR
 def _stub_config(**overrides):
     """Minimal object exposing the attributes the calibration reads."""
     base = {
-        "eos": "carnahan-starling",
-        "kappa": 0.01,
-        "rho_l": 0.4,
-        "rho_v": 0.02,
-        "interface_width": 4,
+        "multiphase": {
+            "eos": "carnahan-starling",
+            "kappa": 0.01,
+            "rho_l": 0.4,
+            "rho_v": 0.02,
+            "interface_width": 4,
+            "a_eos": 0.5,
+            "b_eos": 4.0,
+            "r_eos": 1.0,
+            "t_eos": 0.05,
+        },
         "grid_shape": (64, 64, 1),
-        "a_eos": 0.5,
-        "b_eos": 4.0,
-        "r_eos": 1.0,
-        "t_eos": 0.05,
     }
-    base.update(overrides)
+    merge_overrides(base, overrides)
     return SimpleNamespace(**base)
 
 
@@ -109,7 +112,7 @@ def test_cache_round_trip(tmp_path, monkeypatch):
 
 def test_cache_key_changes_with_eos_params(tmp_path):
     base = _stub_config()
-    changed = _stub_config(a_eos=base.a_eos + 1.0)
+    changed = _stub_config(multiphase={"a_eos": base.multiphase["a_eos"] + 1.0})
     assert st._cache_key(base) != st._cache_key(changed)
 
 
@@ -132,18 +135,18 @@ def test_load_cache_drops_malformed_entries(tmp_path):
     path = tmp_path / st._CACHE_FILENAME
     good_entry = {"sigma": 0.5, "radii": [1.0], "delta_p": [0.5], "grid_shape": [64, 64, 1]}
     good_key = st._cache_key(_stub_config())
-    none_field_key = st._cache_key(_stub_config(a_eos=None))
-    bad_entry_key = st._cache_key(_stub_config(kappa=0.02))
-    missing_field_key = st._cache_key(_stub_config(kappa=0.03))
-    bad_grid_shape_key = st._cache_key(_stub_config(kappa=0.04))
+    none_field_key = st._cache_key(_stub_config(multiphase={"a_eos": None}))
+    bad_entry_key = st._cache_key(_stub_config(multiphase={"kappa": 0.02}))
+    missing_field_key = st._cache_key(_stub_config(multiphase={"kappa": 0.03}))
+    bad_grid_shape_key = st._cache_key(_stub_config(multiphase={"kappa": 0.04}))
     raw = {
         good_key: good_entry,
         none_field_key: good_entry,
         "not-json{": good_entry,
         json.dumps({"unexpected": 1}): good_entry,
-        json.dumps(dict(json.loads(good_key), eos="unknown-eos")): good_entry,
-        json.dumps(dict(json.loads(good_key), kappa="0.1")): good_entry,
-        json.dumps(dict(json.loads(good_key), kappa=True)): good_entry,
+        json.dumps(dict(json.loads(good_key), multiphase={"eos": "unknown-eos"})): good_entry,
+        json.dumps(dict(json.loads(good_key), multiphase={"kappa": "0.1"})): good_entry,
+        json.dumps(dict(json.loads(good_key), multiphase={"kappa": True})): good_entry,
         json.dumps(dict(json.loads(good_key), grid_shape=[64, 0, 1])): good_entry,
         bad_entry_key: "not a dict",
         missing_field_key: {"radii": [1.0], "delta_p": [0.5]},
@@ -166,7 +169,7 @@ def test_load_cache_rejects_non_dict_file(tmp_path):
 def test_store_cache_preserves_existing_valid_entries(tmp_path, monkeypatch):
     path = tmp_path / st._CACHE_FILENAME
     monkeypatch.setattr(st, "_SHARED_CACHE_PATH", path)
-    old_config = _stub_config(kappa=0.5, grid_shape=(64, 64, 1))
+    old_config = _stub_config(multiphase={"kappa": 0.5}, grid_shape=(64, 64, 1))
     new_config = _stub_config(grid_shape=(128, 128, 1))
     old_key = st._cache_key(old_config)
     new_key = st._cache_key(new_config)
@@ -187,7 +190,7 @@ def _droplet_field(config, radius):
     xs = np.arange(nx)[:, None] - nx // 2
     ys = np.arange(ny)[None, :] - ny // 2
     inside = np.hypot(xs, ys) <= radius
-    return np.where(inside, config.rho_l, config.rho_v).astype(float)
+    return np.where(inside, config.multiphase["rho_l"], config.multiphase["rho_v"]).astype(float)
 
 
 _SEED_RADII = np.array([10.0, 20.0, 30.0])
@@ -294,7 +297,7 @@ def test_cached_surface_tension_links_a_config_to_the_cache():
 
 def test_cached_surface_tension_ignores_the_cache_for_a_closed_form_eos():
     """A double-well entry is a verification measurement, never the run's sigma."""
-    config = _cs_config(eos="double-well", a_eos=None, b_eos=None, r_eos=None, t_eos=None)
+    config = _cs_config(multiphase={"eos": "double-well", "a_eos": None, "b_eos": None, "r_eos": None, "t_eos": None})
     _seed_cache(config)
 
     assert st.is_calibrated(config)
@@ -314,7 +317,21 @@ def test_fluid_label_and_run_names_are_readable():
 
     assert st.fluid_label(config) == _FLUID
     assert (
-        st.fluid_label(_cs_config(eos="double-well", kappa=0.04, rho_l=1.0, rho_v=0.001)) == "dw_kappa0.04_rho1_0.001"
+        st.fluid_label(
+            _cs_config(
+                multiphase={
+                    "eos": "double-well",
+                    "kappa": 0.04,
+                    "rho_l": 1.0,
+                    "rho_v": 0.001,
+                    "a_eos": None,
+                    "b_eos": None,
+                    "r_eos": None,
+                    "t_eos": None,
+                }
+            )
+        )
+        == "dw_kappa0.04_rho1_0.001"
     )
     assert [c.simulation_name for c in st.calibration_configs(config)] == [
         f"surface_tension_{_FLUID}_{tag}" for tag in _RADIUS_TAGS
@@ -323,10 +340,9 @@ def test_fluid_label_and_run_names_are_readable():
 
 def test_calibration_configs_are_one_plain_run_per_radius():
     config = _cs_config(
-        sim_type="multiphase_wetting",
+        forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 0.0}},
         grid_shape=(64, 48),
-        bc_config={"top": "wetting", "bottom": "bounce-back"},
-        gravity_force={"force_g": 1e-6, "inclination_angle_deg": 0.0},
+        boundary_conditions={"top": "wetting", "bottom": "bounce-back"},
         results_dir="/somewhere/else",
     )
 
@@ -337,11 +353,11 @@ def test_calibration_configs_are_one_plain_run_per_radius():
     fluid_dir = st.SURFACE_TENSION_ROOT / _FLUID
     assert [st.sweep_config_path(c) for c in sweep] == [fluid_dir / "configs" / f"{tag}.toml" for tag in _RADIUS_TAGS]
     for calib in sweep:
-        assert calib.sim_type == "multiphase"
+        assert calib.multiphase is not None
         assert tuple(calib.grid_shape) == st._CALIBRATION_GRID_SHAPE
-        assert calib.gravity_force is None
-        assert calib.bc_config is not None
-        assert calib.bc_config["top"] == "periodic"
+        assert calib.forces == {}
+        assert calib.boundary_conditions is not None
+        assert calib.boundary_conditions["top"] == "periodic"
         assert calib.nt == st._N_ITERATIONS
         assert calib.save_interval == st._N_ITERATIONS
         assert calib.save_fields is not None
@@ -381,7 +397,7 @@ def _write_sweep_run(sweep_config, sigma: float, *, stamp: str = "2026-01-01/00-
     offsets = np.arange(side) - side // 2
     inside = np.hypot(offsets[:, None], offsets[None, :]) <= radius
     pressure = np.where(inside, sigma / radius, 0.0)
-    rho = np.where(inside, sweep_config.rho_l, sweep_config.rho_v)
+    rho = np.where(inside, sweep_config.multiphase["rho_l"], sweep_config.multiphase["rho_v"])
     np.savez(
         data_dir / f"timestep_{sweep_config.nt}.npz",
         pressure=pressure[:, :, None, None, None],
@@ -399,7 +415,7 @@ def _sweep_runs() -> list[Path]:
 
 def test_find_sweep_runs_groups_by_fluid_folder_and_skips_other_runs():
     for kappa in (0.01, 0.02):
-        for sweep_config in st.calibration_configs(_cs_config(kappa=kappa))[:2]:
+        for sweep_config in st.calibration_configs(_cs_config(multiphase={"kappa": kappa}))[:2]:
             _write_sweep_run(sweep_config, 0.0123)
     # An ordinary run kept directly under the root, like the cs_eos_test runs.
     plain = st.SURFACE_TENSION_ROOT / "2026-08-05" / "10-08-21_cs_eos_test"
@@ -483,7 +499,7 @@ def test_collect_prefers_the_newest_run_of_a_radius():
 def test_collect_rejects_two_fluids_sharing_one_label():
     """The folder name leaves parameters out; identity comes from the configs."""
     first = st.calibration_configs(_cs_config())
-    second = st.calibration_configs(_cs_config(a_eos=0.6))
+    second = st.calibration_configs(_cs_config(multiphase={"a_eos": 0.6}))
     assert st.fluid_label(first[0]) == st.fluid_label(second[0])
     for sweep_config in (first[0], second[1]):
         _write_sweep_run(sweep_config, 0.0123)
@@ -571,60 +587,56 @@ def _cs_config(**overrides):
     from src.config.simulation_config import SimulationConfig
 
     base: dict[str, Any] = {
-        "sim_type": "multiphase",
+        "multiphase": {
+            "eos": "carnahan-starling",
+            "kappa": 0.01,
+            "rho_l": 0.4,
+            "rho_v": 0.02,
+            "interface_width": 4,
+            "a_eos": 0.5,
+            "b_eos": 4.0,
+            "r_eos": 1.0,
+            "t_eos": 0.05,
+        },
         "grid_shape": (32, 32),
         "tau": 0.99,
         "nt": 3,
-        "eos": "carnahan-starling",
-        "kappa": 0.01,
-        "rho_l": 0.4,
-        "rho_v": 0.02,
-        "interface_width": 4,
-        "a_eos": 0.5,
-        "b_eos": 4.0,
-        "r_eos": 1.0,
-        "t_eos": 0.05,
     }
-    base.update(overrides)
+    merge_overrides(base, overrides)
     return SimulationConfig(**base)
 
 
 def test_calibration_config_isolates_single_droplet():
     cfg = _cs_config(
-        simulation_name="drop",
-        gravity_force={"force_g": 1e-6},
-        save_fields=["rho"],
-        save_interval=10,
+        forces={"gravity_force": {"force_g": 1e-6}}, simulation_name="drop", save_fields=["rho"], save_interval=10
     )
 
     calib = st._calibration_config(cfg)
 
-    assert calib.sim_type == "multiphase"
+    assert calib.multiphase is not None
     assert calib.nt == st._N_ITERATIONS
     # save_interval=0 is falsy, so validation re-applies the nt // 10 default.
     assert calib.save_interval == calib.nt // 10
     assert calib.skip_interval == 0
-    assert calib.bc_config is not None
+    assert calib.boundary_conditions is not None
     for face in ("top", "bottom", "left", "right"):
-        assert calib.bc_config[face] == "periodic"
+        assert calib.boundary_conditions[face] == "periodic"
     for name in (
         "save_fields",
         "plot_fields",
         "animate_fields",
         "overlay_fields",
-        "g",
-        "gravity_force",
-        "gravity_masked_force",
-        "electric_force",
-        "wetting_config",
-        "hysteresis_config",
-        "chemical_step_config",
+        "wetting",
+        "hysteresis",
+        "chemical_step",
     ):
         assert getattr(calib, name) is None, name
+    assert calib.forces == {}
+    assert "g" not in calib.multiphase
     assert calib.init_type == "multiphase_bubbles"
     assert calib.initialisation == {"centres": [[0.5, 0.5]], "radii": [0.2], "dispersed": "liquid"}
     assert calib.simulation_name == "drop_surface_tension"
     assert calib.init_dir is None
     # Thermodynamic parameters that determine sigma are preserved.
     for name in ("eos", "kappa", "rho_l", "rho_v", "interface_width", "a_eos", "b_eos", "r_eos", "t_eos"):
-        assert getattr(calib, name) == getattr(cfg, name), name
+        assert calib.multiphase[name] == cfg.multiphase[name], name

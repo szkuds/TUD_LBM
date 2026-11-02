@@ -13,7 +13,6 @@
 # and has no effect on the macroscopic operator.
 
 [simulation_type]
-type              = "multiphase"
 simulation_name   = "cs_eos_test"
 lattice_type      = "D2Q9"
 grid_shape        = [201, 201]

@@ -1,13 +1,12 @@
 """Shared stencil-padding utility for D2Q9 differential operators.
 
 The four ``jnp.pad`` mode strings come from the configuration,
-:attr:`SimulationConfig.pad_modes
-<src.config.simulation_config.SimulationConfig.pad_modes>`, which reads each
+``pad_modes(config)``, which reads each
 boundary condition's ``pad_edge_mode`` registration.
 
 The ordering convention is ``(y_end, y_start, x_end, x_start)`` — that is,
 ``(top, bottom, right, left)`` — which matches the order
-``SimulationConfig.pad_modes`` returns and the padding order in ``_gradient.py`` /
+``src.config.boundary.pad_modes`` returns and the padding order in ``_gradient.py`` /
 ``_laplacian.py``.
 
 **Both ghost layers of an axis are derived from that axis's original extent.**
@@ -53,7 +52,7 @@ def _apply_stencil_padding(
         grid_2d: Shape ``(nx, ny)``.
         pad_mode: ``(y_end, y_start, x_end, x_start)``, i.e.
             ``(top, bottom, right, left)`` — the order
-            ``SimulationConfig.pad_modes`` returns.
+            ``src.config.boundary.pad_modes`` returns.
 
     Returns:
         Shape ``(nx + 2, ny + 2)``.

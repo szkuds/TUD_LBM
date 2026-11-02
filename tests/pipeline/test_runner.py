@@ -20,6 +20,7 @@ from src.pipeline.runner import init_state
 from src.pipeline.setup import build_setup
 from src.pipeline.step import observe
 from src.pipeline.step import step
+from tests.support.config import merge_overrides
 
 # =====================================================================
 # Helpers
@@ -42,10 +43,10 @@ def _sp_setup():
 def _sp_setup_with_gravity():
     """Build a tiny single-phase setup with gravity enabled."""
     cfg = SimulationConfig(
+        forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 10.0}},
         grid_shape=(NX, NY, NZ),
         tau=0.8,
         nt=10,
-        gravity_force={"force_g": 1e-6, "inclination_angle_deg": 10.0},
     )
     return build_setup(cfg)
 
@@ -53,15 +54,10 @@ def _sp_setup_with_gravity():
 def _mp_setup():
     """Build a tiny multiphase SimulationSetup."""
     cfg = SimulationConfig(
-        sim_type="multiphase",
+        multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
         grid_shape=(16, 16),
         tau=0.99,
         nt=5,
-        eos="double-well",
-        kappa=0.017,
-        rho_l=1.0,
-        rho_v=0.33,
-        interface_width=4,
     )
     return build_setup(cfg)
 
@@ -69,23 +65,18 @@ def _mp_setup():
 def _mp_setup_with_gravity():
     """Build a tiny multiphase setup with gravity enabled."""
     cfg = SimulationConfig(
-        sim_type="multiphase",
+        multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
+        forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 10.0}},
         grid_shape=(16, 16),
         tau=0.99,
         nt=5,
-        eos="double-well",
-        kappa=0.017,
-        rho_l=1.0,
-        rho_v=0.33,
-        interface_width=4,
-        gravity_force={"force_g": 1e-6, "inclination_angle_deg": 10.0},
     )
     return build_setup(cfg)
 
 
 def _cfg(**kwargs) -> SimulationConfig:
     base = {"grid_shape": (8, 8), "tau": 0.8, "nt": 10}
-    base.update(kwargs)
+    merge_overrides(base, kwargs)
     return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
@@ -669,7 +660,7 @@ class TestStepWithBounceBack:
             grid_shape=(NX, NY),
             tau=0.8,
             nt=5,
-            bc_config={
+            boundary_conditions={
                 "top": "bounce-back",
                 "bottom": "bounce-back",
                 "left": "periodic",
@@ -691,7 +682,7 @@ class TestStepWithBounceBack:
             grid_shape=(NX, NY, NZ),
             tau=0.8,
             nt=5,
-            bc_config={
+            boundary_conditions={
                 "top": "bounce-back",
                 "bottom": "bounce-back",
                 "left": "periodic",

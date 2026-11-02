@@ -13,7 +13,6 @@
 
 [simulation_type]
 simulation_name = "Test complex simulation"
-type = "multiphase_hysteresis"
 grid_shape = [201, 201]
 lattice_type = "D2Q9"
 tau = 0.99

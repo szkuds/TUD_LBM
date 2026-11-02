@@ -60,7 +60,7 @@ class TestConfigCreation:
         assert config.nt == 1000
         assert config.lattice_type == "D2Q9"
         assert config.collision_scheme == "bgk"
-        assert config.sim_type == "single_phase"
+        assert config.multiphase is None
 
     def test_custom_grid_shapes(self):
         """Test various grid shapes."""
@@ -188,13 +188,15 @@ class TestForceConfiguration:
     def test_gravity_force(self):
         """Verify gravity force configuration and execution."""
         config = SimulationConfig(
+            forces={
+                "gravity_force": {
+                    "force_g": 1e-5,
+                    "inclination_angle_deg": 45.0,
+                }
+            },
             grid_shape=(16, 16),
             tau=0.8,
             nt=5,
-            gravity_force={
-                "force_g": 1e-5,
-                "inclination_angle_deg": 45.0,
-            },
         )
 
         setup = build_setup(config)
@@ -206,12 +208,7 @@ class TestForceConfiguration:
 
     def test_no_forces(self):
         """Verify simulation without forces (default)."""
-        config = SimulationConfig(
-            grid_shape=(16, 16),
-            tau=0.8,
-            nt=5,
-            gravity_force=None,
-        )
+        config = SimulationConfig(grid_shape=(16, 16), tau=0.8, nt=5)
 
         setup = build_setup(config)
         state = init_state(setup)
@@ -226,11 +223,10 @@ class TestForceConfiguration:
             match=r"Only one gravity force can be applied, got gravity_force, gravity_masked_force",
         ):
             SimulationConfig(
+                forces={"gravity_force": {"force_g": 1e-6}, "gravity_masked_force": {"force_g": 1e-6}},
                 grid_shape=(16, 16),
                 tau=0.8,
                 nt=5,
-                gravity_force={"force_g": 1e-6},
-                gravity_masked_force={"force_g": 1e-6},
             )
 
 

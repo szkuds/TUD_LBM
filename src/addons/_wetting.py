@@ -19,6 +19,10 @@ from typing import TYPE_CHECKING
 import jax
 import jax.numpy as jnp
 from src.addons.hooks import Hooks
+from src.config.multiphase import multiphase_params
+from src.config.wetting import chemical_step_wall
+from src.config.wetting import restored_wetting
+from src.config.wetting import wetting_scalars
 from src.operators.wetting._applicator import build_wetting_applicator
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
@@ -50,9 +54,9 @@ def wetting_ghost_fill(config: SimulationConfig) -> GhostFill[WallParams]:
     The substate may be the live :class:`WettingState` or a candidate
     :class:`WettingParams`; both carry the four parameter names.
     """
-    mp = config.multiphase_params
+    mp = multiphase_params(config)
     assert mp is not None  # noqa: S101 - build_wetting_addon checks the phase first (_wall)
-    apply = build_wetting_applicator(mp.rho_l, mp.rho_v, config.bc_config, config.chemical_step_wall)
+    apply = build_wetting_applicator(mp.rho_l, mp.rho_v, config.boundary_conditions, chemical_step_wall(config))
 
     def ghost_fill(padded: jnp.ndarray, wall: WallParams) -> jnp.ndarray:
         return apply(padded, wall.phi_left, wall.phi_right, wall.d_rho_left, wall.d_rho_right)
@@ -69,14 +73,14 @@ def _wall(config: SimulationConfig) -> tuple[float, str]:
             a run has no multiphase stencils to put the wall on, or no wall to
             apply it to and measure at.
     """
-    mp = config.multiphase_params
+    mp = multiphase_params(config)
     if mp is None:
         msg = (
-            f"Wetting configuration present but sim_type is '{config.sim_type}'. "
+            "Wetting configuration present without a [multiphase] section. "
             "Wetting is an addon to multiphase simulations: it modifies the multiphase density stencils."
         )
         raise ValueError(msg)
-    edge = first_wetting_edge(config.bc_config)
+    edge = first_wetting_edge(config.boundary_conditions)
     if edge is None:
         msg = 'A wetting run needs a "wetting" boundary edge to apply its wall on and measure its angles at.'
         raise ValueError(msg)
@@ -97,7 +101,7 @@ def _measure(rho: jnp.ndarray, rho_mean: float, edge: str) -> dict[str, jnp.ndar
 
 def _init_state(config: SimulationConfig, rho_mean: float, edge: str) -> InitStateHook[WettingState]:
     """The configured wall parameters, the measured initial angles and, on a restart, the saved state."""
-    defaults = config.wetting_defaults
+    defaults = wetting_scalars(config)
     assert defaults is not None  # noqa: S101 - the addon is built only with wetting defaults
     params = WettingParams.from_defaults(defaults)
 
@@ -106,7 +110,7 @@ def _init_state(config: SimulationConfig, rho_mean: float, edge: str) -> InitSta
         wetting = WettingState(**params._asdict(), **_measure(rho, rho_mean, edge))
         # A hysteresis restart resumes the wall parameters and anchors it saved;
         # the angles above are always measured off the field.
-        restored = setup.config.restored_wetting
+        restored = restored_wetting(setup.config)
         if restored is not None:
             wetting = wetting._replace(**{key: jnp.array(value) for key, value in restored.items()})
         return wetting
@@ -130,9 +134,9 @@ def build_measurement_hook(config: SimulationConfig) -> PostStepHook:
 
 def _optimiser(config: SimulationConfig, edge: str) -> PostStepHook:
     """Hysteresis: optimise the wall parameters for the next step on trial steps of the kernel."""
-    hc = config.hysteresis_config
+    hc = config.hysteresis
     assert hc is not None  # noqa: S101 - built only for a hysteresis run
-    update = update_wetting_state if config.chemical_step_config is None else update_wetting_state_chemical_step
+    update = update_wetting_state if config.chemical_step is None else update_wetting_state_chemical_step
     trial_steps: int = hc["trial_steps"]
 
     def post_step(setup: SimulationSetup, prev: State, new: State) -> State:
@@ -161,10 +165,10 @@ def _optimiser(config: SimulationConfig, edge: str) -> PostStepHook:
 @addon_operator(name=NAME)
 def build_wetting_addon(config: SimulationConfig) -> Hooks[WallParams] | None:
     """The wetting hooks, or ``None`` without a ``[wetting]`` / ``[hysteresis]`` section."""
-    if config.wetting_defaults is None:
+    if wetting_scalars(config) is None:
         return None
     rho_mean, edge = _wall(config)
-    post_step = build_measurement_hook(config) if config.hysteresis_config is None else _optimiser(config, edge)
+    post_step = build_measurement_hook(config) if config.hysteresis is None else _optimiser(config, edge)
     return Hooks(
         ghost_fill=wetting_ghost_fill(config),
         post_step=post_step,

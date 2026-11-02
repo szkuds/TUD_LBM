@@ -31,6 +31,7 @@ from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import SNAPSHOTS_DIRNAME
 from src.config.simulation_config import SimulationConfig
 from src.simulation_io.analysis.surface_tension import surface_tension as st
+from tests.support.config import merge_overrides
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -54,21 +55,22 @@ def _cs_config(**overrides) -> SimulationConfig:
     "still a droplet" assertions below vacuous.
     """
     base: dict[str, Any] = {
-        "sim_type": "multiphase",
+        "multiphase": {
+            "eos": "carnahan-starling",
+            "kappa": 0.01,
+            "rho_l": 12.18,
+            "rho_v": 0.015,
+            "interface_width": 5,
+            "a_eos": 0.00031459670905604266,
+            "b_eos": 0.1490857142857143,
+            "r_eos": 1.0,
+            "t_eos": 0.00039808421247983624,
+        },
         "grid_shape": (64, 32),
         "tau": 0.99,
         "nt": 3,
-        "eos": "carnahan-starling",
-        "kappa": 0.01,
-        "rho_l": 12.18,
-        "rho_v": 0.015,
-        "interface_width": 5,
-        "a_eos": 0.00031459670905604266,
-        "b_eos": 0.1490857142857143,
-        "r_eos": 1.0,
-        "t_eos": 0.00039808421247983624,
     }
-    base.update(overrides)
+    merge_overrides(base, overrides)
     return SimulationConfig(**base)
 
 
@@ -229,8 +231,8 @@ def test_each_equilibrated_droplet_is_still_a_droplet(calibration):
 
         assert np.all(np.isfinite(rho)), run_dir.name
         assert rho.min() > 0.0, run_dir.name
-        assert rho.max() <= config.rho_l, run_dir.name
-        assert centre > 0.5 * config.rho_l, (run_dir.name, centre)
+        assert rho.max() <= config.multiphase["rho_l"], run_dir.name
+        assert centre > 0.5 * config.multiphase["rho_l"], (run_dir.name, centre)
         assert corners < 0.1 * centre, (run_dir.name, corners, centre)
 
 

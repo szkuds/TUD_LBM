@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 import matplotlib as mpl
+from tests.support.config import merge_overrides
 
 mpl.use("Agg")
 
@@ -37,18 +38,14 @@ _RHO_MEAN = 0.5 * (_RHO_L + _RHO_V)
 
 def _wetting_cfg(**extra) -> SimulationConfig:
     base = {
-        "sim_type": "multiphase_wetting",
+        "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 2},
         "grid_shape": (30, 10),
         "tau": 0.8,
         "nt": 100,
         "save_interval": 10,
-        "eos": "double-well",
-        "kappa": 0.02,
-        "rho_l": _RHO_L,
-        "rho_v": _RHO_V,
-        "interface_width": 2,
+        "wetting": {"phi_left": 1.0},
     }
-    base.update(extra)
+    merge_overrides(base, extra)
     return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
@@ -200,13 +197,13 @@ class TestLoadComparisonEntries:
         (run_dir / "simulation_data.csv").write_text("iteration,Ca\n10,0.002\n20,0.004\n", encoding="utf-8")
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
 
-        cfg = _wetting_cfg(simulation_name="my_run", wetting_config={"advancing_ca": 100})
+        cfg = _wetting_cfg(simulation_name="my_run", wetting={"phi_left": 1.0})
         with patch("src.simulation_io.plotting.run_comparison._safe_load_config", return_value=cfg):
             result = _load_comparison_entries(tmp_path)
 
         assert len(result) == 1
         assert result[0]["label"] == "my_run"
-        assert result[0]["sort_key"] == 100
+        assert result[0]["sort_key"] == 0
 
     def test_uses_dir_name_when_simulation_name_missing(self, tmp_path):
         pytest.importorskip("pandas")
@@ -238,12 +235,12 @@ class TestLoadComparisonEntries:
 
         configs = {
             "001_weak": _wetting_cfg(
+                forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0}},
                 initialisation={"radii": [0.2], "centres": [[0.5, 0.5]]},
-                gravity_force={"force_g": 1e-6, "inclination_angle_deg": 30.0},
             ),
             "002_strong": _wetting_cfg(
+                forces={"gravity_force": {"force_g": 4e-6, "inclination_angle_deg": 30.0}},
                 initialisation={"radii": [0.2], "centres": [[0.5, 0.5]]},
-                gravity_force={"force_g": 4e-6, "inclination_angle_deg": 30.0},
             ),
         }
         with patch(
@@ -262,8 +259,7 @@ class TestLoadComparisonEntries:
         self._two_runs(tmp_path)
 
         cfg = _wetting_cfg(
-            initialisation={"radii": [0.2], "centres": [[0.5, 0.5]]},
-            gravity_force={"force_g": 1e-6},
+            forces={"gravity_force": {"force_g": 1e-6}}, initialisation={"radii": [0.2], "centres": [[0.5, 0.5]]}
         )
         with patch("src.simulation_io.plotting.run_comparison._safe_load_config", return_value=cfg):
             result = _load_comparison_entries(tmp_path, ["oh"])
@@ -323,7 +319,7 @@ def test_analyse_tree_does_not_call_compare_when_all_fail(tmp_path):
     run_dir.mkdir()
     (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
 
-    cfg = _wetting_cfg(sim_type="single_phase")
+    cfg = _wetting_cfg()
     compare_called = {"n": 0}
 
     with patch("src.cli.analysis_routing._safe_load_config", return_value=cfg):
@@ -371,4 +367,4 @@ def test_build_simulation_csv_returns_none_for_unsupported_sim_type(tmp_path):
     """build_simulation_csv returns None for non-wetting sim types."""
     run_dir = tmp_path / "run"
     run_dir.mkdir()
-    assert build_simulation_csv(run_dir, _wetting_cfg(sim_type="single_phase")) is None
+    assert build_simulation_csv(run_dir, _wetting_cfg()) is None

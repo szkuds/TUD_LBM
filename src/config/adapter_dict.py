@@ -14,7 +14,7 @@ Usage::
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import Any
-from src.config.sections import merge_sections
+from src.config.sections import load_sections
 from src.protocols import ConfigAdapter
 
 if TYPE_CHECKING:
@@ -28,17 +28,17 @@ class DictAdapter(ConfigAdapter):
 
     **Flat** (SimulationConfig field names at top level)::
 
-        {"sim_type": "multiphase", "kappa": 0.04, ...}
+        {"multiphase": {"kappa": 0.04, ...}, "forces": {"gravity_force": {...}}, ...}
 
     **Nested** (mirrors TOML section structure)::
 
-        {"simulation_type": {"type": "multiphase", ...}, "multiphase": {...}, ...}
+        {"simulation_type": {...}, "multiphase": {...}, "gravity_force": {...}, ...}
     """
 
     def load_raw(self, source: dict[str, Any]) -> dict[str, Any]:
         """Return a flat config dict from *source*, handling both flat and nested shapes."""
         if isinstance(source.get("simulation_type"), dict):
-            return merge_sections(source)
+            return load_sections(source)[0]
         return dict(source)
 
     def save(self, config: SimulationConfig, path: str) -> None:

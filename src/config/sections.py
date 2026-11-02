@@ -1,7 +1,7 @@
 """The mapping between the nested config layout and the :class:`SimulationConfig` fields.
 
 Every adapter reads its format into nested sections (``[simulation_type]``,
-``[multiphase]``, ``[*_force]``, ...) and hands them to :func:`merge_sections`;
+``[multiphase]``, ``[*_force]``, ...) and hands them to :func:`load_sections`;
 :func:`build_sections` is the reverse, for ``save``. The layout is config
 knowledge, so it lives here and not on the adapter base class
 (:class:`~src.protocols.ConfigAdapter`).
@@ -12,23 +12,62 @@ import dataclasses
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+from src.config.forces import FORCE_SCHEMAS
+from src.config.legacy import upgrade
 from src.config.simulation_config import CONFIG_SECTION
 from src.config.simulation_config import SimulationConfig
 
+#: Sections stored whole on the :class:`SimulationConfig` field of the same name.
+_DICT_SECTIONS: tuple[str, ...] = (
+    "multiphase",
+    "boundary_conditions",
+    "wetting",
+    "hysteresis",
+    "chemical_step",
+    "obstacle",
+    "initialisation",
+)
+#: Field names of the old layout. ``config_from_flat`` keeps an unknown key in
+#: ``extra`` without a word, which would turn a flat ``kappa`` into a single-phase run.
+_RETIRED_FIELDS: frozenset[str] = frozenset(
+    {
+        "sim_type",
+        "type",
+        "bc_config",
+        "obstacle_config",
+        "wetting_config",
+        "hysteresis_config",
+        "chemical_step_config",
+        "eos",
+        "kappa",
+        "rho_l",
+        "rho_v",
+        "interface_width",
+        "g",
+        "a_eos",
+        "b_eos",
+        "r_eos",
+        "t_eos",
+        *FORCE_SCHEMAS,
+    }
+)
+
 
 def _process_forces(raw: dict[str, Any], sim_table: dict[str, Any]) -> None:
-    """Extract and validate force sections from *raw* into *sim_table*."""
-    known_force_fields = {f.name for f in dataclasses.fields(SimulationConfig) if f.name.endswith("_force")}
+    """Route every ``[*_force]`` section of *raw* into ``sim_table["forces"]``."""
+    forces: dict[str, Any] = {}
     for key, value in raw.items():
         if not key.endswith("_force"):
             continue
-        if key not in known_force_fields:
+        if key not in FORCE_SCHEMAS:
             msg = f"Unknown force type '{key}'"
             raise KeyError(msg)
         if not isinstance(value, dict):
             msg = f"Force section '[{key}]' must be a table, got {type(value).__name__}."
             raise TypeError(msg)
-        sim_table[key] = dict(value)
+        forces[key] = dict(value)
+    if forces:
+        sim_table["forces"] = forces
 
 
 def _apply_output(sim_table: dict[str, Any], output: dict[str, Any]) -> None:
@@ -40,14 +79,12 @@ def _apply_output(sim_table: dict[str, Any], output: dict[str, Any]) -> None:
             sim_table[key] = value
 
 
-def merge_sections(raw: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
+def merge_sections(raw: dict[str, Any]) -> dict[str, Any]:
     """Flatten a nested section dict into a SimulationConfig kwarg dict."""
     sim_table = dict(raw.get("simulation_type", {}))
     if not sim_table:
         msg = "Config is missing the required 'simulation_type' section."
         raise ValueError(msg)
-
-    sim_type: str = sim_table.pop("type", "single_phase")
 
     if "grid_shape" in sim_table and not isinstance(sim_table["grid_shape"], list):
         sim_table["grid_shape"] = tuple(sim_table["grid_shape"])
@@ -55,41 +92,19 @@ def merge_sections(raw: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
     if "k_diag" in sim_table and isinstance(sim_table["k_diag"], list):
         sim_table["k_diag"] = tuple(sim_table["k_diag"])
 
-    valid_types = (
-        "single_phase",
-        "multiphase",
-        "multiphase_wetting",
-        "multiphase_hysteresis",
-        "multiphase_hysteresis_chemical_step",
-    )
-    if sim_type not in valid_types:
-        msg = f"Unknown simulation type '{sim_type}'. Expected one of: {', '.join(valid_types)}."
-        raise ValueError(msg)
-
-    if "multiphase" in sim_type:
-        sim_table.update(raw.get("multiphase", {}))
-
-    bc_config = raw.get("boundary_conditions")
-    if bc_config is not None:
-        sim_table["bc_config"] = dict(bc_config)
-
-    if "wetting" in raw:
-        sim_table["wetting_config"] = dict(raw["wetting"])
-    if "hysteresis" in raw:
-        sim_table["hysteresis_config"] = dict(raw["hysteresis"])
-    if "chemical_step" in raw:
-        sim_table["chemical_step_config"] = dict(raw["chemical_step"])
-    if "obstacle" in raw:
-        sim_table["obstacle_config"] = dict(raw["obstacle"])
-
-    if "initialisation" in raw:
-        sim_table["initialisation"] = dict(raw["initialisation"])
+    for section in _DICT_SECTIONS:
+        if section in raw:
+            sim_table[section] = dict(raw[section])
 
     _process_forces(raw, sim_table)
     _apply_output(sim_table, raw.get("output", {}))
-
-    sim_table["sim_type"] = sim_type
     return sim_table
+
+
+def load_sections(raw: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """The flat kwarg dict of nested *raw*, and whether *raw* was in the old layout."""
+    upgraded, changed = upgrade(raw)
+    return merge_sections(upgraded), changed
 
 
 def serialise_safe(value: Any) -> Any:  # noqa: ANN401
@@ -106,22 +121,19 @@ def serialise_safe(value: Any) -> Any:  # noqa: ANN401
 def build_sections(config: SimulationConfig) -> dict[str, Any]:
     """Build a format-agnostic nested dict from *config*, routed by CONFIG_SECTION metadata."""
     sections = {f.name: f.metadata.get(CONFIG_SECTION, "simulation_type") for f in dataclasses.fields(SimulationConfig)}
-    sim_type = config.sim_type
-    skip = {"identity", "extra"}
 
     buckets: dict[str, dict[str, Any]] = defaultdict(dict)
     for key, value in dataclasses.asdict(config).items():
         section = sections.get(key, "simulation_type")
-        if value is None or section in skip:
+        if value is None or section == "extra":
             continue
-        if section == "multiphase" and "multiphase" not in sim_type:
-            continue
-        if isinstance(value, dict):
+        if key == "forces":
+            buckets.update({name: serialise_safe(params) for name, params in value.items()})
+        elif isinstance(value, dict):
             buckets[section].update(serialise_safe(value))
         else:
             buckets[section][key] = serialise_safe(value)
 
-    buckets["simulation_type"]["type"] = sim_type
     for ek, ev in (config.extra or {}).items():
         buckets["simulation_type"][ek] = serialise_safe(ev)
 
@@ -137,6 +149,11 @@ def config_from_flat(flat: dict[str, Any]) -> SimulationConfig:
 
     if "grid_shape" in flat and not isinstance(flat["grid_shape"], tuple):
         flat["grid_shape"] = tuple(flat["grid_shape"])
+
+    retired = sorted(flat.keys() & _RETIRED_FIELDS)
+    if retired:
+        msg = f"Old-layout field(s) {', '.join(retired)}: use the [multiphase], [wetting], ... sections and `forces`."
+        raise ValueError(msg)
 
     known_fields = {f.name for f in dataclasses.fields(SimulationConfig)}
     config_kwargs: dict[str, Any] = {}

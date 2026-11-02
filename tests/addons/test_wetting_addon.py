@@ -10,16 +10,11 @@ from src.config.simulation_config import SimulationConfig
 from src.lattice.lattice import build_lattice
 
 _MULTIPHASE: dict[str, Any] = {
-    "sim_type": "multiphase",
+    "multiphase": {"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 4},
     "grid_shape": (32, 24),
     "tau": 0.99,
     "nt": 3,
-    "eos": "double-well",
-    "kappa": 0.017,
-    "rho_l": 1.0,
-    "rho_v": 0.5,
-    "interface_width": 4,
-    "bc_config": {"bottom": "wetting"},
+    "boundary_conditions": {"bottom": "wetting"},
 }
 _WETTING: dict[str, Any] = {"phi_left": 1.2, "phi_right": 1.0, "d_rho_left": 0.0, "d_rho_right": 0.0}
 _HYSTERESIS: dict[str, Any] = {"ca_advancing": 120.0, "ca_receding": 60.0, "learning_rate": 0.01, "max_iterations": 2}
@@ -50,9 +45,9 @@ def fixed_measurements(monkeypatch):
     )
 
 
-def _init_setup(restored_wetting=None) -> SimpleNamespace:
+def _init_setup() -> SimpleNamespace:
     return SimpleNamespace(
-        config=SimpleNamespace(restored_wetting=restored_wetting),
+        config=SimpleNamespace(hysteresis=None, init_type="standard"),
         initial_f_fn=lambda: jnp.ones((4, 4, 1, 9, 1)),
     )
 
@@ -64,12 +59,12 @@ def _addon(lattice, **sections):
 
 
 def test_inactive_without_a_wetting_section(lattice):
-    config = SimulationConfig(**{k: v for k, v in _MULTIPHASE.items() if k != "bc_config"})
+    config = SimulationConfig(**{k: v for k, v in _MULTIPHASE.items() if k != "boundary_conditions"})
     assert _wetting.build_wetting_addon(config) is None
 
 
 def test_init_state_seeds_parameters_from_the_config_and_measures_the_angles(lattice, fixed_measurements):
-    addon = _addon(lattice, wetting_config=_WETTING)
+    addon = _addon(lattice, wetting=_WETTING)
     wetting = addon.init_state(_init_setup())
 
     assert (float(wetting.phi_left), float(wetting.phi_right)) == (1.2, 1.0)
@@ -77,7 +72,7 @@ def test_init_state_seeds_parameters_from_the_config_and_measures_the_angles(lat
     assert float(wetting.cll_right) == 30.0
 
 
-def test_init_state_resumes_the_saved_wetting_state_on_a_hysteresis_restart(lattice, fixed_measurements):
+def test_init_state_resumes_the_saved_wetting_state_on_a_hysteresis_restart(lattice, fixed_measurements, monkeypatch):
     saved = {
         "phi_left": 1.0,
         "phi_right": 1.75,
@@ -86,8 +81,9 @@ def test_init_state_resumes_the_saved_wetting_state_on_a_hysteresis_restart(latt
         "cll_left": 11.5,
         "cll_right": 29.0,
     }
-    addon = _addon(lattice, wetting_config=_WETTING, hysteresis_config=_HYSTERESIS)
-    wetting = addon.init_state(_init_setup(restored_wetting=saved))
+    addon = _addon(lattice, wetting=_WETTING, hysteresis=_HYSTERESIS)
+    monkeypatch.setattr(_wetting, "restored_wetting", lambda _config: saved)
+    wetting = addon.init_state(_init_setup())
 
     for key, value in saved.items():
         assert float(getattr(wetting, key)) == value
@@ -97,9 +93,9 @@ def test_init_state_resumes_the_saved_wetting_state_on_a_hysteresis_restart(latt
 @pytest.mark.parametrize(
     ("sections", "expected"),
     [
-        pytest.param({"hysteresis_config": _HYSTERESIS}, "update_wetting_state", id="hysteresis"),
+        pytest.param({"hysteresis": _HYSTERESIS}, "update_wetting_state", id="hysteresis"),
         pytest.param(
-            {"hysteresis_config": _HYSTERESIS, "chemical_step_config": _CHEMICAL_STEP},
+            {"hysteresis": _HYSTERESIS, "chemical_step": _CHEMICAL_STEP},
             "update_wetting_state_chemical_step",
             id="chemical_step",
         ),
@@ -119,7 +115,7 @@ def test_the_config_sections_select_the_hysteresis_update(monkeypatch, sections,
 
         monkeypatch.setattr(_wetting, name, record)
 
-    setup = build_setup(SimulationConfig(**_MULTIPHASE, wetting_config=_WETTING, **sections))
+    setup = build_setup(SimulationConfig(**_MULTIPHASE, wetting=_WETTING, **sections))
     state = init_state(setup)
     post_step = dict(setup.addons)["wetting"].post_step
     assert post_step is not None
@@ -133,7 +129,7 @@ def test_a_fixed_wetting_wall_only_remeasures():
     from src.pipeline.runner import init_state
     from src.pipeline.setup import build_setup
 
-    setup = build_setup(SimulationConfig(**_MULTIPHASE, wetting_config=_WETTING))
+    setup = build_setup(SimulationConfig(**_MULTIPHASE, wetting=_WETTING))
     state = init_state(setup)
     seeded = state.ext["wetting"]._replace(ca_left=jnp.array(-1.0))
     state = state._replace(ext={"wetting": seeded})
@@ -147,6 +143,6 @@ def test_a_fixed_wetting_wall_only_remeasures():
 
 
 def test_a_single_phase_run_cannot_carry_a_wetting_wall(lattice):
-    config = SimulationConfig(grid_shape=(8, 8), bc_config={"bottom": "wetting"}, wetting_config=_WETTING)
+    config = SimulationConfig(grid_shape=(8, 8), boundary_conditions={"bottom": "wetting"}, wetting=_WETTING)
     with pytest.raises(ValueError, match="multiphase"):
         _wetting.build_wetting_addon(config)

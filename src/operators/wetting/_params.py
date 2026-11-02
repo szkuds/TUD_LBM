@@ -29,7 +29,7 @@ class WettingParams(NamedTuple):
 
     @classmethod
     def from_defaults(cls, defaults: Mapping[str, float]) -> WettingParams:
-        """Build the parameters from ``SimulationConfig.wetting_defaults``.
+        """Build the parameters from ``src.config.wetting.wetting_scalars``.
 
         Each of the four scalars becomes a 0-d array.
         """

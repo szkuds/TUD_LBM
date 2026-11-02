@@ -60,6 +60,7 @@ from typing import NamedTuple
 import numpy as np
 from rich.console import Console
 from src.config.config_overview import BASE_RESULTS_DIR
+from src.config.multiphase import multiphase_params
 from src.config.run_config import CONFIG_FILENAME
 from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import PHYSICAL_PARAMETERS_FILENAME
@@ -217,7 +218,8 @@ def needs_calibration(config: SimulationConfig) -> bool:
     That is registry membership: an EOS registered under the
     ``"surface_tension"`` kind has a closed form.
     """
-    return config.is_multiphase and not has_analytical_surface_tension(config.eos)
+    params = multiphase_params(config)
+    return params is not None and not has_analytical_surface_tension(params.eos)
 
 
 def is_calibrated(config: SimulationConfig) -> bool:
@@ -296,8 +298,10 @@ def fluid_label(config: SimulationConfig) -> str:
     fluid's folder and its sweep runs; two fluids differing only in parameters
     the label leaves out share it, which is why nothing reads identity off it.
     """
-    initials = "".join(word[0] for word in str(config.eos).split("-"))
-    return f"{initials}_kappa{config.kappa:g}_rho{config.rho_l:g}_{config.rho_v:g}"
+    params = multiphase_params(config)
+    assert params is not None  # noqa: S101 - only a multiphase fluid is calibrated
+    initials = "".join(word[0] for word in params.eos.split("-"))
+    return f"{initials}_kappa{params.kappa:g}_rho{params.rho_l:g}_{params.rho_v:g}"
 
 
 def sweep_run_name(config: SimulationConfig, radius: float) -> str:
@@ -455,8 +459,8 @@ def _calibration_config(config: SimulationConfig) -> SimulationConfig:
     """An isolated single-droplet config: periodic, no forces, no wetting."""
     return replace(
         config,
-        sim_type="multiphase",
-        bc_config=dict(_PERIODIC_BC),
+        multiphase={key: value for key, value in (config.multiphase or {}).items() if key != "g"},
+        boundary_conditions=dict(_PERIODIC_BC),
         grid_shape=_CALIBRATION_GRID_SHAPE,
         nt=_N_ITERATIONS,
         save_interval=0,
@@ -465,13 +469,10 @@ def _calibration_config(config: SimulationConfig) -> SimulationConfig:
         plot_fields=None,
         animate_fields=None,
         overlay_fields=None,
-        g=None,
-        gravity_force=None,
-        gravity_masked_force=None,
-        electric_force=None,
-        wetting_config=None,
-        hysteresis_config=None,
-        chemical_step_config=None,
+        forces={},
+        wetting=None,
+        hysteresis=None,
+        chemical_step=None,
         init_type="multiphase_bubbles",
         init_dir=None,
         initialisation={"centres": [[0.5, 0.5]], "radii": [0.2], "dispersed": "liquid"},
@@ -536,7 +537,8 @@ def _cache_key(config: SimulationConfig) -> str:
     the key depends on the fluid alone; it stays in the key because the stored
     entries carry it.
     """
-    values = {k: getattr(config, k, None) for k in _CACHE_KEYS}
+    section = config.multiphase or {}
+    values = {k: section.get(k) for k in _CACHE_KEYS}
     values["grid_shape"] = list(_CALIBRATION_GRID_SHAPE)
     return json.dumps(values, sort_keys=True)
 

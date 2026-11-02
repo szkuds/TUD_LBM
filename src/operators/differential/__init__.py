@@ -15,7 +15,7 @@ selected between by configuration.
 Example:
     from src.operators.differential import build_differential
 
-    gradient, laplacian = build_differential(lattice, config.pad_modes)
+    gradient, laplacian = build_differential(lattice, pad_modes(config))
     grad_rho = gradient(rho, state.ext)
 """
 
@@ -37,7 +37,7 @@ def build_differential(
 
     Args:
         lattice: The simulation :class:`Lattice` (weights, velocities).
-        pad_modes: ``SimulationConfig.pad_modes``, ``(top, bottom, right, left)``.
+        pad_modes: ``src.config.boundary.pad_modes``, ``(top, bottom, right, left)``.
         ghost_fill: The addons' composed ghost fill, or ``None`` for the plain stencils.
 
     Returns:

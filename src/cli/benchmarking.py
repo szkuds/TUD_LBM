@@ -36,6 +36,8 @@ import jax
 import jax.numpy as jnp
 from src.cli._console import console
 from src.cli.display import BOLD_CYAN
+from src.config.multiphase import is_multiphase
+from src.config.multiphase import multiphase_params
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -169,14 +171,15 @@ def _environment() -> dict[str, Any]:
 
 def _fingerprint(config: SimulationConfig) -> dict[str, Any]:
     """Capture the config fields that determine how much work a step is."""
-    hysteresis = config.hysteresis_config or {}
+    hysteresis = config.hysteresis or {}
+    params = multiphase_params(config)
     return {
         "simulation_name": config.simulation_name,
-        "sim_type": config.sim_type,
+        "phase": "multiphase" if params is not None else "single_phase",
         "grid_shape": list(config.grid_shape),
         "lattice_type": config.lattice_type,
         "collision_scheme": config.collision_scheme,
-        "eos": config.eos,
+        "eos": None if params is None else params.eos,
         "tau": config.tau,
         "max_iterations": hysteresis.get("max_iterations"),
         "trial_steps": hysteresis.get("trial_steps"),
@@ -355,11 +358,11 @@ def _breakdown_variants(setup: SimulationSetup) -> list[tuple[str, SimulationSet
     from src.addons._wetting import NAME as WETTING
     from src.addons._wetting import build_measurement_hook
 
-    if not setup.config.is_multiphase or WETTING not in dict(setup.addons):
+    if not is_multiphase(setup.config) or WETTING not in dict(setup.addons):
         return []
 
     variants: list[tuple[str, SimulationSetup, str]] = []
-    if setup.config.hysteresis_config is not None:
+    if setup.config.hysteresis is not None:
         variants.append(
             (
                 "no_optimiser",
@@ -523,7 +526,7 @@ def _render(result: BenchmarkResult) -> None:
     )
     cfg = result.config
     console.print(
-        f"[dim]{cfg['sim_type']} · grid {cfg['grid_shape']} · {cfg['lattice_type']}/{cfg['collision_scheme']}[/dim]"
+        f"[dim]{cfg['phase']} · grid {cfg['grid_shape']} · {cfg['lattice_type']}/{cfg['collision_scheme']}[/dim]"
     )
     console.print()
     _render_phases(result)

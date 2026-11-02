@@ -27,12 +27,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
+from src.config.boundary import boundary_edges
 from src.config.run_config import ANALYSIS_DIRNAME
 from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import SETUP_FIGURE_FILENAME
 from src.config.run_config import SIMULATION_CSV_FILENAME
 from src.config.run_config import SNAPSHOT_GLOB
+from src.config.wetting import chemical_step_wall
 from src.simulation_io.analysis.droplet_metrics import extract_rho_2d
 from src.simulation_io.analysis.droplet_metrics import inclination_angle_deg
 from src.simulation_io.analysis.droplet_metrics import parse_timestep
@@ -119,8 +121,8 @@ def _hysteresis_timestep(config: SimulationConfig, run_dir: Path, tolerance: flo
     advancing bound alone. ``None`` when the run has no chemical step, no CSV,
     or no row qualifies.
     """
-    step = config.chemical_step_wall
-    chem = config.chemical_step_config
+    step = chemical_step_wall(config)
+    chem = config.chemical_step
     csv_path = Path(run_dir) / SIMULATION_CSV_FILENAME
     if step is None or chem is None or not csv_path.is_file():
         return None
@@ -151,7 +153,7 @@ def select_setup_timesteps(config: SimulationConfig, run_dir: Path, angle_tolera
     steps = list(snapshot_files(run_dir))
     if not steps:
         return SnapshotChoice((), "no snapshots")
-    if config.chemical_step_wall is None:
+    if chemical_step_wall(config) is None:
         return SnapshotChoice((steps[-1],), "last snapshot only (the wall has one surface)")
     found = _hysteresis_timestep(config, run_dir, angle_tolerance_deg)
     if found is not None and found[0] in steps:
@@ -185,7 +187,7 @@ def rotate(points: np.ndarray, angle_deg: float) -> np.ndarray:
 
 
 def _has_gravity(config: SimulationConfig) -> bool:
-    return any(name.startswith("gravity") for name in config.active_forces)
+    return any(name.startswith("gravity") for name in config.forces)
 
 
 def _shape(config: SimulationConfig) -> tuple[int, int]:
@@ -199,8 +201,8 @@ def _wall(config: SimulationConfig) -> _Wall | None:
         return None
     nx, ny = _shape(config)
     length = nx if edge in ("bottom", "top") else ny
-    step = config.chemical_step_wall
-    chem = config.chemical_step_config
+    step = chemical_step_wall(config)
+    chem = config.chemical_step
     if step is None or chem is None:
         return _Wall(edge, length, None, pre_is_hydrophobic=False)
     return _Wall(
@@ -238,20 +240,20 @@ def edge_labels(config: SimulationConfig) -> dict[str, str]:
     """Abbreviation per in-plane edge; a stepped wetting wall is labelled per surface when drawn."""
     return {
         entry.edge: BC_ABBREVIATIONS.get(entry.name, (entry.name, entry.name))[0]
-        for entry in config.boundary_edges
+        for entry in boundary_edges(config)
         if entry.edge in _EDGE_NORMALS
     }
 
 
 def key_text(config: SimulationConfig) -> str:
     """The key under the figure: each abbreviation in use, and the surfaces' angle windows."""
-    names = dict.fromkeys(entry.name for entry in config.boundary_edges if entry.edge in _EDGE_NORMALS)
+    names = dict.fromkeys(entry.name for entry in boundary_edges(config) if entry.edge in _EDGE_NORMALS)
     entries = [
         f"{abbr}: {text}" for abbr, text in (BC_ABBREVIATIONS[name] for name in names if name in BC_ABBREVIATIONS)
     ]
     lines = ["    ".join(entries)]
-    chem = config.chemical_step_config
-    if chem is not None and config.chemical_step_wall is not None:
+    chem = config.chemical_step
+    if chem is not None and chemical_step_wall(config) is not None:
         lines.append(
             "    ".join(
                 rf"$W_{index}$: $\theta_A={float(chem[f'ca_advancing_{surface}_step']):g}^\circ$, "

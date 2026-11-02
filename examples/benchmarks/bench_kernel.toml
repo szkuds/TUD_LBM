@@ -19,7 +19,6 @@
 
 [simulation_type]
 simulation_name = "bench_kernel"
-type = "multiphase"
 grid_shape = [256, 256]
 lattice_type = "D2Q9"
 tau = 0.99

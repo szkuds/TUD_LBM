@@ -16,7 +16,7 @@ from src.operators.macroscopic.eos import build_pressure_fn
 from src.registry import macroscopic_operator
 
 if TYPE_CHECKING:
-    from src.config.multiphase_params import MultiphaseParams
+    from src.config.multiphase import MultiphaseParams
     from src.lattice.lattice import Lattice
     from src.protocols import DifferentialOperator
 

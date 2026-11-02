@@ -110,25 +110,31 @@ def _is_array_value(value: Any, field_name: str = "") -> bool:  # noqa: ANN401
 # ── nested-axes helpers ───────────────────────────────────────────────────────
 
 
-def _collect_list_subkeys(field_name: str, nested: dict[str, Any]) -> dict[str, tuple[Any, ...]]:
-    """Return dotted-path → values for every list-valued sub-key in *nested*.
+def _collect_list_subkeys(prefix: str, nested: dict[str, Any]) -> dict[str, tuple[Any, ...]]:
+    """Return dotted-path → values for every list-valued key under *nested*, at any depth.
 
     Args:
-        field_name: Parent field name (used to build dotted keys).
+        prefix: Dotted path of *nested* (used to build dotted keys).
         nested: Sub-dict of a sweepable nested field.
 
     Returns:
-        Mapping of ``"field_name.sub_key"`` to tuple of values.
+        Mapping of ``"prefix.sub_key"`` (``"forces.gravity_force.force_g"``) to tuple of values.
     """
-    return {f"{field_name}.{sk}": tuple(sv) for sk, sv in nested.items() if isinstance(sv, list) and sv}
+    axes: dict[str, tuple[Any, ...]] = {}
+    for key, value in nested.items():
+        if isinstance(value, dict):
+            axes.update(_collect_list_subkeys(f"{prefix}.{key}", value))
+        elif isinstance(value, list) and value:
+            axes[f"{prefix}.{key}"] = tuple(value)
+    return axes
 
 
 def _extract_nested_array_axes(config_dict: dict[str, Any]) -> dict[str, tuple[Any, ...]]:
     """Return dotted-path → values for array sub-keys inside nested sweepable fields.
 
-    For example, if ``config_dict["gravity_force"] = {"force_g": 5e-7,
-    "inclination_angle_deg": [50, 60]}``, this returns
-    ``{"gravity_force.inclination_angle_deg": (50, 60)}``.
+    For example, if ``config_dict["forces"] = {"gravity_force": {"force_g": 5e-7,
+    "inclination_angle_deg": [50, 60]}}``, this returns
+    ``{"forces.gravity_force.inclination_angle_deg": (50, 60)}``.
 
     Args:
         config_dict: Raw configuration dict.
@@ -138,7 +144,7 @@ def _extract_nested_array_axes(config_dict: dict[str, Any]) -> dict[str, tuple[A
         sub-key found in the NESTED_SWEEPABLE_FIELDS entries.
     """
     axes: dict[str, tuple[Any, ...]] = {}
-    for field_name in get_nested_sweepable_fields():
+    for field_name in sorted(get_nested_sweepable_fields()):
         nested = config_dict.get(field_name)
         if isinstance(nested, dict):
             axes.update(_collect_list_subkeys(field_name, nested))
@@ -148,19 +154,19 @@ def _extract_nested_array_axes(config_dict: dict[str, Any]) -> dict[str, tuple[A
 def _apply_dotted_key(result: dict[str, Any], key: str, value: Any) -> None:  # noqa: ANN401
     """Apply a single dotted-path key into *result* in-place.
 
-    Splits ``"parent.sub_key"`` and merges *value* into the nested dict
-    stored at ``result["parent"]``, copying it first to avoid mutating
-    shared state.
+    Copies each dict along the path first, to avoid mutating shared state.
 
     Args:
         result: Config dict being built.
-        key: Dotted key of the form ``"parent.sub_key"``.
-        value: Value to assign at the sub-key.
+        key: Dotted key such as ``"parent.sub_key"`` or ``"forces.gravity_force.force_g"``.
+        value: Value to assign at the last segment.
     """
-    parent, sub_key = key.split(".", 1)
-    nested = dict(result.get(parent) or {})
-    nested[sub_key] = value
-    result[parent] = nested
+    *parents, leaf = key.split(".")
+    cursor = result
+    for parent in parents:
+        cursor[parent] = dict(cursor.get(parent) or {})
+        cursor = cursor[parent]
+    cursor[leaf] = value
 
 
 def _apply_combo_to_dict(
@@ -271,21 +277,25 @@ def _validate_nested_axes(
 
 
 def _strip_nested_field(
-    field_name: str,
+    prefix: str,
     nested_dict: dict[str, Any],
     nested_axes: dict[str, tuple[Any, ...]],
 ) -> dict[str, Any]:
-    """Return *nested_dict* with list sub-keys that are swept axes removed.
+    """Return *nested_dict* with the keys that are swept axes removed, at any depth.
 
     Args:
-        field_name: Parent field name (used to build dotted keys).
+        prefix: Dotted path of *nested_dict* (used to build dotted keys).
         nested_dict: Sub-dict of a sweepable nested field.
         nested_axes: Set of dotted-path keys that are being swept.
 
     Returns:
         Copy of *nested_dict* without the swept sub-keys.
     """
-    return {sk: sv for sk, sv in nested_dict.items() if f"{field_name}.{sk}" not in nested_axes}
+    return {
+        key: _strip_nested_field(f"{prefix}.{key}", value, nested_axes) if isinstance(value, dict) else value
+        for key, value in nested_dict.items()
+        if f"{prefix}.{key}" not in nested_axes
+    }
 
 
 def _build_scalar_dict(
@@ -408,9 +418,8 @@ def expand_config(
     Performs Cartesian product expansion over:
 
     * Top-level ``ARRAY_ELIGIBLE_FIELDS`` that carry a list value.
-    * Sub-keys inside ``NESTED_SWEEPABLE_FIELDS`` dicts
-      (``gravity_force``, ``electric_force``, ``wetting_config``,
-      ``hysteresis_config``) that carry a list value.
+    * Keys at any depth inside ``NESTED_SWEEPABLE_FIELDS`` dicts (``multiphase``,
+      ``wetting``, ``hysteresis``, ``chemical_step``, ``forces``) that carry a list value.
 
     Args:
         config_dict: Raw configuration dict (typically from TomlAdapter
@@ -458,7 +467,7 @@ def enumerate_configs(
     """Yield (index, parameters, config) tuples for each expansion.
 
     *parameters* uses dotted-path keys for nested fields
-    (e.g. ``"gravity_force.inclination_angle_deg"``).
+    (e.g. ``"forces.gravity_force.inclination_angle_deg"``).
 
     Args:
         config_dict: Raw configuration dict.

@@ -79,7 +79,7 @@ from src.operators.wetting._interface_crossings import interface_crossings
 
 if TYPE_CHECKING:
     from jax.typing import ArrayLike
-    from src.config.chemical_step import ChemicalStepWall
+    from src.config.wetting import ChemicalStepWall
 
 #: Inset from each measured phase density, as a fraction of the measured contrast.
 _BAND_FRAC = 0.05
@@ -243,7 +243,7 @@ def _surface_params(
 
     Cells on the contact line's own side of the step take the line's live
     parameters; cells across the step keep their own surface's fixed values
-    (:class:`~src.config.chemical_step.ChemicalStepWall`), so a line can never
+    (:class:`~src.config.wetting.ChemicalStepWall`), so a line can never
     make the other surface wet like its own.
     """
     post_cell = jnp.arange(region.mask.shape[0]) >= step.step_x

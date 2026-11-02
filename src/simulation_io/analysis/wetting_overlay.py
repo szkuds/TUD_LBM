@@ -41,6 +41,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from typing import Literal
 import numpy as np
+from src.config.boundary import pad_modes
+from src.config.multiphase import multiphase_params
 from src.simulation_io.analysis.droplet_metrics._snapshot import to_canonical_2d
 from src.simulation_io.analysis.interface_contour import config_rho_mean
 
@@ -116,7 +118,7 @@ def wetting_edge(config: SimulationConfig) -> str | None:
     """The wall contact angles are measured at, or ``None`` for a run without one."""
     from src.operators.wetting._edge_config import first_wetting_edge
 
-    return first_wetting_edge(config.bc_config)
+    return first_wetting_edge(config.boundary_conditions)
 
 
 def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
@@ -124,18 +126,19 @@ def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
 
     Empty when the config has no wetting wall or lacks ``rho_l``/``rho_v``.
     """
-    if config.rho_l is None or config.rho_v is None or not config.bc_config:
+    params = multiphase_params(config)
+    if params is None:
         return []
-    rho_l, rho_v = float(config.rho_l), float(config.rho_v)
+    rho_l, rho_v = float(params.rho_l), float(params.rho_v)
 
     import jax.numpy as jnp
     from src.operators.differential._pad_utils import _apply_stencil_padding
     from src.operators.wetting._apply_edge import wetting_edge_regions
     from src.operators.wetting._edge_config import _resolve_wetting_edges
 
-    grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), config.pad_modes)
+    grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), pad_modes(config))
     bands: list[WallBand] = []
-    for edge, perp_start_periodic, perp_end_periodic in _resolve_wetting_edges(config.bc_config):
+    for edge, perp_start_periodic, perp_end_periodic in _resolve_wetting_edges(config.boundary_conditions or {}):
         regions = wetting_edge_regions(grid_padded, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v)
         sides = tuple(_side_band(side, region) for side, region in zip(SIDES, regions, strict=True))
         bands.append(WallBand(edge, *sides))

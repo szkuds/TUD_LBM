@@ -33,8 +33,7 @@ def stream(
         f: Population distributions, shape ``(nx, ny, nz, q, 1)``.
         lattice: :class:`~lattice.lattice.Lattice` with velocity vectors ``c``.
         periodic_axes: Per-axis periodicity ``(x, y)`` —
-            :attr:`SimulationConfig.periodic_axes
-            <src.config.simulation_config.SimulationConfig.periodic_axes>`.
+            ``periodic_axes(config)``.
             The default, fully periodic, zero-fills nothing.
 
     Returns:

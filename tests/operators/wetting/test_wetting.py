@@ -461,17 +461,12 @@ class TestUpdateWettingState:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase_hysteresis",
-            bc_config={"bottom": "wetting"},
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": RHO_L, "rho_v": RHO_V, "interface_width": 4},
+            boundary_conditions={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
-            hysteresis_config={
+            hysteresis={
                 "ca_advancing": 120.0,
                 "ca_receding": 60.0,
                 "learning_rate": 0.01,
@@ -573,17 +568,12 @@ class TestUpdateWettingState:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase_hysteresis",
-            bc_config={"bottom": "wetting"},
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": RHO_L, "rho_v": RHO_V, "interface_width": 4},
+            boundary_conditions={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
-            hysteresis_config={
+            hysteresis={
                 "ca_advancing": 120.0,
                 "ca_receding": 60.0,
                 "learning_rate": 0.05,
@@ -679,23 +669,18 @@ class TestUpdateWettingState:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase_hysteresis",
-            bc_config={"bottom": "wetting"},
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": RHO_L, "rho_v": RHO_V, "interface_width": 4},
+            boundary_conditions={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
-            hysteresis_config={
+            hysteresis={
                 "ca_advancing": 120.0,
                 "ca_receding": 60.0,
                 "learning_rate": 0.05,
                 "max_iterations": 10,
             },
-            chemical_step_config={
+            chemical_step={
                 "chemical_step_location": 0.5,
                 "ca_advancing_pre_step": 120.0,
                 "ca_receding_pre_step": 60.0,
@@ -748,28 +733,23 @@ class TestUpdateWettingStateBubble:
         from src.config.simulation_config import SimulationConfig
         from src.pipeline.setup import build_setup
 
-        hysteresis_config = {
+        hysteresis = {
             "ca_advancing": ca_advancing,
             "ca_receding": ca_receding,
             "learning_rate": 0.05,
             "max_iterations": 10,
         }
         if loss_tol is not None:
-            hysteresis_config["loss_tol"] = loss_tol
+            hysteresis["loss_tol"] = loss_tol
         if saturation_gap is not None:
-            hysteresis_config["saturation_gap"] = saturation_gap
+            hysteresis["saturation_gap"] = saturation_gap
         cfg = SimulationConfig(
-            sim_type="multiphase_hysteresis",
-            bc_config={"bottom": "wetting"},
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": RHO_L, "rho_v": RHO_V, "interface_width": 4},
+            boundary_conditions={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
-            hysteresis_config=hysteresis_config,
+            hysteresis=hysteresis,
         )
         return build_setup(cfg)
 
@@ -1024,17 +1004,12 @@ class TestStepMultiphaseWithWetting:
         from src.pipeline.state import WettingState
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
-            bc_config={"bottom": "wetting"},
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": RHO_L, "rho_v": RHO_V, "interface_width": 4},
+            boundary_conditions={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=3,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
-            wetting_config={
+            wetting={
                 "phi_left": 1.0,
                 "phi_right": 1.0,
                 "d_rho_left": 0.0,
@@ -1106,15 +1081,10 @@ class TestStepMultiphaseWithWetting:
         from src.pipeline.step import step
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": RHO_L, "rho_v": RHO_V, "interface_width": 4},
             grid_shape=(16, 16),
             tau=0.99,
             nt=3,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
         )
         setup = build_setup(cfg)
         state = init_state(setup)

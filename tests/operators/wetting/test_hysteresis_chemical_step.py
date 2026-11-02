@@ -11,10 +11,17 @@ from __future__ import annotations
 from types import SimpleNamespace
 import jax.numpy as jnp
 import pytest
-from src.config.chemical_step import ChemicalStepWall
+from src.config.wetting import ChemicalStepWall
 from src.operators.wetting import _hysteresis as hyst
 from src.operators.wetting._hysteresis import _get_hysteresis_window_chemical_step
 from src.operators.wetting._hysteresis import update_wetting_state_chemical_step
+
+
+@pytest.fixture(autouse=True)
+def _stepped_wall_from_the_stub(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The stub carries its wall directly; it has no sections to resolve one from."""
+    monkeypatch.setattr(hyst, "chemical_step_wall", lambda config: config.chemical_step_wall)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -49,7 +56,7 @@ def _wall(nx: int = 100) -> ChemicalStepWall:
 
 def _make_setup(nx: int = 100) -> SimpleNamespace:
     config = SimpleNamespace(
-        chemical_step_config=_CHEM_CFG,
+        chemical_step=_CHEM_CFG,
         grid_shape=(nx, 50, 1),
         chemical_step_wall=_wall(nx),
     )
@@ -127,10 +134,10 @@ def test_receding_line_just_past_the_step_stays_pinned(monkeypatch):
     setup = SimpleNamespace(
         multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.001, interface_width=5),
         config=SimpleNamespace(
-            chemical_step_config=_CHEM_CFG,
+            chemical_step=_CHEM_CFG,
             grid_shape=(100, 50, 1),
             chemical_step_wall=_wall(),
-            hysteresis_config={
+            hysteresis={
                 "learning_rate": 0.01,
                 "learning_rate_above": 0.01,
                 "max_iterations": 3,

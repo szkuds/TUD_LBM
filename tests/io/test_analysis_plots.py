@@ -10,7 +10,7 @@ from src.simulation_io.plotting._scalar_history_plot import DensityRatioPlot
 from src.simulation_io.plotting._scalar_history_plot import MaxVelocityPlot
 from tests.support.run_dirs import UNIFORM_ITERATIONS
 from tests.support.run_dirs import build_run_dir
-from tests.support.run_dirs import wetting_config
+from tests.support.run_dirs import wetting
 
 
 def _snapshots(run_dir):
@@ -69,7 +69,7 @@ def test_avg_density_plot(tmp_path):
 
 
 def test_contact_angle_left_plot(tmp_path):
-    config = wetting_config()
+    config = wetting()
     run_dir = build_run_dir(tmp_path, config=config)
 
     result = ContactAngleLeftPlot(config=config).compute(_snapshots(run_dir))
@@ -83,7 +83,7 @@ def test_contact_angle_left_plot_renders_without_stored_angles(tmp_path):
 
     Previously these files were skipped outright and the panel came out blank.
     """
-    config = wetting_config()
+    config = wetting()
     run_dir = build_run_dir(tmp_path, config=config, with_contact_metrics=False)
 
     result = ContactAngleLeftPlot(config=config).compute(_snapshots(run_dir))
@@ -93,7 +93,7 @@ def test_contact_angle_left_plot_renders_without_stored_angles(tmp_path):
 
 
 def test_contact_line_speed_left_plot(tmp_path):
-    config = wetting_config()
+    config = wetting()
     run_dir = build_run_dir(tmp_path, config=config)
 
     result = ContactLineSpeedLeftPlot(config=config).compute(_snapshots(run_dir))
@@ -105,7 +105,7 @@ def test_contact_line_speed_left_plot(tmp_path):
 
 def test_contact_line_speed_matches_shared_series(tmp_path):
     """The operator is a view onto the series, not a second differentiation."""
-    config = wetting_config()
+    config = wetting()
     run_dir = build_run_dir(tmp_path, config=config)
 
     result = ContactLineSpeedLeftPlot(config=config).compute(_snapshots(run_dir))

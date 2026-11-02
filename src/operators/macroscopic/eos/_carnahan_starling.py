@@ -7,7 +7,7 @@ from src.registry import eos_operator
 from src.registry import pressure_operator
 
 if TYPE_CHECKING:
-    from src.config.multiphase_params import MultiphaseParams
+    from src.config.multiphase import MultiphaseParams
     from src.protocols import EosOperator
 
 

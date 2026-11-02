@@ -76,13 +76,12 @@ def poiseuille_simulation():
         - "config": SimulationConfig used
     """
     config = SimulationConfig(
-        sim_type="single_phase",
+        forces={"gravity_force": {"force_g": BODY_FORCE_G, "inclination_angle_deg": 90.0}},
         grid_shape=(NX, NY, NZ),
         lattice_type="D2Q9",
         tau=TAU,
         nt=NT,
-        gravity_force={"force_g": BODY_FORCE_G, "inclination_angle_deg": 90.0},
-        bc_config={
+        boundary_conditions={
             "left": "periodic",
             "right": "periodic",
             "top": "bounce-back",
@@ -90,7 +89,7 @@ def poiseuille_simulation():
             "front": "periodic",
             "back": "periodic",
         },
-        save_interval=NT,  # no intermediate saves
+        save_interval=NT,
     )
 
     setup = build_setup(config)

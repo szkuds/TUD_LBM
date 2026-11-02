@@ -199,9 +199,9 @@ class TestGhostFill:
     """``build_differential(..., ghost_fill)`` rewrites the padded ghost layer from ``ext`` before the stencil."""
 
     @staticmethod
-    def _wall_fill(bc_config):
+    def _wall_fill(boundary_conditions):
         """The wetting wall as a ghost fill, reading its four parameters from ``ext["wetting"]``."""
-        apply = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config=bc_config)
+        apply = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, boundary_conditions=boundary_conditions)
 
         def fill(padded, ext):
             wall = ext["wetting"]
@@ -396,7 +396,7 @@ class TestWettingUtil:
     def test_bottom_wetting_changes_bottom_ghost_row(self):
         """Bottom-only wetting should modify the bottom ghost row."""
         bc = {"bottom": "wetting", "top": "bounce-back"}
-        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config=bc)
+        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, boundary_conditions=bc)
         gp = self._striped((NX + 2, NY + 2), axis=0)
         gp_out = fn(gp, PHI, 1.3, D_RHO, D_RHO)
         # Bottom ghost row should have been modified
@@ -405,7 +405,7 @@ class TestWettingUtil:
     def test_top_wetting_only(self):
         """Top-only wetting should modify only the top ghost row."""
         bc = {"bottom": "bounce-back", "top": "wetting"}
-        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config=bc)
+        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, boundary_conditions=bc)
         gp = self._striped((NX + 2, NY + 2), axis=0)
         gp_out = fn(gp, PHI, 1.3, D_RHO, D_RHO)
         # Bottom ghost row should be unchanged
@@ -421,7 +421,7 @@ class TestWettingUtil:
             "bottom": "bounce-back",
             "top": "bounce-back",
         }
-        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config=bc)
+        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, boundary_conditions=bc)
         gp = self._striped((NX + 2, NY + 2), axis=1)
         gp_out = fn(gp, PHI, 1.3, D_RHO, D_RHO)
         # Left and right ghost columns should be modified
@@ -432,8 +432,8 @@ class TestWettingUtil:
         np.testing.assert_array_equal(np.array(gp_out[1:-1, -1]), np.array(gp[1:-1, -1]))
 
     def test_no_wetting_edges_leaves_array_unchanged(self):
-        """An empty bc_config should leave the array entirely unchanged."""
-        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config={})
+        """An empty boundary_conditions should leave the array entirely unchanged."""
+        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, boundary_conditions={})
         gp = jnp.ones((NX + 2, NY + 2)) * 0.5
         gp_out = fn(gp, PHI, 1.3, D_RHO, D_RHO)
         np.testing.assert_array_equal(np.array(gp_out), np.array(gp))
@@ -444,13 +444,13 @@ class TestWettingUtil:
         from src.operators.wetting._applicator import build_wetting_applicator
 
         # Periodic perpendicular (default for unspecified edges)
-        fn_periodic = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config={"bottom": "wetting"})
+        fn_periodic = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, boundary_conditions={"bottom": "wetting"})
 
         # Non-periodic perpendicular (bounce-back on left/right)
         fn_nonperiodic = build_wetting_applicator(
             rho_l=RHO_L,
             rho_v=RHO_V,
-            bc_config={
+            boundary_conditions={
                 "bottom": "wetting",
                 "left": "bounce-back",
                 "right": "bounce-back",

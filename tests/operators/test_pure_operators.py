@@ -22,8 +22,14 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from src.config.boundary_edges import build_boundary_edges
+from src.config import SimulationConfig
+from src.config.boundary import boundary_edges
 from src.lattice.lattice import build_lattice
+
+
+def _edges_of(section):
+    return boundary_edges(SimulationConfig(boundary_conditions=section))
+
 
 # ── Shared helpers ───────────────────────────────────────────────────
 
@@ -388,7 +394,7 @@ class TestComputeMacroscopicMultiphase:
     """``compute_macroscopic_multiphase`` returns (rho_t_plus1, u_eq, force, pressure)."""
 
     def _mp_params(self):
-        from src.config.multiphase_params import MultiphaseParams
+        from src.config.multiphase import MultiphaseParams
 
         return MultiphaseParams(
             eos="double-well",
@@ -692,13 +698,13 @@ class TestEndToEndPureFunctions:
         from src.operators.macroscopic._single_phase import compute_macroscopic
         from src.operators.streaming._streaming import stream
 
-        bc_config = {
+        boundary_conditions = {
             "top": "bounce-back",
             "bottom": "bounce-back",
             "left": "periodic",
             "right": "periodic",
         }
-        bc_fn = build_bc(build_boundary_edges(bc_config), lattice)
+        bc_fn = build_bc(_edges_of(boundary_conditions), lattice)
 
         rho = jnp.ones((NX, NY, NZ, 1, 1))
         u = jnp.zeros((NX, NY, NZ, 1, 2))
@@ -725,7 +731,7 @@ class TestBuildBC:
     def test_all_periodic(self, lattice):
         from src.operators.boundary import build_bc
 
-        bc_fn = build_bc(build_boundary_edges(dict.fromkeys(("top", "bottom", "left", "right"), "periodic")), lattice)
+        bc_fn = build_bc(_edges_of(dict.fromkeys(("top", "bottom", "left", "right"), "periodic")), lattice)
 
         key = jax.random.PRNGKey(30)
         f = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
@@ -737,13 +743,13 @@ class TestBuildBC:
     def test_bounce_back_bottom(self, lattice):
         from src.operators.boundary import build_bc
 
-        bc_config = {
+        boundary_conditions = {
             "top": "periodic",
             "bottom": "bounce-back",
             "left": "periodic",
             "right": "periodic",
         }
-        bc_fn = build_bc(build_boundary_edges(bc_config), lattice)
+        bc_fn = build_bc(_edges_of(boundary_conditions), lattice)
 
         key = jax.random.PRNGKey(31)
         f_s = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
@@ -762,13 +768,13 @@ class TestBuildBC:
     def test_mixed_bcs(self, lattice):
         from src.operators.boundary import build_bc
 
-        bc_config = {
+        boundary_conditions = {
             "top": "symmetry",
             "bottom": "bounce-back",
             "left": "periodic",
             "right": "periodic",
         }
-        bc_fn = build_bc(build_boundary_edges(bc_config), lattice)
+        bc_fn = build_bc(_edges_of(boundary_conditions), lattice)
 
         f = jnp.ones((NX, NY, NZ, 9, 1))
         f_out = bc_fn(f, f)
@@ -776,31 +782,36 @@ class TestBuildBC:
 
     def test_wetting_edge_is_bounce_back(self, lattice):
         """``"wetting"`` is a registered alias of bounce-back, not a remap in the builder."""
-        from src.config.boundary_edges import pad_modes
+        from src.config.boundary import pad_modes
         from src.operators.boundary import build_bc
 
         periodic = dict.fromkeys(("top", "bottom", "left", "right"), "periodic")
-        wetting_fn = build_bc(build_boundary_edges({**periodic, "bottom": "wetting"}), lattice)
-        bounce_back_fn = build_bc(build_boundary_edges({**periodic, "bottom": "bounce-back"}), lattice)
+        wetting_fn = build_bc(_edges_of({**periodic, "bottom": "wetting"}), lattice)
+        bounce_back_fn = build_bc(_edges_of({**periodic, "bottom": "bounce-back"}), lattice)
 
         key = jax.random.PRNGKey(32)
         f_s = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
         f_c = jax.random.uniform(jax.random.PRNGKey(33), (NX, NY, NZ, 9, 1))
 
         np.testing.assert_array_equal(np.array(wetting_fn(f_s, f_c)), np.array(bounce_back_fn(f_s, f_c)))
-        assert pad_modes({**periodic, "bottom": "wetting"}) == ("wrap", "edge", "wrap", "wrap")
+        assert pad_modes(SimulationConfig(boundary_conditions={**periodic, "bottom": "wetting"})) == (
+            "wrap",
+            "edge",
+            "wrap",
+            "wrap",
+        )
 
     def test_composite_jittable(self, lattice):
         """The composite BC closure is jittable."""
         from src.operators.boundary import build_bc
 
-        bc_config = {
+        boundary_conditions = {
             "top": "symmetry",
             "bottom": "bounce-back",
             "left": "periodic",
             "right": "periodic",
         }
-        bc_fn = build_bc(build_boundary_edges(bc_config), lattice)
+        bc_fn = build_bc(_edges_of(boundary_conditions), lattice)
 
         f = jnp.ones((NX, NY, NZ, 9, 1))
         f_out = jax.jit(bc_fn)(f, f)
@@ -814,13 +825,13 @@ class TestBuildBC:
         from src.operators.macroscopic._single_phase import compute_macroscopic
         from src.operators.streaming._streaming import stream
 
-        bc_config = {
+        boundary_conditions = {
             "top": "bounce-back",
             "bottom": "bounce-back",
             "left": "periodic",
             "right": "periodic",
         }
-        bc_fn = build_bc(build_boundary_edges(bc_config), lattice)
+        bc_fn = build_bc(_edges_of(boundary_conditions), lattice)
 
         rho = jnp.ones((NX, NY, NZ, 1, 1))
         u = jnp.zeros((NX, NY, NZ, 1, 2))

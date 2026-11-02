@@ -206,7 +206,7 @@ def _fake_setup() -> SimpleNamespace:
     }
     return SimpleNamespace(
         multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.1, interface_width=5),
-        config=SimpleNamespace(hysteresis_config=hc),
+        config=SimpleNamespace(hysteresis=hc),
     )
 
 
@@ -334,7 +334,7 @@ def test_receding_at_the_advancing_bound_stays_pinned(monkeypatch):
 
 
 def test_update_wetting_state_requires_a_hysteresis_config():
-    setup = SimpleNamespace(config=SimpleNamespace(hysteresis_config=None))
+    setup = SimpleNamespace(config=SimpleNamespace(hysteresis=None))
     wetting, rho = _wetting(), jnp.ones((4, 4, 1, 1, 1))
-    with pytest.raises(TypeError, match="hysteresis_config is required"):
+    with pytest.raises(TypeError, match=r"\[hysteresis\] is required"):
         update_wetting_state(wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho))  # ty: ignore[invalid-argument-type]

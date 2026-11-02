@@ -181,15 +181,10 @@ class TestEndToEnd:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
             grid_shape=(16, 16),
             tau=0.99,
             nt=3,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=1.0,
-            rho_v=0.33,
-            interface_width=4,
         )
         setup = build_setup(cfg)
         state = init_state(setup)

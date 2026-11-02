@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
 from matplotlib.patches import Circle
+from src.config.multiphase import multiphase_params
 from src.simulation_io.analysis.surface_tension.surface_tension import sample_points
 from src.simulation_io.plotting import build_plot_operator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
@@ -65,7 +66,7 @@ def save_snapshot_figures(
     import matplotlib.pyplot as plt
     from src.operators.macroscopic.eos import build_pressure_fn
 
-    mp = config.multiphase_params
+    mp = multiphase_params(config)
     if mp is None:
         msg = "snapshot figures need the multiphase calibration config"
         raise ValueError(msg)

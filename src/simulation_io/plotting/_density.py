@@ -4,6 +4,7 @@ from __future__ import annotations
 import matplotlib.axes
 import matplotlib.colors
 import numpy as np
+from src.config.multiphase import multiphase_params
 from src.protocols import PlotOperator
 from src.registry import plotting_operator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
@@ -31,11 +32,9 @@ class DensityPlotOperator(PlotOperator):
         """Render the density field as a 2D color map."""
         rho = np.asarray(data["rho"])[:, :, 0, 0, 0].T
         use_log_scale = False
-        if "multiphase" in self.config.sim_type:
-            rho_l = self.config.rho_l
-            rho_v = self.config.rho_v
-            if rho_l and rho_v and rho_v != 0:
-                use_log_scale = (rho_l / rho_v) > DENSITY_RATIO_THRESHOLD
+        params = multiphase_params(self.config)
+        if params is not None:
+            use_log_scale = (params.rho_l / params.rho_v) > DENSITY_RATIO_THRESHOLD
 
         if use_log_scale:
             positive = rho[rho > 0]

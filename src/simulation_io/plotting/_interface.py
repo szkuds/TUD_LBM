@@ -24,6 +24,7 @@ from itertools import pairwise
 from typing import TYPE_CHECKING
 import numpy as np
 from matplotlib.collections import LineCollection
+from src.config.multiphase import is_multiphase
 from src.protocols import AnalysisPlot
 from src.protocols import PlotOperator
 from src.registry import analysis_operator
@@ -105,7 +106,7 @@ class InterfacePlotOperator(PlotOperator):
     @classmethod
     def overlay_prompt_default(cls, config: SimulationConfig) -> bool | None:
         """Offer the overlay, defaulting to yes, only for a multiphase run."""
-        return True if config.is_multiphase else None
+        return True if is_multiphase(config) else None
 
     def __init__(self, config: SimulationConfig, data_dir: str | Path | None = None) -> None:
         """Validate the configured interface markers up front, not inside a panel."""

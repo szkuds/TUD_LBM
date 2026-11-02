@@ -252,7 +252,7 @@ def test_gradients_stay_finite_when_a_side_is_empty():
 def test_band_cells_across_the_step_keep_their_own_surface():
     """A line's phi never reaches the pre surface, and the post surface always pulls."""
     import numpy as np
-    from src.config.chemical_step import ChemicalStepWall
+    from src.config.wetting import ChemicalStepWall
     from src.operators.wetting._wetting_modification import _apply_wetting_modification
     from src.operators.wetting._wetting_modification import wetting_regions
 

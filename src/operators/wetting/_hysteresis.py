@@ -44,8 +44,9 @@ from typing import TYPE_CHECKING
 from typing import NamedTuple
 import jax
 import jax.numpy as jnp
-from src.config.chemical_step import D_RHO_SPAN_W
-from src.config.chemical_step import PHI_SPAN_W
+from src.config.wetting import D_RHO_SPAN_W
+from src.config.wetting import PHI_SPAN_W
+from src.config.wetting import chemical_step_wall
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
 from src.operators.wetting._interface_crossings import detect_bubble
@@ -401,7 +402,7 @@ def _get_hysteresis_window_chemical_step(
     within ``edge_width`` of the step or past it, the pre-step window otherwise.
     It is stateless. The step itself is expressed through the wall: band cells
     across the step keep their own surface's wettability
-    (:class:`~src.config.chemical_step.ChemicalStepWall`).
+    (:class:`~src.config.wetting.ChemicalStepWall`).
 
     ``held_at_step`` marks a line at the edge that is receding onto the more
     wetting surface: its probes ``edge_width`` either side straddle the step,
@@ -411,10 +412,11 @@ def _get_hysteresis_window_chemical_step(
     (:func:`_step_saturation`). A line advancing onto the more wetting surface is
     never held; it spreads.
     """
-    csc = setup.config.chemical_step_config
-    wall = setup.config.chemical_step_wall
-    assert csc is not None  # noqa: S101 - a chemical-step run has a chemical_step_config
-    assert wall is not None  # noqa: S101 - and a wetting config, so a stepped wall
+    csc = setup.config.chemical_step
+    wall = chemical_step_wall(setup.config)
+    assert csc is not None  # noqa: S101 - a chemical-step run has the section
+    # It also has wetting, so a stepped wall.
+    assert wall is not None  # noqa: S101
     step_x, delta = wall.step_x, csc["edge_width"]
     ahead, behind = (cll - delta, cll + delta) if side == "left" else (cll + delta, cll - delta)
     post = cll + delta >= step_x
@@ -474,16 +476,16 @@ def _update_wetting_state_impl(
 
     ``step_sides`` (chemical-step runs only) lets a side on the post surface, or
     held at the step, skip the optimiser while its angle is more than
-    ``hysteresis_config["saturation_gap"]`` from its bound (:func:`_step_saturation`).
+    ``hysteresis["saturation_gap"]`` from its bound (:func:`_step_saturation`).
 
     ``measured`` is ``(ca_left, ca_right, cll_left, cll_right)`` of
     ``rho_t_plus1`` (:func:`_measure`) at the wall *edge*. ``t`` is used only by
     the ``--debug-wetting`` trace.
     """
     rho_mean, w = _wall_constants(setup)
-    hc = setup.config.hysteresis_config
+    hc = setup.config.hysteresis
     if hc is None:
-        msg = "hysteresis_config is required for hysteresis wetting update"
+        msg = "[hysteresis] is required for hysteresis wetting update"
         raise TypeError(msg)
     loss_tol = float(hc["loss_tol"])
     is_bubble = detect_bubble(rho_t_plus1, rho_mean, edge=edge)
@@ -690,10 +692,10 @@ def update_wetting_state(
     Returns:
         Updated :class:`WettingState`.
     """
-    if setup.config.hysteresis_config is None:
-        msg = "hysteresis_config is required for wetting state update"
+    if setup.config.hysteresis is None:
+        msg = "[hysteresis] is required for wetting state update"
         raise TypeError(msg)
-    hc = setup.config.hysteresis_config
+    hc = setup.config.hysteresis
     window = (hc["ca_advancing"], hc["ca_receding"])
     return _update_wetting_state_impl(
         wetting,
@@ -727,7 +729,7 @@ def update_wetting_state_chemical_step(
     receding angle.
     """
     measured = _measure(rho_t_plus1, setup, edge)
-    wall = setup.config.chemical_step_wall
+    wall = chemical_step_wall(setup.config)
     assert wall is not None  # noqa: S101 - a chemical-step run has a wetting config and a step
     windows, pins, step_sides = [], [], []
     for i, name in enumerate(_SIDES):

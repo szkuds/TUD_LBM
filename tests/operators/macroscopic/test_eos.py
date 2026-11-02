@@ -48,7 +48,7 @@ def lattice():
 
 @pytest.fixture(scope="module")
 def cs_mp():
-    from src.config.multiphase_params import MultiphaseParams
+    from src.config.multiphase import MultiphaseParams
 
     return MultiphaseParams(
         eos="carnahan-starling",
@@ -65,7 +65,7 @@ def cs_mp():
 
 @pytest.fixture(scope="module")
 def dw_mp():
-    from src.config.multiphase_params import MultiphaseParams
+    from src.config.multiphase import MultiphaseParams
 
     return MultiphaseParams(
         eos="double-well",
@@ -220,7 +220,7 @@ class TestEosFactory:
 
     def test_missing_cs_params_raises(self):
         """Building CS EOS without a/b/r/t raises ValueError."""
-        from src.config.multiphase_params import MultiphaseParams
+        from src.config.multiphase import MultiphaseParams
         from src.operators.macroscopic.eos import build_eos_fn
 
         mp_incomplete = MultiphaseParams(
@@ -346,19 +346,20 @@ class TestCsEosPipeline:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            multiphase={
+                "eos": "carnahan-starling",
+                "kappa": _KAPPA,
+                "rho_l": _RHO_L,
+                "rho_v": _RHO_V,
+                "interface_width": _INTERFACE_WIDTH,
+                "a_eos": _A,
+                "b_eos": _B,
+                "r_eos": _R,
+                "t_eos": _T,
+            },
             grid_shape=(8, 8),
             tau=0.99,
             nt=5,
-            eos="carnahan-starling",
-            kappa=_KAPPA,
-            rho_l=_RHO_L,
-            rho_v=_RHO_V,
-            interface_width=_INTERFACE_WIDTH,
-            a_eos=_A,
-            b_eos=_B,
-            r_eos=_R,
-            t_eos=_T,
         )
 
         setup = build_setup(cfg)
@@ -445,7 +446,7 @@ class TestPressureRegistry:
 
     def test_registered_pressure_operator_is_resolved_by_build_pressure_fn(self):
         """``build_pressure_fn`` dispatches on the registry, not a hardcoded EOS branch."""
-        from src.config.multiphase_params import MultiphaseParams
+        from src.config.multiphase import MultiphaseParams
         from src.operators.macroscopic.eos import build_pressure_fn
         from src.registry import pressure_operator
         from src.registry import unregister_operator
@@ -479,7 +480,7 @@ class TestSurfaceTensionRegistry:
     """Whether an EOS needs a Young-Laplace calibration is registry membership."""
 
     def test_double_well_closed_form_matches_the_formula(self):
-        from src.config.multiphase_params import MultiphaseParams
+        from src.config.multiphase import MultiphaseParams
         from src.operators.macroscopic.eos import analytical_surface_tension
 
         mp = MultiphaseParams(
@@ -502,7 +503,7 @@ class TestSurfaceTensionRegistry:
 
     def test_degenerate_interface_width_resolves_to_none(self):
         """A width that cannot define an interface yields None, not a division by zero."""
-        from src.config.multiphase_params import MultiphaseParams
+        from src.config.multiphase import MultiphaseParams
         from src.operators.macroscopic.eos import analytical_surface_tension
 
         mp = MultiphaseParams(
@@ -515,7 +516,7 @@ class TestSurfaceTensionRegistry:
         assert analytical_surface_tension(mp) is None
 
     def test_registering_gives_an_eos_a_closed_form_with_no_list_to_edit(self):
-        from src.config.multiphase_params import MultiphaseParams
+        from src.config.multiphase import MultiphaseParams
         from src.operators.macroscopic.eos import analytical_surface_tension
         from src.operators.macroscopic.eos import has_analytical_surface_tension
         from src.registry import surface_tension_operator

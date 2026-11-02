@@ -45,13 +45,12 @@ BOX_BCS = {**CHANNEL_BCS, "left": "bounce-back", "right": "bounce-back"}
 def _run(scheme: str, grid: tuple[int, int, int], bcs: dict, force_g: float, angle_deg: float, nt: int):
     mrt = scheme == "mrt"
     config = SimulationConfig(
-        sim_type="single_phase",
+        forces={"gravity_force": {"force_g": force_g, "inclination_angle_deg": angle_deg}},
         grid_shape=grid,
         lattice_type="D2Q9",
         tau=TAU,
         nt=nt,
-        gravity_force={"force_g": force_g, "inclination_angle_deg": angle_deg},
-        bc_config=bcs,
+        boundary_conditions=bcs,
         save_interval=nt,
         collision_scheme="mrt" if mrt else "bgk",
         k_diag=K_DIAG if mrt else None,

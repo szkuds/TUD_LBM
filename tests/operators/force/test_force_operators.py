@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from src.addons._electric import ElectricState
+from src.config.boundary import pad_modes
 from src.config.simulation_config import SimulationConfig
 from src.lattice.lattice import build_lattice
 from src.pipeline.state.state import State
@@ -36,6 +37,7 @@ def electric_force(lattice, sim_config):
             "permittivity_vapour": 1.0,
             "conductivity_liquid": 0.01,
             "conductivity_vapour": 0.001,
+            "applied_voltage": 0.0,
             "voltage_top": 1.0,
             "voltage_bottom": 0.0,
         },
@@ -55,6 +57,7 @@ _ELECTRIC = {
     "permittivity_vapour": 1.0,
     "conductivity_liquid": 0.01,
     "conductivity_vapour": 0.001,
+    "applied_voltage": 0.0,
     "voltage_top": 1.0,
     "voltage_bottom": 0.0,
 }
@@ -64,7 +67,7 @@ def electric_addon(lattice, section=None):
     """The electric addon's hooks for an ``electric_force`` *section*."""
     from src.addons._electric import build_electric_addon
 
-    config = SimulationConfig(grid_shape=(NX, NY, NZ), electric_force=dict(section or _ELECTRIC))
+    config = SimulationConfig(forces={"electric_force": dict(section or _ELECTRIC)}, grid_shape=(NX, NY, NZ))
     hooks = build_electric_addon(config)
     assert hooks is not None
     return hooks
@@ -75,7 +78,7 @@ def plain_gradient(lattice, config):
     from functools import partial
     from src.operators.differential import build_differential
 
-    gradient, _ = build_differential(lattice, config.pad_modes)
+    gradient, _ = build_differential(lattice, pad_modes(config))
     return partial(gradient, ext={})
 
 
@@ -99,9 +102,9 @@ def _gravity(lattice, **force_params):
     """Build the bound plain-gravity force from a config-validated section."""
     from src.operators.force._gravity import GravityForceModule
 
-    cfg = SimulationConfig(grid_shape=(NX, NY, NZ), gravity_force={"force_g": 0.001, **force_params})
-    assert cfg.gravity_force is not None
-    return GravityForceModule.build(cfg.gravity_force, (NX, NY, NZ), config=cfg, lattice=lattice)
+    cfg = SimulationConfig(forces={"gravity_force": {"force_g": 0.001, **force_params}}, grid_shape=(NX, NY, NZ))
+    assert cfg.forces["gravity_force"] is not None
+    return GravityForceModule.build(cfg.forces["gravity_force"], (NX, NY, NZ), config=cfg, lattice=lattice)
 
 
 class TestGravityForce:
@@ -186,14 +189,15 @@ class TestGravityMaskedForce:
 
     def _config(self, *, rho_l=RHO_L, rho_v=RHO_V, **force_params):
         return SimulationConfig(
-            sim_type="multiphase",
+            multiphase={
+                "eos": "double-well",
+                "kappa": 0.02,
+                "rho_l": rho_l,
+                "rho_v": rho_v,
+                "interface_width": 2,
+            },
+            forces={"gravity_masked_force": {"force_g": self.FORCE_G, **force_params}},
             grid_shape=(NX, NY),
-            eos="double-well",
-            kappa=0.02,
-            rho_l=rho_l,
-            rho_v=rho_v,
-            interface_width=2,
-            gravity_masked_force={"force_g": self.FORCE_G, **force_params},
         )
 
     def _build(self, lattice, *, grid_shape=(NX, NY, NZ), config=None, **force_params):
@@ -201,7 +205,7 @@ class TestGravityMaskedForce:
         from src.operators.force._gravity_masked import GravityForceModule
 
         cfg = config if config is not None else self._config(**force_params)
-        return GravityForceModule.build(cfg.gravity_masked_force, grid_shape, config=cfg, lattice=lattice)
+        return GravityForceModule.build(cfg.forces["gravity_masked_force"], grid_shape, config=cfg, lattice=lattice)
 
     def _state_from_rho_2d(self, lattice, rho_2d, t=0):
         nx, ny = rho_2d.shape
@@ -351,7 +355,7 @@ class TestGravityMaskedForce:
 
     def test_compute_without_phase_refs_matches_single_phase(self, lattice):
 
-        single_phase = SimulationConfig(grid_shape=(NX, NY), gravity_masked_force={"force_g": 0.001})
+        single_phase = SimulationConfig(forces={"gravity_masked_force": {"force_g": 0.001}}, grid_shape=(NX, NY))
         precomputed = self._build(lattice, config=single_phase)
         state = make_state(lattice, rho_value=1.2)
         force = precomputed.compute(state)
@@ -380,17 +384,12 @@ class TestGravityMaskedForce:
         npz_path = tmp_path / "init_state.npz"
         np.savez(npz_path, rho=rho)
         return SimulationConfig(
-            sim_type="multiphase",
+            multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.001, "interface_width": 2},
+            forces={"gravity_masked_force": {"force_g": 0.001}},
             grid_shape=(NX, NY),
-            eos="double-well",
-            kappa=0.02,
-            rho_l=1.0,
-            rho_v=0.001,
-            interface_width=2,
             init_type="init_from_file",
             init_dir=str(npz_path),
             initialisation={},
-            gravity_masked_force={"force_g": 0.001},
         )
 
     def test_the_band_is_measured_off_the_init_field_when_there_is_one(self, lattice, tmp_path):
@@ -443,6 +442,9 @@ class TestElectricParams:
                 "permittivity_vapour": 1.0,
                 "conductivity_liquid": 0.01,
                 "conductivity_vapour": 0.001,
+                "applied_voltage": 0.0,
+                "voltage_top": 0.0,
+                "voltage_bottom": 0.0,
             },
             (NX, NY, NZ),
             config=sim_config,
@@ -460,6 +462,9 @@ class TestElectricParams:
                 "permittivity_vapour": 1.0,
                 "conductivity_liquid": 0.01,
                 "conductivity_vapour": 0.001,
+                "applied_voltage": 0.0,
+                "voltage_top": 0.0,
+                "voltage_bottom": 0.0,
             },
             (NX, NY, NZ),
             config=sim_config,
@@ -526,6 +531,7 @@ class TestComputeElectricForce:
             "permittivity_vapour": 1.0,
             "conductivity_liquid": 0.0,
             "conductivity_vapour": 0.0,
+            "applied_voltage": 0.0,
             "voltage_top": 0.0,
             "voltage_bottom": 0.0,
         }
@@ -599,16 +605,19 @@ class TestElectricForceSetupWiring:
 
         config = DictAdapter().load(
             {
+                "forces": {
+                    "electric_force": {
+                        "permittivity_liquid": 80.0,
+                        "permittivity_vapour": 1.0,
+                        "conductivity_liquid": 0.01,
+                        "conductivity_vapour": 0.001,
+                        "applied_voltage": 0.0,
+                        "voltage_top": 1.0,
+                        "voltage_bottom": 0.0,
+                    }
+                },
                 "grid_shape": (NX, NY),
                 "nt": 10,
-                "electric_force": {
-                    "permittivity_liquid": 80.0,
-                    "permittivity_vapour": 1.0,
-                    "conductivity_liquid": 0.01,
-                    "conductivity_vapour": 0.001,
-                    "voltage_top": 1.0,
-                    "voltage_bottom": 0.0,
-                },
             }
         )
         return build_setup(config)
@@ -648,6 +657,9 @@ class TestElectricForceComputeErrors:
                 "permittivity_vapour": 1.0,
                 "conductivity_liquid": 0.01,
                 "conductivity_vapour": 0.001,
+                "applied_voltage": 0.0,
+                "voltage_top": 0.0,
+                "voltage_bottom": 0.0,
             },
             (NX, NY, NZ),
             config=sim_config,

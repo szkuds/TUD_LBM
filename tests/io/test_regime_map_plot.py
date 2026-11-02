@@ -16,6 +16,7 @@ from src.simulation_io.plotting.regime_map_plot import parse_run_dir_list
 from src.simulation_io.plotting.regime_map_plot import plot_regime_map
 from src.simulation_io.plotting.regime_map_plot import process_run_dir
 from src.simulation_io.readers import TomlAdapter
+from tests.support.config import merge_overrides
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,20 +32,16 @@ _no_literal_backslash_dirs = pytest.mark.skipif(
 
 def _run_config(**kwargs) -> SimulationConfig:
     base = {
-        "sim_type": "multiphase_hysteresis_chemical_step",
+        "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.2, "interface_width": 2},
+        "forces": {"gravity_masked_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0}},
         "grid_shape": (_NX, _NY),
         "tau": 0.9,
         "nt": 30,
         "save_interval": 10,
-        "eos": "double-well",
-        "kappa": 0.02,
-        "interface_width": 2,
-        "rho_l": 1.0,
-        "rho_v": 0.2,
-        "gravity_masked_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0},
         "initialisation": {"radii": [0.25], "centres": [[0.5, 0.5]]},
+        "wetting": {"phi_left": 1.0},
     }
-    base.update(kwargs)
+    merge_overrides(base, kwargs)
     return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
@@ -219,7 +216,7 @@ def test_calibration_only_eos_classifies_but_resolves_no_numbers(tmp_path: Path)
     figure is drawn rather than when the snapshots are read.
     """
     run_dir = tmp_path / "no_dimensionless"
-    cfg = _run_config(eos="carnahan-starling", a_eos=1.0, b_eos=4.0, r_eos=1.0, t_eos=0.07)
+    cfg = _run_config(multiphase={"eos": "carnahan-starling", "a_eos": 1.0, "b_eos": 4.0, "r_eos": 1.0, "t_eos": 0.07})
     _build_run_dir(run_dir, [4, 4, 4, 4], cfg)
 
     entry = process_run_dir(run_dir)

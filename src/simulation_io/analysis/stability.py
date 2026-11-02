@@ -34,7 +34,7 @@ from src.simulation_io.analysis._debug_table import fmt
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from src.config.multiphase_params import MultiphaseParams
+    from src.config.multiphase import MultiphaseParams
     from src.pipeline.state.state import State
     from src.pipeline.step import Observables
     from src.protocols import ExtDifferentialOperator
