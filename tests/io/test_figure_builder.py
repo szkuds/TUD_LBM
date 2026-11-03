@@ -29,6 +29,7 @@ class TestFigureBuilderGuardFor3D:
     def test_3d_simulation_nz_2_raises_warning(self):
         """FigureBuilder should warn and leave _operators empty for 3D simulations (nz=2)."""
         config = SimulationConfig(
+            lattice_type="D3Q19",
             grid_shape=(64, 64, 2),
             tau=0.8,
             nt=100,
@@ -50,6 +51,7 @@ class TestFigureBuilderGuardFor3D:
     def test_3d_simulation_nz_4_raises_warning(self):
         """FigureBuilder should warn and leave _operators empty for larger 3D simulations (nz=4)."""
         config = SimulationConfig(
+            lattice_type="D3Q19",
             grid_shape=(64, 64, 4),
             tau=0.8,
             nt=100,
@@ -71,6 +73,7 @@ class TestFigureBuilderGuardFor3D:
     def test_3d_simulation_build_returns_none(self):
         """When operators are empty due to 3D guard, build() should warn and return None."""
         config = SimulationConfig(
+            lattice_type="D3Q19",
             grid_shape=(64, 64, 2),
             tau=0.8,
             nt=100,
@@ -94,6 +97,7 @@ class TestFigureBuilderGuardFor3D:
     def test_3d_simulation_build_all_returns_empty_list(self):
         """When operators are empty due to 3D guard, build_all() should return []."""
         config = SimulationConfig(
+            lattice_type="D3Q19",
             grid_shape=(64, 64, 2),
             tau=0.8,
             nt=100,
@@ -110,6 +114,7 @@ class TestFigureBuilderGuardFor3D:
     def test_plot_dir_not_created_for_3d(self):
         """For 3D simulations, plot_dir should not be created (guard returns early)."""
         config = SimulationConfig(
+            lattice_type="D3Q19",
             grid_shape=(64, 64, 2),
             tau=0.8,
             nt=100,

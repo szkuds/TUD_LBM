@@ -17,7 +17,7 @@ from src.registry import get_operators
 if TYPE_CHECKING:
     from src.config.simulation_config import SimulationConfig
 
-BC_APPLICATION_ORDER: tuple[str, ...] = ("bottom", "top", "left", "right")
+BC_APPLICATION_ORDER: tuple[str, ...] = ("bottom", "top", "left", "right", "front", "back")
 IN_PLANE_EDGES: tuple[str, ...] = ("top", "bottom", "left", "right")
 OUT_OF_PLANE_EDGES: tuple[str, ...] = ("front", "back")
 _PLANAR_DIM: int = 2
@@ -71,6 +71,11 @@ def lattice_edges(lattice_type: str) -> tuple[str, ...]:
     return IN_PLANE_EDGES + OUT_OF_PLANE_EDGES
 
 
+def is_three_dimensional(lattice_type: str) -> bool:
+    """Whether *lattice_type* has ``front``/``back`` faces."""
+    return set(OUT_OF_PLANE_EDGES) <= set(lattice_edges(lattice_type))
+
+
 def complete_boundary_conditions(section: dict[str, Any] | None, lattice_type: str) -> dict[str, Any]:
     """*section* naming every edge of the lattice, so the boundary builder only looks up and binds.
 
@@ -118,16 +123,20 @@ def _section(config: SimulationConfig) -> dict[str, Any]:
     return section
 
 
-def periodic_axes(config: SimulationConfig) -> tuple[bool, bool]:
-    """Per-axis periodicity ``(x, y)``: an axis is periodic only if both its edges are."""
+def periodic_axes(config: SimulationConfig) -> tuple[bool, bool, bool]:
+    """Per-axis periodicity ``(x, y, z)``: an axis is periodic only if both its edges are.
+
+    A 2D lattice has no ``front``/``back`` faces, so nothing bounds its z axis.
+    """
     section = _section(config)
     return (
         section["left"] == "periodic" and section["right"] == "periodic",
         section["bottom"] == "periodic" and section["top"] == "periodic",
+        section.get("front", "periodic") == "periodic" and section.get("back", "periodic") == "periodic",
     )
 
 
-def pad_modes(config: SimulationConfig) -> tuple[str, str, str, str]:
+def pad_modes(config: SimulationConfig) -> tuple[str, ...]:
     """The stencil pad mode of each edge.
 
     Each edge's BC is looked up in the ``"boundary_condition"`` registry and its
@@ -137,10 +146,11 @@ def pad_modes(config: SimulationConfig) -> tuple[str, str, str, str]:
 
     The order is ``(top, bottom, right, left)``, i.e.
     ``(y_end, y_start, x_end, x_start)``, which is what
-    :func:`~src.operators.differential._pad_utils._apply_stencil_padding` expects.
+    :func:`~src.operators.differential._pad_utils._apply_stencil_padding` expects;
+    a 3D lattice appends ``(front, back)``, i.e. ``(z_end, z_start)``.
 
     Returns:
-        Four ``jnp.pad`` mode strings.
+        Four ``jnp.pad`` mode strings, six on a 3D lattice.
     """
     import src.operators.boundary  # noqa: F401
 
@@ -151,7 +161,10 @@ def pad_modes(config: SimulationConfig) -> tuple[str, str, str, str]:
         metadata = bc_ops[section[edge]].metadata or {}
         return str(metadata.get("pad_edge_mode", "edge"))
 
-    return _mode("top"), _mode("bottom"), _mode("right"), _mode("left")
+    modes = _mode("top"), _mode("bottom"), _mode("right"), _mode("left")
+    if is_three_dimensional(config.lattice_type):
+        return (*modes, _mode("front"), _mode("back"))
+    return modes
 
 
 def boundary_edges(config: SimulationConfig) -> tuple[BoundaryEdge, ...]:
@@ -164,4 +177,5 @@ def boundary_edges(config: SimulationConfig) -> tuple[BoundaryEdge, ...]:
             params=dict(section.get(parameter_section_key(edge, section[edge]), {})),
         )
         for edge in BC_APPLICATION_ORDER
+        if edge in section
     )

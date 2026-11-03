@@ -23,6 +23,7 @@ from typing import Any
 from src.config._checks import registered_names
 from src.config._checks import validate_nonnegative
 from src.config.boundary import complete_boundary_conditions
+from src.config.boundary import is_three_dimensional
 from src.config.boundary import validate_boundary_conditions
 from src.config.config_overview import BASE_RESULTS_DIR
 from src.config.defaults import DEFAULT_EQUILIBRIUM
@@ -246,6 +247,32 @@ class SimulationConfig:
         validate_hysteresis(self)
         validate_chemical_step(self)
         validate_multiphase(self)
+        self._validate_dimension()
+
+    def _validate_dimension(self) -> None:
+        """Keep the grid on its lattice, and refuse what has no 3D form: bulk runs only there.
+
+        A 3D run of any of these would otherwise fail deep in a trace, or use
+        only the ``z = 0`` plane without a word.
+        """
+        if not is_three_dimensional(self.lattice_type):
+            if self.grid_shape[2] != 1:
+                msg = f"{self.lattice_type} is two-dimensional, got nz={self.grid_shape[2]}; use a 3D lattice"
+                raise ValueError(msg)
+            return
+        edges = self.boundary_conditions or {}
+        unsupported = {
+            "wetting": self.wetting is not None or "wetting" in edges.values(),
+            "hysteresis": self.hysteresis is not None,
+            "chemical_step": self.chemical_step is not None,
+            "electric_force": "electric_force" in self.forces,
+            "MRT collision": self.collision_scheme == "mrt",
+            "obstacle": self.obstacle is not None,
+        }
+        refused = [name for name, used in unsupported.items() if used]
+        if refused:
+            msg = f"{', '.join(refused)} not supported on the 3D lattice {self.lattice_type}"
+            raise ValueError(msg)
 
     def _validate_grid_shape(self) -> None:
         """Validate grid_shape dimensions."""

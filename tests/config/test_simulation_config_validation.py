@@ -488,7 +488,7 @@ class TestDerivedProperties:
         cfg = SimulationConfig(
             grid_shape=(20, 20, 1), boundary_conditions={"top": "bounce-back", "bottom": "bounce-back"}
         )
-        assert periodic_axes(cfg) == (True, False)
+        assert periodic_axes(cfg) == (True, False, True)
 
     def test_pad_modes_follow_each_bc_registration(self):
         cfg = SimulationConfig(grid_shape=(20, 20, 1), boundary_conditions={"top": "symmetry", "bottom": "bounce-back"})

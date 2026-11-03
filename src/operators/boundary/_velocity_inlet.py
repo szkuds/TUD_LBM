@@ -57,4 +57,4 @@ def apply_velocity_inlet(
     rho_in = jnp.ones((1, ny, 1, 1, 1), dtype=f_streamed.dtype)
 
     feq_inlet = compute_equilibrium(rho_in, u_in, lattice)
-    return f_streamed.at[0, :, 0, :, 0].set(feq_inlet[0, :, 0, :, 0])
+    return f_streamed.at[0, :, :, :, 0].set(feq_inlet[0, :, :, :, 0])

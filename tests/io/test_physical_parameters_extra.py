@@ -216,7 +216,7 @@ def test_build_overview_includes_simulation_name_when_set():
 
 
 def test_build_overview_3d_grid_displays_full_shape():
-    cfg = SimulationConfig(grid_shape=(8, 8, 4), tau=0.8, nt=10)
+    cfg = SimulationConfig(lattice_type="D3Q19", grid_shape=(8, 8, 4), tau=0.8, nt=10)
     text = build_overview(cfg)
     # 3-D: all three dimensions must appear in the shape line
     assert "4" in text

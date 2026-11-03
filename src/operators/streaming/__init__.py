@@ -24,11 +24,11 @@ if TYPE_CHECKING:
 auto_load_operators("src.operators.streaming")
 
 
-def build_streaming_fn(periodic_axes: tuple[bool, bool], scheme: str = "standard") -> StreamingOperator:
+def build_streaming_fn(periodic_axes: tuple[bool, ...], scheme: str = "standard") -> StreamingOperator:
     """Return a streaming operator satisfying StreamingOperator protocol.
 
     Args:
-        periodic_axes: Per-axis periodicity ``(x, y)`` —
+        periodic_axes: Per-axis periodicity ``(x, y, z)`` —
             ``periodic_axes(config)``.
         scheme: Streaming model name. Defaults to "standard" (pull-style streaming).
 

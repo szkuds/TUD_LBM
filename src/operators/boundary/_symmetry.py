@@ -11,6 +11,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import numpy as np
+from src.operators.boundary._faces import face_axis
+from src.operators.boundary._faces import face_cells
+from src.operators.boundary._faces import incoming_directions
 from src.registry import boundary_condition
 
 if TYPE_CHECKING:
@@ -19,6 +22,7 @@ if TYPE_CHECKING:
 # Diagonal component indices for streaming roll correction
 DIAGONAL_1_IDX = 1
 DIAGONAL_2_IDX = 2
+SPATIAL_3D = 3
 
 
 def _apply_bottom_symmetry(
@@ -83,6 +87,37 @@ def _apply_right_symmetry(
     return f_streamed
 
 
+def _apply_specular(
+    f_streamed: jnp.ndarray,
+    f_collision: jnp.ndarray,
+    lattice: Lattice,
+    edge: str,
+) -> jnp.ndarray:
+    """Specular reflection at a face of a 3D lattice.
+
+    Each incoming direction takes the direction with its normal component
+    flipped. That population started the step one tangential velocity away, so
+    it is rolled along the tangential axes; the wall normal keeps its momentum
+    flux and the tangential momentum is conserved.
+    """
+    axis = face_axis(edge)
+    c = np.array(lattice.c)[0, 0, 0]
+    directions = [tuple(int(v) for v in ci) for ci in c]
+    cells = face_cells(edge)
+    for dst in incoming_directions(lattice, edge):
+        mirrored = list(directions[dst])
+        mirrored[axis] = -mirrored[axis]
+        src = directions.index(tuple(mirrored))
+        tangential = [(ax, directions[src][ax]) for ax in range(lattice.d) if ax != axis]
+        rolled = jnp.roll(
+            f_collision[..., src, 0],
+            shift=tuple(shift for _, shift in tangential),
+            axis=tuple(ax for ax, _ in tangential),
+        )
+        f_streamed = f_streamed.at[(*cells, dst, 0)].set(rolled[cells])
+    return f_streamed
+
+
 @boundary_condition(name="symmetry", pad_edge_mode="edge")
 def apply_symmetry(
     f_streamed: jnp.ndarray,
@@ -96,11 +131,14 @@ def apply_symmetry(
         f_streamed: Post-streaming populations, shape ``(nx, ny, q, 1)``.
         f_collision: Post-collision populations, same shape.
         lattice: :class:`~setup.lattice.Lattice`.
-        edge: ``"top"``, ``"bottom"``, ``"left"``, or ``"right"``.
+        edge: A domain face; ``"front"`` and ``"back"`` exist on a 3D lattice.
 
     Returns:
         Updated populations with symmetry applied on *edge*.
     """
+    if lattice.d == SPATIAL_3D:
+        return _apply_specular(f_streamed, f_collision, lattice, edge)
+
     # Convert to plain Python ints for JAX compatibility under tracing
     top = [int(x) for x in np.array(lattice.top_indices)]
     bot = [int(x) for x in np.array(lattice.bottom_indices)]

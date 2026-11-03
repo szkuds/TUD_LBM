@@ -125,7 +125,8 @@ def test_pad_modes_resolve_without_the_caller_importing_the_boundary_package():
     source = (
         "from src.config.boundary import pad_modes;"
         "from types import SimpleNamespace;"
-        "print(pad_modes(SimpleNamespace(boundary_conditions={'left': 'periodic', 'right': 'periodic',"
+        "print(pad_modes(SimpleNamespace(lattice_type='D2Q9',"
+        " boundary_conditions={'left': 'periodic', 'right': 'periodic',"
         " 'top': 'wetting', 'bottom': 'bounce-back'})))"
     )
     result = subprocess.run(  # noqa: S603 - the argv is this module's own literal, not input

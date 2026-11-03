@@ -22,8 +22,11 @@ close over it to get a jittable closure.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
+import numpy as np
 from src.operators.differential._pad_utils import _apply_stencil_padding
+from src.operators.differential._pad_utils import neighbour
 from src.operators.differential._pad_utils import to_2d
+from src.operators.differential._pad_utils import to_3d
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -31,6 +34,8 @@ if TYPE_CHECKING:
     from typing import Any
     from src.protocols import ExtDifferentialOperator
     from src.protocols import ExtGhostFill
+
+SPATIAL_3D = 3
 
 
 def compute_gradient(
@@ -74,17 +79,43 @@ def build_gradient(
             the stencil, or ``None`` for the plain stencil.
 
     Returns:
-        ``grad(grid, ext) → (nx, ny, nz, 1, 2)``. Without a fill, *ext* is ignored.
+        ``grad(grid, ext) → (nx, ny, nz, 1, d)``. Without a fill, *ext* is ignored.
     """
     _pad_mode = tuple(pad_mode)
+    three_dimensional = c.shape[-1] == SPATIAL_3D
+    squeeze = to_3d if three_dimensional else to_2d
+    core = grad_core_3d if three_dimensional else grad_core_2d
 
     def gradient(grid: jnp.ndarray, ext: Mapping[str, Any]) -> jnp.ndarray:
-        padded = _apply_stencil_padding(to_2d(grid), _pad_mode)
+        padded = _apply_stencil_padding(squeeze(grid), _pad_mode)
         if ghost_fill is not None:
             padded = ghost_fill(padded, ext)
-        return grad_core_2d(padded, w, c)
+        return core(padded, w, c)
 
     return gradient
+
+
+def grad_core_3d(padded: jnp.ndarray, w: jnp.ndarray, c: jnp.ndarray) -> jnp.ndarray:
+    """Gradient kernel on an already-padded ``(nx+2, ny+2, nz+2)`` array.
+
+    ``3 * sum_i w_i c_i f(x + c_i)``: the factor holds for any lattice with
+    ``sum_i w_i c_i c_i = I / 3``, D3Q19 among them.
+
+    Args:
+        padded: Shape ``(nx + 2, ny + 2, nz + 2)``.
+        w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
+        c: Lattice velocity vectors, shape ``(1, 1, 1, q, 3)``.
+
+    Returns:
+        Gradient field, shape ``(nx, ny, nz, 1, 3)``.
+    """
+    weights = np.asarray(w)[0, 0, 0, :, 0]
+    directions = np.asarray(c)[0, 0, 0]
+    total = jnp.zeros((*(n - 2 for n in padded.shape), 1, SPATIAL_3D), dtype=padded.dtype)
+    for weight, direction in zip(weights[1:], directions[1:], strict=True):
+        stencil = float(weight) * neighbour(padded, tuple(int(step) for step in direction))
+        total = total + 3.0 * stencil[..., None, None] * jnp.asarray(direction, dtype=padded.dtype)
+    return total
 
 
 def grad_core_2d(

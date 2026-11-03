@@ -8,14 +8,22 @@ Uses the density gradient operator for computing gravity corrections.
 """
 
 from __future__ import annotations
+import functools
+import operator
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import numpy as np
 from src.registry import source_term_operator
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from src.lattice.lattice import Lattice
     from src.protocols import DifferentialOperator
+
+
+def _dot(a: Sequence, b: Sequence) -> jnp.ndarray:
+    """``a[0] * b[0] + a[1] * b[1] + ...``, in that order."""
+    return functools.reduce(operator.add, (x * y for x, y in zip(a, b, strict=True)))
 
 
 @source_term_operator(name="wb")
@@ -31,8 +39,8 @@ def compute_source(
 
     Args:
         rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
-        u: Velocity field, shape ``(nx, ny, nz, 1, 2)``.
-        force: Force field, shape ``(nx, ny, nz, 1, 2)``.
+        u: Velocity field, shape ``(nx, ny, nz, 1, d)``.
+        force: Force field, shape ``(nx, ny, nz, 1, d)``.
         lattice: :class:`~setup.lattice.Lattice`.
         gradient: Standard LBM-stencil gradient callable
             (grid) → gradient. Used for density gradient.
@@ -40,50 +48,39 @@ def compute_source(
     Returns:
         Source term, shape ``(nx, ny, nz, q, 1)``.
     """
-    # Support pseudo-3D (nz=1) — stencil logic remains 2D
-    # but array shapes include nz dimension for compatibility
-
     q = lattice.q
     d = lattice.d
 
     # Pre-extract lattice data as numpy for JIT safety
     w_np = np.array(lattice.w)[0, 0, 0, :, 0]  # (q,) as numpy — avoids tracing issues
-    c_np = np.array(lattice.c)[0, 0, 0].T  # (d, q) as numpy — avoids tracing issues
-    cx_np = c_np[0]
-    cy_np = c_np[1]
+    c_np = np.array(lattice.c)[0, 0, 0]  # (q, d) as numpy — avoids tracing issues
 
-    # Extract 2D slices
-    ux = u[:, :, 0, 0, 0]
-    uy = u[:, :, 0, 0, 1]
-    fx = force[:, :, 0, 0, 0]
-    fy = force[:, :, 0, 0, 1]
-    rho_2d = rho[:, :, 0, 0, 0]
+    # Fields without their singleton axis, one array per component
+    u_d = [u[:, :, :, 0, a] for a in range(d)]
+    force_d = [force[:, :, :, 0, a] for a in range(d)]
 
     # Density gradient via LBM-stencil operator
-    grad_rho_5d = gradient(rho)  # (nx, ny, nz, 1, 2)
-    grad_rho_x = grad_rho_5d[:, :, 0, 0, 0]
-    grad_rho_y = grad_rho_5d[:, :, 0, 0, 1]
+    grad_rho_5d = gradient(rho)  # (nx, ny, nz, 1, d)
+    grad_rho_d = [grad_rho_5d[:, :, :, 0, a] for a in range(d)]
 
     # Corrected force
-    fx_cor = fx + grad_rho_x / 3.0
-    fy_cor = fy + grad_rho_y / 3.0
+    force_cor = [force_d[a] + grad_rho_d[a] / 3.0 for a in range(d)]
 
-    nx_grid, ny_grid = rho_2d.shape
-    source_3d = jnp.zeros((nx_grid, ny_grid, q))
+    source = jnp.zeros((*rho.shape[:3], q))
 
+    # Every term stays inside the loop: XLA fuses this form to the same bits it always gave.
     for i in range(q):
-        cxi = float(cx_np[i])
-        cyi = float(cy_np[i])
+        ci = [float(component) for component in c_np[i]]
         wi = float(w_np[i])
 
-        cu = cxi * ux + cyi * uy
-        cf = cxi * fx + cyi * fy
-        cf_cor = cxi * fx_cor + cyi * fy_cor
-        uf_cor = ux * fx_cor + uy * fy_cor
-        u_grad_rho = ux * grad_rho_x + uy * grad_rho_y
+        cu = _dot(ci, u_d)
+        cf = _dot(ci, force_d)
+        cf_cor = _dot(ci, force_cor)
+        uf_cor = _dot(u_d, force_cor)
+        u_grad_rho = _dot(u_d, grad_rho_d)
 
-        source_3d = source_3d.at[:, :, i].set(
-            wi * (3.0 * cf + 9.0 * cf_cor * cu - 3.0 * uf_cor + 0.5 * (3.0 * (cxi * cxi + cyi * cyi) - d) * u_grad_rho),
+        source = source.at[..., i].set(
+            wi * (3.0 * cf + 9.0 * cf_cor * cu - 3.0 * uf_cor + 0.5 * (3.0 * _dot(ci, ci) - d) * u_grad_rho),
         )
 
-    return jnp.expand_dims(source_3d, axis=(-3, -1))
+    return source[..., None]

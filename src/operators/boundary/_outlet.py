@@ -35,4 +35,4 @@ def apply_outlet(
     if edge != "right":
         return f_streamed
 
-    return f_streamed.at[-1, :, 0, :, 0].set(f_streamed[-2, :, 0, :, 0])
+    return f_streamed.at[-1, :, :, :, 0].set(f_streamed[-2, :, :, :, 0])

@@ -37,15 +37,15 @@ def build_differential(
 
     Args:
         lattice: The simulation :class:`Lattice` (weights, velocities).
-        pad_modes: ``src.config.boundary.pad_modes``, ``(top, bottom, right, left)``.
+        pad_modes: ``src.config.boundary.pad_modes``, ``(top, bottom, right, left)``, then ``(front, back)`` in 3D.
         ghost_fill: The addons' composed ghost fill, or ``None`` for the plain stencils.
 
     Returns:
-        ``grad(grid, ext) → (nx, ny, nz, 1, 2)`` and ``lap(grid, ext) → (nx, ny, nz, 1, 1)``.
+        ``grad(grid, ext) → (nx, ny, nz, 1, d)`` and ``lap(grid, ext) → (nx, ny, nz, 1, 1)``.
     """
     return (
         build_gradient(lattice.w, lattice.c, pad_modes, ghost_fill),
-        build_laplacian(lattice.w, pad_modes, ghost_fill),
+        build_laplacian(lattice.w, lattice.c, pad_modes, ghost_fill),
     )
 
 
