@@ -125,7 +125,7 @@ def test_a_closed_face_conserves_mass(lattice, name: str, edge: str) -> None:
     assert float(jnp.sum(result)) == pytest.approx(float(jnp.sum(f)), rel=1e-13)
 
 
-@pytest.mark.parametrize("edge", ["bottom", "top", "left", "right", "front", "back"])
+@pytest.mark.parametrize("edge", _ALL_FACES)
 def test_symmetry_keeps_the_tangential_momentum(lattice, edge: str) -> None:
     normal = {"bottom": 1, "top": 1, "left": 0, "right": 0, "front": 2, "back": 2}[edge]
     tangential = (normal + 1) % 3
@@ -248,3 +248,39 @@ def test_a_two_dimensional_lattice_refuses_a_deep_grid() -> None:
 
     with pytest.raises(ValueError, match="two-dimensional"):
         SimulationConfig(grid_shape=shape)
+
+
+@pytest.mark.parametrize("edge", ["bottom", "top", "left", "right"])
+def test_symmetry_keeps_the_tangential_momentum_in_2d(edge: str) -> None:
+    """The 2D faces once reversed the tangential velocity of the diagonals at top and bottom."""
+    lattice = build_lattice("D2Q9")
+    normal = {"bottom": 1, "top": 1, "left": 0, "right": 0}[edge]
+    tangential = 1 - normal
+    config = SimulationConfig(grid_shape=(6, 7), boundary_conditions=_closed_axis(edge, "symmetry"))
+    velocity = [0.0, 0.0]
+    velocity[tangential] = 0.05
+    f = build_initialise_fn("standard")((6, 7, 1), lattice, velocity=tuple(velocity))
+
+    streamed = build_streaming_fn(periodic_axes(config))(f, lattice)
+    result = build_bc(boundary_edges(config), lattice)(streamed, f)
+
+    np.testing.assert_allclose(np.asarray(result), np.asarray(f), atol=1e-15)
+
+
+def test_a_channel_between_symmetry_planes_keeps_its_flow() -> None:
+    config = SimulationConfig(
+        grid_shape=(16, 16),
+        tau=0.8,
+        init_type="standard",
+        initialisation={"velocity": (0.05, 0.0, 0.0)},
+        boundary_conditions={"bottom": "symmetry", "top": "symmetry"},
+    )
+    setup = build_setup(config)
+    f = init_state(setup).f
+
+    for _ in range(50):
+        f = kernel(setup, f, None, {})
+
+    momentum = jnp.sum(f * setup.lattice.c, axis=(0, 1, 2, 3)) / jnp.sum(f)
+    assert float(momentum[0]) == pytest.approx(0.05, rel=1e-12)
+    assert float(momentum[1]) == pytest.approx(0.0, abs=1e-14)
