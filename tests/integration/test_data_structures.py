@@ -204,7 +204,7 @@ class TestSimulationConfigDefaults:
         with pytest.raises(AttributeError):
             cfg.tau = 0.9  # ty: ignore[invalid-assignment]
 
-    def test_default_bc_config_is_periodic(self):
+    def test_default_boundary_conditions_are_periodic(self):
         from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(grid_shape=(8, 8))
@@ -335,7 +335,7 @@ class TestSimulationConfigMultiphase:
 class TestSimulationConfigToDict:
     """``to_dict()`` serialisation."""
 
-    def test_to_dict_contains_sim_type(self):
+    def test_to_dict_of_a_single_phase_run_has_no_multiphase_section(self):
         from src.config.simulation_config import SimulationConfig
 
         cfg = SimulationConfig(grid_shape=(8, 8))
@@ -428,7 +428,7 @@ class TestBuildSetup:
         assert isinstance(setup.config.save_fields, list)
         assert setup.config.save_fields == ["f", "rho"]
 
-    def test_bc_config_preserved(self):
+    def test_boundary_conditions_preserved(self):
         from src.config.simulation_config import SimulationConfig
         from src.pipeline.setup import build_setup
 

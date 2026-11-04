@@ -427,12 +427,16 @@ class TestValidateBoundaryConditions:
             ("right", "periodic"),
         ]
 
-    def test_edge_without_parameter_section_has_empty_params(self):
+    def test_edge_without_parameter_section_runs_on_the_defaults(self):
+        """The default is filled into the config, so the saved ``config.toml`` shows it."""
         cfg = SimulationConfig(
             grid_shape=(20, 20, 1), boundary_conditions={"left": "velocity-inlet", "right": "outlet"}
         )
         left = next(e for e in boundary_edges(cfg) if e.edge == "left")
-        assert left.params == {}
+        right = next(e for e in boundary_edges(cfg) if e.edge == "right")
+        assert left.params == {"u0": 0.05}
+        assert (cfg.boundary_conditions or {})["left_velocity_inlet"] == {"u0": 0.05}
+        assert right.params == {}
 
     def test_parameter_section_is_bound_to_its_edge(self):
         cfg = SimulationConfig(
@@ -530,7 +534,6 @@ class TestDerivedProperties:
 def _hysteresis_config(
     hysteresis: dict[str, Any],
     *,
-    sim_type: str = "multiphase_hysteresis",
     chemical_step: dict[str, Any] | None = None,
     wall: str = "bottom",
 ) -> SimulationConfig:

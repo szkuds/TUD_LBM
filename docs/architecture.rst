@@ -40,16 +40,16 @@ only the import package was renamed.
 
     src/
     ├── registry.py          ← central operator registry
-    ├── config/              ← frozen SimulationConfig + input adapters
+    ├── protocols.py         ← structural contracts and abstract bases
+    ├── config/              ← frozen SimulationConfig, one module per section, adapters
     ├── lattice/             ← velocity models (D2Q9, D3Q19)
+    ├── addons/              ← cross-cutting extensions: wetting, electric
     ├── operators/           ← physics transformations
-    │   ├── collision/  equilibrium/  macroscopic/  eos/
+    │   ├── collision/  equilibrium/  source_term/  macroscopic/ (+ eos/)
     │   ├── boundary/   streaming/    differential/
-    │   ├── force/      initialise/   obstacle/
-    │   ├── wetting/    step/
-    │   ├── protocols.py     ← structural contracts
+    │   ├── force/      initialise/   obstacle/     wetting/
     │   └── _loader.py       ← auto_load_operators()
-    ├── pipeline/            ← setup, runner, state
+    ├── pipeline/            ← setup, step, runner, state
     ├── simulation_io/       ← writers, plotting, analysis, callbacks
     └── cli/                 ← click command-line interface
 
@@ -111,8 +111,10 @@ operators, forces, plain operators — and distinguishes two kinds of
 component:
 
 * **Plain operators** (collision, equilibrium, source term, streaming, BC,
-  obstacle, initialiser, force, macroscopic) are selectable and homogeneous:
-  each is a registry lookup of its configured name.
+  initialiser, force, macroscopic) are selectable and homogeneous: each is a
+  registry lookup of its configured name.  The source term is the one the
+  configured equilibrium registered as its pair, and an obstacle's
+  bounce-back heads the boundary chain rather than being a step of its own.
 * **Addons** (registry kind ``addon``: ``wetting``, ``electric``) touch
   several parts of a step.  Each returns a
   :class:`~src.addons.hooks.Hooks` — or ``None`` when its
@@ -130,9 +132,10 @@ component:
   Addons merge in name order and must be independent: each reads and writes
   only its own ``State.ext`` entry.  Adding one is adding a
   ``src/addons/_*.py`` file; ``build_setup`` changes only for a new kind of
-  slot.  ``sim_type`` selects the phase (macroscopic operator, default
-  equilibrium), never an addon: the ``[wetting]``, ``[hysteresis]`` and
-  ``[chemical_step]`` sections switch those on.
+  slot.  The presence of a ``[multiphase]`` section selects the phase
+  (macroscopic operator, default equilibrium), never an addon: the
+  ``[wetting]``, ``[hysteresis]`` and ``[chemical_step]`` sections switch
+  those on.
 
 .. note::
 
@@ -187,10 +190,19 @@ cannot exist as an object.
 
     @dataclass(frozen=True)
     class SimulationConfig:
-        sim_type: Literal["single_phase", "multiphase", ...] = "single_phase"
         grid_shape: tuple[int, ...] = (64, 64)
         tau: float = 1.0
+        boundary_conditions: dict[str, Any] | None = None
+        multiphase: dict[str, Any] | None = None     # present ⇔ multiphase run
+        forces: dict[str, dict[str, Any]] = {}       # one entry per [*_force] section
+        wetting: dict[str, Any] | None = None
         ...
+
+A section is one field holding the section's table, as the TOML file has it.
+Everything derived from a section — the edges in application order, the pad
+modes, ``MultiphaseParams``, the phase references, the chemical-step wall —
+is a function in that section's module of the config package, not a property
+of the config.
 
 What it deliberately is **not** is a container of live objects:
 
@@ -255,8 +267,8 @@ multiphase run the kernel runs:
 4. interparticle force ``F_int = −ρ∇μ``
 5. force-corrected velocity ``u_eq = u + F_total/(2ρ)``
 
-then equilibrium → collision (+ source) → streaming → obstacle → boundary
-conditions, and the moments of the result.  The kernel binds ``State.ext``
+then equilibrium → collision (+ source) → streaming → boundary conditions
+(an obstacle's bounce-back first), and the moments of the result.  The kernel binds ``State.ext``
 into the differential operators and names no addon.
 
 .. warning::
@@ -289,7 +301,7 @@ and operators can be tested with no file system at all:
     state = init_state(setup)
     final_state, _ = run(setup, state, nt=10)
 
-    assert jnp.isfinite(final_state.rho).all()
+    assert jnp.isfinite(observe(setup, final_state).rho).all()
 
 Extension points
 ----------------
@@ -303,6 +315,30 @@ Extension points
    * - a physics operator
      - drop a ``_*.py`` file in the right ``operators/`` subpackage,
        decorated with that kind's decorator
+   * - an addon
+     - a ``src/addons/_*.py`` file whose ``@addon_operator`` builder returns
+       ``Hooks`` (or ``None`` when its section is absent); its section is a
+       config section (below), and its substate lives in ``State.ext[name]``
+   * - a force
+     - its class in ``operators/force/_*.py`` with ``@force_model(name=...)``;
+       a row of ``FORCE_SCHEMAS`` in ``config/forces.py``; and, if it has
+       defaults, a row of ``FORCES`` in ``config/defaults.py``.  The
+       ``[<name>_force]`` section then loads into ``config.forces``
+   * - an equation of state
+     - ``@eos_operator`` (and ``@pressure_operator`` /
+       ``@surface_tension_operator`` if it has them) in
+       ``operators/macroscopic/eos/_*.py``; its extra parameters are one row
+       of ``EOS_PARAMETERS`` in ``config/multiphase.py``
+   * - a boundary condition
+     - ``@boundary_condition`` in ``operators/boundary/_*.py``; parameters
+       go in the edge's ``{edge}_{name}`` key, and their defaults in
+       ``BOUNDARY_PARAMETERS`` in ``config/defaults.py``
+   * - a config section
+     - a field on ``SimulationConfig`` with its ``section`` metadata; the
+       name in ``_DICT_SECTIONS`` (``config/sections.py``); a
+       ``config/<section>.py`` with ``complete_<section>`` and
+       ``validate_<section>``, called from ``_apply_defaults`` and
+       ``_validate``; defaults in ``config/defaults.py``
    * - a velocity model
      - register a ``Lattice`` builder with ``@lattice_operator``
    * - an input format
@@ -316,7 +352,44 @@ Extension points
    * - a CLI command
      - add a module under ``cli/commands/``, decorated with ``cli_command``
 
-None of these require editing a dispatch table or an import list.
+None of the operator rows require editing a dispatch table or an import
+list; the config rows are the deliberate exception, because the
+configuration is the one place that knows every section.
+
+The configuration package
+-------------------------
+
+The config package is the only code that knows about configuration: the
+section layout, the schemas, the defaults, the validation and every object
+derived from a section.  It mirrors the operator packages, so the config of
+an operator is in the module of the same name::
+
+    src/config/
+    ├── simulation_config.py  ← SimulationConfig: core fields + one per section
+    ├── defaults.py           ← every default a configuration can reach, once
+    ├── boundary.py           ← [boundary_conditions]: edges, pad modes, periodic axes
+    ├── obstacle.py           ← [obstacle]: mask
+    ├── multiphase.py         ← [multiphase]: EOS table, MultiphaseParams, phase references
+    ├── forces.py             ← [*_force]: one schema per force
+    ├── wetting.py            ← [wetting], [hysteresis], [chemical_step]
+    ├── equilibrium.py        ← the equilibrium and its registered source-term pair
+    ├── init_field.py         ← the init-NPZ reader
+    ├── sections.py           ← nested layout ⇄ fields, for every adapter
+    └── legacy.py             ← old-layout upgrade
+
+``SimulationConfig.__post_init__`` completes each section from
+``defaults.py`` (``complete_<section>``) and then validates it
+(``validate_<section>``).  An operator package receives a config that has
+passed those checks and never re-checks it.
+
+**The legacy adapter.**  ``legacy.upgrade(raw)`` turns a config in the old
+layout — ``[simulation_type] type = ...``, flat multiphase keys, per-force
+fields, the ``*_config`` names — into the current one, and reports whether it
+changed anything.  It runs once, in :func:`~src.config.sections.load_sections`.
+A file named ``config.toml`` (a run directory's own copy) is rewritten in the
+new layout on its first load; any other input TOML is upgraded in memory only,
+so a file you pass in never changes behind your back.  Removing the old
+layout is deleting ``legacy.py`` and its one call.
 
 Command-line interface
 ----------------------
@@ -352,11 +425,12 @@ Marker             Scope
 ``unit``           individual operators
 ``integration``    end-to-end physics pipelines
 ``conformance``    operators satisfy their protocol contracts
-``slow``           full-pipeline smoke tests, excluded from fast CI
+``slow``           full-pipeline runs and 3D verification; select or skip
+                   with ``-m``
 =================  =========================================================
 
 .. code-block:: console
 
-    pytest                          # fast unit tests
-    pytest -m slow                  # includes end-to-end example runs
+    pytest                          # everything, slow tests included
+    pytest -m "not slow"            # skip the end-to-end runs
     uv run pytest --cov --cov-report xml   # refresh coverage.xml for SonarCloud

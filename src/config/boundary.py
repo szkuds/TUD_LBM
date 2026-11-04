@@ -1,8 +1,8 @@
 """``[boundary_conditions]``: which BC acts on each edge, with which parameters, in which order.
 
 A BC's parameters live in the section's key named :func:`parameter_section_key`,
-e.g. ``["left_velocity_inlet"]`` for a ``"velocity-inlet"`` left edge; a BC
-without such a key runs on its own defaults. Static for a whole run, so resolved
+e.g. ``["left_velocity_inlet"]`` for a ``"velocity-inlet"`` left edge, completed
+from :data:`~src.config.defaults.BOUNDARY_PARAMETERS`. Static for a whole run, so resolved
 here; the boundary operator package only looks up and binds.
 """
 
@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
 from src.config._checks import registered_names
+from src.config.defaults import BOUNDARY_PARAMETERS
 from src.config.defaults import DEFAULT_BOUNDARY_CONDITION
 from src.registry import get_operators
 
@@ -29,8 +30,8 @@ class BoundaryEdge(NamedTuple):
     Attributes:
         edge: Edge name, one of :data:`BC_APPLICATION_ORDER`.
         name: Registered boundary-condition name, e.g. ``"bounce-back"``.
-        params: Keyword arguments bound into the BC operator; empty when the
-            configuration has no ``{edge}_{name}`` key.
+        params: Keyword arguments bound into the BC operator; empty for a BC
+            that takes none.
     """
 
     edge: str
@@ -83,7 +84,8 @@ def complete_boundary_conditions(section: dict[str, Any] | None, lattice_type: s
     ``front``/``back`` face, so a periodic entry for one is dropped rather than
     carried into the overview and the saved ``config.toml``; run directories
     written before this still load. Any other BC there is left for
-    :func:`validate_boundary_conditions` to reject.
+    :func:`validate_boundary_conditions` to reject. An edge whose BC takes
+    parameters gets its ``{edge}_{name}`` key, the defaults under what it sets.
     """
     completed = dict(section) if section is not None else {}
     edges = lattice_edges(lattice_type)
@@ -91,7 +93,10 @@ def complete_boundary_conditions(section: dict[str, Any] | None, lattice_type: s
         if edge not in edges and completed.get(edge) == "periodic":
             del completed[edge]
     for edge in edges:
-        completed.setdefault(edge, DEFAULT_BOUNDARY_CONDITION)
+        name = completed.setdefault(edge, DEFAULT_BOUNDARY_CONDITION)
+        if isinstance(name, str) and name in BOUNDARY_PARAMETERS:
+            key = parameter_section_key(edge, name)
+            completed[key] = BOUNDARY_PARAMETERS[name] | dict(completed.get(key, {}))
     return completed
 
 

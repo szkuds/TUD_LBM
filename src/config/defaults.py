@@ -13,6 +13,10 @@ DEFAULT_EQUILIBRIUM: dict[str, str] = {"single_phase": "standard_equilibrium", "
 #: The boundary condition of an edge the configuration does not name.
 DEFAULT_BOUNDARY_CONDITION: str = "periodic"
 
+#: Each boundary condition's parameters, by BC name; filled into the edge's
+#: ``{edge}_{name}`` key of ``[boundary_conditions]``, under what it sets itself.
+BOUNDARY_PARAMETERS: dict[str, dict[str, Any]] = {"velocity-inlet": {"u0": 0.05}}
+
 #: The ``[obstacle]`` shape when the section names none.
 DEFAULT_OBSTACLE_SHAPE: str = "circle"
 

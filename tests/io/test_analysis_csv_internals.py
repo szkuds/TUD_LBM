@@ -8,7 +8,7 @@ Exercises:
 - contact_angles_from_rho, contact_lines_from_rho: from synthetic rho fields
 - center_of_mass, avg_x_location: from synthetic rho fields
 - backward_diff: with interval>1 and interval=1
-- build_simulation_csv: skip when wrong sim_type, skip when no data dir,
+- build_simulation_csv: skip without a wetting wall, skip when no data dir,
   and successful write when valid files exist
 - analyse_tree: no-run and single-run paths (mocked CSV write)
 - _clean_dir_label: digit prefix stripping
@@ -404,7 +404,7 @@ def test_simulation_csv_export_render_shows_placeholder():
 # ---------------------------------------------------------------------------
 
 
-def test_build_simulation_csv_skips_wrong_sim_type(tmp_path):
+def test_build_simulation_csv_skips_a_run_without_a_wetting_wall(tmp_path):
     cfg = SimulationConfig(
         multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
         grid_shape=(8, 8),

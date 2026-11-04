@@ -39,8 +39,8 @@ class TestTomlAdapterSave:
         assert loaded.tau == 0.8
         assert loaded.nt == 500
 
-    def test_save_roundtrip_preserves_sim_type(self, tmp_path):
-        """sim_type should survive a save/load round-trip."""
+    def test_save_roundtrip_keeps_a_single_phase_run_single_phase(self, tmp_path):
+        """A run without a ``[multiphase]`` section loads back without one."""
         cfg = SimulationConfig(grid_shape=(10, 10))
         adapter = TomlAdapter()
         dest = tmp_path / "config.toml"

@@ -14,14 +14,19 @@ All input adapters subclass
 :class:`~src.protocols.ConfigAdapter` and implement two methods:
 
 ``load_raw(source) -> dict``
-    Parse the source into a flat kwargs dict, without instantiating anything.
+    Read the source into the nested section layout and hand it to
+    :func:`~src.config.sections.load_sections`, which upgrades an old-layout
+    config and flattens the sections onto field names.
 
 ``save(config, path) -> None``
-    Serialise a config back out.
+    Serialise a config back out, from :func:`~src.config.sections.build_sections`.
 
-The shared ``load()`` on the base class handles the rest: normalising
-``grid_shape`` to a tuple, splitting known fields from unknown ones, and
-constructing the frozen ``SimulationConfig`` (which validates itself).
+The shared ``load()`` on the base class handles the rest
+(:func:`~src.config.sections.config_from_flat`): normalising ``grid_shape``
+to a tuple, keeping unknown keys in ``extra``, rejecting the old flat field
+names, and constructing the frozen ``SimulationConfig`` (which validates
+itself).  The layout is config knowledge, so it lives in
+:mod:`src.config.sections`, not on the adapter base class.
 
 .. code-block:: python
 
@@ -56,11 +61,13 @@ way, so a run is always reproducible from its own output.
 Accepts two shapes.  **Flat**, using ``SimulationConfig`` field names
 directly::
 
-    {"sim_type": "multiphase", "kappa": 0.04, ...}
+    {"multiphase": {"eos": "double-well", "kappa": 0.04, ...},
+     "forces": {"gravity_force": {"force_g": 1e-6}}}
 
 or **nested**, mirroring the TOML section structure::
 
-    {"simulation_type": {"type": "multiphase", ...}, "multiphase": {...}}
+    {"simulation_type": {"nt": 1000, ...}, "multiphase": {...},
+     "gravity_force": {"force_g": 1e-6}}
 
 The nested form is detected by the presence of a ``simulation_type`` dict.
 ``DictAdapter.save()`` raises ``NotImplementedError`` — use ``TomlAdapter``
@@ -75,15 +82,15 @@ The mapping is:
 =========================  ===============================================
 TOML section               ``SimulationConfig`` destination
 =========================  ===============================================
-``[simulation_type]``      top-level fields; ``type`` → ``sim_type``
-``[multiphase]``           merged into top level, multiphase types only
-``[boundary_conditions]``  ``bc_config``
+``[simulation_type]``      top-level fields (``nt``, ``tau``, ``grid_shape``, …)
+``[multiphase]``           ``multiphase``; its presence makes the run multiphase
+``[boundary_conditions]``  ``boundary_conditions``
 ``[initialisation]``       ``initialisation``
-``[wetting]``              ``wetting_config``
-``[hysteresis]``           ``hysteresis_config``
-``[chemical_step]``        ``chemical_step_config``
-``[obstacle]``             ``obstacle_config``
-``[<name>_force]``         the matching ``<name>_force`` field
+``[wetting]``              ``wetting``
+``[hysteresis]``           ``hysteresis``
+``[chemical_step]``        ``chemical_step``
+``[obstacle]``             ``obstacle``
+``[<name>_force]``         ``forces["<name>_force"]``
 ``[output]``               ``results_dir``, ``save_fields``, ``plot_fields``,
                            ``animate_fields``, ``output_format``, …
 =========================  ===============================================
@@ -91,12 +98,14 @@ TOML section               ``SimulationConfig`` destination
 Rules worth knowing:
 
 * ``[simulation_type]`` is required; its absence raises ``ValueError``.
-* ``type`` is validated against the five known simulation types before any
-  other parsing happens.
-* ``[multiphase]`` is only merged when ``type`` contains ``"multiphase"`` —
-  a stray section on a single-phase run is ignored, not an error.
-* A ``[*_force]`` section whose name does not match a force field raises
+* Each section is stored whole on the field of the same name, so the section
+  names *are* the field names, and ``--override multiphase.kappa=0.02`` needs
+  no alias table.
+* A ``[*_force]`` section with no schema in ``config/forces.py`` raises
   ``KeyError``; one that is not a table raises ``TypeError``.
+* A flat old field name (``sim_type``, ``kappa``, ``wetting_config``, …)
+  passed to ``config_from_flat`` raises ``ValueError`` instead of landing in
+  ``extra``, which would silently have made the run single-phase.
 * ``results_dir`` is passed through ``Path.expanduser()``, so ``~`` works.
 * Keys that match no field are collected into ``config.extra`` rather than
   rejected.  This is how calibration results such as ``surface_tension`` are
@@ -109,24 +118,47 @@ sections so that a saved config round-trips to the shape it was loaded from.
 Defaults applied on construction
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``SimulationConfig.__post_init__`` fills in several things, so the object you
-get back is not always what you wrote:
+Every default lives once, in :mod:`src.config.defaults`.
+``SimulationConfig.__post_init__`` fills them in, so the object you get back —
+and the ``config.toml`` written to the run directory — is not always what you
+wrote, but always what the run used:
 
 * ``grid_shape`` is promoted to 3-D — ``(64, 64)`` becomes ``(64, 64, 1)``.
 * ``save_interval`` defaults to ``nt // 10`` when left at ``0``.
-* ``bc_config`` defaults to periodic on all six faces; any face you omit from
-  an explicit ``[boundary_conditions]`` is filled in as ``periodic``.
-* A ``[hysteresis]`` section without a ``[wetting]`` section gets neutral
-  wetting parameters (``phi = 1.0``, ``d_rho = 0.0``).
+* every edge of the lattice gets a boundary condition, ``periodic`` when
+  omitted (four edges on a 2D lattice, six on a 3D one), and an edge whose
+  condition takes parameters gets them (``u0 = 0.05`` for a
+  ``velocity-inlet``).
+* ``equilibrium`` defaults by phase: ``standard_equilibrium`` single-phase,
+  ``wb`` multiphase; the source term is the one it registered as its pair.
+* the ``[hysteresis]``, ``[chemical_step]`` and ``[*_force]`` sections get
+  their optimiser, step and force defaults, and a ``[hysteresis]`` section
+  without ``[wetting]`` gets neutral wetting parameters (``phi = 1.0``,
+  ``d_rho = 0.0``).
+* an MRT ``k_diag`` has its shear entries rewritten to ``1/tau``.
 * ``output_format`` is lower-cased, and a list collapses to its first entry.
 
 Validation covers grid shape, lattice type, ``tau > 0.5``, ``nt > 0``,
-collision scheme (with ``k_diag`` required for MRT), ``init_dir`` when
-``init_type = "init_from_file"``, ``save_fields`` membership, obstacle
-geometry, and — for multiphase — the presence of ``eos``, ``kappa``,
-``rho_l``, ``rho_v``, ``interface_width``, that ``rho_l > rho_v``, and the
-four Carnahan–Starling parameters when that EOS is selected.  Specifying both
-``gravity_force`` and ``gravity_masked_force`` is rejected.
+collision scheme (with ``k_diag`` required for MRT), the equilibrium,
+``init_type`` against the registry and ``init_dir`` for ``init_from_file``,
+``save_fields`` membership, every boundary-condition name and parameter key,
+obstacle geometry, each force against its schema, the wetting, hysteresis
+and chemical-step sections, and — for multiphase — the common keys, that
+``rho_l > rho_v``, and the further parameters of the selected EOS (the four
+Carnahan–Starling ones).  Only one gravity force may be configured.  A 3D
+lattice refuses what is still two-dimensional: wetting, hysteresis, chemical
+step, the electric force, MRT and an obstacle.
+
+Old-layout configs
+~~~~~~~~~~~~~~~~~~
+
+:mod:`src.config.legacy` upgrades a config written before the section
+layout — ``[simulation_type] type = ...``, flat multiphase keys, per-force
+fields, the ``*_config`` names.  ``TomlAdapter`` rewrites a run directory's
+``config.toml`` in the new layout on its first load, through its own
+``save``; any other file is upgraded in memory and left as it is.  The upgrade
+is idempotent, and nothing outside ``legacy.py`` and its one call knows the
+old layout.
 
 Parameter sweeps
 ----------------
@@ -149,10 +181,10 @@ lists.
 ``None`` when no arrays were found.  Pass ``allow_arrays=False`` to make list
 values an error instead, which is what single-run code paths do.
 
-Expansion applies at two levels: top-level sweep-eligible fields, and
-sub-keys inside the *nested sweepable* dicts ``wetting_config``,
-``hysteresis_config``, ``chemical_step_config``, and the force sections.
-That is what makes this work:
+Expansion applies at three levels: top-level sweep-eligible fields;
+sub-keys inside the *nested sweepable* sections ``multiphase``, ``wetting``,
+``hysteresis`` and ``chemical_step``; and, one level deeper, the keys of
+each force under ``forces``.  That is what makes this work:
 
 .. code-block:: toml
 
@@ -160,7 +192,13 @@ That is what makes this work:
     tau = [0.6, 0.7]
 
     [hysteresis]
-    ca_advancing = [110.0, 120.0]    # 2 × 2 = 4 runs
+    ca_advancing = [110.0, 120.0]
+
+    [gravity_masked_force]
+    force_g = [1e-6, 2e-6]           # 2 × 2 × 2 = 8 runs
+
+On the command line the same sweep is
+``--override forces.gravity_masked_force.force_g=[1e-6,2e-6]``.
 
 Simulation output
 -----------------
@@ -246,8 +284,8 @@ Two further details matter for correctness:
   differ on resumed runs, ``skip_interval`` runs, and pruned snapshots, where
   a fixed-interval difference over-reports contact-line speeds by the ratio
   of the gaps.
-* ``MetricScales`` carries both ``sigma_measured`` (from
-  ``config.extra["surface_tension"]``) and ``sigma_analytical``
+* ``MetricScales`` carries both ``sigma_measured`` (from the calibration
+  cache, through ``cached_surface_tension(config)``) and ``sigma_analytical``
   (``(2/3)(κ/W)·Δρ²``).  ``sigma_primary`` prefers the measured value,
   because the closed form is not valid for ``carnahan-starling``.  The CSV
   exports ``sigma_lg``, ``sigma_lg_source``, and ``Ca_analytical`` so both

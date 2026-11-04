@@ -162,6 +162,13 @@ Total mass drift stayed at round-off in every run. The real bubble (init densiti
 - `architecture.rst`: extension-points table gains rows for an addon, a force with its config section, an EOS with its parameters, and a config section, each naming the operator file and the config-package edits; describe the config package layout, `defaults.py` and the legacy adapter.
 - `operators.rst`: equilibrium/source pairing, obstacle in the boundary chain.
 
+*Outcome (2026-11-04).* Docs: `architecture.rst` (layout, extension-points rows for an addon, a force, an EOS, a BC and a config section; a section on the config package, `defaults.py` and the legacy adapter), `operators.rst` (kinds table, equilibrium/source pairing, obstacle in the boundary chain, the symmetry fix, the force API, the wall threshold, 3D scope), `adapters.rst` (section mapping, defaults, old layouts, three-level sweeps) and `quickstart.rst` (no simulation type, `observe`, the in-memory trajectory's memory cost). CLAUDE.md rewritten to match, including the drift it carried before this plan: it said there was no `macroscopic` kind, that `MacroscopicOperator` is generic and also the pressure type (pressure is `EosOperator` of `rho`), and it referred to the deleted `step/_common.py`. Found and fixed during the sweep:
+- The `typing.cast` ban CLAUDE.md describes was never configured. `TID251` is now on (`[tool.ruff.lint.flake8-tidy-imports.banned-api]`), and its three users are fixed at the source: `tud-lbm run` takes explicit typed parameters instead of `**cli_kwargs: object` (the narrowing helpers `optional_int`/`str_tuple` are deleted), `regime-map` annotates its `click.Choice` values with their `Literal` types, and `run_parallel` types its parameter list as a covariant `Sequence`.
+- The velocity-inlet `u0` default moved into `defaults.py` (`BOUNDARY_PARAMETERS`) and is filled into the edge's parameter key, so the saved `config.toml` shows it. The MRT free rates stay in `_mrt.py`: the config refuses MRT without `k_diag`, so no run reaches them, and the conformance test calls the unbound operator.
+- `observe` is now exported from `src`; the package docstring described `State` as `(rho, u, f)`.
+- Tests that still named `sim_type`, `bc_config` or `force_enabled` were renamed to what they check; nothing pinned replaced structure. Nothing deselects the `slow` marker, so every gate run already included those tests.
+- Left as found: an explicit `save_fields` still always gains `"f"`, though nothing reads a snapshot's `f` any more (restarts use `rho`/`u`, pressure comes from `rho`). Removing it changes what every run writes, so it is reported, not changed.
+
 ## 5. Open decisions
 
 None. All decisions are recorded in section 1 (decisions 9–14 settle D1–D6).

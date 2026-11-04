@@ -168,6 +168,11 @@ ignore = [
 ]
 pydocstyle.convention = "google"
 
+# A cast is an unchecked claim that only silences the type checker; fix the
+# type where the value is created instead (CLAUDE.md, *Typing rules*).
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.cast".msg = "Fix the type at its source: a protocol-annotated factory, narrowing, or explicit parameters."
+
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["array_field"]
 

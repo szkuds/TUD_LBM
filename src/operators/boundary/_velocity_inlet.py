@@ -25,7 +25,7 @@ def apply_velocity_inlet(
     lattice: Lattice,
     edge: str,
     *,
-    u0: float = 0.05,
+    u0: float,
 ) -> jnp.ndarray:
     """Apply an equilibrium-reset velocity inlet on the ``"left"`` edge.
 

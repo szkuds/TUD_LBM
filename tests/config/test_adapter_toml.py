@@ -262,7 +262,7 @@ class TestTomlAdapterMultiphase:
 class TestTomlAdapterForces:
     """Tests for canonical top-level ``[gravity_force]`` TOML tables."""
 
-    def test_force_enabled_when_forces_present(self, multiphase_force_toml_file):
+    def test_forces_present_when_a_force_section_is(self, multiphase_force_toml_file):
         bundle = TomlAdapter().load(multiphase_force_toml_file)
         assert bool(bundle.forces)
 

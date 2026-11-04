@@ -4,7 +4,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
-from typing import cast
 import click
 from src.cli._console import cli_command
 from src.cli._console import console
@@ -144,11 +143,11 @@ def regime_map(
     dirs_txt: str,
     allowed_roots: tuple[str, ...],
     out_dir: str | None,
-    smoothing: str,
+    smoothing: Smoothing,
     x_key: str | None,
     y_key: str | None,
-    xscale: str,
-    yscale: str,
+    xscale: AxisScale,
+    yscale: AxisScale,
 ) -> None:
     """Classify runs listed in DIRS_TXT and plot any pair of dimensionless numbers.
 
@@ -171,11 +170,11 @@ def regime_map(
         dirs_txt,
         allowed_roots,
         out_dir=out_dir,
-        smoothing=cast("Smoothing", smoothing),
+        smoothing=smoothing,
         x_key=x_key,
         y_key=y_key,
-        xscale=cast("AxisScale", xscale),
-        yscale=cast("AxisScale", yscale),
+        xscale=xscale,
+        yscale=yscale,
     )
     if out_path is None:
         console.print("[yellow]No runs produced a usable classification for these axes.[/yellow]")
