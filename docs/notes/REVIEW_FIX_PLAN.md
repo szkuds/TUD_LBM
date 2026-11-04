@@ -144,6 +144,18 @@ Today `rho_l`/`rho_v` are the config values in three places: the applicator, the
 - (c) measured every step and carried in the wetting substate.
 Run (b) and (c) against the phase 0 wetting and hysteresis baselines, show the differences, and decide with you before changing the default.
 
+*Outcome (2026-11-04): (b), decided with you.* The densities enter in two places, not three: the `rho_mean` threshold (applicator anchors, addon measurement, hysteresis `_wall_constants`) and the applicator's contrast gate. The hysteresis clamps depend only on `W`. (b) differs from (a) only on an `init_from_file` run, so each case was equilibrated with fixed wetting for 10,000 steps, then restarted under each mode (driver and results in `.claude/review_fix/phase_densities.py` and `.claude/review_fix/phase6/`).
+
+| Case (3000 steps; real: 10,000) | max \|Δθ\| (b / c) vs (a) | max \|Δcll\| (b / c) | inclusion mass, relative (b / c) |
+|---|---|---|---|
+| wetting | 0.03° / 0.03° | 0.02 / 0.02 cells | 0 / 0 |
+| hysteresis | 0.50° / 0.56° | 0.00 / 0.00 | 4.5e-4 / 4.5e-4 |
+| hysteresis bubble | 0.29° / 0.34° | 0.04 / 0.05 | 1.2e-3 / 1.2e-3 |
+| chemical step | 0.25° / 0.19° | 0.02 / 0.03 | 3.2e-4 / 3.2e-4 |
+| CS chem-step bubble, 201x101, t ≥ 50000 (up to 56000) | 6.5° / 5.4° | 1.8 / 0.7 | 5.2e-2 / 2.6e-2 |
+
+Total mass drift stayed at round-off in every run. The real bubble (init densities 0.0083/11.645 against configured 0.015/12.18) dissolved in all three modes on the same schedule (area 1624 → ~100 by t = 57000): the closed-box hydrostatic loss, which no choice of threshold changes. (c) ran 6.5x slower there (26,788 s against ~4,100 s), and its references lost their meaning once the inclusion detached (vapour reference 5.97). Implemented as `config.wetting.wall_rho_mean` (the midpoint of `phase_references`), read by the addon, the hysteresis optimiser and the contact-angle overlay; the applicator takes `phase_references` directly. Nothing of (c) entered `src`. Baselines are unchanged bit for bit, because none of them restarts from a file.
+
 **Phase 7: Tests, docs, verification**
 - Delete tests that only cover replaced structure; adapt the rest to the new design.
 - Run everything; compare phases 1–5 against the phase 0 baselines exactly.

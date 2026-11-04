@@ -23,6 +23,7 @@ from src.config.defaults import HYSTERESIS
 from src.config.defaults import NEUTRAL_WETTING
 from src.config.init_field import load_init_wetting
 from src.config.multiphase import multiphase_params
+from src.config.multiphase import phase_references
 
 if TYPE_CHECKING:
     from src.config.simulation_config import SimulationConfig
@@ -130,6 +131,19 @@ def validate_chemical_step(config: SimulationConfig) -> None:
 def has_wetting_wall(config: SimulationConfig) -> bool:
     """A multiphase run with a ``[wetting]`` section (every hysteresis run has one)."""
     return config.multiphase is not None and config.wetting is not None
+
+
+def wall_rho_mean(config: SimulationConfig) -> float | None:
+    """The density the wetting wall separates the phases at, or ``None`` without two phases.
+
+    The midpoint of :func:`~src.config.multiphase.phase_references`: on an
+    ``init_from_file`` run, the densities the init field actually sits at, not
+    the prescribed ``rho_l``/``rho_v``. The applicator's anchors and contrast
+    gate, the measured angles and contact lines, the hysteresis optimiser and the
+    contact-angle overlay all read this one value.
+    """
+    references = phase_references(config)
+    return None if references is None else 0.5 * (references[0] + references[1])
 
 
 def wetting_scalars(config: SimulationConfig) -> dict[str, float] | None:

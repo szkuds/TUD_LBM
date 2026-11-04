@@ -42,9 +42,9 @@ from typing import TYPE_CHECKING
 from typing import Literal
 import numpy as np
 from src.config.boundary import pad_modes
-from src.config.multiphase import multiphase_params
+from src.config.multiphase import phase_references
+from src.config.wetting import wall_rho_mean
 from src.simulation_io.analysis.droplet_metrics._snapshot import to_canonical_2d
-from src.simulation_io.analysis.interface_contour import config_rho_mean
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -126,10 +126,10 @@ def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
 
     Empty when the config has no wetting wall or lacks ``rho_l``/``rho_v``.
     """
-    params = multiphase_params(config)
-    if params is None:
+    references = phase_references(config)
+    if references is None:
         return []
-    rho_l, rho_v = float(params.rho_l), float(params.rho_v)
+    rho_v, rho_l = references
 
     import jax.numpy as jnp
     from src.operators.differential._pad_utils import _apply_stencil_padding
@@ -174,7 +174,7 @@ def contact_angles(
     collapses to index 0 and reports a meaningless angle.
     """
     edge = wetting_edge(config)
-    rho_mean = config_rho_mean(config)
+    rho_mean = wall_rho_mean(config)
     if edge is None or rho_mean is None:
         return None
     canonical = to_canonical_2d(rho_2d, edge)

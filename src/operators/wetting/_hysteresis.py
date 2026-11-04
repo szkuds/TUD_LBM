@@ -47,6 +47,7 @@ import jax.numpy as jnp
 from src.config.wetting import D_RHO_SPAN_W
 from src.config.wetting import PHI_SPAN_W
 from src.config.wetting import chemical_step_wall
+from src.config.wetting import wall_rho_mean
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
 from src.operators.wetting._interface_crossings import detect_bubble
@@ -648,8 +649,10 @@ def wetting_params(wetting: WettingState) -> WettingParams:
 def _wall_constants(setup: SimulationSetup) -> tuple[jnp.ndarray, jnp.ndarray]:
     """``(rho_mean, interface_width)`` of a hysteresis run."""
     mp = setup.multiphase_params
+    rho_mean = wall_rho_mean(setup.config)
     assert mp is not None  # noqa: S101 - SimulationConfig rejects wetting on a single-phase run
-    return jnp.array(0.5 * (mp.rho_l + mp.rho_v)), jnp.array(float(mp.interface_width))
+    assert rho_mean is not None  # noqa: S101 - as above: two phases
+    return jnp.array(rho_mean), jnp.array(float(mp.interface_width))
 
 
 def _measure(

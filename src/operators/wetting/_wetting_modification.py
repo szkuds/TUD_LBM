@@ -66,9 +66,15 @@ Contrast floor
     spurious crossing in that run had a local contrast of 5.25 against a global
     12.17.
 
-``rho_mean`` stays prescribed: it only has to *separate* the phases, never track
-them, so it needs classifier-grade accuracy — the same argument
+``rho_mean`` and the contrast floor come from the run's phase references
+(:func:`~src.config.wetting.wall_rho_mean`): the init field's own densities on
+an ``init_from_file`` run, else the configured ones. They are fixed for the run
+and not tracked: ``rho_mean`` only has to *separate* the phases, so it needs
+classifier-grade accuracy — the same argument
 :mod:`~src.operators.force._gravity_masked` rests its ``_PHASE_BAND`` on.
+Measuring them every step was tried (2026-11) and changed angles by at most
+0.6° on the test cases, ran 6.5x slower on a 201x101 bubble, and lost its
+meaning once the inclusion detached.
 """
 
 from __future__ import annotations

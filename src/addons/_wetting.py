@@ -19,9 +19,10 @@ from typing import TYPE_CHECKING
 import jax
 import jax.numpy as jnp
 from src.addons.hooks import Hooks
-from src.config.multiphase import multiphase_params
+from src.config.multiphase import phase_references
 from src.config.wetting import chemical_step_wall
 from src.config.wetting import restored_wetting
+from src.config.wetting import wall_rho_mean
 from src.config.wetting import wetting_scalars
 from src.operators.wetting._applicator import build_wetting_applicator
 from src.operators.wetting._contact_angle import compute_contact_angle
@@ -54,9 +55,10 @@ def wetting_ghost_fill(config: SimulationConfig) -> GhostFill[WallParams]:
     The substate may be the live :class:`WettingState` or a candidate
     :class:`WettingParams`; both carry the four parameter names.
     """
-    mp = multiphase_params(config)
-    assert mp is not None  # noqa: S101 - build_wetting_addon checks the phase first (_wall)
-    apply = build_wetting_applicator(mp.rho_l, mp.rho_v, config.boundary_conditions, chemical_step_wall(config))
+    references = phase_references(config)
+    assert references is not None  # noqa: S101 - build_wetting_addon checks the phase first (_wall)
+    rho_v, rho_l = references
+    apply = build_wetting_applicator(rho_l, rho_v, config.boundary_conditions, chemical_step_wall(config))
 
     def ghost_fill(padded: jnp.ndarray, wall: WallParams) -> jnp.ndarray:
         return apply(padded, wall.phi_left, wall.phi_right, wall.d_rho_left, wall.d_rho_right)
@@ -73,8 +75,8 @@ def _wall(config: SimulationConfig) -> tuple[float, str]:
             a run has no multiphase stencils to put the wall on, or no wall to
             apply it to and measure at.
     """
-    mp = multiphase_params(config)
-    if mp is None:
+    rho_mean = wall_rho_mean(config)
+    if rho_mean is None:
         msg = (
             "Wetting configuration present without a [multiphase] section. "
             "Wetting is an addon to multiphase simulations: it modifies the multiphase density stencils."
@@ -84,7 +86,7 @@ def _wall(config: SimulationConfig) -> tuple[float, str]:
     if edge is None:
         msg = 'A wetting run needs a "wetting" boundary edge to apply its wall on and measure its angles at.'
         raise ValueError(msg)
-    return 0.5 * (mp.rho_l + mp.rho_v), edge
+    return rho_mean, edge
 
 
 def _density(f: jnp.ndarray) -> jnp.ndarray:

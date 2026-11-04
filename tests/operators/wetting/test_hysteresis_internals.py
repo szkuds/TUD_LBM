@@ -206,7 +206,11 @@ def _fake_setup() -> SimpleNamespace:
     }
     return SimpleNamespace(
         multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.1, interface_width=5),
-        config=SimpleNamespace(hysteresis=hc),
+        config=SimpleNamespace(
+            hysteresis=hc,
+            init_type="multiphase_bubbles",
+            multiphase={"eos": "double-well", "kappa": 0.01, "rho_l": 1.0, "rho_v": 0.1, "interface_width": 5},
+        ),
     )
 
 

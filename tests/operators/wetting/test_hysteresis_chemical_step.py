@@ -135,6 +135,8 @@ def test_receding_line_just_past_the_step_stays_pinned(monkeypatch):
         multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.001, interface_width=5),
         config=SimpleNamespace(
             chemical_step=_CHEM_CFG,
+            init_type="multiphase_bubbles",
+            multiphase={"eos": "double-well", "kappa": 0.01, "rho_l": 1.0, "rho_v": 0.001, "interface_width": 5},
             grid_shape=(100, 50, 1),
             chemical_step_wall=_wall(),
             hysteresis={
