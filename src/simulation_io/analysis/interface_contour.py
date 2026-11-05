@@ -65,7 +65,7 @@ def measured_phase_densities(rho_2d: np.ndarray, rho_mean: float) -> tuple[float
 
     Medians rather than ``min``/``max`` because the diffuse interface over- and
     undershoots the bulk values. Returns ``None`` when the field does not
-    straddle *rho_mean* — a uniform or single-phase field has no two phases.
+    pass *rho_mean* — a uniform or single-phase field has no two phases.
     """
     rho = np.asarray(rho_2d, dtype=float)
     dense = rho[rho > rho_mean]
@@ -78,7 +78,7 @@ def measured_phase_densities(rho_2d: np.ndarray, rho_mean: float) -> tuple[float
 def measured_rho_mean(rho_2d: np.ndarray, rho_mean: float) -> float | None:
     """Midpoint of the bulk-phase median densities, split at *rho_mean*.
 
-    Returns ``None`` when the field does not straddle *rho_mean* — a uniform or
+    Returns ``None`` when the field does not pass *rho_mean* — a uniform or
     single-phase field has no interface to mark.
     """
     phases = measured_phase_densities(rho_2d, rho_mean)

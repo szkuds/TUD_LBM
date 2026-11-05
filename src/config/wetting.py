@@ -4,7 +4,7 @@ The wall of a chemical-step run is static for the whole run, so it is built here
 and baked into the wetting applicator, not re-derived by the operators.
 
 The wetting modification acts on a band of ghost cells around each contact line.
-Near the step that band straddles two surfaces, and the cells on the far side of
+Near the step that band encounters two surfaces, and the cells on the far side of
 the step from the line are *not* the line's to tune: they are fixed at their own
 surface's wettability. Pre-step cells take the configured ``[wetting]`` values —
 the hydrophobic surface pushing the liquid away — and post-step cells take the

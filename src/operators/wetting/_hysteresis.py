@@ -405,7 +405,7 @@ def _get_hysteresis_window_chemical_step(
     (:class:`~src.config.wetting.ChemicalStepWall`).
 
     ``held_at_step`` marks a line at the edge that is receding onto the more
-    wetting surface: its probes ``edge_width`` either side straddle the step,
+    wetting surface: its probes ``edge_width`` either side passes the step,
     with the less wetting surface ahead of it (outward: ``-tangential`` for the
     left line, ``+tangential`` for the right). The operator pins it to the step
     position and saturates it toward the post receding angle

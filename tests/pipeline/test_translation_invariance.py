@@ -68,7 +68,7 @@ def test_a_roll_along_a_periodic_axis_commutes_with_the_step(boundary_conditions
 
     The wetting band is deliberately not exercised here. Its window, contiguity
     label and nearest-anchor split are flat-index, so a window clipped by the
-    array end (or a contact line straddling the seam) still carries a small
+    array end (or a contact line passing through) the seam) still carries a small
     translation dependence — about 2.5e-05 in rho after one step on a 201-cell
     production config, three orders below the seam this padding fix removed.
     Making that band periodic-aware is separate work.
