@@ -123,7 +123,7 @@ def _side_regime(
         bound is ``ca_adv`` (False with ``moving`` means ``ca_rec``);
         ``expanding`` is True when the dispersed phase has spread past the anchor.
     """
-    expanding, contracting = (cll < anchor, cll > anchor) if side is ContactLine.LEFT else (cll > anchor, cll < anchor)
+    expanding, contracting = (cll < anchor, cll > anchor) if side == ContactLine.LEFT else (cll > anchor, cll < anchor)
     advancing = (ca > ca_adv) & ~contracting
     receding = (ca < ca_rec) & ~expanding
     return advancing | receding, advancing, expanding
@@ -418,7 +418,7 @@ def _get_hysteresis_window_chemical_step(
     # It also has wetting, so a stepped wall.
     assert wall is not None  # noqa: S101
     step_x, delta = wall.step_x, csc["edge_width"]
-    ahead, behind = (cll - delta, cll + delta) if side is ContactLine.LEFT else (cll + delta, cll - delta)
+    ahead, behind = (cll - delta, cll + delta) if side == ContactLine.LEFT else (cll + delta, cll - delta)
     post = cll + delta >= step_x
     ca_adv = jnp.where(post, csc["ca_advancing_post_step"], csc["ca_advancing_pre_step"])
     ca_rec = jnp.where(post, csc["ca_receding_post_step"], csc["ca_receding_pre_step"])

@@ -103,7 +103,7 @@ class TestTopologyDetection:
         got = detect_bubble(_cap_rho(90.0, bubble=bubble), RHO_MEAN, edge=Edge.BOTTOM)
         assert bool(got) is bubble
 
-    @pytest.mark.parametrize("edge", ["bottom", "top", "left", "right"])
+    @pytest.mark.parametrize("edge", [Edge.BOTTOM, Edge.TOP, Edge.LEFT, Edge.RIGHT])
     def test_edge_generic(self, edge):
         rho = _place_on_edge(_cap_rho_2d(90.0, bubble=True), edge)
         assert bool(detect_bubble(rho, RHO_MEAN, edge=edge)) is True
@@ -151,7 +151,7 @@ class TestContactAngleThroughDispersedPhase:
         ca_bubble, _ = compute_contact_angle(_cap_rho(theta, bubble=True), RHO_MEAN, edge=Edge.BOTTOM)
         assert abs(float(ca_bubble) - theta) < abs(float(ca_bubble) - (180.0 - theta))
 
-    @pytest.mark.parametrize("edge", ["bottom", "top", "left", "right"])
+    @pytest.mark.parametrize("edge", [Edge.BOTTOM, Edge.TOP, Edge.LEFT, Edge.RIGHT])
     def test_bubble_angle_is_edge_generic(self, edge):
         rho = _place_on_edge(_cap_rho_2d(60.0, bubble=True), edge)
         ca_left, ca_right = compute_contact_angle(rho, RHO_MEAN, edge=edge)

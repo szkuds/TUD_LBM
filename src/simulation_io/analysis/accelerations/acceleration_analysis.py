@@ -71,7 +71,7 @@ def compute_acceleration(
     accel = np.full_like(ca, np.nan)
     if ca.size >= _MIN_POINTS_FOR_SECOND_DIFFERENCE:
         accel[2:] = np.diff(np.diff(ca))
-        if smoothing is Smoothing.SAVGOL and accel[2:].size >= savgol_window:
+        if smoothing == Smoothing.SAVGOL and accel[2:].size >= savgol_window:
             accel[2:] = savgol_filter(accel[2:], window_length=savgol_window, polyorder=savgol_polyorder)
 
     valid_accel = np.where(np.isnan(accel), -np.inf, accel)

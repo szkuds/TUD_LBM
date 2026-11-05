@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from src.config import SimulationConfig
 from src.config.boundary import BC_APPLICATION_ORDER
+from src.config.boundary import Edge
 from src.config.boundary import boundary_edges
 from src.config.boundary import pad_modes
 from src.config.boundary import periodic_axes
@@ -251,7 +252,7 @@ def test_a_two_dimensional_lattice_refuses_a_deep_grid() -> None:
         SimulationConfig(grid_shape=shape)
 
 
-@pytest.mark.parametrize("edge", ["bottom", "top", "left", "right"])
+@pytest.mark.parametrize("edge", [Edge.BOTTOM, Edge.TOP, Edge.LEFT, Edge.RIGHT])
 def test_symmetry_keeps_the_tangential_momentum_in_2d(edge: str) -> None:
     """The 2D faces once reversed the tangential velocity of the diagonals at top and bottom."""
     lattice = build_lattice("D2Q9")

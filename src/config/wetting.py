@@ -51,7 +51,7 @@ class ContactLine(StrEnum):
     @property
     def other(self) -> ContactLine:
         """The contact line at the other end of the inclusion."""
-        return ContactLine.RIGHT if self is ContactLine.LEFT else ContactLine.LEFT
+        return ContactLine.RIGHT if self == ContactLine.LEFT else ContactLine.LEFT
 
 
 #: Every key the hysteresis operators read.

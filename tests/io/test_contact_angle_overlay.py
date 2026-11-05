@@ -148,7 +148,7 @@ def test_recomputed_angles_match_the_step_operator():
     assert 0.0 < angles.theta_left < 90.0
 
 
-@pytest.mark.parametrize("edge", ["top", "left", "right"])
+@pytest.mark.parametrize("edge", [Edge.TOP, Edge.LEFT, Edge.RIGHT])
 def test_mirrored_walls_give_the_same_angle(edge):
     shape = _shape_for(edge)
     reference = contact_angles(_data(_droplet()), _droplet(), _config())

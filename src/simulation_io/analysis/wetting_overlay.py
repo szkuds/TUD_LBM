@@ -86,7 +86,7 @@ class WallBand:
 
     def side(self, side: ContactLine) -> SideBand:
         """The :class:`SideBand` for *side*."""
-        return self.left if side is ContactLine.LEFT else self.right
+        return self.left if side == ContactLine.LEFT else self.right
 
 
 @dataclass(frozen=True)
@@ -259,7 +259,7 @@ def angle_glyph(
     lines, so measured from the wall direction pointing into it the tangent is
     ``(cos θ, sin θ)`` at the left line and ``(-cos θ, sin θ)`` at the right.
     """
-    left = side is ContactLine.LEFT
+    left = side == ContactLine.LEFT
     sign = 1.0 if left else -1.0
     theta_deg = angles.theta_left if left else angles.theta_right
     cll = angles.cll_left if left else angles.cll_right
