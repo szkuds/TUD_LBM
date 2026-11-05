@@ -2,7 +2,7 @@
 
 Public API: build_initialise_fn()
 
-Implementation modules (_standard.py, _multiphase_bubbles.py, ...) are internal;
+Implementation modules (_standard.py, _multiphase.py, ...) are internal;
 use the factory to access.
 
 Example:
