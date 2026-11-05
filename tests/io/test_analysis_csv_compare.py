@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from src.cli.analysis_routing import analyse_tree
 from src.config import SimulationConfig
+from src.config.boundary import Edge
 from src.simulation_io.analysis.droplet_metrics import DropletSeries
 from src.simulation_io.analysis.droplet_metrics import MetricScales
 from src.simulation_io.plotting._simulation_csv import build_simulation_csv
@@ -15,19 +16,14 @@ from src.simulation_io.plotting.run_comparison import _safe_load_config
 
 def _wetting_config() -> SimulationConfig:
     return SimulationConfig(
-        sim_type="multiphase_wetting",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.2, "interface_width": 2},
+        forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0}},
         grid_shape=(16, 12),
         tau=0.9,
         nt=20,
         save_interval=5,
-        eos="double-well",
-        kappa=0.02,
-        interface_width=2,
-        rho_l=1.0,
-        rho_v=0.2,
-        gravity_force={"force_g": 1e-6, "inclination_angle_deg": 30.0},
         initialisation={"radii": [0.25], "centres": [[0.5, 0.5]]},
-        wetting_config={"advancing_ca": 100.0},
+        wetting={"phi_left": 1.0},
     )
 
 
@@ -70,7 +66,7 @@ def test_build_simulation_csv_writes_expected_columns(tmp_path: Path):
 def test_build_simulation_csv_skips_unsupported_sim_type(tmp_path: Path):
     run_dir = tmp_path / "run"
     (run_dir / "data").mkdir(parents=True)
-    cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=2, sim_type="single_phase")
+    cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=2)
 
     assert build_simulation_csv(run_dir, cfg) is None
 
@@ -87,7 +83,7 @@ def _series(*, incl_deg: float) -> DropletSeries:
         offset_x=8.0,
         incl_deg=incl_deg,
         save_interval=5,
-        wall_edge="bottom",
+        wall_edge=Edge.BOTTOM,
     )
     return DropletSeries(
         iteration=np.array([5, 10]),

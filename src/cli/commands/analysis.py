@@ -4,7 +4,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
-from typing import cast
 import click
 from src.cli._console import cli_command
 from src.cli._console import console
@@ -12,6 +11,9 @@ from src.cli._console import success
 from src.cli.app import cli
 from src.cli.config_loading import _load_single_config
 from src.cli.field_select import prompt_fields_marked
+from src.config.analysis_options import AxisScale
+from src.config.analysis_options import Smoothing
+from src.config.multiphase import is_multiphase
 from src.config.run_config import COMPARISON_DIRNAME
 from src.config.run_config import PHYSICAL_PARAMETERS_FILENAME
 
@@ -23,11 +25,10 @@ from src.simulation_io.analysis.run_labels import LABEL_PARAM_CHOICES
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
-    from src.simulation_io.analysis.accelerations import Smoothing
-    from src.simulation_io.plotting.regime_map_plot import AxisScale
 
 _AXIS_CHOICES = dimensionless_keys()
-_SCALE_CHOICES = ["linear", "log"]
+_SMOOTHING_CHOICES = [choice.value for choice in Smoothing]
+_SCALE_CHOICES = [choice.value for choice in AxisScale]
 
 
 @cli.command()
@@ -77,7 +78,7 @@ def compare(parent_dir: str, no_prompt: bool, label_params: tuple[str, ...]) -> 
         console.print("[yellow]No simulation run directories found.[/yellow]")
         return
     if n_ok == 0:
-        console.print("[yellow]No runs produced CSV data. Check sim_type and snapshot files.[/yellow]")
+        console.print("[yellow]No runs produced CSV data. Check the [wetting] section and snapshot files.[/yellow]")
         return
 
     out_dir = Path(parent_dir) / COMPARISON_DIRNAME
@@ -105,8 +106,8 @@ def compare(parent_dir: str, no_prompt: bool, label_params: tuple[str, ...]) -> 
 @click.option(
     "--smoothing",
     "smoothing",
-    type=click.Choice(["raw", "savgol"]),
-    default="raw",
+    type=click.Choice(_SMOOTHING_CHOICES),
+    default=Smoothing.RAW.value,
     help="Acceleration-curve smoothing for peak detection: 'raw' (default, unsmoothed) or "
     "'savgol' (Savitzky-Golay filtered, reduces spikiness).",
 )
@@ -128,14 +129,14 @@ def compare(parent_dir: str, no_prompt: bool, label_params: tuple[str, ...]) -> 
     "--xscale",
     "xscale",
     type=click.Choice(_SCALE_CHOICES),
-    default="linear",
+    default=AxisScale.LINEAR.value,
     help="Scale of the x axis. Use 'log' for a quantity spanning decades, e.g. La.",
 )
 @click.option(
     "--yscale",
     "yscale",
     type=click.Choice(_SCALE_CHOICES),
-    default="linear",
+    default=AxisScale.LINEAR.value,
     help="Scale of the y axis.",
 )
 @cli_command(title="Regime Map", interrupt_message="Regime map analysis interrupted by user.")
@@ -170,11 +171,11 @@ def regime_map(
         dirs_txt,
         allowed_roots,
         out_dir=out_dir,
-        smoothing=cast("Smoothing", smoothing),
+        smoothing=Smoothing(smoothing),
         x_key=x_key,
         y_key=y_key,
-        xscale=cast("AxisScale", xscale),
-        yscale=cast("AxisScale", yscale),
+        xscale=AxisScale(xscale),
+        yscale=AxisScale(yscale),
     )
     if out_path is None:
         console.print("[yellow]No runs produced a usable classification for these axes.[/yellow]")
@@ -186,8 +187,8 @@ def regime_map(
 
 def _analyse_surface_tension(config: SimulationConfig, out_dir: Path) -> None:
     """Write the Young-Laplace calibration artefacts for *config* and report sigma."""
-    if not config.is_multiphase:
-        msg = f"surface tension requires a multiphase configuration; got sim_type='{config.sim_type}'"
+    if not is_multiphase(config):
+        msg = "surface tension requires a multiphase configuration; got no [multiphase] section"
         raise ValueError(msg)
 
     from src.config.jax_config import configure_jax

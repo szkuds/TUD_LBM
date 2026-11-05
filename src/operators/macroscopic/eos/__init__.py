@@ -23,13 +23,14 @@ Example:
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from src.config.multiphase import multiphase_params
 from src.operators._loader import auto_load_operators
 from src.registry import get_operator_names
 from src.registry import get_operators
 
 if TYPE_CHECKING:
-    from src.config.multiphase_params import MultiphaseParams
-    from src.operators.protocols import EosOperator
+    from src.config.multiphase import MultiphaseParams
+    from src.protocols import EosOperator
 
 # Auto-discover EOS modules in this subpackage.
 auto_load_operators("src.operators.macroscopic.eos")
@@ -44,7 +45,7 @@ def build_eos_fn(eos: str, mp: MultiphaseParams) -> EosOperator:
             all EOS-specific scalars.
 
     Returns:
-        A bound :class:`~src.operators.protocols.EosOperator`
+        A bound :class:`~src.protocols.EosOperator`
         ``eos_fn(rho) -> mu_0``.
     """
     return get_operators("eos")[eos].target(mp)
@@ -63,7 +64,7 @@ def build_pressure_fn(mp: MultiphaseParams) -> EosOperator:
             EOS name and its scalars.
 
     Returns:
-        A bound :class:`~src.operators.protocols.EosOperator`
+        A bound :class:`~src.protocols.EosOperator`
         ``pressure_fn(rho) -> p_0``. The multiphase macroscopic operator
         evaluates it every step and returns it as the pressure field.
 
@@ -105,4 +106,5 @@ __all__ = [
     "build_eos_fn",
     "build_pressure_fn",
     "has_analytical_surface_tension",
+    "multiphase_params",
 ]

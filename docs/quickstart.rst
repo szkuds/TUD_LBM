@@ -48,8 +48,9 @@ Before committing to a long run, inspect what the configuration resolves to::
 
 Values can be changed without editing the file.  Override keys may be a bare
 field name or a dotted section path (``simulation_type.simulation_name``,
-``hysteresis.ca_advancing``), and values are parsed as TOML literals — so
-strings need quotes::
+``multiphase.kappa``, ``hysteresis.ca_advancing``,
+``forces.gravity_force.force_g``), and values are parsed as TOML literals —
+so strings need quotes::
 
     uv run tud-lbm run examples/config_simple.toml \
         --override tau=0.8 \
@@ -64,20 +65,32 @@ in, final state out:
 
 .. code-block:: python
 
-    from src import SimulationConfig, build_setup, init_state, run
+    from src import SimulationConfig, build_setup, init_state, observe, run
 
     config = SimulationConfig(grid_shape=(64, 64), tau=0.8, nt=1000)
     setup = build_setup(config)
     state = init_state(setup)
     final_state, trajectory = run(setup, state, nt=config.nt)
 
-    print(final_state.rho.shape)   # (64, 64, 1, 1, 1)
+    print(observe(setup, final_state).rho.shape)   # (64, 64, 1, 1, 1)
 
 A bare :class:`~src.config.simulation_config.SimulationConfig` defaults to a
-D2Q9 lattice, BGK collision, periodic boundaries on all six faces, and
-rest-equilibrium initialisation.  ``trajectory`` is the stacked history of
-every step; for long runs prefer the streaming mode described in
-:ref:`quickstart-streaming`.
+D2Q9 lattice, BGK collision, periodic boundaries on all four edges, and
+rest-equilibrium initialisation.  The state carries only the populations
+``f``, the time ``t`` and the addon substates; :func:`~src.pipeline.step.observe`
+derives density, velocity, forces and pressure from it.
+
+``trajectory`` is the stacked history of every step, so its memory grows with
+``nt`` times the grid — a 48³ D3Q19 run over 6000 steps needs about 100 GB.
+For anything long use the streaming mode described in
+:ref:`quickstart-streaming`, or advance without keeping the history:
+
+.. code-block:: python
+
+    import jax
+    from src.pipeline.step import step
+
+    final_state = jax.lax.scan(lambda s, _: (step(setup, s), None), state, None, length=1000)[0]
 
 To start from a file instead, load it through an adapter:
 
@@ -98,7 +111,6 @@ TOML files are organised into sections that the adapter flattens onto
 
     [simulation_type]
     simulation_name = "test_multiphase"
-    type = "multiphase"          # → SimulationConfig.sim_type
     grid_shape = [128, 128]
     lattice_type = "D2Q9"
     tau = 0.99
@@ -110,7 +122,7 @@ TOML files are organised into sections that the adapter flattens onto
     radii = [0.2]
     dispersed = "liquid"
 
-    [multiphase]                 # required when type contains "multiphase"
+    [multiphase]                 # its presence makes the run multiphase
     kappa = 0.04
     rho_l = 1.0
     rho_v = 0.001
@@ -131,38 +143,44 @@ TOML files are organised into sections that the adapter flattens onto
 The recognised sections are ``[simulation_type]``, ``[initialisation]``,
 ``[multiphase]``, ``[boundary_conditions]``, ``[obstacle]``, ``[wetting]``,
 ``[hysteresis]``, ``[chemical_step]``, ``[output]``, and any
-``[<name>_force]`` table matching a force field on the config
-(``[gravity_force]``, ``[gravity_masked_force]``, ``[electric_force]``).
-Unknown keys are collected into ``config.extra`` rather than rejected.
+``[<name>_force]`` table with a schema in ``config/forces.py``
+(``[gravity_force]``, ``[gravity_masked_force]``, ``[electric_force]``),
+which loads into ``config.forces``.  Unknown keys in ``[simulation_type]``
+are collected into ``config.extra`` rather than rejected.  A file written in
+the old layout, with ``type = ...`` in ``[simulation_type]``, still loads; see
+:doc:`adapters`.
 
-Choosing a simulation type
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Choosing the physics
+~~~~~~~~~~~~~~~~~~~~
 
-``type`` selects the step operator that drives each timestep:
+There is no simulation type.  Each section switches on what it describes,
+and they combine:
 
 .. list-table::
    :header-rows: 1
    :widths: 40 60
 
-   * - ``type``
-     - Adds on top of the previous row
-   * - ``single_phase``
-     - BGK/MRT collide–stream–boundary loop
-   * - ``multiphase``
-     - chemical potential, interparticle force
-   * - ``multiphase_wetting``
-     - fixed contact-angle wall condition
-   * - ``multiphase_hysteresis``
-     - per-step optimisation of the wetting parameters against an
-       advancing/receding contact-angle window
-   * - ``multiphase_hysteresis_chemical_step``
-     - per-side angle targets, chosen from the contact line's position
-       relative to a chemical step
+   * - Section
+     - Adds
+   * - (none)
+     - single-phase BGK/MRT collide–stream–boundary loop
+   * - ``[multiphase]``
+     - chemical potential and interparticle force from the EOS
+   * - ``[wetting]`` + a ``"wetting"`` face
+     - a fixed contact-angle wall
+   * - ``[hysteresis]``
+     - per-step optimisation of the wall against an advancing/receding
+       contact-angle window
+   * - ``[chemical_step]``
+     - per-side angle targets from the surface each contact line is on
+   * - ``[<name>_force]``
+     - that body force (one gravity force at most)
 
-Any type containing ``multiphase`` requires ``[multiphase]`` with ``eos``,
-``kappa``, ``rho_l``, ``rho_v``, and ``interface_width``.  Choosing
-``eos = "carnahan-starling"`` additionally requires ``a_eos``, ``b_eos``,
-``r_eos``, and ``t_eos``.
+``[multiphase]`` needs ``eos``, ``kappa``, ``rho_l``, ``rho_v`` and
+``interface_width``; ``eos = "carnahan-starling"`` additionally needs
+``a_eos``, ``b_eos``, ``r_eos`` and ``t_eos``.  The wetting sections need
+``[multiphase]`` and a ``"wetting"`` face.  A 3D run (``lattice_type =
+"D3Q19"``) supports the bulk physics only: see :doc:`operators`.
 
 What a run produces
 -------------------
@@ -232,12 +250,12 @@ Parameter sweeps
 
 Any sweep-eligible field given a **list** value expands into a Cartesian
 product of runs.  This works for top-level fields and for keys nested inside
-``[wetting]``, ``[hysteresis]``, ``[chemical_step]``, and the force tables:
+``[multiphase]``, ``[wetting]``, ``[hysteresis]``, ``[chemical_step]``, and
+the force tables:
 
 .. code-block:: toml
 
     [simulation_type]
-    type = "single_phase"
     tau = [0.6, 0.7, 0.8]     # three runs
 
     [gravity_force]

@@ -10,6 +10,8 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import pytest
+from src.config.boundary import Edge
+from src.config.wetting import ContactLine
 from src.operators.wetting import _hysteresis as hyst
 from src.operators.wetting._hysteresis import _cost_cll
 from src.operators.wetting._hysteresis import _import_optax
@@ -51,21 +53,21 @@ def test_import_optax_raises_clear_message(mock_optax_missing):
     [
         # Window [60, 80], anchor at 10. Left CL expands in -x, right in +x.
         # Above the advancing bound: pinned only while contracting.
-        ("left", 90.0, 9.0, True, True),
-        ("left", 90.0, 11.0, False, False),  # receding at the advancing bound -> pinned
-        ("right", 90.0, 11.0, True, True),
-        ("right", 90.0, 9.0, False, False),
+        (ContactLine.LEFT, 90.0, 9.0, True, True),
+        (ContactLine.LEFT, 90.0, 11.0, False, False),  # receding at the advancing bound -> pinned
+        (ContactLine.RIGHT, 90.0, 11.0, True, True),
+        (ContactLine.RIGHT, 90.0, 9.0, False, False),
         # Below the receding bound: pinned only while expanding.
-        ("left", 50.0, 11.0, True, False),
-        ("left", 50.0, 9.0, False, False),  # advancing at the receding bound -> pinned
-        ("right", 50.0, 9.0, True, False),
-        ("right", 50.0, 11.0, False, False),
+        (ContactLine.LEFT, 50.0, 11.0, True, False),
+        (ContactLine.LEFT, 50.0, 9.0, False, False),  # advancing at the receding bound -> pinned
+        (ContactLine.RIGHT, 50.0, 9.0, True, False),
+        (ContactLine.RIGHT, 50.0, 11.0, False, False),
         # At the anchor: an out-of-window side still targets its bound.
-        ("left", 90.0, 10.0, True, True),
-        ("right", 50.0, 10.0, True, False),
+        (ContactLine.LEFT, 90.0, 10.0, True, True),
+        (ContactLine.RIGHT, 50.0, 10.0, True, False),
         # In window: always pinned, whichever way it drifted.
-        ("left", 70.0, 9.0, False, False),
-        ("right", 70.0, 11.0, False, False),
+        (ContactLine.LEFT, 70.0, 9.0, False, False),
+        (ContactLine.RIGHT, 70.0, 11.0, False, False),
     ],
 )
 def test_side_regime_truth_table(side, ca, cll, expected_moving, expected_advancing):
@@ -79,11 +81,11 @@ def test_side_regime_truth_table(side, ca, cll, expected_moving, expected_advanc
         # Inverted window adv 50 < rec 100 (a line advancing onto a more wetting
         # surface at a chemical step): CA 70 exceeds both bounds, so the motion
         # decides which one it targets. At the anchor it advances.
-        ("left", 9.0, True),
-        ("left", 10.0, True),
-        ("left", 11.0, False),
-        ("right", 11.0, True),
-        ("right", 9.0, False),
+        (ContactLine.LEFT, 9.0, True),
+        (ContactLine.LEFT, 10.0, True),
+        (ContactLine.LEFT, 11.0, False),
+        (ContactLine.RIGHT, 11.0, True),
+        (ContactLine.RIGHT, 9.0, False),
     ],
 )
 def test_side_regime_inverted_window_follows_the_motion(side, cll, expected_advancing):
@@ -206,8 +208,11 @@ def _fake_setup() -> SimpleNamespace:
     }
     return SimpleNamespace(
         multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.1, interface_width=5),
-        wetting_edge="bottom",
-        config=SimpleNamespace(hysteresis_config=hc),
+        config=SimpleNamespace(
+            hysteresis=hc,
+            init_type="multiphase_bubbles",
+            multiphase={"eos": "double-well", "kappa": 0.01, "rho_l": 1.0, "rho_v": 0.1, "interface_width": 5},
+        ),
     )
 
 
@@ -228,6 +233,7 @@ def test_advancing_side_targets_its_bound_and_its_anchor_follows(monkeypatch):
         _wetting(phi_left=1.05),
         measured,
         _fake_setup(),  # ty: ignore[invalid-argument-type]
+        edge=Edge.BOTTOM,
         trial_step_fn=_trial(9.0, 30.0),
     )
 
@@ -246,6 +252,7 @@ def test_plain_hysteresis_never_saturates(monkeypatch):
         _wetting(phi_left=1.05),
         measured,
         _fake_setup(),  # ty: ignore[invalid-argument-type]
+        edge=Edge.BOTTOM,
         trial_step_fn=_trial(9.0, 30.0),
     )
 
@@ -321,6 +328,7 @@ def test_receding_at_the_advancing_bound_stays_pinned(monkeypatch):
         _wetting(phi_left=1.2, d_rho_left=0.05),
         measured,
         _fake_setup(),  # ty: ignore[invalid-argument-type]
+        edge=Edge.BOTTOM,
         trial_step_fn=_trial(11.0, 30.0),
     )
 
@@ -332,7 +340,7 @@ def test_receding_at_the_advancing_bound_stays_pinned(monkeypatch):
 
 
 def test_update_wetting_state_requires_a_hysteresis_config():
-    setup = SimpleNamespace(config=SimpleNamespace(hysteresis_config=None))
+    setup = SimpleNamespace(config=SimpleNamespace(hysteresis=None))
     wetting, rho = _wetting(), jnp.ones((4, 4, 1, 1, 1))
-    with pytest.raises(TypeError, match="hysteresis_config is required"):
-        update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))  # ty: ignore[invalid-argument-type]
+    with pytest.raises(TypeError, match=r"\[hysteresis\] is required"):
+        update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))  # ty: ignore[invalid-argument-type]

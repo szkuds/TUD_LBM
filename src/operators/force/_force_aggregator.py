@@ -1,53 +1,48 @@
-"""Step-time sum of the external force contributions.
+"""Step-time sum of the external force hooks.
 
 Registers nothing; it is the running counterpart of
 :func:`~src.operators.force.build_forces`, whose bound
-:class:`~src.operators.protocols.ForceOperator` instances this sums.
+:class:`~src.protocols.ForceOperator` instances this sums.
 """
 
 from __future__ import annotations
+from functools import partial
 from typing import TYPE_CHECKING
-from typing import Any
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
-    from src.operators.protocols import ForceOperator
     from src.pipeline.setup import SimulationSetup
     from src.pipeline.state import State
 
 
-def compute_total_force_ext(
-    setup: SimulationSetup,
-    state: State,
-    forces: tuple[ForceOperator, ...],
-) -> tuple[jnp.ndarray | None, Any]:
-    """Compute the summed external force contribution.
+def compute_total_force_ext(setup: SimulationSetup, state: State) -> jnp.ndarray | None:
+    """Sum the run's forces (``setup.forces``) on *state*.
+
+    The differential operators are handed to each force with the state's
+    addon substates (``state.ext``) bound, so a force sees the same wall
+    ghost cells as the macroscopic operator.
 
     Args:
-        setup: The :class:`~src.pipeline.setup.SimulationSetup` (supplies the
-            differential operators a force may need).
+        setup: The :class:`~src.pipeline.setup.SimulationSetup`.
         state: Current :class:`~src.pipeline.state.State`.
-        forces: The run's bound forces, ``setup.forces``.
 
     Returns:
-        Tuple of ``(total_force, updated_state)`` where:
-        - *total_force* is the summed force array, or ``state.force_ext`` when
-          the run has no forces.
-        - *updated_state* is the unchanged state (extra-state plugins handle updates).
+        The summed force array, or ``None`` when the run has no forces.
     """
-    if not forces:
-        return state.force_ext, state
+    if not setup.forces:
+        return None
 
-    # Recompute per-step external force from active contributions only.
-    # Do not seed from state.force_ext, otherwise values accumulate over time.
+    gradient_standard = partial(setup.gradient_standard, ext=state.ext)
+    gradient_density = partial(setup.gradient_density, ext=state.ext)
+    laplacian_density = partial(setup.laplacian_density, ext=state.ext)
+
     total_force: jnp.ndarray | None = None
-    for force in forces:
-        contribution = force.compute(
+    for force in setup.forces:
+        hooks = force.compute(
             state,
-            gradient_standard=setup.gradient_standard,
-            gradient_density=setup.gradient_density,
-            laplacian_density=setup.laplacian_density,
+            gradient_standard=gradient_standard,
+            gradient_density=gradient_density,
+            laplacian_density=laplacian_density,
         )
-        total_force = contribution if total_force is None else total_force + contribution
-
-    return total_force, state
+        total_force = hooks if total_force is None else total_force + hooks
+    return total_force

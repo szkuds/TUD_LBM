@@ -79,29 +79,19 @@ class TestRunnerExports:
 
 
 class TestStepSignatures:
-    """Step functions accept (setup, state), not (setup, ops, state)."""
+    """The step and the kernel take the setup and their data, nothing else."""
 
-    def test_step_single_phase_params(self):
-        from src.operators.step import build_step_fn
+    def test_step_params(self):
+        from src.pipeline.step import step
 
-        step_single_phase = build_step_fn("single_phase")
-        sig = inspect.signature(step_single_phase)
-        params = list(sig.parameters.keys())
-        assert params == [
-            "setup",
-            "state",
-        ], f"Expected ['setup', 'state'], got {params}"
+        params = list(inspect.signature(step).parameters.keys())
+        assert params == ["setup", "state"], f"Expected ['setup', 'state'], got {params}"
 
-    def test_step_multiphase_params(self):
-        from src.operators.step import build_step_fn
+    def test_kernel_params(self):
+        from src.pipeline.step import kernel
 
-        step_multiphase = build_step_fn("multiphase")
-        sig = inspect.signature(step_multiphase)
-        params = list(sig.parameters.keys())
-        assert params == [
-            "setup",
-            "state",
-        ], f"Expected ['setup', 'state'], got {params}"
+        params = list(inspect.signature(kernel).parameters.keys())
+        assert params == ["setup", "f", "force_ext", "ext"], f"Unexpected kernel signature {params}"
 
 
 # =====================================================================
@@ -191,15 +181,10 @@ class TestEndToEnd:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
             grid_shape=(16, 16),
             tau=0.99,
             nt=3,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=1.0,
-            rho_v=0.33,
-            interface_width=4,
         )
         setup = build_setup(cfg)
         state = init_state(setup)
@@ -240,12 +225,12 @@ class TestEndToEnd:
         from src.config import SimulationConfig
         from src.pipeline.runner import init_state
         from src.pipeline.setup import build_setup
+        from src.pipeline.step import step
 
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=5)
         setup = build_setup(cfg)
         state = init_state(setup)
-        assert setup.step_fn is not None
-        new_state = setup.step_fn(setup, state)
+        new_state = step(setup, state)
 
         assert int(new_state.t) == 1
         assert not jnp.isnan(new_state.f).any()
@@ -274,8 +259,8 @@ class TestEndToEnd:
 class TestNoBannedPatterns:
     """New code does not import legacy modules."""
 
-    def test_step_operators_no_app_setup(self):
-        from src.operators import step
+    def test_step_no_app_setup(self):
+        from src.pipeline import step
 
         source = inspect.getsource(step)
         assert "app_setup" not in source

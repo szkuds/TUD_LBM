@@ -193,7 +193,7 @@ def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
 
     console.print("[dim]Running comparison analysis...[/dim]")
     if analyse_run(run_dir, config) is None:
-        console.print("[yellow]--compare: CSV export skipped (unsupported sim_type).[/yellow]")
+        console.print("[yellow]--compare: CSV export skipped (no wetting wall).[/yellow]")
         return
     # compare_runs expects a parent directory that contains run dirs; passing
     # the single run directory makes it plot that one run via rglob.

@@ -8,6 +8,9 @@ import numpy as np
 import pytest
 from matplotlib.collections import LineCollection
 from src.config import SimulationConfig
+from src.config.boundary import Edge
+from src.config.boundary import pad_modes
+from src.config.wetting import ContactLine
 from src.operators.differential._pad_utils import _apply_stencil_padding
 from src.operators.wetting._apply_edge import _apply_wetting_edge
 from src.operators.wetting._contact_angle import compute_contact_angle
@@ -19,27 +22,23 @@ from src.simulation_io.analysis.wetting_overlay import contact_angles
 from src.simulation_io.analysis.wetting_overlay import to_physical
 from src.simulation_io.analysis.wetting_overlay import wall_bands
 from src.simulation_io.plotting import FigureBuilder
+from tests.support.config import merge_overrides
 
 _NX, _NY = 60, 30
 _RHO_L, _RHO_V = 1.0, 0.1
 _RADIUS = 15.0
 #: Circle centre below the wall row, so the drop meets the wall at theta < 90.
 _CENTRE_DEPTH = 5.0
-_EDGES = ("bottom", "top", "left", "right")
+_EDGES = (Edge.BOTTOM, Edge.TOP, Edge.LEFT, Edge.RIGHT)
 
 
 def _config(edge: str | None = "bottom", shape: tuple[int, int] = (_NX, _NY), **overrides: object) -> SimulationConfig:
     params: dict[str, object] = {
-        "sim_type": "multiphase",
+        "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 4},
         "grid_shape": shape,
-        "eos": "double-well",
-        "kappa": 0.02,
-        "interface_width": 4,
-        "rho_l": _RHO_L,
-        "rho_v": _RHO_V,
-        "bc_config": {edge: "wetting"} if edge else None,
+        "boundary_conditions": {edge: "wetting"} if edge else None,
     }
-    params.update(overrides)
+    merge_overrides(params, overrides)
     return SimulationConfig(**params)  # ty: ignore[invalid-argument-type]
 
 
@@ -72,12 +71,12 @@ def test_band_cells_are_exactly_the_cells_the_applicator_changes():
     config = _config()
     (band,) = wall_bands(rho, config)
 
-    gp = _apply_stencil_padding(jnp.asarray(rho), config.pad_modes)
+    gp = _apply_stencil_padding(jnp.asarray(rho), pad_modes(config))
 
     # A modification that moves every banded cell, so changed == modified region.
     def _apply(d_rho: float) -> jnp.ndarray:
         rho_l, rho_v, phi, d = (jnp.asarray(v) for v in (_RHO_L, _RHO_V, 1.0, d_rho))
-        return _apply_wetting_edge(gp, "bottom", True, True, rho_l, rho_v, phi, phi, d, d)
+        return _apply_wetting_edge(gp, Edge.BOTTOM, True, True, rho_l, rho_v, phi, phi, d, d)
 
     neutral, shifted = _apply(0.0), _apply(0.05)
     changed = np.flatnonzero(np.asarray(neutral[1:-1, 0]) != np.asarray(shifted[1:-1, 0]))
@@ -118,7 +117,7 @@ def test_no_band_without_densities_or_wetting_wall():
     rho = _droplet()
 
     assert wall_bands(rho, _config(edge=None)) == []
-    assert wall_bands(rho, SimulationConfig(grid_shape=(_NX, _NY), bc_config={"bottom": "wetting"})) == []
+    assert wall_bands(rho, SimulationConfig(grid_shape=(_NX, _NY), boundary_conditions={"bottom": "wetting"})) == []
 
 
 # --- contact angles --------------------------------------------------------
@@ -149,7 +148,7 @@ def test_recomputed_angles_match_the_step_operator():
     assert 0.0 < angles.theta_left < 90.0
 
 
-@pytest.mark.parametrize("edge", ["top", "left", "right"])
+@pytest.mark.parametrize("edge", [Edge.TOP, Edge.LEFT, Edge.RIGHT])
 def test_mirrored_walls_give_the_same_angle(edge):
     shape = _shape_for(edge)
     reference = contact_angles(_data(_droplet()), _droplet(), _config())
@@ -184,8 +183,8 @@ def test_glyph_tangent_leans_over_the_dispersed_phase():
     angles = contact_angles(_data(rho), rho, _config())
     assert angles is not None
 
-    left = angle_glyph(angles, "left", (_NX, _NY), length=10.0)
-    right = angle_glyph(angles, "right", (_NX, _NY), length=10.0)
+    left = angle_glyph(angles, ContactLine.LEFT, (_NX, _NY), length=10.0)
+    right = angle_glyph(angles, ContactLine.RIGHT, (_NX, _NY), length=10.0)
 
     # theta < 90: both tangents lean toward the droplet centre and rise off the wall.
     assert left.tangent[1, 0] > left.tangent[0, 0]

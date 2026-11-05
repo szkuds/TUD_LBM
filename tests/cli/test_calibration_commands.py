@@ -13,6 +13,7 @@ from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import PHYSICAL_PARAMETERS_FILENAME
 from src.config.simulation_config import SimulationConfig
 from src.simulation_io.analysis.surface_tension import surface_tension as st
+from tests.support.config import merge_overrides
 
 if TYPE_CHECKING:
     from click.testing import CliRunner
@@ -22,22 +23,23 @@ _SIGMA = 0.0123
 
 def _config(**overrides: object) -> SimulationConfig:
     params: dict[str, object] = {
-        "sim_type": "multiphase",
+        "multiphase": {
+            "eos": "carnahan-starling",
+            "kappa": 0.01,
+            "rho_l": 0.4,
+            "rho_v": 0.02,
+            "interface_width": 4,
+            "a_eos": 0.5,
+            "b_eos": 4.0,
+            "r_eos": 1.0,
+            "t_eos": 0.05,
+        },
         "simulation_name": "drop",
         "grid_shape": (48, 32),
         "tau": 0.99,
         "nt": 3,
-        "eos": "carnahan-starling",
-        "kappa": 0.01,
-        "rho_l": 0.4,
-        "rho_v": 0.02,
-        "interface_width": 4,
-        "a_eos": 0.5,
-        "b_eos": 4.0,
-        "r_eos": 1.0,
-        "t_eos": 0.05,
     }
-    params.update(overrides)
+    merge_overrides(params, overrides)
     return SimulationConfig(**params)  # ty: ignore[invalid-argument-type]
 
 
@@ -113,7 +115,7 @@ def test_stage_skips_a_calibrated_fluid_and_a_closed_form_eos(runner: CliRunner,
     calibrated = _config()
     radii = st.sweep_radii()
     st._store_cache(st._cache_key(calibrated), radii, _SIGMA / radii, _SIGMA, st._CALIBRATION_GRID_SHAPE)
-    double_well = _config(eos="double-well", a_eos=None, b_eos=None, r_eos=None, t_eos=None)
+    double_well = _config(multiphase={"eos": "double-well", "a_eos": None, "b_eos": None, "r_eos": None, "t_eos": None})
     paths = [_write_config(tmp_path / "a.toml", calibrated), _write_config(tmp_path / "b.toml", double_well)]
 
     result = runner.invoke(cli, ["calibration", "stage", *map(str, paths)])
@@ -138,7 +140,7 @@ def test_stage_covers_every_fluid_of_a_parameter_sweep(runner: CliRunner, tmp_pa
 def test_stage_refuses_two_fluids_that_share_a_folder_name(runner: CliRunner, tmp_path: Path):
     """The folder name omits some parameters; mixing two such fluids must not be silent."""
     first = _write_config(tmp_path / "a.toml", _config())
-    second = _write_config(tmp_path / "b.toml", _config(a_eos=0.6))
+    second = _write_config(tmp_path / "b.toml", _config(multiphase={"a_eos": 0.6}))
 
     result = runner.invoke(cli, ["calibration", "stage", str(first), str(second)])
 
@@ -148,7 +150,7 @@ def test_stage_refuses_two_fluids_that_share_a_folder_name(runner: CliRunner, tm
 
 
 def test_stage_closed_form_flag_stages_a_verification_sweep(runner: CliRunner, tmp_path: Path):
-    double_well = _config(eos="double-well", a_eos=None, b_eos=None, r_eos=None, t_eos=None)
+    double_well = _config(multiphase={"eos": "double-well", "a_eos": None, "b_eos": None, "r_eos": None, "t_eos": None})
     path = _write_config(tmp_path / "dw.toml", double_well)
 
     result = runner.invoke(cli, ["calibration", "stage", str(path), "--closed-form"])

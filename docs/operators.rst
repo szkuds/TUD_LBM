@@ -50,29 +50,30 @@ Each kind has a convenience decorator in :mod:`src.registry`:
 Kind                        Decorator                       Resolved by
 ==========================  ==============================  ===========================================
 ``collision_models``        ``@collision_model``            ``config.collision_scheme``
-``equilibrium``             ``@equilibrium_operator``       fixed (``"wb"``)
-``macroscopic``             ``@macroscopic_operator``       single-phase vs. multiphase
-``eos``                     ``@eos_operator``               ``config.eos``
-``boundary_condition``      ``@boundary_condition``         ``config.bc_config`` per face
-``force``                   ``@force_model``                ``*_force`` config sections
+``equilibrium``             ``@equilibrium_operator``       ``config.equilibrium``
+``source_term``             ``@source_term_operator``       the equilibrium's registered pair
+``macroscopic``             ``@macroscopic_operator``       whether ``[multiphase]`` is present
+``eos``                     ``@eos_operator``               ``multiphase.eos``
+``pressure``                ``@pressure_operator``          ``multiphase.eos`` (if it has one)
+``surface_tension``         ``@surface_tension_operator``   ``multiphase.eos`` (if it has one)
+``boundary_condition``      ``@boundary_condition``         ``config.boundary_conditions`` per face
+``force``                   ``@force_model``                the keys of ``config.forces``
 ``stream``                  ``@stream_operator``            fixed (``"standard"``)
-``differential``            ``@differential_operator``      built by ``build_diff_ops()``
 ``initialise``              ``@initialise_operator``        ``config.init_type``
-``wetting``                 ``@wetting_operator``           ``config.hysteresis_config``
-``obstacle``                ``@obstacle_operator``          ``config.obstacle_config``
+``obstacle``                ``@obstacle_operator``          ``obstacle.shape``
 ``lattice``                 ``@lattice_operator``           ``config.lattice_type``
-``update_timestep``         ``@update_timestep_operator``   ``config.sim_type``
-``extra_state``             ``@extra_state_plugin``         active physics
+``addon``                   ``@addon_operator``             every one; active by config section
 ``plotting``                ``@plotting_operator``          ``config.plot_fields``
 ``analysis``                ``@analysis_operator``          ``config.plot_fields``
-``simulation_type``         ``@simulation_type_operator``   —
+``dimensionless``           ``@dimensionless_operator``     every one, in ``physical_parameters.txt``
 ==========================  ==============================  ===========================================
 
 .. note::
 
-   The per-timestep step functions live in ``src/operators/step/`` but
-   register under the kind ``update_timestep``, not ``step``.  The factory
-   :func:`~src.operators.step.build_step_fn` hides this.
+   There is no step kind.  One step, :func:`~src.pipeline.step.step`, serves
+   every run; what differs between runs is which *addons* are active
+   (``src/addons/``, kind ``addon``) and the slots they fill — see
+   :doc:`architecture`.
 
 Auto-discovery
 --------------
@@ -97,7 +98,7 @@ implementation files must be named with a leading underscore to be
 discovered.
 
 Every per-kind factory looks up ``get_operators(kind)[name].target`` and is
-annotated with the relevant protocol from :mod:`src.operators.protocols`; no
+annotated with the relevant protocol from :mod:`src.protocols`; no
 cast is needed. Names are validated by :class:`~src.config.simulation_config.SimulationConfig`
 before a factory sees them, so an unknown name reaching a factory is a bare
 ``KeyError``.
@@ -120,29 +121,41 @@ Collision — ``collision_models``
 Equilibrium — ``equilibrium``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Named by ``equilibrium`` in ``[simulation_type]``; without it a run takes
+``standard_equilibrium`` single-phase and ``wb`` multiphase
+(:data:`~src.config.equilibrium.DEFAULT_EQUILIBRIUM`).  The source term is not
+configured separately: each equilibrium declares its pair at registration
+(``@equilibrium_operator(name=..., source_term=...)``), because the pairing is
+about where the pressure lives and mixing the pairs loses it or counts it
+twice.  :mod:`src.config.equilibrium` reads and checks the pairing.
+
 ``wb``
     Well-balanced second-order Maxwell–Boltzmann equilibrium.  The rest
     population is recovered from mass conservation,
     ``f₀ = ρ − Σ_{i>0} feq_i``, which keeps a static interface at rest
-    exactly.  ``build_setup()`` always selects this one; there is no
-    configuration key for it.
+    exactly.  It carries no pressure; a multiphase run supplies it as the
+    force ``−ρ∇μ``.  Pairs with the ``wb`` source term.
 
 ``standard_equilibrium``
-    Textbook second-order equilibrium, including the rest direction.
-    Registered and available through
-    :func:`~src.operators.equilibrium.build_equilibrium_fn`, but not wired
-    into any simulation type.
+    Textbook second-order equilibrium, including the rest direction, so it
+    carries the ideal-gas pressure ``cs²ρ``.  Pairs with ``standard_source``
+    (Guo forcing).
 
 Macroscopic — ``macroscopic``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Both share one signature, ``(f, lattice, force, *, gradient_standard,
+laplacian_density)``; the step calls whichever the run has without a phase
+branch.
+
 ``standard``
     ``ρ = Σᵢ fᵢ``, ``u = Σᵢ fᵢcᵢ / ρ``, with optional force correction
-    ``u_eq = u + F/(2ρ)``.
+    ``u_eq = u + F/(2ρ)``.  Takes the differential operators and ignores them.
 
 ``multiphase``
     Additionally computes the chemical potential and the interparticle force
-    using the configured EOS.
+    using the configured EOS.  The multiphase parameters are bound at build
+    time (:func:`~src.operators.macroscopic.build_multiphase_macroscopic_fn`).
 
 Equation of state — ``eos``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -165,7 +178,14 @@ Boundary conditions — ``boundary_condition``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Configured per face in ``[boundary_conditions]`` and applied after
-streaming.  Faces you omit default to ``periodic``.
+streaming, in the order bottom, top, left, right, front, back (a 2D lattice
+has only the first four).  Faces you omit default to ``periodic``.  An
+obstacle's bounce-back, when there is one, runs first.  A condition's
+parameters go in the face's ``{edge}_{name}`` key (``left_velocity_inlet``),
+completed from ``BOUNDARY_PARAMETERS`` in :mod:`src.config.defaults`; a key
+that is not the parameter section of its face's condition is rejected.  Every
+condition is written over the face's normal axis, so the same code serves the
+z faces of a 3D run.
 
 ``periodic``
     Wraps via ``jnp.roll``; carries pad-edge mode ``"wrap"`` for the
@@ -175,23 +195,27 @@ streaming.  Faces you omit default to ``periodic``.
     Solid wall — reverses populations against the wall.
 
 ``symmetry``
-    Mirror plane (pad-edge mode ``"edge"``), including the diagonal roll
-    correction at the top edge.
+    Specular (free-slip) mirror plane on any face, pad-edge mode ``"edge"``.
+    Each population entering through the face is the one leaving with the
+    normal component of its velocity flipped, taken from the neighbouring
+    cell along its tangential components, so tangential momentum is kept.
+    (The earlier 2D version paired the top and bottom diagonals the wrong way
+    and reversed the tangential flow.)
 
 ``velocity-inlet``
-    Resets the inlet edge to the equilibrium distribution for a prescribed
-    parabolic profile (``u0``).  Deliberately simple — not a Zou–He
-    pressure-coupled inlet.
+    Resets the ``"left"`` edge to the equilibrium distribution for a
+    prescribed parabolic profile of peak ``u0`` (default 0.05).  Deliberately
+    simple — not a Zou–He pressure-coupled inlet.
 
 ``outlet``
     Zero-gradient (Neumann) outflow on the ``"right"`` edge: the
     second-to-last column is copied onto the last one after streaming.
 
-The value ``"wetting"`` may also appear on a face.  It is not a
-boundary-condition operator: it marks which wall the wetting and hysteresis
-machinery acts on, and the first such face becomes
-``SimulationSetup.wetting_edge``, the wall against which contact angles are
-measured.
+``wetting``
+    ``bounce-back`` registered a second time under this name.  On the
+    populations it is a solid wall; the name marks the wall the wetting addon
+    acts on, through the density stencils rather than the populations.  The
+    first such face is the wall the contact angles are measured at.
 
 Streaming — ``stream``
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -199,26 +223,34 @@ Streaming — ``stream``
 ``standard``
     ``jnp.roll`` per velocity direction, followed by zeroing of the layers
     that wrapped across **non-periodic** axes — without this, mass leaks
-    through bounce-back walls.  :func:`build_streaming_fn` closes over
-    ``bc_config`` so the periodic-axis mask is bound once at setup time.
+    through bounce-back walls.  :func:`build_streaming_fn` binds the run's
+    periodic axes (an axis is periodic when both its faces are) once at setup
+    time, so the operator is ``stream(f, lattice)``.
 
 Forces — ``force``
 ~~~~~~~~~~~~~~~~~~
 
-Forces use a two-phase API.  ``build(params, grid_shape, **kwargs)`` runs at
-setup time and may use numpy/scipy freely; ``compute(state, precomputed)``
-runs inside the JIT trace and must be JAX-compatible.  ``build_forces()``
-returns a :class:`~src.operators.force.ForceSetup` bundling the per-force
-specs with the resolved source term.
+A force is a class bound to its payload (:class:`~src.protocols.ForceOperator`).
+``build(params, grid_shape, *, config, lattice)`` runs at setup time, may use
+numpy/scipy freely, and returns the bound instance; ``compute(state, *,
+gradient_standard, gradient_density, laplacian_density)`` runs inside the JIT
+trace and reads what ``build`` stored.  ``build_forces(config, grid_shape,
+lattice)`` returns one bound force per entry of ``config.forces``.  What each
+force's section must hold is its schema in :mod:`src.config.forces`, enforced
+by the configuration, so ``build`` reads ``params[key]`` and checks nothing.
 
 ``gravity_force``
     Uniform body force over the whole domain.
 
 ``gravity_masked_force``
-    Body force weighted by the density *excess over the vapour*,
-    ``(ρ − ρ_v)·g``, rather than by the local ``ρ``.  Subtracting the vapour
-    reference leaves the ambient of a droplet run force-free, so the whole
-    ambient body is not accelerated along with the inclusion.
+    Body force weighted by a band-limited phase indicator: exactly ``0``
+    throughout the light phase, exactly ``Δρ·g`` throughout the dense phase,
+    and linear between, with the ramp inset from each phase density by a
+    tenth of the contrast.  The reference densities are the run's phase
+    references — measured off the init field for ``init_from_file``, else
+    ``rho_l``/``rho_v`` — because an equilibrated field relaxes away from the
+    prescribed ones, and a plain ``(ρ − ρ_v)·g`` then drives the ambient
+    vapour.
 
     There is no topology branch.  A liquid droplet is driven at ``Δρ·g`` with
     its vapour ambient at zero; a vapour bubble is itself force-free and the
@@ -255,45 +287,47 @@ specs with the resolved source term.
     must name the step at which gravity was first applied so every chunk agrees
     on the same ramp.
 
-``source_term_wb``
-    The well-balanced forcing source term used by the collision operators.
-
 ``electric_force``
-    Electric potential carried by a second distribution ``h`` on the state,
-    supplied through an ``extra_state`` plugin.
+    Leaky-dielectric force from the electric potential, a second distribution
+    ``h`` in ``State.ext["electric"]`` that the ``electric`` addon
+    initialises and advances.
 
 Setting ``gravity_force`` and ``gravity_masked_force`` together is a
 configuration error.
 
-Differential — ``differential``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Source term — ``source_term``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Raw primitives ``gradient``, ``laplacian``, ``gradient_wetting``, and
-``laplacian_wetting`` are rarely used directly.  Instead
-:func:`~src.operators.differential.build_diff_ops` returns five closures with
-the boundary pad modes, lattice weights, and wetting parameters already
-bound:
+Not a force: it couples the total force into the populations, so it has its
+own package, ``operators/source_term/``.  ``wb`` (with the ``grad(ρ)``
+corrections that stand in for the pressure the ``wb`` equilibrium lacks) and
+``standard_source`` (Guo forcing).  It is never configured; it is the pair the
+equilibrium registered, and the kernel applies it whenever a force acts.
 
-.. code-block:: python
+Differential operators
+~~~~~~~~~~~~~~~~~~~~~~
 
-    (gradient_standard,
-     gradient_density,
-     laplacian_density,
-     gradient_density_wetting,
-     laplacian_density_wetting) = build_diff_ops(config, mp_params, lattice)
+There is no registry kind: nothing is selected by configuration.
+:func:`~src.operators.differential.build_differential` returns the gradient
+and the Laplacian, ``op(grid, ext)``, with the lattice, the pad modes and an
+optional *ghost fill* bound.  The fill — the addons' composed
+``ghost_fill`` slot — rewrites the padded field's ghost layer from the addon
+substates in ``ext`` between padding and the stencil; without one the stencil
+is plain and ignores ``ext``.  ``build_setup`` builds three:
 
-* ``gradient_standard(grid)`` — ∇μ, never wetting-corrected.
-* ``gradient_density(grid)`` — ∇ρ for the source term, wetting-corrected
-  when a wetting configuration is present.
-* ``laplacian_density(grid)`` — ∇²ρ for the chemical potential, likewise.
-* ``gradient_density_wetting(grid, phi_l, phi_r, d_rho_l, d_rho_r)`` and
-  ``laplacian_density_wetting(...)`` — the *parametric* forms the hysteresis
-  optimiser uses to build trial steps.  Both are ``None`` unless hysteresis
-  is configured.
+* ``gradient_standard`` — ∇μ, never with a fill.
+* ``gradient_density`` — ∇ρ for the source term, with the fill.
+* ``laplacian_density`` — ∇²ρ for the chemical potential, with the fill.
 
-This is why :class:`~src.operators.protocols.DifferentialOperator` accepts
-``*args, **kwargs``: it has to cover both the one-argument and the
-five-argument call signature.
+The stencil core is chosen by the lattice dimension at build time: the D2Q9
+cores in 2D, and the D3Q19 isotropic stencils ``∇f = 3Σᵢwᵢcᵢf(x+cᵢ)`` and
+``∇²f = 6Σᵢwᵢ(f(x+cᵢ) − f(x))`` in 3D.  A 2D run is bit-identical to what it
+was before the 3D cores were added.
+
+The kernel binds ``State.ext`` into all three, so the macroscopic operator,
+the source term and the forces call them as ``op(grid)``
+(:class:`~src.protocols.DifferentialOperator`); the unbound form is
+:class:`~src.protocols.ExtDifferentialOperator`.
 
 Initialisation — ``initialise``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -309,13 +343,7 @@ Selected by ``init_type``; keyword arguments come from the
     ``centres`` (``[fx, fy]`` fractions of the domain) and ``radii``
     (fractions of ``min(nx, ny)``); ``dispersed`` selects ``"vapour"``
     inclusions in liquid (the default) or ``"liquid"`` inclusions in vapour.
-
-``multiphase_bubble_top``
-    Inclusion attached to the top wall.
-
-``wetting``, ``wetting_drop_top``, ``wetting_chem_step``
-    Sessile configurations against the wetting wall; the chemical-step
-    variant places the drop relative to the step.
+    A centre on a wall (``fy`` of 0 or 1) gives a sessile inclusion.
 
 ``init_from_file``
     Resumes from a saved ``.npz`` snapshot.  Requires ``init_dir``.
@@ -326,18 +354,35 @@ Selected by ``init_type``; keyword arguments come from the
    domain any systematic net force accumulates without viscous dissipation,
    and breaking the D4 discrete symmetry is enough to produce spurious drift.
 
-Wetting — ``wetting``
-~~~~~~~~~~~~~~~~~~~~~
+Wetting — the ``wetting`` addon
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``wetting`` kind holds only the hysteresis updates, the one place
-configuration selects between wetting implementations; build one with
-``build_hysteresis_fn(scheme)``. The fixed-name helpers are imported directly
-from their modules: ``compute_contact_angle`` (``_contact_angle``),
-``compute_contact_line_location`` (``_contact_line``) and
-``build_wetting_applicator`` (``_applicator``), the builder that returns the
-wetting ghost-cell correction for a padded density array.
+Wetting is an addon (``src/addons/_wetting.py``), active with a
+``[wetting]`` or ``[hysteresis]`` section, not an operator kind.  Its wall
+parameters always live in ``State.ext["wetting"]``, a fixed-wetting run
+included, so one kernel path serves both kinds of run and the optimiser's
+trial steps.  It fills three slots:
 
-``hysteresis``
+* ``ghost_fill`` — ``build_wetting_applicator`` (``operators/wetting/_applicator``)
+  rewrites the wall ghost cells of the density stencils from the four wall
+  parameters in ``ext``;
+* ``init_state`` — the configured (or, on a hysteresis restart, the saved)
+  parameters and the measured initial angles;
+* ``post_step`` — without ``[hysteresis]``, re-measures the contact angles
+  and lines (``compute_contact_angle``, ``compute_contact_line_location``);
+  with it, runs one of the two optimisers in ``operators/wetting/_hysteresis``
+  below, on trial passes of the kernel under candidate parameters.
+  ``[chemical_step]`` selects the chemical-step variant.
+
+The wall separates the phases at one fixed density,
+:func:`~src.config.wetting.wall_rho_mean`: the midpoint of the run's phase
+references, so the init field's own densities on an ``init_from_file`` run.
+The applicator's contact-line anchors and contrast gate, the measured angles
+and contact lines, the optimiser and the contact-angle overlay all use it.
+Measuring it every step was tried and rejected: it changed angles by under
+0.6° in the test cases and ran 6.5 times slower on a 201×101 bubble.
+
+``update_wetting_state`` (``[hysteresis]``)
     Per-step solve for the wetting parameters ``phi``/``d_rho`` against a
     global advancing/receding angle window, using ``jax.lax.while_loop``
     around an Adam optimiser.  A side is pinned to its anchor
@@ -349,7 +394,7 @@ wetting ghost-cell correction for a padded density array.
     ``loss_tol``, ``trial_steps``, ``saturation_gap``); any other key is
     rejected.
 
-``chemical_step_hysteresis``
+``update_wetting_state_chemical_step`` (``[hysteresis]`` + ``[chemical_step]``)
     Same machinery, with each contact line's window taken from the surface it
     is on: the post-step window once the line is within ``edge_width``
     (default 1 cell) of the step or past it.  The step itself is a property
@@ -370,18 +415,31 @@ Over 2 steps the optimiser random-walks ``phi``.  Use tens of steps where the
 angle must actually reach its bound; the cost is linear in ``trial_steps``.
 
 Contact-angle bookkeeping lives on
-:class:`~src.pipeline.state.state.WettingState`, which is carried through
-``lax.scan`` alongside the fields.
+:class:`~src.operators.wetting._params.WettingState`, the addon's
+``State.ext["wetting"]``, which is carried through ``lax.scan`` alongside the
+fields.
 
-Step operators — ``update_timestep``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step
+~~~~
 
-One per ``sim_type``: ``single_phase``, ``multiphase``,
-``multiphase_wetting``, ``multiphase_hysteresis``, and
-``multiphase_hysteresis_chemical_step``.  Each has signature
-``(setup, state) → state`` and all multiphase variants route through the
-shared ``_multiphase_pipeline`` helper, which sequences
-equilibrium → collision → streaming → boundary conditions.
+One step, :func:`~src.pipeline.step.step` ``(setup, state) → state``, for
+every run: the forces, then :func:`~src.pipeline.step.kernel` (macroscopic,
+equilibrium, collision + source, streaming, the boundary chain with an
+obstacle's bounce-back first, macroscopic of the result), then the addons'
+``post_step`` hooks in name order.
+
+Three-dimensional runs
+~~~~~~~~~~~~~~~~~~~~~~
+
+``lattice_type = "D3Q19"`` with ``nz > 1`` runs the bulk physics in 3D:
+streaming, every boundary condition on all six faces, the differential
+stencils, the multiphase macroscopic operator, the well-balanced source term
+and ``multiphase_bubbles`` (three-coordinate ``centres``).  Verified against
+Poiseuille flow (0.13% from the parabola) and the Laplace law of a droplet
+(within 10% at 32³; the measured ratio is 0.94).
+What is still two-dimensional is refused by the configuration with an error
+naming it: ``[wetting]``, ``[hysteresis]``, ``[chemical_step]``, the electric
+force, MRT and ``[obstacle]``.  D2Q9 with ``nz > 1`` is refused too.
 
 Obstacle — ``obstacle``
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -389,6 +447,10 @@ Obstacle — ``obstacle``
 ``circle``
     Circular interior obstacle, from ``[obstacle]``.  2-D only (``nz == 1``),
     and the configuration is validated to fit inside the grid.
+
+The registered shapes only build the solid-cell mask.  The bounce-back on it
+is the first link of the boundary chain: :func:`~src.operators.boundary.build_bc`
+puts it ahead of the edge BCs, with the same ``(f_stream, f_col)`` shape.
 
 Plotting and analysis
 ~~~~~~~~~~~~~~~~~~~~~
@@ -423,7 +485,11 @@ Adding a new operator
 1. Create ``src/operators/<category>/_my_operator.py`` — the leading
    underscore is what makes auto-discovery pick it up.
 2. Decorate the implementation with the kind's decorator and give it a name.
-3. Match the corresponding protocol in :mod:`src.operators.protocols`.
+3. Match the corresponding protocol in :mod:`src.protocols`.
+4. Add a conformance test for it in
+   ``tests/operators/utilities/test_protocols.py``: the type checker verifies
+   everything downstream of a factory against the protocol, but not that a
+   registered implementation conforms to it.
 
 .. code-block:: python
 
@@ -444,15 +510,18 @@ appears in ``tud-lbm run --list-simulation-operators``.
 Protocols
 ---------
 
-:mod:`src.operators.protocols` defines the structural contracts — operators
-satisfy them by shape, not by inheritance.  The main ones are
-``CollisionOperator``, ``StreamingOperator``, ``EquilibriumOperator``,
-``MacroscopicOperator``, ``BoundaryOperator``, ``ObstacleOperator``,
-``InitialiserOperator``, ``InitialPopulationOperator``, ``StepOperator``,
-``MultiphaseStepOperator``, ``HysteresisOperator``, ``ForceOperator``,
-``DifferentialOperator``, ``EOSFunction``, ``ExtraState``,
-``ExtraStatePlugin``, ``PlotOperator``, ``ConfigReader``, and
-``SimulationRepository``.
+:mod:`src.protocols` holds every interface in the codebase.  The operator
+protocols are structural contracts — operators satisfy them by shape, not by
+inheritance: ``CollisionOperator``, ``StreamingOperator``,
+``EquilibriumOperator``, ``MacroscopicOperator``, ``BoundaryCondition``,
+``BoundaryOperator``, ``InitialiserOperator``, ``InitialPopulationOperator``,
+``ForceOperator``, ``SourceTermOperator``, ``DifferentialOperator``,
+``ExtDifferentialOperator`` and ``EosOperator``.  It also holds the addon hook
+types (``GhostFill``, ``PostStepHook``, ``InitStateHook``), the analysis
+``DimensionlessNumberOperator``, the wetting ``OptaxLike``, and the base classes
+``PlotOperator``, ``AnalysisPlot``, ``ConfigAdapter`` and ``OutputWriter``.
+At runtime it imports only the standard library, ``jax`` and ``numpy``
+(``tests/test_import_constraints.py``).
 
 Conformance is exercised by the tests marked ``conformance`` in the test
 suite.

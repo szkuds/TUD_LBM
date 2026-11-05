@@ -24,6 +24,7 @@ static ``size=2``, and ``edge`` is resolved at trace time.
 
 from __future__ import annotations
 import jax.numpy as jnp
+from src.config.boundary import Edge
 from src.operators.wetting._canonical_view import to_canonical
 
 
@@ -69,7 +70,7 @@ def detect_bubble(
     rho: jnp.ndarray,
     rho_mean: float | jnp.ndarray,
     *,
-    edge: str = "bottom",
+    edge: Edge = Edge.BOTTOM,
 ) -> jnp.ndarray:
     """Return True when the phase dispersed at the wetting wall is vapour.
 

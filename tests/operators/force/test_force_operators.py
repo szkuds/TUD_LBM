@@ -6,6 +6,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from src.addons._electric import ElectricState
+from src.config.boundary import pad_modes
 from src.config.simulation_config import SimulationConfig
 from src.lattice.lattice import build_lattice
 from src.pipeline.state.state import State
@@ -35,6 +37,7 @@ def electric_force(lattice, sim_config):
             "permittivity_vapour": 1.0,
             "conductivity_liquid": 0.01,
             "conductivity_vapour": 0.001,
+            "applied_voltage": 0.0,
             "voltage_top": 1.0,
             "voltage_bottom": 0.0,
         },
@@ -46,14 +49,37 @@ def electric_force(lattice, sim_config):
 
 def make_state(lattice, rho_value=1.0, h=None):
     f = jnp.ones((NX, NY, NZ, lattice.q, 1)) * (rho_value / lattice.q)
-    rho = jnp.sum(f, axis=3, keepdims=True)
-    return State(
-        f=f,
-        rho=rho,
-        u=jnp.zeros((NX, NY, NZ, 1, lattice.d)),
-        t=jnp.array(0),
-        h=h,
-    )
+    return State(f=f, t=jnp.array(0), ext={} if h is None else {"electric": ElectricState(h=h)})
+
+
+_ELECTRIC = {
+    "permittivity_liquid": 80.0,
+    "permittivity_vapour": 1.0,
+    "conductivity_liquid": 0.01,
+    "conductivity_vapour": 0.001,
+    "applied_voltage": 0.0,
+    "voltage_top": 1.0,
+    "voltage_bottom": 0.0,
+}
+
+
+def electric_addon(lattice, section=None):
+    """The electric addon's hooks for an ``electric_force`` *section*."""
+    from src.addons._electric import build_electric_addon
+
+    config = SimulationConfig(forces={"electric_force": dict(section or _ELECTRIC)}, grid_shape=(NX, NY, NZ))
+    hooks = build_electric_addon(config)
+    assert hooks is not None
+    return hooks
+
+
+def plain_gradient(lattice, config):
+    """The chemical-potential gradient as a force receives it: no ghost fill, ``ext`` bound."""
+    from functools import partial
+    from src.operators.differential import build_differential
+
+    gradient, _ = build_differential(lattice, pad_modes(config))
+    return partial(gradient, ext={})
 
 
 def make_electric_setup(lattice, electric_force):
@@ -76,9 +102,9 @@ def _gravity(lattice, **force_params):
     """Build the bound plain-gravity force from a config-validated section."""
     from src.operators.force._gravity import GravityForceModule
 
-    cfg = SimulationConfig(grid_shape=(NX, NY, NZ), gravity_force={"force_g": 0.001, **force_params})
-    assert cfg.gravity_force is not None
-    return GravityForceModule.build(cfg.gravity_force, (NX, NY, NZ), config=cfg, lattice=lattice)
+    cfg = SimulationConfig(forces={"gravity_force": {"force_g": 0.001, **force_params}}, grid_shape=(NX, NY, NZ))
+    assert cfg.forces["gravity_force"] is not None
+    return GravityForceModule.build(cfg.forces["gravity_force"], (NX, NY, NZ), config=cfg, lattice=lattice)
 
 
 class TestGravityForce:
@@ -163,14 +189,15 @@ class TestGravityMaskedForce:
 
     def _config(self, *, rho_l=RHO_L, rho_v=RHO_V, **force_params):
         return SimulationConfig(
-            sim_type="multiphase",
+            multiphase={
+                "eos": "double-well",
+                "kappa": 0.02,
+                "rho_l": rho_l,
+                "rho_v": rho_v,
+                "interface_width": 2,
+            },
+            forces={"gravity_masked_force": {"force_g": self.FORCE_G, **force_params}},
             grid_shape=(NX, NY),
-            eos="double-well",
-            kappa=0.02,
-            rho_l=rho_l,
-            rho_v=rho_v,
-            interface_width=2,
-            gravity_masked_force={"force_g": self.FORCE_G, **force_params},
         )
 
     def _build(self, lattice, *, grid_shape=(NX, NY, NZ), config=None, **force_params):
@@ -178,18 +205,13 @@ class TestGravityMaskedForce:
         from src.operators.force._gravity_masked import GravityForceModule
 
         cfg = config if config is not None else self._config(**force_params)
-        return GravityForceModule.build(cfg.gravity_masked_force, grid_shape, config=cfg, lattice=lattice)
+        return GravityForceModule.build(cfg.forces["gravity_masked_force"], grid_shape, config=cfg, lattice=lattice)
 
     def _state_from_rho_2d(self, lattice, rho_2d, t=0):
         nx, ny = rho_2d.shape
         rho = jnp.asarray(rho_2d.reshape(nx, ny, NZ, 1, 1))
         f = jnp.broadcast_to(rho / lattice.q, (nx, ny, NZ, lattice.q, 1))
-        return State(
-            f=f,
-            rho=rho,
-            u=jnp.zeros((nx, ny, NZ, 1, lattice.d)),
-            t=jnp.array(t),
-        )
+        return State(f=f, t=jnp.array(t))
 
     def _two_phase_state(self, lattice, t=0):
         """Liquid in the left third, vapour in the right third, ``rho_mean`` between."""
@@ -333,7 +355,7 @@ class TestGravityMaskedForce:
 
     def test_compute_without_phase_refs_matches_single_phase(self, lattice):
 
-        single_phase = SimulationConfig(grid_shape=(NX, NY), gravity_masked_force={"force_g": 0.001})
+        single_phase = SimulationConfig(forces={"gravity_masked_force": {"force_g": 0.001}}, grid_shape=(NX, NY))
         precomputed = self._build(lattice, config=single_phase)
         state = make_state(lattice, rho_value=1.2)
         force = precomputed.compute(state)
@@ -362,17 +384,12 @@ class TestGravityMaskedForce:
         npz_path = tmp_path / "init_state.npz"
         np.savez(npz_path, rho=rho)
         return SimulationConfig(
-            sim_type="multiphase",
+            multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.001, "interface_width": 2},
+            forces={"gravity_masked_force": {"force_g": 0.001}},
             grid_shape=(NX, NY),
-            eos="double-well",
-            kappa=0.02,
-            rho_l=1.0,
-            rho_v=0.001,
-            interface_width=2,
             init_type="init_from_file",
             init_dir=str(npz_path),
             initialisation={},
-            gravity_masked_force={"force_g": 0.001},
         )
 
     def test_the_band_is_measured_off_the_init_field_when_there_is_one(self, lattice, tmp_path):
@@ -425,6 +442,9 @@ class TestElectricParams:
                 "permittivity_vapour": 1.0,
                 "conductivity_liquid": 0.01,
                 "conductivity_vapour": 0.001,
+                "applied_voltage": 0.0,
+                "voltage_top": 0.0,
+                "voltage_bottom": 0.0,
             },
             (NX, NY, NZ),
             config=sim_config,
@@ -442,6 +462,9 @@ class TestElectricParams:
                 "permittivity_vapour": 1.0,
                 "conductivity_liquid": 0.01,
                 "conductivity_vapour": 0.001,
+                "applied_voltage": 0.0,
+                "voltage_top": 0.0,
+                "voltage_bottom": 0.0,
             },
             (NX, NY, NZ),
             config=sim_config,
@@ -463,46 +486,25 @@ class TestElectricParams:
 # =====================================================================
 
 
-class TestElectricExtraStateInit:
-    """ElectricExtraStatePlugin.init_state produces a valid initial distribution."""
+class TestElectricFeatureInit:
+    """The electric addon's ``init_state`` builds the plate-to-plate potential."""
 
     def test_shape(self, lattice, electric_force):
-        from src.operators.force._extra_state import ElectricExtraStatePlugin
-
         setup = make_electric_setup(lattice, electric_force)
-        hi = ElectricExtraStatePlugin.init_state(setup)["h"]
+        hi = electric_addon(lattice).init_state(setup).h
         assert hi.shape == (NX, NY, NZ, 9, 1)
 
-    def test_linear_profile(self, lattice, sim_config):
-        from src.operators.force._electric import ElectricForceModule
-        from src.operators.force._extra_state import ElectricExtraStatePlugin
-
-        params = ElectricForceModule.build(
-            {
-                "permittivity_liquid": 80.0,
-                "permittivity_vapour": 1.0,
-                "conductivity_liquid": 0.01,
-                "conductivity_vapour": 0.001,
-                "voltage_top": 1.0,
-                "voltage_bottom": 0.0,
-            },
-            (NX, NY, NZ),
-            config=sim_config,
-            lattice=lattice,
-        )
-        setup = make_electric_setup(lattice, params)
-        hi = ElectricExtraStatePlugin.init_state(setup)["h"]
+    def test_linear_profile(self, lattice, electric_force):
+        setup = make_electric_setup(lattice, electric_force)
+        hi = electric_addon(lattice).init_state(setup).h
         potential = jnp.sum(hi, axis=3, keepdims=True)
-        np.testing.assert_allclose(
-            float(potential[0, 0, 0, 0, 0]),
-            0.0,
-            atol=1e-10,
-        )
-        np.testing.assert_allclose(
-            float(potential[0, -1, 0, 0, 0]),
-            1.0,
-            atol=1e-10,
-        )
+        np.testing.assert_allclose(float(potential[0, 0, 0, 0, 0]), 0.0, atol=1e-10)
+        np.testing.assert_allclose(float(potential[0, -1, 0, 0, 0]), 1.0, atol=1e-10)
+
+    def test_inactive_without_an_electric_force(self, lattice, sim_config):
+        from src.addons._electric import build_electric_addon
+
+        assert build_electric_addon(sim_config) is None
 
 
 # =====================================================================
@@ -514,50 +516,37 @@ class TestComputeElectricForce:
     """ElectricForceModule.compute returns correct shape and is jittable."""
 
     def test_shape(self, lattice, sim_config, electric_force):
-        from src.operators.differential import build_diff_ops
-        from src.operators.force._extra_state import ElectricExtraStatePlugin
-
-        gradient_standard, *_ = build_diff_ops(sim_config, mp_params=None, lattice=lattice)
         setup = make_electric_setup(lattice, electric_force)
-        hi = ElectricExtraStatePlugin.init_state(setup)["h"]
+        hi = electric_addon(lattice).init_state(setup).h
         state = make_state(lattice, rho_value=1.0, h=hi)
 
-        force = electric_force.compute(state, gradient_standard=gradient_standard)
+        force = electric_force.compute(state, gradient_standard=plain_gradient(lattice, sim_config))
         assert force.shape == (NX, NY, NZ, 1, 2)
 
     def test_zero_voltage_zero_force(self, lattice, sim_config):
-        from src.operators.differential import build_diff_ops
         from src.operators.force._electric import ElectricForceModule
-        from src.operators.force._extra_state import ElectricExtraStatePlugin
 
-        params = ElectricForceModule.build(
-            {
-                "permittivity_liquid": 1.0,
-                "permittivity_vapour": 1.0,
-                "conductivity_liquid": 0.0,
-                "conductivity_vapour": 0.0,
-                "voltage_top": 0.0,
-                "voltage_bottom": 0.0,
-            },
-            (NX, NY, NZ),
-            config=sim_config,
-            lattice=lattice,
-        )
-        gradient_standard, *_ = build_diff_ops(sim_config, mp_params=None, lattice=lattice)
+        section = {
+            "permittivity_liquid": 1.0,
+            "permittivity_vapour": 1.0,
+            "conductivity_liquid": 0.0,
+            "conductivity_vapour": 0.0,
+            "applied_voltage": 0.0,
+            "voltage_top": 0.0,
+            "voltage_bottom": 0.0,
+        }
+        params = ElectricForceModule.build(section, (NX, NY, NZ), config=sim_config, lattice=lattice)
         setup = make_electric_setup(lattice, params)
-        hi = ElectricExtraStatePlugin.init_state(setup)["h"]
+        hi = electric_addon(lattice, section).init_state(setup).h
         state = make_state(lattice, rho_value=1.0, h=hi)
 
-        force = params.compute(state, gradient_standard=gradient_standard)
+        force = params.compute(state, gradient_standard=plain_gradient(lattice, sim_config))
         np.testing.assert_allclose(np.array(force), 0.0, atol=1e-10)
 
     def test_jittable(self, lattice, sim_config, electric_force):
-        from src.operators.differential import build_diff_ops
-        from src.operators.force._extra_state import ElectricExtraStatePlugin
-
-        gradient_standard, *_ = build_diff_ops(sim_config, mp_params=None, lattice=lattice)
+        gradient_standard = plain_gradient(lattice, sim_config)
         setup = make_electric_setup(lattice, electric_force)
-        hi = ElectricExtraStatePlugin.init_state(setup)["h"]
+        hi = electric_addon(lattice).init_state(setup).h
         state = make_state(lattice, rho_value=1.0, h=hi)
 
         jitted = jax.jit(lambda s: electric_force.compute(s, gradient_standard=gradient_standard))
@@ -570,79 +559,43 @@ class TestComputeElectricForce:
 # =====================================================================
 
 
-class TestElectricExtraStateUpdate:
-    """ElectricExtraStatePlugin.update_state advances the electric distribution."""
+class TestElectricFeatureUpdate:
+    """The electric addon's ``post_step`` advances ``h`` from the state before the step."""
 
     def test_shape(self, lattice, electric_force):
-        from src.operators.force._extra_state import ElectricExtraStatePlugin
-
         setup = make_electric_setup(lattice, electric_force)
-        hi = ElectricExtraStatePlugin.init_state(setup)["h"]
+        addon = electric_addon(lattice)
+        hi = addon.init_state(setup).h
         state = make_state(lattice, rho_value=1.0, h=hi)
 
-        state_new = ElectricExtraStatePlugin.update_state(setup, state, state)
-        assert state_new.h is not None
-        assert state_new.h.shape == hi.shape
+        state_new = addon.post_step(setup, state, state)
+        assert state_new.ext["electric"].h.shape == hi.shape
 
-    def test_update_returns_new_state_when_h_is_none(self, lattice, electric_force):
-        from src.operators.force._extra_state import ElectricExtraStatePlugin
-
+    def test_reads_the_populations_before_the_step(self, lattice, electric_force):
+        """Sigma comes from the same time level as h(t): the previous state's f, not the new one."""
         setup = make_electric_setup(lattice, electric_force)
-        state_no_h = make_state(lattice, rho_value=1.0, h=None)
-        result = ElectricExtraStatePlugin.update_state(setup, state_no_h, state_no_h)
-        assert result is state_no_h
+        addon = electric_addon(lattice)
+        # Off equilibrium, so the conductivity-dependent relaxation has something to relax.
+        hi = addon.init_state(setup).h.at[:, :, :, 1].add(0.01)
+        prev = make_state(lattice, rho_value=1.0, h=hi)
+        # Conductivity is normalised by the field's own density range, so the
+        # other state needs two phases to differ from a uniform one.
+        liquid = prev._replace(f=prev.f.at[: NX // 2].multiply(5.0))
 
-    def test_update_returns_new_state_when_no_electric_force_spec(self, lattice):
-        from src.operators.force._extra_state import ElectricExtraStatePlugin
-
-        setup = SimpleNamespace(forces=())
-        state = make_state(lattice)
-        result = ElectricExtraStatePlugin.update_state(setup, state, state)  # ty: ignore[invalid-argument-type]
-        assert result is state
-
-    def test_update_raises_when_streaming_fn_none(self, lattice, electric_force):
-        from src.operators.force._extra_state import ElectricExtraStatePlugin
-
-        hi = jnp.ones((NX, NY, NZ, 9, 1))
-        state = make_state(lattice, rho_value=1.0, h=hi)
-        setup = SimpleNamespace(grid_shape=(NX, NY, NZ), lattice=lattice, streaming_fn=None, forces=(electric_force,))
-        with pytest.raises(TypeError, match="streaming_fn is required"):
-            ElectricExtraStatePlugin.update_state(setup, state, state)  # ty: ignore[invalid-argument-type]
-
-
-# =====================================================================
-# Electric is_active + compute error branches
-# =====================================================================
-
-
-class TestElectricIsActive:
-    """ElectricExtraStatePlugin.is_active reflects config.electric_force."""
-
-    def test_active_when_electric_force_set(self):
-        from src.operators.force._extra_state import ElectricExtraStatePlugin
-
-        cfg = SimpleNamespace(electric_force={"strength": 1.0})
-        assert ElectricExtraStatePlugin.is_active(cfg) is True  # ty: ignore[invalid-argument-type]
-
-    def test_inactive_when_electric_force_none(self):
-        from src.operators.force._extra_state import ElectricExtraStatePlugin
-
-        assert ElectricExtraStatePlugin.is_active(SimpleNamespace(electric_force=None)) is False  # ty: ignore[invalid-argument-type]
-
-    def test_inactive_when_attribute_absent(self):
-        from src.operators.force._extra_state import ElectricExtraStatePlugin
-
-        assert ElectricExtraStatePlugin.is_active(SimpleNamespace()) is False  # ty: ignore[invalid-argument-type]
+        from_prev = addon.post_step(setup, prev, liquid).ext["electric"].h
+        from_liquid = addon.post_step(setup, liquid, prev).ext["electric"].h
+        assert not np.allclose(np.asarray(from_prev), np.asarray(from_liquid))
+        np.testing.assert_array_equal(
+            np.asarray(from_prev), np.asarray(addon.post_step(setup, prev, prev).ext["electric"].h)
+        )
 
 
 class TestElectricForceSetupWiring:
     """build_setup wires gradient_standard for electric-force runs.
 
     Regression guard: the electric force needs the standard gradient closure
-    from build_diff_ops, which requires the differential operator subpackage
-    to have been auto-loaded before setup completes.  If import order ever
-    regresses, gradient_standard would be missing and every electric compute
-    would raise at step time.
+    and the electric addon's ``h``. If either were missing, every electric
+    compute would raise at step time.
     """
 
     @pytest.fixture(scope="class")
@@ -652,19 +605,25 @@ class TestElectricForceSetupWiring:
 
         config = DictAdapter().load(
             {
+                "forces": {
+                    "electric_force": {
+                        "permittivity_liquid": 80.0,
+                        "permittivity_vapour": 1.0,
+                        "conductivity_liquid": 0.01,
+                        "conductivity_vapour": 0.001,
+                        "applied_voltage": 0.0,
+                        "voltage_top": 1.0,
+                        "voltage_bottom": 0.0,
+                    }
+                },
                 "grid_shape": (NX, NY),
                 "nt": 10,
-                "electric_force": {
-                    "permittivity_liquid": 80.0,
-                    "permittivity_vapour": 1.0,
-                    "conductivity_liquid": 0.01,
-                    "conductivity_vapour": 0.001,
-                    "voltage_top": 1.0,
-                    "voltage_bottom": 0.0,
-                },
             }
         )
         return build_setup(config)
+
+    def test_the_electric_addon_is_active(self, electric_setup):
+        assert [name for name, _ in electric_setup.addons] == ["electric"]
 
     def test_gradient_standard_is_built(self, electric_setup):
         assert electric_setup.gradient_standard is not None
@@ -680,7 +639,7 @@ class TestElectricForceSetupWiring:
         from src.pipeline.runner import init_state
 
         state = init_state(electric_setup)
-        total_force, _ = compute_total_force_ext(electric_setup, state, electric_setup.forces)
+        total_force = compute_total_force_ext(electric_setup, state)
         assert total_force is not None
         assert total_force.shape == (NX, NY, NZ, 1, 2)
         assert bool(jnp.all(jnp.isfinite(total_force)))
@@ -698,6 +657,9 @@ class TestElectricForceComputeErrors:
                 "permittivity_vapour": 1.0,
                 "conductivity_liquid": 0.01,
                 "conductivity_vapour": 0.001,
+                "applied_voltage": 0.0,
+                "voltage_top": 0.0,
+                "voltage_bottom": 0.0,
             },
             (NX, NY, NZ),
             config=sim_config,
@@ -706,11 +668,3 @@ class TestElectricForceComputeErrors:
         state = make_state(lattice)
         with pytest.raises(TypeError, match="gradient_standard is required"):
             params.compute(state)
-
-    def test_raises_when_h_is_none(self, lattice, sim_config, electric_force):
-        from src.operators.differential import build_diff_ops
-
-        gradient_standard, *_ = build_diff_ops(sim_config, mp_params=None, lattice=lattice)
-        state = make_state(lattice, h=None)
-        with pytest.raises(TypeError, match=r"state\.h"):
-            electric_force.compute(state, gradient_standard=gradient_standard)

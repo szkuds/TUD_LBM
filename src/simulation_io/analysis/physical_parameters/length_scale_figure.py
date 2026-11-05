@@ -217,7 +217,7 @@ def _analytic_region(config: SimulationConfig) -> _AnalyticRegion | None:
 
     Mirrors ``_get_setup_droplet_area`` (radius scaled by ``min(nx, ny)``, the
     nearest of the four walls) and the initialiser's integer centre rounding in
-    ``operators/initialise/_multiphase_bubbles.py``.
+    ``operators/initialise/_multiphase.py``.
     """
     init = config.initialisation
     if not init or not isinstance(init, dict):

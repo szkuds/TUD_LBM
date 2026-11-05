@@ -32,15 +32,10 @@ def _snapshot(rho: np.ndarray) -> dict[str, np.ndarray]:
 def _multiphase_config(**overrides: object) -> SimulationConfig:
     """A minimal double-well multiphase config for the pressure operators."""
     base = SimulationConfig(
-        sim_type="multiphase",
+        multiphase={"eos": "double-well", "kappa": _KAPPA, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": _WIDTH},
         grid_shape=(16, 16, 1),
         tau=0.8,
         nt=2,
-        eos="double-well",
-        kappa=_KAPPA,
-        rho_l=_RHO_L,
-        rho_v=_RHO_V,
-        interface_width=_WIDTH,
     )
     return dataclasses.replace(base, **overrides) if overrides else base
 
@@ -196,7 +191,7 @@ def test_total_pressure_flattens_the_interface_swing():
     """The kappa terms should cancel most of the p_0 excursion across an interface."""
     config = _multiphase_config(
         grid_shape=(64, 64, 1),
-        bc_config={"top": "periodic", "bottom": "periodic", "left": "periodic", "right": "periodic"},
+        boundary_conditions={"top": "periodic", "bottom": "periodic", "left": "periodic", "right": "periodic"},
     )
 
     x, y = np.meshgrid(np.arange(64), np.arange(64), indexing="ij")

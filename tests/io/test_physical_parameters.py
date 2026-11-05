@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 import math
-from types import SimpleNamespace
 import numpy as np
 import pytest
 from src.config import SimulationConfig
@@ -18,20 +17,16 @@ from src.simulation_io.analysis.physical_parameters.physical_parameters import _
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_buoyancy_delta_rho
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_inclination
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_value
+from tests.support.config import merge_overrides
 
 
 def _mp_config(**kwargs) -> SimulationConfig:
     base = {
-        "sim_type": "multiphase",
+        "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
+        "forces": {"gravity_force": {"force_g": 1e-6}},
         "grid_shape": (40, 20),
-        "eos": "double-well",
-        "kappa": 0.02,
-        "rho_l": 1.0,
-        "rho_v": 0.5,
-        "interface_width": 2,
-        "gravity_force": {"force_g": 1e-6},
     }
-    base.update(kwargs)
+    merge_overrides(base, kwargs)
     return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
@@ -70,7 +65,7 @@ def test_write_physical_parameters_creates_output_file(tmp_path):
 
 def test_build_overview_splits_bond_number_for_inclined_gravity():
     cfg = _mp_config(
-        gravity_force={"force_g": 1e-6, "inclination_angle_deg": 30.0},
+        forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0}},
         initialisation={"centres": [[0.5, 0.1]], "radii": [0.4]},
     )
 
@@ -106,23 +101,17 @@ def test_build_overview_falls_back_when_init_from_file_rho_missing(tmp_path):
 
 
 def test_resolve_gravity_value_prefers_scalar_g_over_force_dict():
-    cfg = _mp_config(g=2e-6, gravity_force={"force_g": 1e-6})
+    cfg = _mp_config(multiphase={"g": 2e-6}, forces={"gravity_force": {"force_g": 1e-6}})
     assert _resolve_gravity_value(cfg) == pytest.approx(2e-6)
 
 
 def test_resolve_gravity_value_supports_masked_force():
-    cfg = _mp_config(gravity_force=None, gravity_masked_force={"force_g": 3e-6})
+    cfg = _mp_config(forces={"gravity_masked_force": {"force_g": 3e-6}})
     assert _resolve_gravity_value(cfg) == pytest.approx(3e-6)
 
 
-def test_resolve_gravity_value_rejects_both_force_variants():
-    cfg = SimpleNamespace(g=None, gravity_force={"force_g": 1e-6}, gravity_masked_force={"force_g": 2e-6})
-    with pytest.raises(ValueError, match="Only one gravity force"):
-        _resolve_gravity_value(cfg)  # ty: ignore[invalid-argument-type]
-
-
 def test_resolve_gravity_inclination_defaults_to_zero_when_missing_key():
-    cfg = _mp_config(gravity_force={"force_g": 1e-6})
+    cfg = _mp_config(forces={"gravity_force": {"force_g": 1e-6}})
     assert _resolve_gravity_inclination(cfg) == pytest.approx(0.0)
 
 

@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 from src.lattice.lattice import build_lattice
 from src.operators.boundary._outlet import apply_outlet
+from src.pipeline.step import observe
 
 NX, NY, NZ = 8, 6, 1
 
@@ -38,11 +39,10 @@ def test_outlet_finite_after_real_step() -> None:
     from src.pipeline.setup import build_setup
 
     cfg = SimulationConfig(
-        sim_type="single_phase",
         grid_shape=(20, 10, 1),
         tau=0.8,
         nt=5,
-        bc_config={
+        boundary_conditions={
             "top": "bounce-back",
             "bottom": "bounce-back",
             "left": "velocity-inlet",
@@ -55,5 +55,5 @@ def test_outlet_finite_after_real_step() -> None:
     final_state, _ = run(setup, state, nt=cfg.nt)
 
     assert bool(jnp.all(jnp.isfinite(final_state.f)))
-    assert bool(jnp.all(jnp.isfinite(final_state.rho)))
-    assert bool(jnp.all(jnp.isfinite(final_state.u)))
+    assert bool(jnp.all(jnp.isfinite(observe(setup, final_state).rho)))
+    assert bool(jnp.all(jnp.isfinite(observe(setup, final_state).u)))

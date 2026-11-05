@@ -26,6 +26,7 @@ the wall-normal axis, so gradients route back to the correct original rows).
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from src.config.boundary import Edge
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
@@ -33,25 +34,25 @@ if TYPE_CHECKING:
 #: Physical axis that the canonical *tangential* coordinate (axis 0 of the
 #: returned view) corresponds to. Bottom/top scan along x; left/right along y.
 #: This is what ``cll_left`` / ``cll_right`` are measured in.
-EDGE_TANGENTIAL_AXIS = {
-    "bottom": "x",
-    "top": "x",
-    "left": "y",
-    "right": "y",
+EDGE_TANGENTIAL_AXIS: dict[Edge, str] = {
+    Edge.BOTTOM: "x",
+    Edge.TOP: "x",
+    Edge.LEFT: "y",
+    Edge.RIGHT: "y",
 }
 
 
-def to_canonical(rho_2d: jnp.ndarray, edge: str) -> jnp.ndarray:
+def to_canonical(rho_2d: jnp.ndarray, edge: Edge) -> jnp.ndarray:
     """Map ``rho_2d`` into the wall-aligned canonical frame for *edge*.
 
     Args:
         rho_2d: Density slice, shape ``(nx, ny)``.
-        edge: One of ``"bottom"``, ``"top"``, ``"left"``, ``"right"``.
+        edge: An in-plane wall.
 
     Returns:
         A view of shape ``(tangential, normal)`` where index 0 of the normal
         axis is the wall row and index increases into the fluid. For
-        ``"bottom"`` this is the identity.
+        ``Edge.BOTTOM`` this is the identity.
     """
-    arr = rho_2d.T if edge in ("left", "right") else rho_2d
-    return arr[:, ::-1] if edge in ("top", "right") else arr
+    arr = rho_2d.T if edge.normal_axis == 0 else rho_2d
+    return arr[:, ::-1] if edge.at_far_end else arr

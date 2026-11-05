@@ -27,7 +27,7 @@ def init_from_file(
     """Load ``rho`` and ``u`` from an ``.npz`` file and compute equilibrium.
 
     The archive must contain arrays ``rho`` of shape ``(nx, ny, nz, 1, 1)``
-    and ``u`` of shape ``(nx, ny, nz, 1, 2)``.
+    and ``u`` of shape ``(nx, ny, nz, 1, d)``.
 
     Args:
         grid_shape: Spatial dimensions ``(nx, ny, nz)``.
@@ -50,7 +50,7 @@ def init_from_file(
     if rho.shape != (nx, ny, nz, 1, 1):
         msg = f"Expected rho shape ({nx}, {ny}, {nz}, 1, 1), got {rho.shape}"
         raise ValueError(msg)
-    if u.shape != (nx, ny, nz, 1, 2):
-        msg = f"Expected u shape ({nx}, {ny}, {nz}, 1, 2), got {u.shape}"
+    if u.shape != (nx, ny, nz, 1, lattice.d):
+        msg = f"Expected u shape ({nx}, {ny}, {nz}, 1, {lattice.d}), got {u.shape}"
         raise ValueError(msg)
     return equilibrium_fn(rho, u, lattice)

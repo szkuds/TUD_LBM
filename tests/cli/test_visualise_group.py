@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 from src.cli.commands import cli
 from tests.support.run_dirs import build_run_dir
-from tests.support.run_dirs import wetting_config
+from tests.support.run_dirs import wetting
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -59,7 +59,7 @@ def test_analysis_subcommand_ignores_field_operators(runner, tmp_path):
     ``plot_fields`` is ``["density", "ca_theta_vs_x"]``; restricted to the
     analysis kind only the second survives.
     """
-    config = wetting_config()
+    config = wetting()
     run_dir = build_run_dir(tmp_path, config=config)
 
     result = runner.invoke(cli, ["visualise", str(run_dir), "--no-prompt", "analysis"])
@@ -70,7 +70,7 @@ def test_analysis_subcommand_ignores_field_operators(runner, tmp_path):
 
 def test_run_dir_named_fields_binds_as_argument(runner, tmp_path):
     """A directory literally named ``fields`` is the RUN_DIR, not the subcommand."""
-    run_dir = build_run_dir(tmp_path / "outer", config=wetting_config())
+    run_dir = build_run_dir(tmp_path / "outer", config=wetting())
     renamed = run_dir.parent / "fields"
     run_dir.rename(renamed)
 

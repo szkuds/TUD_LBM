@@ -13,6 +13,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
+from src.config.multiphase import multiphase_params
 from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import SNAPSHOT_GLOB
 from src.simulation_io.analysis.droplet_metrics._scales import MetricScales
@@ -299,7 +300,7 @@ def compute_droplet_series(
 
     Returns ``None`` on a capability failure — no parseable snapshots, or a
     config without the multiphase parameters needed to define an interface.
-    This function has no opinion about ``sim_type``; gating which runs get
+    This function has no opinion about the run's sections; gating which runs get
     analysed is the caller's decision.
     """
     scales = resolve_scales(config)
@@ -349,20 +350,17 @@ def _config_fingerprint(config: SimulationConfig) -> tuple[object, ...]:
     Anything absent here provably cannot affect the result, so including more
     would only cause spurious cache misses.
     """
-    chem = config.chemical_step_config
+    chem = config.chemical_step
+    params = multiphase_params(config)
     step_location = chem.get("chemical_step_location") if isinstance(chem, dict) else None
     # Via the same resolver the scales use, so a `[gravity_masked_force]` run's
-    # angle reaches the key. Reading `config.gravity_force` alone left every
+    # angle reaches the key. Reading `[gravity_force]` alone left every
     # masked-force run fingerprinted at None, colliding runs that differ only
     # in inclination.
     incl = inclination_angle_deg(config)
     return (
-        config.sim_type,
-        config.rho_l,
-        config.rho_v,
+        params,
         config.tau,
-        config.kappa,
-        config.interface_width,
         config.save_interval,
         tuple(config.grid_shape),
         config.init_dir,

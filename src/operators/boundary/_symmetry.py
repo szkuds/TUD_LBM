@@ -1,86 +1,34 @@
 """Mirror-symmetry boundary condition — pure function.
 
-Extracted from
-:class:`simulation_operators.boundary_condition.SymmetryBoundaryCondition`.
+Specular reflection: each population entering through the face is the one that
+left with its normal velocity component flipped. That population started the
+step one tangential velocity away, so it is rolled along the face. The normal
+momentum flux through the face is zero and the tangential momentum is kept,
+which is what a free-slip plane of symmetry means.
 
-For each symmetry edge, incoming distributions are replaced by
-mirrored distributions from the post-collision state.
+The roll wraps along the face. On a face whose tangential axis is periodic
+that is exact; where it meets a wall, the corner cells take the populations
+wrapped from the far end, and the BC of the perpendicular edge, applied later,
+overwrites the ones it owns.
+
+Before 2026-11-03 the top and bottom faces of a 2D lattice took each incoming
+diagonal from the mirror image in *both* axes, so they reversed the tangential
+velocity of the diagonals instead of keeping it: a uniform channel flow between
+two such faces fell from ``u = 0.05`` to ``0.006`` in 500 steps. The left and
+right faces mirrored correctly but did not roll the diagonals along the face.
 """
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import numpy as np
+from src.operators.boundary._faces import face_axis
+from src.operators.boundary._faces import face_cells
+from src.operators.boundary._faces import incoming_directions
 from src.registry import boundary_condition
 
 if TYPE_CHECKING:
     from src.lattice.lattice import Lattice
-
-# Diagonal component indices for streaming roll correction
-DIAGONAL_1_IDX = 1
-DIAGONAL_2_IDX = 2
-
-
-def _apply_bottom_symmetry(
-    f_streamed: jnp.ndarray,
-    f_collision: jnp.ndarray,
-    top_indices: list[int],
-    bot_indices: list[int],
-) -> jnp.ndarray:
-    """Apply mirror-symmetry at bottom edge (y=0)."""
-    for k in range(len(top_indices)):
-        dst = top_indices[k]
-        src = bot_indices[k]
-        f_streamed = f_streamed.at[:, 0, 0, dst, 0].set(f_collision[:, 0, 0, src, 0])
-    return f_streamed
-
-
-def _apply_top_symmetry(
-    f_streamed: jnp.ndarray,
-    f_collision: jnp.ndarray,
-    top_indices: list[int],
-    bot_indices: list[int],
-) -> jnp.ndarray:
-    """Apply mirror-symmetry at top edge (y=ny-1) with diagonal roll correction."""
-    for k in range(len(bot_indices)):
-        dst = bot_indices[k]
-        src = top_indices[k]
-        src_vals = f_collision[:, -1, 0, src, 0]
-        # Diagonal components need a roll correction for streaming shift
-        if k == DIAGONAL_1_IDX:
-            src_vals = jnp.roll(src_vals, 1, axis=0)
-        elif k == DIAGONAL_2_IDX:
-            src_vals = jnp.roll(src_vals, -1, axis=0)
-        f_streamed = f_streamed.at[:, -1, 0, dst, 0].set(src_vals)
-    return f_streamed
-
-
-def _apply_left_symmetry(
-    f_streamed: jnp.ndarray,
-    f_collision: jnp.ndarray,
-    right_indices: list[int],
-    left_indices: list[int],
-) -> jnp.ndarray:
-    """Apply mirror-symmetry at left edge (x=0)."""
-    for k in range(len(right_indices)):
-        dst = right_indices[k]
-        src = left_indices[k]
-        f_streamed = f_streamed.at[0, :, 0, dst, 0].set(f_collision[0, :, 0, src, 0])
-    return f_streamed
-
-
-def _apply_right_symmetry(
-    f_streamed: jnp.ndarray,
-    f_collision: jnp.ndarray,
-    right_indices: list[int],
-    left_indices: list[int],
-) -> jnp.ndarray:
-    """Apply mirror-symmetry at right edge (x=nx-1)."""
-    for k in range(len(left_indices)):
-        dst = left_indices[k]
-        src = right_indices[k]
-        f_streamed = f_streamed.at[-1, :, 0, dst, 0].set(f_collision[-1, :, 0, src, 0])
-    return f_streamed
 
 
 @boundary_condition(name="symmetry", pad_edge_mode="edge")
@@ -90,30 +38,31 @@ def apply_symmetry(
     lattice: Lattice,
     edge: str,
 ) -> jnp.ndarray:
-    """Apply mirror-symmetry BC on one edge.
+    """Reflect the populations leaving through *edge* specularly back into the domain.
 
     Args:
-        f_streamed: Post-streaming populations, shape ``(nx, ny, q, 1)``.
+        f_streamed: Post-streaming populations, shape ``(nx, ny, nz, q, 1)``.
         f_collision: Post-collision populations, same shape.
-        lattice: :class:`~setup.lattice.Lattice`.
-        edge: ``"top"``, ``"bottom"``, ``"left"``, or ``"right"``.
+        lattice: :class:`~src.lattice.lattice.Lattice`.
+        edge: A domain face; ``"front"`` and ``"back"`` exist on a 3D lattice.
 
     Returns:
         Updated populations with symmetry applied on *edge*.
     """
-    # Convert to plain Python ints for JAX compatibility under tracing
-    top = [int(x) for x in np.array(lattice.top_indices)]
-    bot = [int(x) for x in np.array(lattice.bottom_indices)]
-    right = [int(x) for x in np.array(lattice.right_indices)]
-    left = [int(x) for x in np.array(lattice.left_indices)]
-
-    if edge == "bottom":
-        return _apply_bottom_symmetry(f_streamed, f_collision, top, bot)
-    if edge == "top":
-        return _apply_top_symmetry(f_streamed, f_collision, top, bot)
-    if edge == "left":
-        return _apply_left_symmetry(f_streamed, f_collision, right, left)
-    if edge == "right":
-        return _apply_right_symmetry(f_streamed, f_collision, right, left)
-    msg = f"Unknown edge '{edge}'"
-    raise ValueError(msg)
+    axis = face_axis(edge)
+    directions = [tuple(int(v) for v in ci) for ci in np.array(lattice.c)[0, 0, 0]]
+    cells = face_cells(edge)
+    for dst in incoming_directions(lattice, edge):
+        mirrored = list(directions[dst])
+        mirrored[axis] = -mirrored[axis]
+        src = directions.index(tuple(mirrored))
+        tangential = [(ax, directions[src][ax]) for ax in range(lattice.d) if ax != axis and directions[src][ax] != 0]
+        reflected = f_collision[..., src, 0]
+        if tangential:
+            reflected = jnp.roll(
+                reflected,
+                shift=tuple(shift for _, shift in tangential),
+                axis=tuple(ax for ax, _ in tangential),
+            )
+        f_streamed = f_streamed.at[(*cells, dst, 0)].set(reflected[cells])
+    return f_streamed

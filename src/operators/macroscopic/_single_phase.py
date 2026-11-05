@@ -12,6 +12,7 @@ from src.registry import macroscopic_operator
 
 if TYPE_CHECKING:
     from src.lattice.lattice import Lattice
+    from src.protocols import DifferentialOperator
 
 #: Lattice speed of sound squared, shared by D2Q9 and D3Q19.
 CS2 = 1.0 / 3.0
@@ -22,6 +23,9 @@ def compute_macroscopic(
     f: jnp.ndarray,
     lattice: Lattice,
     force: jnp.ndarray | None = None,
+    *,
+    gradient_standard: DifferentialOperator | None = None,  # noqa: ARG001 - MacroscopicOperator shape
+    laplacian_density: DifferentialOperator | None = None,  # noqa: ARG001 - MacroscopicOperator shape
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray]:
     """Compute density, velocity and pressure from population distributions.
 
@@ -31,6 +35,8 @@ def compute_macroscopic(
         force: Optional external force field, shape ``(nx, ny, nz, 1, 2)``.
             When provided the velocity is corrected:
             ``u_eq = u + force / (2 rho)``.
+        gradient_standard: Unused; a single phase has no chemical potential.
+        laplacian_density: Unused; a single phase has no chemical potential.
 
     Returns:
         ``(rho, u, force, pressure)``; *force* is echoed back (``None`` when

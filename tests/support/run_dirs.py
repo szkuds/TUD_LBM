@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
 from src.config import SimulationConfig
+from tests.support.config import merge_overrides
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -27,27 +28,22 @@ NONUNIFORM_ITERATIONS = (5, 10, 30, 90)
 SAVE_INTERVAL = 5
 
 
-def wetting_config(**overrides: object) -> SimulationConfig:
+def wetting(**overrides: object) -> SimulationConfig:
     """Return a deterministic ``multiphase_wetting`` config for fixtures."""
     params: dict[str, object] = {
-        "sim_type": "multiphase_wetting",
+        "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.2, "interface_width": 2},
+        "forces": {"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0}},
         "simulation_name": "golden",
         "grid_shape": (GRID_NX, GRID_NY),
         "tau": 0.9,
         "nt": 20,
         "save_interval": SAVE_INTERVAL,
-        "eos": "double-well",
-        "kappa": 0.02,
-        "interface_width": 2,
-        "rho_l": 1.0,
-        "rho_v": 0.2,
-        "gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0},
         "initialisation": {"radii": [0.25], "centres": [[0.5, 0.5]]},
-        "wetting_config": {"advancing_ca": 100.0},
-        "bc_config": {"bottom": "wetting"},
+        "wetting": {"phi_left": 1.0},
+        "boundary_conditions": {"bottom": "wetting"},
         "plot_fields": ["density", "ca_theta_vs_x"],
     }
-    params.update(overrides)
+    merge_overrides(params, overrides)
     return SimulationConfig(**params)  # ty: ignore[invalid-argument-type]
 
 
@@ -109,14 +105,14 @@ def build_run_dir(
     Args:
         root: Directory to create the run inside.
         iterations: Iteration numbers to write snapshots for.
-        config: Config to serialise; defaults to :func:`wetting_config`.
+        config: Config to serialise; defaults to :func:`wetting`.
         with_contact_metrics: Passed through to :func:`write_snapshot`.
         write_config_toml: Whether to serialise ``config.toml`` into the run.
 
     Returns:
         Path to the created run directory.
     """
-    config = config if config is not None else wetting_config()
+    config = config if config is not None else wetting()
     run_dir = root / "run"
     data_dir = run_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)

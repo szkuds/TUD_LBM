@@ -12,6 +12,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from src.config.boundary import Edge
 
 # =====================================================================
 # Helpers — build a synthetic droplet rho_t_plus1 field
@@ -168,9 +169,9 @@ class TestEdgeGenericContactAngle:
         from src.operators.wetting._contact_angle import compute_contact_angle
 
         base = self._base_non_90()
-        ref_l, ref_r = compute_contact_angle(_place_on_edge(base, "bottom"), RHO_MEAN, edge="bottom")
+        ref_l, ref_r = compute_contact_angle(_place_on_edge(base, "bottom"), RHO_MEAN, edge=Edge.BOTTOM)
 
-        for edge in ("top", "left", "right"):
+        for edge in (Edge.TOP, Edge.LEFT, Edge.RIGHT):
             ca_l, ca_r = compute_contact_angle(_place_on_edge(base, edge), RHO_MEAN, edge=edge)
             np.testing.assert_allclose(float(ca_l), float(ref_l), atol=1e-6)
             np.testing.assert_allclose(float(ca_r), float(ref_r), atol=1e-6)
@@ -180,8 +181,8 @@ class TestEdgeGenericContactAngle:
         from src.operators.wetting._contact_angle import compute_contact_angle
 
         base = self._base_non_90()
-        ca_bottom, _ = compute_contact_angle(_place_on_edge(base, "bottom"), RHO_MEAN, edge="bottom")
-        ca_top, _ = compute_contact_angle(_place_on_edge(base, "top"), RHO_MEAN, edge="top")
+        ca_bottom, _ = compute_contact_angle(_place_on_edge(base, "bottom"), RHO_MEAN, edge=Edge.BOTTOM)
+        ca_top, _ = compute_contact_angle(_place_on_edge(base, "top"), RHO_MEAN, edge=Edge.TOP)
 
         # The geometry is non-90°, so the supplement differs from the true value.
         assert abs(float(ca_bottom) - 90.0) > 5.0
@@ -194,13 +195,13 @@ class TestEdgeGenericContactAngle:
 
         base = self._base_non_90()
         rho_b = _place_on_edge(base, "bottom")
-        ca_l, ca_r = compute_contact_angle(rho_b, RHO_MEAN, edge="bottom")
-        ref_l, ref_r = compute_contact_line_location(rho_b, ca_l, ca_r, RHO_MEAN, edge="bottom")
+        ca_l, ca_r = compute_contact_angle(rho_b, RHO_MEAN, edge=Edge.BOTTOM)
+        ref_l, ref_r = compute_contact_line_location(rho_b, ca_l, ca_r, RHO_MEAN, edge=Edge.BOTTOM)
 
         # Bottom/top share the x tangential axis; the CLL values are identical.
         rho_t = _place_on_edge(base, "top")
-        ca_l_t, ca_r_t = compute_contact_angle(rho_t, RHO_MEAN, edge="top")
-        cll_l_t, cll_r_t = compute_contact_line_location(rho_t, ca_l_t, ca_r_t, RHO_MEAN, edge="top")
+        ca_l_t, ca_r_t = compute_contact_angle(rho_t, RHO_MEAN, edge=Edge.TOP)
+        cll_l_t, cll_r_t = compute_contact_line_location(rho_t, ca_l_t, ca_r_t, RHO_MEAN, edge=Edge.TOP)
         np.testing.assert_allclose(float(cll_l_t), float(ref_l), atol=1e-6)
         np.testing.assert_allclose(float(cll_r_t), float(ref_r), atol=1e-6)
 
@@ -210,7 +211,7 @@ class TestEdgeGenericContactAngle:
 
         rho = _place_on_edge(self._base_non_90(), "bottom")
         default = compute_contact_angle(rho, RHO_MEAN)
-        explicit = compute_contact_angle(rho, RHO_MEAN, edge="bottom")
+        explicit = compute_contact_angle(rho, RHO_MEAN, edge=Edge.BOTTOM)
         np.testing.assert_allclose(float(default[0]), float(explicit[0]), atol=1e-12)
         np.testing.assert_allclose(float(default[1]), float(explicit[1]), atol=1e-12)
 
@@ -461,17 +462,12 @@ class TestUpdateWettingState:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase_hysteresis",
-            bc_config={"bottom": "wetting"},
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": RHO_L, "rho_v": RHO_V, "interface_width": 4},
+            boundary_conditions={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
-            hysteresis_config={
+            hysteresis={
                 "ca_advancing": 120.0,
                 "ca_receding": 60.0,
                 "learning_rate": 0.01,
@@ -503,7 +499,7 @@ class TestUpdateWettingState:
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
         assert isinstance(new_wetting, WettingState)
 
     def test_ca_fields_updated(self):
@@ -514,7 +510,7 @@ class TestUpdateWettingState:
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
         # ca_left and ca_right should reflect the actual droplet angles
         # measured by compute_contact_angle (not the initial placeholder)
         expected_ca_l, expected_ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -536,7 +532,7 @@ class TestUpdateWettingState:
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
         # CLL should reflect actual droplet footprint
         assert float(new_wetting.cll_left) < float(new_wetting.cll_right)
 
@@ -547,7 +543,7 @@ class TestUpdateWettingState:
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
         assert 0.0 <= float(new_wetting.d_rho_left) <= 0.25
         assert 0.0 <= float(new_wetting.d_rho_right) <= 0.25
         assert 1.0 <= float(new_wetting.phi_left) <= 1.5
@@ -561,7 +557,7 @@ class TestUpdateWettingState:
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
         for field_name in WettingState._fields[:8]:  # skip opt_state
             val = getattr(new_wetting, field_name)
             if val is not None:
@@ -573,17 +569,12 @@ class TestUpdateWettingState:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase_hysteresis",
-            bc_config={"bottom": "wetting"},
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": RHO_L, "rho_v": RHO_V, "interface_width": 4},
+            boundary_conditions={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
-            hysteresis_config={
+            hysteresis={
                 "ca_advancing": 120.0,
                 "ca_receding": 60.0,
                 "learning_rate": 0.05,
@@ -609,7 +600,9 @@ class TestUpdateWettingState:
             rho_out = jnp.full_like(rho, params.phi_right)
             return rho, rho_out
 
-        new_wetting = hysteresis_module.update_wetting_state(wetting, rho, setup, trial_step_fn=trial_step_fn)
+        new_wetting = hysteresis_module.update_wetting_state(
+            wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=trial_step_fn
+        )
 
         assert not np.isclose(float(new_wetting.phi_right), float(wetting.phi_right))
         assert float(new_wetting.phi_right) > float(wetting.phi_right)
@@ -632,7 +625,9 @@ class TestUpdateWettingState:
             lambda rho_in, ca_l, ca_r, rho_mean, **_: (jnp.array(20.0), jnp.array(52.0)),
         )
 
-        new_wetting = hysteresis_module.update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+        new_wetting = hysteresis_module.update_wetting_state(
+            wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho)
+        )
 
         np.testing.assert_allclose(float(new_wetting.cll_left), float(wetting.cll_left), atol=1e-6)
         np.testing.assert_allclose(float(new_wetting.cll_right), float(wetting.cll_right), atol=1e-6)
@@ -662,7 +657,9 @@ class TestUpdateWettingState:
             lambda rho_in, ca_l, ca_r, rho_mean, **_: (jnp.array(measured_left), jnp.array(53.0)),
         )
 
-        new_wetting = hysteresis_module.update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+        new_wetting = hysteresis_module.update_wetting_state(
+            wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho)
+        )
 
         np.testing.assert_allclose(float(new_wetting.cll_left), expected_anchor, atol=1e-6)
         np.testing.assert_allclose(float(new_wetting.cll_right), float(wetting.cll_right), atol=1e-6)
@@ -673,23 +670,18 @@ class TestUpdateWettingState:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase_hysteresis",
-            bc_config={"bottom": "wetting"},
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": RHO_L, "rho_v": RHO_V, "interface_width": 4},
+            boundary_conditions={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
-            hysteresis_config={
+            hysteresis={
                 "ca_advancing": 120.0,
                 "ca_receding": 60.0,
                 "learning_rate": 0.05,
                 "max_iterations": 10,
             },
-            chemical_step_config={
+            chemical_step={
                 "chemical_step_location": 0.5,
                 "ca_advancing_pre_step": 120.0,
                 "ca_receding_pre_step": 60.0,
@@ -720,46 +712,11 @@ class TestUpdateWettingState:
             wetting,
             rho,
             setup,
+            edge=Edge.BOTTOM,
             trial_step_fn=trial_step_fn,
         )
 
         assert not np.isclose(float(new_wetting.phi_right), float(wetting.phi_right))
-
-    def test_setup_selects_chemical_step_wetting_operator(self):
-        from src.config.simulation_config import SimulationConfig
-        from src.pipeline.setup import build_setup
-
-        cfg = SimulationConfig(
-            sim_type="multiphase_hysteresis_chemical_step",
-            bc_config={"bottom": "wetting"},
-            grid_shape=(NX, NY),
-            tau=0.99,
-            nt=5,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
-            hysteresis_config={
-                "ca_advancing": 120.0,
-                "ca_receding": 60.0,
-                "learning_rate": 0.01,
-                "max_iterations": 5,
-            },
-            chemical_step_config={
-                "chemical_step_location": 0.5,
-                "ca_advancing_pre_step": 120.0,
-                "ca_receding_pre_step": 60.0,
-                "ca_advancing_post_step": 90.0,
-                "ca_receding_post_step": 50.0,
-            },
-        )
-
-        setup = build_setup(cfg)
-
-        assert setup.wetting_fn is not None
-        assert setup.wetting_fn.__name__ == "update_wetting_state_chemical_step"  # ty: ignore[unresolved-attribute]
-        assert setup.config.wetting_config is not None
 
 
 class TestUpdateWettingStateBubble:
@@ -777,28 +734,23 @@ class TestUpdateWettingStateBubble:
         from src.config.simulation_config import SimulationConfig
         from src.pipeline.setup import build_setup
 
-        hysteresis_config = {
+        hysteresis = {
             "ca_advancing": ca_advancing,
             "ca_receding": ca_receding,
             "learning_rate": 0.05,
             "max_iterations": 10,
         }
         if loss_tol is not None:
-            hysteresis_config["loss_tol"] = loss_tol
+            hysteresis["loss_tol"] = loss_tol
         if saturation_gap is not None:
-            hysteresis_config["saturation_gap"] = saturation_gap
+            hysteresis["saturation_gap"] = saturation_gap
         cfg = SimulationConfig(
-            sim_type="multiphase_hysteresis",
-            bc_config={"bottom": "wetting"},
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": RHO_L, "rho_v": RHO_V, "interface_width": 4},
+            boundary_conditions={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=5,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
-            hysteresis_config=hysteresis_config,
+            hysteresis=hysteresis,
         )
         return build_setup(cfg)
 
@@ -853,7 +805,7 @@ class TestUpdateWettingStateBubble:
         rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
 
         assert isinstance(new_wetting, WettingState)
         for field_name in WettingState._fields[:8]:
@@ -868,7 +820,7 @@ class TestUpdateWettingStateBubble:
         rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
 
         assert 0.0 <= float(new_wetting.d_rho_left) <= 1.5 / 4
         assert 0.0 <= float(new_wetting.d_rho_right) <= 1.5 / 4
@@ -882,7 +834,7 @@ class TestUpdateWettingStateBubble:
         rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
         assert float(new_wetting.cll_left) < float(new_wetting.cll_right)
 
     # ── the directional assertions: which knob gets selected ─────────────
@@ -924,7 +876,7 @@ class TestUpdateWettingStateBubble:
         self._pin_measurements(monkeypatch, hysteresis_module, ca)
 
         new_wetting = hysteresis_module.update_wetting_state(
-            self._make_wetting_state(), rho, setup, trial_step_fn=lambda p: (rho, rho)
+            self._make_wetting_state(), rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho)
         )
         (self._assert_phi_selected if expected == "phi" else self._assert_d_rho_selected)(new_wetting)
 
@@ -955,7 +907,7 @@ class TestUpdateWettingStateBubble:
             ("bubble", _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)),
         ):
             new_wetting = hysteresis_module.update_wetting_state(
-                wetting, rho, setup, trial_step_fn=lambda p, r=rho: (r, r)
+                wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p, r=rho: (r, r)
             )
             # phi snapped to neutral == d_rho was the selected knob.
             selected[label] = "d_rho" if float(new_wetting.phi_right) == 1.0 else "phi"
@@ -1007,7 +959,7 @@ class TestUpdateWettingStateBubble:
         wetting = self._make_wetting_state()
 
         new_wetting = hysteresis_module.update_wetting_state(
-            wetting, rho, setup, trial_step_fn=self._knob_encoding_trial_step(rho)
+            wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=self._knob_encoding_trial_step(rho)
         )
 
         # phi was selected, drove itself to the floor, and the fallback then
@@ -1027,7 +979,7 @@ class TestUpdateWettingStateBubble:
         wetting = self._make_wetting_state(phi_right=jnp.array(1.0))
 
         new_wetting = hysteresis_module.update_wetting_state(
-            wetting, rho, setup, trial_step_fn=self._knob_encoding_trial_step(rho)
+            wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=self._knob_encoding_trial_step(rho)
         )
 
         np.testing.assert_allclose(float(new_wetting.phi_right), 1.0, atol=1e-6)
@@ -1042,7 +994,7 @@ class TestUpdateWettingStateBubble:
 
 
 class TestStepMultiphaseWithWetting:
-    """``step_multiphase`` correctly propagates WettingState."""
+    """``step`` carries the wetting addon's substate, ``State.ext["wetting"]``."""
 
     @staticmethod
     def _setup_and_state():
@@ -1053,17 +1005,12 @@ class TestStepMultiphaseWithWetting:
         from src.pipeline.state import WettingState
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
-            bc_config={"bottom": "wetting"},
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": RHO_L, "rho_v": RHO_V, "interface_width": 4},
+            boundary_conditions={"bottom": "wetting"},
             grid_shape=(NX, NY),
             tau=0.99,
             nt=3,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
-            wetting_config={
+            wetting={
                 "phi_left": 1.0,
                 "phi_right": 1.0,
                 "d_rho_left": 0.0,
@@ -1079,7 +1026,6 @@ class TestStepMultiphaseWithWetting:
         feq = compute_equilibrium(rho, u, lattice)
         state = init_state(setup, f=feq)
 
-        # Attach a WettingState
         wetting = WettingState(
             phi_left=jnp.array(1.2),
             phi_right=jnp.array(1.2),
@@ -1090,94 +1036,61 @@ class TestStepMultiphaseWithWetting:
             cll_left=jnp.array(16.0),
             cll_right=jnp.array(48.0),
         )
-        state = state._replace(wetting=wetting)
+        state = state._replace(ext=state.ext | {"wetting": wetting})
         return setup, state
 
     def test_wetting_state_propagated(self):
-        from src.operators.step import build_step_fn
         from src.pipeline.state import WettingState
+        from src.pipeline.step import step
 
-        step_multiphase = build_step_fn("multiphase")
         setup, state = self._setup_and_state()
-        new_state = step_multiphase(setup, state)
+        new_state = step(setup, state)
 
-        assert new_state.wetting is not None
-        assert isinstance(new_state.wetting, WettingState)
+        assert isinstance(new_state.ext["wetting"], WettingState)
+
+    def test_fixed_wetting_keeps_its_wall_and_remeasures_its_angles(self):
+        from src.pipeline.step import step
+
+        setup, state = self._setup_and_state()
+        before = state.ext["wetting"]
+        after = step(setup, state).ext["wetting"]
+
+        for name in ("phi_left", "phi_right", "d_rho_left", "d_rho_right"):
+            assert float(getattr(after, name)) == float(getattr(before, name))
+        assert float(after.ca_left) != float(before.ca_left)  # measured off the droplet, not the seeded 90
 
     def test_step_increments_t(self):
-        from src.operators.step import build_step_fn
+        from src.pipeline.step import step
 
-        step_multiphase = build_step_fn("multiphase")
         setup, state = self._setup_and_state()
-        new_state = step_multiphase(setup, state)
+        new_state = step(setup, state)
         assert int(new_state.t) == 1
 
     def test_wetting_fields_no_nan(self):
-        from src.operators.step import build_step_fn
+        from src.pipeline.step import step
 
-        step_multiphase = build_step_fn("multiphase")
         setup, state = self._setup_and_state()
-        new_state = step_multiphase(setup, state)
+        new_state = step(setup, state)
 
-        for field_name in (
-            "d_rho_left",
-            "d_rho_right",
-            "phi_left",
-            "phi_right",
-            "ca_left",
-            "ca_right",
-            "cll_left",
-            "cll_right",
-        ):
-            val = getattr(new_state.wetting, field_name)
+        for field_name, val in new_state.ext["wetting"]._asdict().items():
             assert not jnp.isnan(val).any(), f"NaN in wetting.{field_name}"
 
-    def test_without_wetting_state_unchanged(self):
-        """When wetting is None, step should not fail."""
+    def test_without_wetting_the_state_has_no_substate(self):
         from src.config.simulation_config import SimulationConfig
-        from src.operators.step import build_step_fn
         from src.pipeline.runner import init_state
         from src.pipeline.setup import build_setup
+        from src.pipeline.step import step
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": RHO_L, "rho_v": RHO_V, "interface_width": 4},
             grid_shape=(16, 16),
             tau=0.99,
             nt=3,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=RHO_L,
-            rho_v=RHO_V,
-            interface_width=4,
         )
         setup = build_setup(cfg)
         state = init_state(setup)
-        assert state.wetting is None
+        assert state.ext == {}
 
-        step_multiphase = build_step_fn("multiphase")
-        new_state = step_multiphase(setup, state)
-        assert new_state.wetting is None
-        assert int(new_state.t) == 1
-
-
-# =====================================================================
-# Backward compat: legacy tests still pass
-# =====================================================================
-
-
-class TestFunctionalStep:
-    """Phase 3 functional API should still pass."""
-
-    def test_functional_step(self):
-        from src.config.simulation_config import SimulationConfig
-        from src.operators.step import build_step_fn
-        from src.pipeline.runner import init_state
-        from src.pipeline.setup import build_setup
-
-        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        setup = build_setup(cfg)
-        state = init_state(setup)
-
-        step_single_phase = build_step_fn("single_phase")
-        new_state = step_single_phase(setup, state)
+        new_state = step(setup, state)
+        assert new_state.ext == {}
         assert int(new_state.t) == 1

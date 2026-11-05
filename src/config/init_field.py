@@ -2,7 +2,7 @@
 
 Part of the configuration rather than the analysis layer: the phase densities
 measured here are a property of the run's input, consumed both by the
-configuration (:attr:`SimulationConfig.phase_references`, which bands the
+configuration (:func:`~src.config.multiphase.phase_references`, which bands the
 masked-gravity force) and by ``physical_parameters`` (the reported Bond and
 Archimedes numbers). Keeping one reader under ``config`` lets the force and
 the report share it without the configuration importing ``simulation_io``.
@@ -144,8 +144,7 @@ def measure_field(rho: np.ndarray) -> InitField | None:
 def measure_init_phase_densities(config: SimulationConfig) -> tuple[float, float] | None:
     """Return ``(rho_min, rho_max)`` measured off the run's init NPZ, or None.
 
-    :attr:`SimulationConfig.phase_references
-    <src.config.simulation_config.SimulationConfig.phase_references>` bands the
+    :func:`~src.config.multiphase.phase_references` bands the
     masked-gravity phase indicator on these, and ``physical_parameters.txt``
     reports the buoyancy contrast off the same :func:`load_init_field`, so the
     contrast a run injects and the one its Bond number quotes cannot diverge.

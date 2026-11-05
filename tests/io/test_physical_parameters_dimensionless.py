@@ -14,25 +14,21 @@ from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import arc
 from src.simulation_io.analysis.physical_parameters.numbers._buoyancy import reynolds_number
 from src.simulation_io.analysis.physical_parameters.numbers._ohnesorge import ohnesorge_number
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _nu
+from tests.support.config import merge_overrides
 
 
 def _mp_config(**kwargs) -> SimulationConfig:
     base = {
-        "sim_type": "multiphase",
+        "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
+        "forces": {"gravity_force": {"force_g": 1e-6}},
         "grid_shape": (40, 20),
-        "eos": "double-well",
-        "kappa": 0.02,
-        "rho_l": 1.0,
-        "rho_v": 0.5,
-        "interface_width": 2,
-        "gravity_force": {"force_g": 1e-6},
     }
-    base.update(kwargs)
+    merge_overrides(base, kwargs)
     return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
 def test_ohnesorge_number_matches_hand_computed_value():
-    cfg = _mp_config(tau=0.8, rho_l=1.0)
+    cfg = _mp_config(multiphase={"rho_l": 1.0}, tau=0.8)
     inputs = resolve_dimensionless_inputs(cfg)
     assert inputs is not None
 
@@ -66,7 +62,7 @@ def test_compute_bond_numbers_zero_angle_has_no_parallel_component():
 
 
 def test_compute_dimensionless_numbers_resolves_all_fields_when_inputs_available():
-    cfg = _mp_config(gravity_masked_force=None, gravity_force={"force_g": 1e-6, "inclination_angle_deg": 30.0})
+    cfg = _mp_config(forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0}})
 
     dn = compute_dimensionless_numbers(cfg)
 
@@ -87,7 +83,7 @@ def test_only_the_gravity_driven_numbers_are_none_without_gravity():
     Every number used to be dropped together, which contradicted the overview
     file — it printed the Oh row for exactly these configs.
     """
-    cfg = _mp_config(gravity_force=None)
+    cfg = _mp_config(forces={})
 
     dn = compute_dimensionless_numbers(cfg)
 
@@ -97,11 +93,11 @@ def test_only_the_gravity_driven_numbers_are_none_without_gravity():
     assert dn.inclination_deg is None
 
 
-_CS_EOS_PARAMS = {"a_eos": 1.0, "b_eos": 4.0, "r_eos": 1.0, "t_eos": 0.07}
+_CS_EOS = {"eos": "carnahan-starling", "a_eos": 1.0, "b_eos": 4.0, "r_eos": 1.0, "t_eos": 0.07}
 
 
 def test_compute_dimensionless_numbers_all_none_for_calibration_only_eos_without_measurement():
-    cfg = _mp_config(eos="carnahan-starling", **_CS_EOS_PARAMS)
+    cfg = _mp_config(multiphase=_CS_EOS)
 
     dn = compute_dimensionless_numbers(cfg)
 
@@ -110,7 +106,7 @@ def test_compute_dimensionless_numbers_all_none_for_calibration_only_eos_without
 
 
 def test_compute_dimensionless_numbers_uses_measured_surface_tension():
-    cfg = _mp_config(eos="carnahan-starling", extra={"surface_tension": 0.002}, **_CS_EOS_PARAMS)
+    cfg = _mp_config(multiphase=_CS_EOS, extra={"surface_tension": 0.002})
 
     dn = compute_dimensionless_numbers(cfg)
 
@@ -119,7 +115,7 @@ def test_compute_dimensionless_numbers_uses_measured_surface_tension():
 
 
 def test_format_rows_unchanged_after_refactor():
-    cfg = _mp_config(gravity_force={"force_g": 1e-6, "inclination_angle_deg": 30.0})
+    cfg = _mp_config(forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0}})
 
     text = build_overview(cfg)
 
@@ -160,7 +156,7 @@ def test_laplace_number_is_the_reciprocal_square_of_ohnesorge():
     Both are built from the same :class:`DimensionlessInputs`, so this holds by
     construction rather than by coincidence of parameters.
     """
-    cfg = _mp_config(tau=0.8, gravity_force={"force_g": 1e-6, "inclination_angle_deg": 30.0})
+    cfg = _mp_config(forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0}}, tau=0.8)
 
     dn = compute_dimensionless_numbers(cfg)
 

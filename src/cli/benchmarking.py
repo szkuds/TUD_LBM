@@ -21,6 +21,7 @@ separate configs, so the differences are attributable.  See
 """
 
 from __future__ import annotations
+import dataclasses
 import json
 import os
 import platform
@@ -35,12 +36,15 @@ import jax
 import jax.numpy as jnp
 from src.cli._console import console
 from src.cli.display import BOLD_CYAN
+from src.config.multiphase import is_multiphase
+from src.config.multiphase import multiphase_params
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from src.config import SimulationConfig
     from src.pipeline.setup import SimulationSetup
     from src.pipeline.state.state import State
+    from src.protocols import PostStepHook
 
 #: Sub-directory of ``results_dir`` that JSON records are written to.  Never
 #: inside the repo — ``results_dir`` defaults to ``TUD_LBM_DATA_DIR``.
@@ -167,14 +171,15 @@ def _environment() -> dict[str, Any]:
 
 def _fingerprint(config: SimulationConfig) -> dict[str, Any]:
     """Capture the config fields that determine how much work a step is."""
-    hysteresis = config.hysteresis_config or {}
+    hysteresis = config.hysteresis or {}
+    params = multiphase_params(config)
     return {
         "simulation_name": config.simulation_name,
-        "sim_type": config.sim_type,
+        "phase": "multiphase" if params is not None else "single_phase",
         "grid_shape": list(config.grid_shape),
         "lattice_type": config.lattice_type,
         "collision_scheme": config.collision_scheme,
-        "eos": config.eos,
+        "eos": None if params is None else params.eos,
         "tau": config.tau,
         "max_iterations": hysteresis.get("max_iterations"),
         "trial_steps": hysteresis.get("trial_steps"),
@@ -204,18 +209,11 @@ def _make_stepper(
 
     Returns:
         A jitted callable taking the initial state and returning the final one.
-
-    Raises:
-        TypeError: If *setup* has no ``step_fn``.
     """
     from src.pipeline.runner import _make_scan_body
+    from src.pipeline.step import step
 
-    step_fn = setup.step_fn
-    if step_fn is None:
-        msg = "step_fn is required in SimulationSetup to benchmark it"
-        raise TypeError(msg)
-
-    body = _make_scan_body(partial(step_fn, setup), do_save=do_save, collect=False)
+    body = _make_scan_body(partial(step, setup), do_save=do_save, collect=False)
 
     def stepper(state: State) -> State:
         final_state, _ = jax.lax.scan(body, state, jnp.arange(steps))
@@ -323,25 +321,33 @@ def _static_analysis(compiled: Any) -> tuple[dict[str, Any] | None, dict[str, An
 # ── Ablation ─────────────────────────────────────────────────────────
 
 
+def _with_wetting_post_step(setup: SimulationSetup, post_step: PostStepHook | None) -> SimulationSetup:
+    """*setup* with the wetting addon's ``post_step`` slot replaced by *post_step*."""
+    from src.addons._wetting import NAME as WETTING
+
+    addons = tuple(
+        (name, dataclasses.replace(hooks, post_step=post_step) if name == WETTING else hooks)
+        for name, hooks in setup.addons
+    )
+    return setup._replace(addons=addons)
+
+
 def _breakdown_variants(setup: SimulationSetup) -> list[tuple[str, SimulationSetup, str]]:
     """Build the ablation ladder below the configured step, cheapest last.
 
     Each rung removes exactly one layer from the *same* setup, so successive
     differences in wall time attribute cost to that layer:
 
-    * ``no_optimiser`` — ``wetting_fn=None``.  ``WettingExtraStatePlugin.update_state``
-      returns early on that, so the Adam/AD hysteresis optimiser — and with it
-      ``_trial_step``'s chained ``_multiphase_pipeline`` passes — never enters
-      the graph.  Nothing else changes.
-    * ``plain_step`` — additionally swaps in the plain ``multiphase`` step
-      operator, dropping the per-step contact-angle/contact-line measurement and
-      the live re-binding of wetting parameters.  Note the wetting *correction*
-      itself survives: it is baked into ``gradient_density``/``laplacian_density``
-      at setup time (``build_diff_ops``), so this rung is not "wetting off".
+    * ``no_optimiser`` — the wetting addon's ``post_step`` becomes the
+      measurement-only hook a fixed-wetting run uses, so the Adam/AD hysteresis
+      optimiser — and with it its chained trial passes of the kernel — never
+      enters the graph. Nothing else changes.
+    * ``no_measurement`` — additionally drops that hook, and with it the per-step
+      contact-angle/contact-line measurement. The wetting wall itself survives:
+      it is the addon's ``ghost_fill``, so this rung is not "wetting off".
 
-    Rungs identical to the configured setup are omitted, so a plain
-    ``multiphase`` config yields an empty ladder and a single-phase config never
-    reaches here.
+    Rungs identical to the configured setup are omitted, so a run without
+    wetting yields an empty ladder and a single-phase config never reaches here.
 
     Args:
         setup: The setup as configured.
@@ -349,31 +355,28 @@ def _breakdown_variants(setup: SimulationSetup) -> list[tuple[str, SimulationSet
     Returns:
         ``(label, ablated_setup, what_it_removes)`` triples.
     """
-    from src.operators.step import build_step_fn
+    from src.addons._wetting import NAME as WETTING
+    from src.addons._wetting import build_measurement_hook
 
-    if not setup.config.is_multiphase:
+    if not is_multiphase(setup.config) or WETTING not in dict(setup.addons):
         return []
 
     variants: list[tuple[str, SimulationSetup, str]] = []
-
-    if setup.wetting_fn is not None:
+    if setup.config.hysteresis is not None:
         variants.append(
             (
                 "no_optimiser",
-                setup._replace(wetting_fn=None),
+                _with_wetting_post_step(setup, build_measurement_hook(setup.config)),
                 "hysteresis Adam/AD optimiser",
             )
         )
-
-    if setup.config.sim_type != "multiphase":
-        variants.append(
-            (
-                "plain_step",
-                setup._replace(wetting_fn=None, step_fn=build_step_fn("multiphase")),
-                "contact-angle/contact-line measurement",
-            )
+    variants.append(
+        (
+            "no_measurement",
+            _with_wetting_post_step(setup, None),
+            "contact-angle/contact-line measurement",
         )
-
+    )
     return variants
 
 
@@ -523,7 +526,7 @@ def _render(result: BenchmarkResult) -> None:
     )
     cfg = result.config
     console.print(
-        f"[dim]{cfg['sim_type']} · grid {cfg['grid_shape']} · {cfg['lattice_type']}/{cfg['collision_scheme']}[/dim]"
+        f"[dim]{cfg['phase']} · grid {cfg['grid_shape']} · {cfg['lattice_type']}/{cfg['collision_scheme']}[/dim]"
     )
     console.print()
     _render_phases(result)
@@ -681,6 +684,7 @@ def _measure_io(
     written; otherwise the measurement would price the token threading alone and
     silently omit the device-to-host copy.
     """
+    from src.pipeline.step import observe
     from src.simulation_io import SimulationIO
     from src.simulation_io.callbacks import make_save_callback
 
@@ -696,6 +700,7 @@ def _measure_io(
     )
     do_save = make_save_callback(
         io_handler,
+        partial(observe, setup),
         save_interval=save_interval,
         skip_interval=0,
         save_fields=tuple(config.save_fields) if config.save_fields else None,

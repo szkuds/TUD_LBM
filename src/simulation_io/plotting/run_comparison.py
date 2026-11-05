@@ -169,12 +169,11 @@ def _load_comparison_entries(parent_dir: Path, label_keys: Sequence[str] | None 
         if config is None:
             continue
 
-        adv_ca = config.wetting_config.get("advancing_ca", 0) if config.wetting_config else 0
         entries.append(
             {
                 "name": config.simulation_name or _clean_dir_label(run_dir.name),
                 "numbers": compute_dimensionless_numbers(config),
-                "sort_key": adv_ca,
+                "sort_key": 0,
                 "data": pd.read_csv(csv_path),
             }
         )

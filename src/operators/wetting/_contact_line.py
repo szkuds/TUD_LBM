@@ -9,6 +9,7 @@ All operations are JAX-compatible and jittable.
 
 from __future__ import annotations
 import jax.numpy as jnp
+from src.config.boundary import Edge
 from src.operators.wetting._canonical_view import to_canonical
 from src.operators.wetting._interface_crossings import interface_crossings
 
@@ -19,7 +20,7 @@ def compute_contact_line_location(
     ca_right: jnp.ndarray,
     rho_mean: float | jnp.ndarray,
     *,
-    edge: str = "bottom",
+    edge: Edge = Edge.BOTTOM,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Compute contact-line locations at the solid wall.
 

@@ -19,7 +19,7 @@ from src.simulation_io.plotting._contact_line_speed_plot import ContactLineSpeed
 from src.simulation_io.plotting._contact_line_speed_plot import ContactLineSpeedsPairPlot
 from src.simulation_io.plotting._scalar_history_plot import DensityRatioPlot
 from tests.support.run_dirs import build_run_dir
-from tests.support.run_dirs import wetting_config
+from tests.support.run_dirs import wetting
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -61,7 +61,7 @@ def test_render_scatter_empty_state_writes_placeholder():
 
 def test_contact_line_speed_left_single_snapshot_returns_zero(tmp_path: Path):
     """One snapshot has no predecessor, so its speed is 0.0 rather than undefined."""
-    config = wetting_config()
+    config = wetting()
     run_dir = build_run_dir(tmp_path, iterations=(5,), config=config)
     files = sorted((run_dir / "data").glob("timestep_*.npz"))
 
@@ -142,22 +142,17 @@ def test_empty_message_and_config_resolvers_cover_branches():
     assert "Requires" in msg
 
     cfg = SimulationConfig(
-        sim_type="multiphase",
+        multiphase={"eos": "double-well", "kappa": 0.12, "rho_l": 1.0, "rho_v": 0.2, "interface_width": 4},
         grid_shape=(20, 10, 1),
         tau=0.9,
         nt=2,
-        eos="double-well",
-        kappa=0.12,
-        interface_width=4,
-        rho_l=1.0,
-        rho_v=0.2,
         initialisation={"radii": [0.5]},
-        chemical_step_config={"chemical_step_location": 0.25},
+        chemical_step={"chemical_step_location": 0.25},
     )
     assert analytical_sigma_lg(cfg) is not None
     assert resolve_step_x(cfg) == 5.0
 
-    cfg_no_step = SimulationConfig(grid_shape=(8, 8, 1), tau=0.8, nt=2, chemical_step_config={})
+    cfg_no_step = SimulationConfig(grid_shape=(8, 8, 1), tau=0.8, nt=2, chemical_step={})
     assert resolve_step_x(cfg_no_step) is None
 
 

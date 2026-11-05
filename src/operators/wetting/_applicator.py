@@ -14,13 +14,13 @@ from src.operators.wetting._edge_config import _resolve_wetting_edges
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from src.config.chemical_step import ChemicalStepWall
+    from src.config.wetting import ChemicalStepWall
 
 
 def build_wetting_applicator(
     rho_l: float,
     rho_v: float,
-    bc_config: dict[str, Any] | None = None,
+    boundary_conditions: dict[str, Any] | None = None,
     step: ChemicalStepWall | None = None,
 ) -> Callable[..., jnp.ndarray]:
     """Build a wetting ghost-cell applicator with baked-in static parameters.
@@ -28,10 +28,10 @@ def build_wetting_applicator(
     Args:
         rho_l: Liquid density.
         rho_v: Vapour density.
-        bc_config: Boundary-condition config dict, e.g.
+        boundary_conditions: Boundary-condition config dict, e.g.
             ``{"bottom": "wetting", "top": "bounce-back", ...}``.
             ``None`` defaults to bottom-only wetting.
-        step: The chemical-step wall (``SimulationConfig.chemical_step_wall``),
+        step: The chemical-step wall (``src.config.wetting.chemical_step_wall``),
             or ``None``. Splits the modification on its edge by surface.
 
     Returns:
@@ -39,10 +39,10 @@ def build_wetting_applicator(
     """
     _rho_l = jnp.array(float(rho_l))
     _rho_v = jnp.array(float(rho_v))
-    _bc_config = bc_config if bc_config is not None else {}
+    _edges = boundary_conditions if boundary_conditions is not None else {}
 
     # Pre-compute which edges need wetting and their perpendicular BC types.
-    _edges = _resolve_wetting_edges(_bc_config)
+    _edges = _resolve_wetting_edges(_edges)
 
     def apply(
         grid_padded: jnp.ndarray,

@@ -2,7 +2,7 @@
 
 Public API: build_initialise_fn()
 
-Implementation modules (_standard.py, _multiphase_bubble.py, ...) are internal;
+Implementation modules (_standard.py, _multiphase.py, ...) are internal;
 use the factory to access.
 
 Example:
@@ -18,7 +18,7 @@ from src.operators._loader import auto_load_operators
 from src.registry import get_operators
 
 if TYPE_CHECKING:
-    from src.operators.protocols import InitialiserOperator
+    from src.protocols import InitialiserOperator
 
 # Auto-discover and import private operator modules for registry registration.
 auto_load_operators("src.operators.initialise")
@@ -28,7 +28,7 @@ def build_initialise_fn(scheme: str = "standard") -> InitialiserOperator:
     """Return an initialisation operator satisfying InitialiserOperator protocol.
 
     Args:
-        scheme: Initialisation type name ("standard", "multiphase_bubble", ...).
+        scheme: Initialisation type name ("standard", "multiphase_bubbles", ...).
                 Defaults to "standard".
 
     Returns:

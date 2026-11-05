@@ -39,21 +39,19 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from typing import Literal
 import numpy as np
+from src.config.boundary import Edge
+from src.config.boundary import pad_modes
+from src.config.multiphase import phase_references
+from src.config.wetting import ContactLine
+from src.config.wetting import wall_rho_mean
 from src.simulation_io.analysis.droplet_metrics._snapshot import to_canonical_2d
-from src.simulation_io.analysis.interface_contour import config_rho_mean
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from numpy.typing import ArrayLike
     from src.config import SimulationConfig
     from src.operators.wetting._wetting_modification import WettingRegion
-
-Side = Literal["left", "right"]
-
-#: The two contact lines, in the ascending tangential order the solver anchors them in.
-SIDES: tuple[Side, Side] = ("left", "right")
 
 #: Canonical normal coordinate of the solid surface: half a cell below the wall row.
 WALL_NORMAL = -0.5
@@ -71,7 +69,7 @@ _LABEL_RADIUS = 1.8
 class SideBand:
     """One contact line's modified cells, anchor and density bounds."""
 
-    side: Side
+    side: ContactLine
     cells: np.ndarray
     anchor: float
     rho_lower: float
@@ -82,20 +80,20 @@ class SideBand:
 class WallBand:
     """The ghost-row cells one wetting wall modifies, indexed along that wall."""
 
-    edge: str
+    edge: Edge
     left: SideBand
     right: SideBand
 
-    def side(self, side: Side) -> SideBand:
+    def side(self, side: ContactLine) -> SideBand:
         """The :class:`SideBand` for *side*."""
-        return self.left if side == "left" else self.right
+        return self.left if side == ContactLine.LEFT else self.right
 
 
 @dataclass(frozen=True)
 class ContactAngles:
     """Dispersed-phase contact angles (degrees) and contact-line positions at one wall."""
 
-    edge: str
+    edge: Edge
     theta_left: float
     theta_right: float
     cll_left: float
@@ -112,11 +110,11 @@ class AngleGlyph:
     theta: float
 
 
-def wetting_edge(config: SimulationConfig) -> str | None:
+def wetting_edge(config: SimulationConfig) -> Edge | None:
     """The wall contact angles are measured at, or ``None`` for a run without one."""
     from src.operators.wetting._edge_config import first_wetting_edge
 
-    return first_wetting_edge(config.bc_config)
+    return first_wetting_edge(config.boundary_conditions)
 
 
 def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
@@ -124,25 +122,26 @@ def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
 
     Empty when the config has no wetting wall or lacks ``rho_l``/``rho_v``.
     """
-    if config.rho_l is None or config.rho_v is None or not config.bc_config:
+    references = phase_references(config)
+    if references is None:
         return []
-    rho_l, rho_v = float(config.rho_l), float(config.rho_v)
+    rho_v, rho_l = references
 
     import jax.numpy as jnp
     from src.operators.differential._pad_utils import _apply_stencil_padding
     from src.operators.wetting._apply_edge import wetting_edge_regions
     from src.operators.wetting._edge_config import _resolve_wetting_edges
 
-    grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), config.pad_modes)
+    grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), pad_modes(config))
     bands: list[WallBand] = []
-    for edge, perp_start_periodic, perp_end_periodic in _resolve_wetting_edges(config.bc_config):
+    for edge, perp_start_periodic, perp_end_periodic in _resolve_wetting_edges(config.boundary_conditions or {}):
         regions = wetting_edge_regions(grid_padded, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v)
-        sides = tuple(_side_band(side, region) for side, region in zip(SIDES, regions, strict=True))
+        sides = tuple(_side_band(side, region) for side, region in zip(ContactLine, regions, strict=True))
         bands.append(WallBand(edge, *sides))
     return bands
 
 
-def _side_band(side: Side, region: WettingRegion) -> SideBand:
+def _side_band(side: ContactLine, region: WettingRegion) -> SideBand:
     """One solver :class:`~src.operators.wetting._wetting_modification.WettingRegion` as plain numpy."""
     return SideBand(
         side,
@@ -171,7 +170,7 @@ def contact_angles(
     collapses to index 0 and reports a meaningless angle.
     """
     edge = wetting_edge(config)
-    rho_mean = config_rho_mean(config)
+    rho_mean = wall_rho_mean(config)
     if edge is None or rho_mean is None:
         return None
     canonical = to_canonical_2d(rho_2d, edge)
@@ -187,7 +186,7 @@ def contact_angles(
     return ContactAngles(edge, ca_l, ca_r, cll_l, cll_r)
 
 
-def _recompute(rho_2d: np.ndarray, rho_mean: float, edge: str) -> tuple[float, float, float, float]:
+def _recompute(rho_2d: np.ndarray, rho_mean: float, edge: Edge) -> tuple[float, float, float, float]:
     """Run the step's own contact-angle and contact-line operators on one field."""
     import jax.numpy as jnp
     from src.operators.wetting._contact_angle import compute_contact_angle
@@ -203,7 +202,7 @@ def _recompute(rho_2d: np.ndarray, rho_mean: float, edge: str) -> tuple[float, f
 def to_physical(
     tangential: ArrayLike,
     normal: ArrayLike,
-    edge: str,
+    edge: Edge,
     shape: tuple[int, int],
 ) -> tuple[np.ndarray, np.ndarray]:
     """Map canonical ``(tangential, normal)`` coordinates to panel ``(x, y)``.
@@ -214,25 +213,17 @@ def to_physical(
     Args:
         tangential: Position along the wall.
         normal: Distance from the wall row into the fluid.
-        edge: The wall — ``"bottom"``, ``"top"``, ``"left"`` or ``"right"``.
+        edge: The in-plane wall.
         shape: Physical ``(nx, ny)``.
     """
-    nx, ny = shape
     t = np.asarray(tangential, dtype=float)
     n = np.asarray(normal, dtype=float)
-    if edge == "bottom":
-        return t, n
-    if edge == "top":
-        return t, (ny - 1) - n
-    if edge == "left":
-        return n, t
-    if edge == "right":
-        return (nx - 1) - n, t
-    msg = f"Unknown wall edge {edge!r}."
-    raise ValueError(msg)
+    extent = shape[edge.normal_axis]
+    away = (extent - 1) - n if edge.at_far_end else n
+    return (away, t) if edge.normal_axis == 0 else (t, away)
 
 
-def band_cell_segments(band: WallBand, side: Side, shape: tuple[int, int]) -> list[np.ndarray]:
+def band_cell_segments(band: WallBand, side: ContactLine, shape: tuple[int, int]) -> list[np.ndarray]:
     """One ``(2, 2)`` segment per modified cell, lying on the solid surface of *band*'s wall."""
     segments = []
     for cell in band.side(side).cells:
@@ -241,7 +232,7 @@ def band_cell_segments(band: WallBand, side: Side, shape: tuple[int, int]) -> li
     return segments
 
 
-def anchor_tick(band: WallBand, side: Side, shape: tuple[int, int], height: float) -> np.ndarray | None:
+def anchor_tick(band: WallBand, side: ContactLine, shape: tuple[int, int], height: float) -> np.ndarray | None:
     """A ``(2, 2)`` segment normal to the wall at one side's contact-line anchor.
 
     ``None`` when that side modifies nothing, so an anchor the contrast floor
@@ -257,7 +248,7 @@ def anchor_tick(band: WallBand, side: Side, shape: tuple[int, int], height: floa
 
 def angle_glyph(
     angles: ContactAngles,
-    side: Side,
+    side: ContactLine,
     shape: tuple[int, int],
     length: float,
     arc_points: int = 24,
@@ -268,9 +259,10 @@ def angle_glyph(
     lines, so measured from the wall direction pointing into it the tangent is
     ``(cos θ, sin θ)`` at the left line and ``(-cos θ, sin θ)`` at the right.
     """
-    sign = 1.0 if side == "left" else -1.0
-    theta_deg = angles.theta_left if side == "left" else angles.theta_right
-    cll = angles.cll_left if side == "left" else angles.cll_right
+    left = side == ContactLine.LEFT
+    sign = 1.0 if left else -1.0
+    theta_deg = angles.theta_left if left else angles.theta_right
+    cll = angles.cll_left if left else angles.cll_right
     theta = math.radians(theta_deg)
     radius = 0.5 * length
 

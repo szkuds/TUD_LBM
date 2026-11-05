@@ -2,7 +2,6 @@
 
 [simulation_type]
 simulation_name = "mrt_test"
-type            = "single_phase"
 grid_shape      = [100, 100]
 lattice_type    = "D2Q9"
 tau             = 1.0

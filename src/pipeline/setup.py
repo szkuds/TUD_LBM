@@ -1,25 +1,31 @@
 """JAX-friendly SimulationSetup and ``build_setup`` factory.
 
-:class:`SimulationSetup` is an immutable :class:`typing.NamedTuple`
-(i.e. a valid JAX pytree) that holds everything needed by the jitted
-step function.  It is built from a validated
-:class:`~config.simulation_config.SimulationConfig` via
-:func:`build_setup`.
+:class:`SimulationSetup` is an immutable :class:`typing.NamedTuple` that holds
+everything the jitted step needs. It is built from a validated
+:class:`~src.config.simulation_config.SimulationConfig` by :func:`build_setup`.
 
-Design rationale
-~~~~~~~~~~~~~~~~
-* **Closed over, not ``static_argnums``:**  ``SimulationSetup`` is
-  captured by ``functools.partial`` (or a closure) when constructing
-  the scan body.  JAX treats it as a compile-time constant and caches
-  the compilation.  If the setup changes, a new compilation is
-  triggered — the correct behaviour.
-* **No mutable class instances:**  All fields are Python scalars,
-  tuples, or ``jax.Array`` values.  No operator *objects* live here.
+The pattern ``build_setup`` follows
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* **Plain operators** (collision, equilibrium, source term, streaming, BC,
+  obstacle, initialiser, force, macroscopic) are homogeneous and selectable:
+  each is a registry lookup of the configured name. They need no coupling.
+* **Addons** (registry kind ``addon``; wetting, electric potential) add
+  behaviour that touches several parts of a step. Every registered addon is
+  built, and those the config uses return a
+  :class:`~src.addons.hooks.Hooks` filling up to three fixed slots:
+
+  - ``ghost_fill`` — composed into the density gradient and Laplacian;
+  - ``post_step`` — run by :func:`~src.pipeline.step.step` after the kernel;
+  - ``init_state`` — the addon's ``State.ext`` entry.
+
+  Addons are merged in **name order** and must be independent of each other.
+  Adding an addon is adding a ``src/addons/_*.py`` file; ``build_setup`` is
+  edited only to add a new *kind* of slot.
 
 Usage::
 
-    from config.simulation_config import SimulationConfig
-    from setup.simulation_setup import build_setup
+    from src.config.simulation_config import SimulationConfig
+    from src.pipeline.setup import build_setup
 
     cfg = SimulationConfig(grid_shape=(64, 64), tau=0.8)
     setup = build_setup(cfg)
@@ -29,158 +35,93 @@ from __future__ import annotations
 import functools
 from typing import TYPE_CHECKING
 from typing import NamedTuple
-from typing import cast
 import jax.numpy as jnp
+from src.addons.hooks import compose_ghost_fill
+from src.config.boundary import boundary_edges
+from src.config.boundary import pad_modes
+from src.config.boundary import periodic_axes
+from src.config.multiphase import multiphase_params
+from src.config.obstacle import obstacle_mask
 from src.lattice.lattice import Lattice
 from src.lattice.lattice import build_lattice
-from src.operators.force import build_forces
-from src.operators.source_term import build_source_fn
 
 if TYPE_CHECKING:
-    from src.config.multiphase_params import MultiphaseParams
+    from src.addons.hooks import Hooks
+    from src.config.multiphase import MultiphaseParams
     from src.config.simulation_config import SimulationConfig
-    from src.operators.protocols import BoundaryOperator
-    from src.operators.protocols import CollisionOperator
-    from src.operators.protocols import DifferentialOperator
-    from src.operators.protocols import EquilibriumOperator
-    from src.operators.protocols import ExtraStatePlugin
-    from src.operators.protocols import ForceOperator
-    from src.operators.protocols import HysteresisOperator
-    from src.operators.protocols import InitialPopulationOperator
-    from src.operators.protocols import MacroscopicOperator
-    from src.operators.protocols import ObstacleOperator
-    from src.operators.protocols import SourceTermOperator
-    from src.operators.protocols import StepOperator
-    from src.operators.protocols import StreamingOperator
+    from src.protocols import BoundaryOperator
+    from src.protocols import CollisionOperator
+    from src.protocols import EquilibriumOperator
+    from src.protocols import ExtDifferentialOperator
+    from src.protocols import ForceOperator
+    from src.protocols import InitialPopulationOperator
+    from src.protocols import MacroscopicOperator
+    from src.protocols import SourceTermOperator
+    from src.protocols import StreamingOperator
 
 
 class SimulationSetup(NamedTuple):
     """Immutable operator container — only what the jitted step needs.
 
-    ``SimulationSetup`` stores built artifacts (operators, masks, closures)
-    and physics scalars that the step function reads at JIT time.  IO and
-    initialisation metadata live on the original
-    :class:`~config.simulation_config.SimulationConfig`, accessible via
-    the :attr:`config` reference.
+    IO and initialisation metadata live on the original
+    :class:`~src.config.simulation_config.SimulationConfig`, reachable via
+    :attr:`config`.
 
     Attributes:
-        config: The original :class:`SimulationConfig` — for IO, init,
-            and any metadata that does not enter the JIT boundary.
-        lattice: The :class:`~setup.lattice.Lattice` pytree.
-        grid_shape: Spatial dimensions, e.g. ``(64, 64)``.
+        config: The original :class:`SimulationConfig`.
+        lattice: The :class:`~src.lattice.lattice.Lattice` pytree.
+        grid_shape: Spatial dimensions ``(nx, ny, nz)``.
         tau: Relaxation time (> 0.5).
         collision_scheme: Name of the collision model (``"bgk"`` / ``"mrt"``).
+        addons: The active addons as ``(name, hooks)`` pairs, in name
+            order; the name is the addon's ``State.ext`` key.
+        forces: The configured forces.
+        collision_fn / equilibrium_fn / source_fn / macroscopic_fn /
+            streaming_fn / bc_fn: The plain operators, resolved at setup time.
+        gradient_standard: Gradient of the chemical potential, ``∇μ``. Never
+            carries a ghost fill.
+        gradient_density: Density gradient ``∇ρ`` (source term), with the
+            addons' ghost fill.
+        laplacian_density: Density Laplacian ``∇²ρ`` (chemical potential), with
+            the addons' ghost fill.
+        initial_f_fn: Initial-population closure.
         k_diag: MRT relaxation rates (``None`` for BGK); already bound into
             ``collision_fn``.
-        forces: The configured forces, each a bound
-            :class:`~src.operators.protocols.ForceOperator`; empty when none are active.
-        source_fn: Couples the total force into the populations
-            (:class:`~src.operators.protocols.SourceTermOperator`).
         multiphase_params: ``None`` for single-phase runs.
-        gradient_standard: Standard gradient ``∇μ`` (chemical potential).
-            Always used for chemical-potential gradient. Never wetting-corrected.
-        gradient_density: Density gradient ``∇ρ`` used in source term.
-            Wetting-corrected when applicable.
-        laplacian_density: Laplacian of density ``∇²ρ`` in chemical-potential computation.
-            Wetting-corrected when applicable. The hysteresis optimiser passes
-            candidate :class:`~src.operators.wetting._params.WettingParams` to
-            both density operators as their ``wetting`` argument.
-        step_fn: The unbound step operator resolved from the registry,
-            implementing :class:`~operators.protocols.StepOperator`.
-            Signature: ``(setup, state) → state_next``.
-        wetting_fn: The hysteresis operator for updating wetting state,
-            implementing :class:`~operators.protocols.HysteresisOperator`.
-            Built when ``hysteresis_config`` is present;
-            ``None`` otherwise.
-        wetting_edge: The wall used to orient contact-angle measurement
-            (``"bottom"`` / ``"top"`` / ``"left"`` / ``"right"``), taken as the
-            first ``"wetting"`` edge in ``bc_config``. Wetting is applied to
-            every ``"wetting"`` edge, but measurement reads only this one, and a
-            single ``WettingState`` parameter pair is shared across them.
-            ``None`` for non-wetting runs.
-        extra_state_plugins: Active plugin tuple used to initialise and update
-            operation-specific extra state (e.g. electric potential, wetting state).
-        collision_fn: Pre-built collision operator, resolved at setup time.
-        equilibrium_fn: Pre-built equilibrium operator, resolved at setup time.
-        macroscopic_fn: Pre-built macroscopic operator, resolved at setup time.
-        streaming_fn: Pre-built streaming operator, resolved at setup time.
-        bc_fn: Pre-built boundary-condition operator, resolved at setup time.
-        initial_f_fn: Pre-built initial population function, resolved at setup time.
+        obstacle_mask: ``None`` without an obstacle; its bounce-back heads ``bc_fn``.
     """
 
-    # ── Core references ──
     config: SimulationConfig
     lattice: Lattice
-
-    # ── Physics scalars (read at runtime inside JIT) ──
     grid_shape: tuple[int, ...]
     tau: float
     collision_scheme: str
+    addons: tuple[tuple[str, Hooks], ...]
+    forces: tuple[ForceOperator, ...]
+    collision_fn: CollisionOperator
+    equilibrium_fn: EquilibriumOperator
+    source_fn: SourceTermOperator
+    macroscopic_fn: MacroscopicOperator
+    streaming_fn: StreamingOperator
+    bc_fn: BoundaryOperator
+    gradient_standard: ExtDifferentialOperator
+    gradient_density: ExtDifferentialOperator
+    laplacian_density: ExtDifferentialOperator
+    initial_f_fn: InitialPopulationOperator
     k_diag: tuple[float, ...] | None = None
-
-    # ── Pre-built operators ──
-    forces: tuple[ForceOperator, ...] = ()
-    source_fn: SourceTermOperator | None = None
     multiphase_params: MultiphaseParams | None = None
     obstacle_mask: jnp.ndarray | None = None
-    obstacle_fn: ObstacleOperator | None = None
-
-    # ── Differential operator closures (pre-built) ──
-    gradient_standard: DifferentialOperator | None = None
-    gradient_density: DifferentialOperator | None = None
-    laplacian_density: DifferentialOperator | None = None
-
-    # ── Step function (unbound: (setup, state) -> State) ──
-    step_fn: StepOperator | None = None
-    wetting_fn: HysteresisOperator | None = None
-    wetting_edge: str | None = None
-    extra_state_plugins: tuple[ExtraStatePlugin, ...] = ()
-
-    # ── Pre-built operator closures (resolved at setup time) ──
-    collision_fn: CollisionOperator | None = None
-    equilibrium_fn: EquilibriumOperator | None = None
-    macroscopic_fn: MacroscopicOperator | None = None
-    streaming_fn: StreamingOperator | None = None
-    bc_fn: BoundaryOperator | None = None
-    initial_f_fn: InitialPopulationOperator[..., jnp.ndarray] | None = None
-
-
-# ── Main factory ─────────────────────────────────────────────────────
-
-
-def _build_equilibrium_and_source(config: SimulationConfig) -> tuple[EquilibriumOperator, SourceTermOperator]:
-    """The equilibrium and source term that belong together for this run.
-
-    A single-phase run takes the ``"standard_equilibrium"`` / ``"standard_source"`` pair: that
-    equilibrium carries the isotropic pressure ``cs^2 * rho`` in its second moment.
-    The ``wb`` equilibrium leaves it out, because a multiphase run supplies its
-    pressure as the force ``-rho * grad(mu)``; a single-phase run has no such
-    force, so with ``wb`` it would have no pressure at all. A multiphase run
-    takes the ``wb`` pair.
-    """
-    from src.operators.equilibrium import build_equilibrium_fn
-
-    if "multiphase" not in config.sim_type:
-        return build_equilibrium_fn("standard_equilibrium"), build_source_fn("standard_source")
-    return build_equilibrium_fn("wb"), build_source_fn("wb")
-
-
-def _hysteresis_scheme(config: SimulationConfig) -> str | None:
-    """The registered hysteresis update for this run, ``None`` without a ``[hysteresis]`` config."""
-    if config.hysteresis_config is None:
-        return None
-    if config.sim_type == "multiphase_hysteresis_chemical_step":
-        return "chemical_step_hysteresis"
-    return "hysteresis"
 
 
 def _build_initial_f_fn(
     config: SimulationConfig,
     mp_params: MultiphaseParams | None,
     lattice: Lattice,
-) -> InitialPopulationOperator[..., jnp.ndarray]:
+) -> InitialPopulationOperator:
     """The initial-population closure: the configured initialiser bound to its keywords."""
     from src.operators.initialise import build_initialise_fn
+
+    nx, ny, nz = config.grid_shape
 
     def _initial_f_fn(init_kwargs: dict | None = None) -> jnp.ndarray:
         kw: dict = {}
@@ -191,130 +132,86 @@ def _build_initial_f_fn(
             kw.update(init_kwargs)
         if config.init_type == "init_from_file" and "npz_path" not in kw and config.init_dir is not None:
             kw["npz_path"] = config.init_dir
-        return build_initialise_fn(config.init_type)(cast("tuple[int, int, int]", config.grid_shape), lattice, **kw)
+        return build_initialise_fn(config.init_type)((nx, ny, nz), lattice, **kw)
 
     return _initial_f_fn
 
 
 def build_setup(config: SimulationConfig) -> SimulationSetup:
-    """Construct a JAX-friendly :class:`SimulationSetup` from a config.
+    """Construct a :class:`SimulationSetup` from a validated config.
+
+    The recipe runs in a fixed order; each step names the slots it consumes
+    (see the module docstring for the pattern).
 
     Args:
         config: A validated :class:`SimulationConfig`.
 
     Returns:
-        An immutable :class:`SimulationSetup` NamedTuple ready for the
-        jitted step function.
-
-    Raises:
-        ValueError: If wetting configuration is present but sim_type is not "multiphase".
+        An immutable :class:`SimulationSetup` ready for the jitted step.
     """
-    # ── Validation: wetting config requires multiphase sim_type ──
-    if config.wetting_config is not None and "multiphase" not in config.sim_type:
-        msg = (
-            f"Wetting configuration present but sim_type is '{config.sim_type}'. "
-            "Wetting requires sim_type = 'multiphase'. "
-            "Wetting is an addon to multiphase simulations, detected by the presence of [wetting] config."
-        )
-        raise ValueError(
-            msg,
-        )
-
-    # ── Validation: hysteresis config requires a hysteresis sim_type ──
-    # Otherwise build_setup would still build a hysteresis wetting_fn, but the
-    # selected step operator would never supply a trial_step_fn, crashing the
-    # optimiser with a cryptic 'NoneType is not callable' deep inside the trace.
-    if config.hysteresis_config is not None and "hysteresis" not in config.sim_type:
-        msg = (
-            f"Hysteresis configuration present but sim_type is '{config.sim_type}'. "
-            "The hysteresis optimiser only runs under sim_type = 'multiphase_hysteresis' "
-            "(or 'multiphase_hysteresis_chemical_step'). "
-            "Set one of those sim_types, or remove the [hysteresis] config for a static wetting run."
-        )
-        raise ValueError(
-            msg,
-        )
-
-    # Import here to avoid circular import issues at module level
+    # Function-local: importing the operator and addon packages at module level
+    # closes an import cycle back into src.pipeline.
+    from src.addons import build_addons
+    from src.config.equilibrium import source_term_for
     from src.operators.boundary import build_bc
     from src.operators.collision import build_collision_fn
-    from src.operators.differential import build_diff_ops
+    from src.operators.differential import build_differential
+    from src.operators.equilibrium import build_equilibrium_fn
+    from src.operators.force import build_forces
     from src.operators.macroscopic import build_macroscopic_fn
-    from src.operators.obstacle import build_obstacle_fn
-    from src.operators.step import build_step_fn
+    from src.operators.macroscopic import build_multiphase_macroscopic_fn
+    from src.operators.source_term import build_source_fn
     from src.operators.streaming import build_streaming_fn
-    from src.operators.wetting import build_hysteresis_fn
-    from src.registry import get_operators
 
+    # 1. Lattice.
     lattice = build_lattice(config.lattice_type)
-    # Multiphase params (None for single-phase), validated and built by the config
-    mp_params = config.multiphase_params
+    mp_params = multiphase_params(config)
 
-    # Build force specs
+    # 2. Addon merge: every registered addon the config uses, in name order.
+    #    Consumed below: ghost_fill (3); post_step by step(), init_state by init_state().
+    addons = build_addons(config)
+
+    # 3. Differential: ∇μ is always plain; the density operators carry the composed ghost fill.
+    gradient_standard, _ = build_differential(lattice, pad_modes(config))
+    gradient_density, laplacian_density = build_differential(lattice, pad_modes(config), compose_ghost_fill(addons))
+
+    # 4. Forces: the configured *_force sections.
     forces = build_forces(config, tuple(config.grid_shape), lattice)
 
-    # Build differential operators (standard gradient, density gradient, density Laplacian)
-    gradient_standard, gradient_density, laplacian_density = build_diff_ops(config, mp_params, lattice)
-
-    # Resolve step operator from registry
-    step_fn = build_step_fn(config.sim_type)
-
-    # Build operator closures (pre-resolved at setup time)
+    # 5. Plain operators. The equilibrium is the configured one and the source term
+    #    the pair it registered (src.config.equilibrium); the macroscopic operator
+    #    is the multiphase one exactly when the run has multiphase parameters.
     collision_fn = build_collision_fn(config.collision_scheme)
     if config.k_diag is not None:
         # A keyword the protocol lacks is bound, not typed: the configured rates
         # (shear entries already coupled to the relaxation time) reach collide_mrt.
         collision_fn = functools.partial(collision_fn, k_diag=jnp.asarray(config.k_diag))
-    equilibrium_fn, source_fn = _build_equilibrium_and_source(config)
-    streaming_fn = build_streaming_fn(config.periodic_axes)
-    macroscopic_fn = (
-        build_macroscopic_fn("multiphase")  # unified multiphase op; EOS selected from mp.eos
-        if "multiphase" in config.sim_type
-        else build_macroscopic_fn("standard")  # single-phase
-    )
-    bc_fn = build_bc(config.boundary_edges, lattice)
+    assert config.equilibrium is not None  # noqa: S101 - SimulationConfig._apply_defaults fills it in
+    equilibrium_fn = build_equilibrium_fn(config.equilibrium)
+    source_fn = build_source_fn(source_term_for(config.equilibrium))
+    macroscopic_fn = build_macroscopic_fn() if mp_params is None else build_multiphase_macroscopic_fn(mp_params)
+    solid_mask = obstacle_mask(config)
 
-    obstacle_mask = config.obstacle_mask
-    obstacle_fn = build_obstacle_fn(obstacle_mask, lattice)
-
-    # Build wetting function for hysteresis-capable runs.
-    wetting_scheme = _hysteresis_scheme(config)
-    wetting_fn = build_hysteresis_fn(wetting_scheme) if wetting_scheme is not None else None
-
-    # Orient measurement from the first wetting wall.
-    from src.operators.wetting._edge_config import first_wetting_edge
-
-    wetting_edge = first_wetting_edge(config.bc_config)
-
-    extra_state_plugins = tuple(
-        cast("ExtraStatePlugin", entry.target)
-        for entry in sorted(get_operators("extra_state").values(), key=lambda e: e.name)
-        if cast("ExtraStatePlugin", entry.target).is_active(config)
-    )
-
+    # 6. Step: the setup the kernel and step() close over.
     return SimulationSetup(
         config=config,
         lattice=lattice,
         grid_shape=tuple(config.grid_shape),
         tau=config.tau,
         collision_scheme=config.collision_scheme,
-        k_diag=config.k_diag,
+        addons=addons,
         forces=forces,
+        collision_fn=collision_fn,
+        equilibrium_fn=equilibrium_fn,
         source_fn=source_fn,
-        multiphase_params=mp_params,
-        obstacle_mask=obstacle_mask,
-        obstacle_fn=obstacle_fn,
+        macroscopic_fn=macroscopic_fn,
+        streaming_fn=build_streaming_fn(periodic_axes(config)),
+        bc_fn=build_bc(boundary_edges(config), lattice, solid_mask),
         gradient_standard=gradient_standard,
         gradient_density=gradient_density,
         laplacian_density=laplacian_density,
-        step_fn=step_fn,
-        wetting_fn=wetting_fn,
-        wetting_edge=wetting_edge,
-        extra_state_plugins=extra_state_plugins,
-        collision_fn=collision_fn,
-        equilibrium_fn=equilibrium_fn,
-        macroscopic_fn=macroscopic_fn,
-        streaming_fn=streaming_fn,
-        bc_fn=bc_fn,
         initial_f_fn=_build_initial_f_fn(config, mp_params, lattice),
+        k_diag=config.k_diag,
+        multiphase_params=mp_params,
+        obstacle_mask=solid_mask,
     )

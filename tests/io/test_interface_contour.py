@@ -11,6 +11,7 @@ from src.simulation_io.analysis.interface_contour import level_densities
 from src.simulation_io.analysis.interface_contour import level_value
 from src.simulation_io.analysis.interface_contour import measured_rho_mean
 from src.simulation_io.analysis.interface_contour import resolve_interface_levels
+from tests.support.config import merge_overrides
 
 _NX, _NY = 64, 48
 _CENTRE = (30, 22)
@@ -19,15 +20,10 @@ _RADIUS = 12.0
 
 def _multiphase_config(**overrides: object) -> SimulationConfig:
     params: dict[str, object] = {
-        "sim_type": "multiphase",
+        "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.1, "interface_width": 4},
         "grid_shape": (_NX, _NY),
-        "eos": "double-well",
-        "kappa": 0.02,
-        "interface_width": 4,
-        "rho_l": 1.0,
-        "rho_v": 0.1,
     }
-    params.update(overrides)
+    merge_overrides(params, overrides)
     return SimulationConfig(**params)  # ty: ignore[invalid-argument-type]
 
 
