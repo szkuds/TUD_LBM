@@ -497,6 +497,55 @@ def test_collect_prefers_the_newest_run_of_a_radius():
     assert sigma == pytest.approx(0.0123, rel=1e-9)
 
 
+def _poison_final_snapshot(run_dir: Path, nt: int) -> None:
+    """Overwrite a run's final pressure with NaN, as a diverged droplet leaves it."""
+    final = run_dir / DATA_DIRNAME / f"timestep_{nt}.npz"
+    with np.load(final) as snapshot:
+        rho = snapshot["rho"]
+        pressure = np.full_like(snapshot["pressure"], np.nan)
+    np.savez(final, pressure=pressure, rho=rho)
+
+
+def test_collect_skips_a_diverged_run():
+    config = _cs_config()
+    sweep = st.calibration_configs(config)
+    run_dirs = [_write_sweep_run(sweep_config, 0.0123) for sweep_config in sweep]
+    _poison_final_snapshot(run_dirs[2], sweep[2].nt)
+    fluid_dir = st.SURFACE_TENSION_ROOT / _FLUID
+
+    assert st.collect_calibration(_sweep_runs(), out_dir=fluid_dir) is None
+    assert st._load_cache(st._cache_path()) == {}
+    assert not (fluid_dir / st._PLOT_FILENAME).exists()
+
+
+def test_collect_falls_back_past_a_diverged_rerun():
+    """A newer run that diverged does not displace an older finished one."""
+    config = _cs_config()
+    sweep = st.calibration_configs(config)
+    for sweep_config in sweep:
+        _write_sweep_run(sweep_config, 0.0123, stamp="2026-01-01/00-00-00")
+    rerun = _write_sweep_run(sweep[0], 0.0123, stamp="2026-01-02/00-00-00")
+    _poison_final_snapshot(rerun, sweep[0].nt)
+
+    sigma = st.collect_calibration(_sweep_runs())
+
+    assert sigma == pytest.approx(0.0123, rel=1e-9)
+
+
+@pytest.mark.parametrize(
+    ("sigma", "delta_p"),
+    [(float("nan"), [0.1, 0.05]), (0.0123, [0.1, float("inf")])],
+    ids=["nan-sigma", "inf-delta-p"],
+)
+def test_load_cache_drops_a_non_finite_entry(sigma, delta_p):
+    config = _cs_config()
+    entry = {"sigma": sigma, "radii": [10.0, 20.0], "delta_p": delta_p, "grid_shape": [301, 301, 1]}
+    st._cache_path().write_text(json.dumps({st._cache_key(config): entry}), encoding="utf-8")
+
+    assert st._load_cache(st._cache_path()) == {}
+    assert st.cached_surface_tension(config) is None
+
+
 def test_collect_rejects_two_fluids_sharing_one_label():
     """The folder name leaves parameters out; identity comes from the configs."""
     first = st.calibration_configs(_cs_config())

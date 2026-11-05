@@ -52,6 +52,7 @@ rather than dropped flat into the run directory, in the same ``data/`` +
 from __future__ import annotations
 import hashlib
 import json
+import math
 import re
 from dataclasses import replace
 from pathlib import Path
@@ -410,6 +411,9 @@ def collect_calibration(run_dirs: Iterable[str | Path], out_dir: str | Path | No
     radii = np.array([sample.radius for sample in ordered])
     delta_p = np.array([sample.delta_p for sample in ordered])
     sigma = _fit_sigma(radii, delta_p)
+    if not math.isfinite(sigma):
+        console.print(f"[red]Fitted σ = {sigma} is not finite — nothing stored.[/red]")
+        return None
     _store_cache(key, radii, delta_p, sigma, _CALIBRATION_GRID_SHAPE)
     _store_fields(key, [sample.density for sample in ordered])
     if out_dir is not None:
@@ -441,6 +445,10 @@ def _read_sweep_run(run_dir: Path) -> _SweepSample | None:
     with np.load(snapshots[-1]) as snapshot:
         pressure = _field_2d(snapshot["pressure"])
         density = _field_2d(snapshot["rho"])
+    # A diverged droplet has no Laplace jump; an older finished run of the radius may still stand.
+    if not (np.isfinite(pressure).all() and np.isfinite(density).all()):
+        console.print(f"[red]{run_dir}: final snapshot is not finite (diverged) — skipped.[/red]")
+        return None
 
     return _SweepSample(
         key=_cache_key(config),
@@ -592,9 +600,9 @@ def _sanitize_key_field(field: str, value: object) -> str | int | float | list[i
 
 
 def _sanitize_entry(raw_entry: dict) -> dict | None:
-    """Coerce a stored measurement to floats, or reject it."""
+    """Coerce a stored measurement to floats, or reject it (a non-finite value included)."""
     try:
-        return {
+        entry = {
             "sigma": float(raw_entry["sigma"]),
             "radii": [float(x) for x in raw_entry["radii"]],
             "delta_p": [float(x) for x in raw_entry["delta_p"]],
@@ -602,6 +610,8 @@ def _sanitize_entry(raw_entry: dict) -> dict | None:
         }
     except (KeyError, TypeError, ValueError):
         return None
+    values = [entry["sigma"], *entry["radii"], *entry["delta_p"]]
+    return entry if all(math.isfinite(value) for value in values) else None
 
 
 def _sanitize_grid_shape(raw_grid_shape: object) -> list[int]:
