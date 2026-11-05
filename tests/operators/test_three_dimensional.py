@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from src.config import SimulationConfig
+from src.config.boundary import BC_APPLICATION_ORDER
 from src.config.boundary import boundary_edges
 from src.config.boundary import pad_modes
 from src.config.boundary import periodic_axes
@@ -23,7 +24,7 @@ from src.pipeline.step import kernel
 _PERIODIC = ("wrap",) * 6
 _N = 16
 _MULTIPHASE = {"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.1, "interface_width": 3}
-_ALL_FACES = ("bottom", "top", "left", "right", "front", "back")
+_ALL_FACES = BC_APPLICATION_ORDER
 
 
 @pytest.fixture(scope="module")

@@ -23,6 +23,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from src.config import SimulationConfig
+from src.config.boundary import IN_PLANE_EDGES
 from src.config.boundary import boundary_edges
 from src.lattice.lattice import build_lattice
 
@@ -731,7 +732,7 @@ class TestBuildBC:
     def test_all_periodic(self, lattice):
         from src.operators.boundary import build_bc
 
-        bc_fn = build_bc(_edges_of(dict.fromkeys(("top", "bottom", "left", "right"), "periodic")), lattice)
+        bc_fn = build_bc(_edges_of(dict.fromkeys(IN_PLANE_EDGES, "periodic")), lattice)
 
         key = jax.random.PRNGKey(30)
         f = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
@@ -785,7 +786,7 @@ class TestBuildBC:
         from src.config.boundary import pad_modes
         from src.operators.boundary import build_bc
 
-        periodic = dict.fromkeys(("top", "bottom", "left", "right"), "periodic")
+        periodic = dict.fromkeys(IN_PLANE_EDGES, "periodic")
         wetting_fn = build_bc(_edges_of({**periodic, "bottom": "wetting"}), lattice)
         bounce_back_fn = build_bc(_edges_of({**periodic, "bottom": "bounce-back"}), lattice)
 

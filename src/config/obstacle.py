@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 import jax.numpy as jnp
 from src.config._checks import registered_names
+from src.config.boundary import Edge
 from src.config.defaults import DEFAULT_OBSTACLE_SHAPE
 
 if TYPE_CHECKING:
@@ -53,10 +54,10 @@ def validate_obstacle(config: SimulationConfig) -> None:
 
     edges = config.boundary_conditions
     assert edges is not None  # noqa: S101 - complete_boundary_conditions fills it in
-    if edges["left"] != "periodic" and cx - radius <= 1:
+    if edges[Edge.LEFT] != "periodic" and cx - radius <= 1:
         msg = f"obstacle must keep >1 cell clearance from a non-periodic left edge, got cx={cx}, radius={radius}"
         raise ValueError(msg)
-    if edges["right"] != "periodic" and cx + radius >= nx - 2:
+    if edges[Edge.RIGHT] != "periodic" and cx + radius >= nx - 2:
         msg = f"obstacle must keep >1 cell clearance from a non-periodic right edge, got cx={cx}, radius={radius}"
         raise ValueError(msg)
 

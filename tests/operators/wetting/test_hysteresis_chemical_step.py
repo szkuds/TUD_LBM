@@ -11,7 +11,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 import jax.numpy as jnp
 import pytest
+from src.config.boundary import Edge
 from src.config.wetting import ChemicalStepWall
+from src.config.wetting import ContactLine
 from src.operators.wetting import _hysteresis as hyst
 from src.operators.wetting._hysteresis import _get_hysteresis_window_chemical_step
 from src.operators.wetting._hysteresis import update_wetting_state_chemical_step
@@ -43,7 +45,7 @@ _POST = (50.0, 30.0)
 
 def _wall(nx: int = 100) -> ChemicalStepWall:
     return ChemicalStepWall(
-        edge="bottom",
+        edge=Edge.BOTTOM,
         step_x=0.5 * nx,
         pre_phi_left=1.0,
         pre_phi_right=1.0,
@@ -63,12 +65,12 @@ def _make_setup(nx: int = 100) -> SimpleNamespace:
     return SimpleNamespace(config=config)
 
 
-def _window(setup, cll: float, side: str) -> tuple[float, float]:
+def _window(setup, cll: float, side: ContactLine) -> tuple[float, float]:
     ca_adv, ca_rec, _held = _get_hysteresis_window_chemical_step(setup, jnp.array(cll), side=side)
     return float(ca_adv), float(ca_rec)
 
 
-def _held(setup, cll: float, side: str) -> bool:
+def _held(setup, cll: float, side: ContactLine) -> bool:
     return bool(_get_hysteresis_window_chemical_step(setup, jnp.array(cll), side=side)[2])
 
 
@@ -80,12 +82,12 @@ def _held(setup, cll: float, side: str) -> bool:
 class TestGetHysteresisWindowChemicalStep:
     """The surface's own ``(ca_adv, ca_rec)``, and whether the line is held at the step."""
 
-    @pytest.mark.parametrize("side", ["left", "right"])
+    @pytest.mark.parametrize("side", list(ContactLine))
     def test_away_from_the_step_is_that_surfaces_window(self, side):
         assert _window(_make_setup(), 20.0, side) == _PRE
         assert _window(_make_setup(), 80.0, side) == _POST
 
-    @pytest.mark.parametrize("side", ["left", "right"])
+    @pytest.mark.parametrize("side", list(ContactLine))
     @pytest.mark.parametrize("cll", [49.0, 49.5, 50.0, 50.8])
     def test_at_the_step_the_window_is_the_post_surfaces(self, cll, side):
         """No Gibbs-widened window: the barrier is the wall split, not the bounds."""
@@ -94,11 +96,11 @@ class TestGetHysteresisWindowChemicalStep:
     @pytest.mark.parametrize(
         ("cll", "side", "held"),
         [
-            (49.5, "left", True),  # receding onto the wetting surface: held at the step
-            (50.5, "left", True),
-            (49.5, "right", False),  # advancing onto it: free to spread
-            (20.0, "left", False),
-            (80.0, "left", False),
+            (49.5, ContactLine.LEFT, True),  # receding onto the wetting surface: held at the step
+            (50.5, ContactLine.LEFT, True),
+            (49.5, ContactLine.RIGHT, False),  # advancing onto it: free to spread
+            (20.0, ContactLine.LEFT, False),
+            (80.0, ContactLine.LEFT, False),
         ],
     )
     def test_only_a_line_receding_onto_the_wetting_surface_is_held(self, cll, side, held):
@@ -106,15 +108,15 @@ class TestGetHysteresisWindowChemicalStep:
 
     def test_edge_band_is_edge_width_wide(self):
         setup = _make_setup()
-        assert _window(setup, 48.9, "left") == _PRE
-        assert _window(setup, 49.0, "left") == _POST
+        assert _window(setup, 48.9, ContactLine.LEFT) == _PRE
+        assert _window(setup, 49.0, ContactLine.LEFT) == _POST
 
     def test_different_grid_size_scales_step_x(self):
         """step_x = location * nx, so a different nx moves the edge."""
         setup = _make_setup(nx=200)  # step_x = 100
-        assert _window(setup, 80.0, "left") == _PRE
-        assert _window(setup, 100.0, "left") == _POST
-        assert _window(setup, 120.0, "left") == _POST
+        assert _window(setup, 80.0, ContactLine.LEFT) == _PRE
+        assert _window(setup, 100.0, ContactLine.LEFT) == _POST
+        assert _window(setup, 120.0, ContactLine.LEFT) == _POST
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +159,7 @@ def test_receding_line_just_past_the_step_stays_pinned(monkeypatch):
         wetting,
         measured,
         setup,  # ty: ignore[invalid-argument-type]
-        edge="bottom",
+        edge=Edge.BOTTOM,
         trial_step_fn=lambda _p: (jnp.array(0.0), measured),
     )
 
@@ -185,7 +187,7 @@ def test_a_line_held_at_the_step_is_pinned_to_the_step_position(monkeypatch):
         wetting,
         jnp.zeros(4),
         _make_setup(),  # ty: ignore[invalid-argument-type]
-        edge="bottom",
+        edge=Edge.BOTTOM,
         trial_step_fn=lambda _p: (jnp.array(0.0), jnp.zeros(4)),
     )
 

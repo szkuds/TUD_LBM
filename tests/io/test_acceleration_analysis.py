@@ -3,6 +3,7 @@
 from __future__ import annotations
 import numpy as np
 import pandas as pd
+from src.config.analysis_options import Smoothing
 from src.simulation_io.analysis.accelerations import AccelerationResult
 from src.simulation_io.analysis.accelerations import compute_acceleration
 from src.simulation_io.analysis.accelerations import find_slope_window
@@ -134,7 +135,7 @@ def test_compute_acceleration_raw_is_default_and_unchanged():
     df = _ramp_up_then_down_df()
 
     raw_default = compute_acceleration(df)
-    raw_explicit = compute_acceleration(df, smoothing="raw")
+    raw_explicit = compute_acceleration(df, smoothing=Smoothing.RAW)
 
     np.testing.assert_array_equal(raw_default.accel, raw_explicit.accel)
 
@@ -150,8 +151,8 @@ def test_compute_acceleration_savgol_smooths_noisy_accel():
     ca = ca + rng.normal(scale=0.05, size=ca.size)
     df = pd.DataFrame({"normalised_iteration": np.arange(ca.size), "Ca": ca})
 
-    raw_result = compute_acceleration(df, smoothing="raw")
-    smoothed_result = compute_acceleration(df, smoothing="savgol")
+    raw_result = compute_acceleration(df, smoothing=Smoothing.RAW)
+    smoothed_result = compute_acceleration(df, smoothing=Smoothing.SAVGOL)
 
     raw_variation = np.nansum(np.abs(np.diff(raw_result.accel)))
     smoothed_variation = np.nansum(np.abs(np.diff(smoothed_result.accel)))
@@ -161,7 +162,7 @@ def test_compute_acceleration_savgol_smooths_noisy_accel():
 def test_compute_acceleration_savgol_falls_back_to_raw_when_too_few_points():
     df = pd.DataFrame({"normalised_iteration": [0, 1, 2], "Ca": [0.0, 0.0, 5.0]})
 
-    raw_result = compute_acceleration(df, smoothing="raw")
-    savgol_result = compute_acceleration(df, smoothing="savgol", savgol_window=5)
+    raw_result = compute_acceleration(df, smoothing=Smoothing.RAW)
+    savgol_result = compute_acceleration(df, smoothing=Smoothing.SAVGOL, savgol_window=5)
 
     np.testing.assert_array_equal(raw_result.accel, savgol_result.accel)

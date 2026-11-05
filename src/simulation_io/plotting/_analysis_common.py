@@ -9,6 +9,7 @@ modules (``scalar_history_plot.py``, ``contact_angle_plot.py``,
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
+from src.config.wetting import ContactLine
 from src.protocols import AnalysisPlot
 from src.simulation_io.analysis.droplet_metrics import extract_velocity_components_2d
 from src.simulation_io.analysis.droplet_metrics import parse_timestep
@@ -192,11 +193,11 @@ class _PairSeriesPlot(AnalysisPlot):
         """Both sides' values per snapshot, from the shared series."""
         series = _droplet_series(self.config, files)
         if series is None:
-            return _empty_series_arrays("iters", "left", "right")
+            return _empty_series_arrays("iters", *ContactLine)
         return {
             "iters": series.iteration,
-            "left": getattr(series, self.left_attr),
-            "right": getattr(series, self.right_attr),
+            ContactLine.LEFT: getattr(series, self.left_attr),
+            ContactLine.RIGHT: getattr(series, self.right_attr),
         }
 
     def render(self, ax: matplotlib.axes.Axes, precomputed: dict[str, np.ndarray]) -> None:
@@ -207,8 +208,8 @@ class _PairSeriesPlot(AnalysisPlot):
             _set_empty_state(ax, title=self.title, ylabel=self.ylabel, required_keys=self.required_keys)
             return
         for key, color, label in (
-            ("left", self.left_color, "Left"),
-            ("right", self.right_color, "Right"),
+            (ContactLine.LEFT, self.left_color, "Left"),
+            (ContactLine.RIGHT, self.right_color, "Right"),
         ):
             ax.scatter(
                 iters,

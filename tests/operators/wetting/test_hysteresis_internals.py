@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import pytest
+from src.config.boundary import Edge
 from src.operators.wetting import _hysteresis as hyst
 from src.operators.wetting._hysteresis import _cost_cll
 from src.operators.wetting._hysteresis import _import_optax
@@ -231,7 +232,7 @@ def test_advancing_side_targets_its_bound_and_its_anchor_follows(monkeypatch):
         _wetting(phi_left=1.05),
         measured,
         _fake_setup(),  # ty: ignore[invalid-argument-type]
-        edge="bottom",
+        edge=Edge.BOTTOM,
         trial_step_fn=_trial(9.0, 30.0),
     )
 
@@ -250,7 +251,7 @@ def test_plain_hysteresis_never_saturates(monkeypatch):
         _wetting(phi_left=1.05),
         measured,
         _fake_setup(),  # ty: ignore[invalid-argument-type]
-        edge="bottom",
+        edge=Edge.BOTTOM,
         trial_step_fn=_trial(9.0, 30.0),
     )
 
@@ -326,7 +327,7 @@ def test_receding_at_the_advancing_bound_stays_pinned(monkeypatch):
         _wetting(phi_left=1.2, d_rho_left=0.05),
         measured,
         _fake_setup(),  # ty: ignore[invalid-argument-type]
-        edge="bottom",
+        edge=Edge.BOTTOM,
         trial_step_fn=_trial(11.0, 30.0),
     )
 
@@ -341,4 +342,4 @@ def test_update_wetting_state_requires_a_hysteresis_config():
     setup = SimpleNamespace(config=SimpleNamespace(hysteresis=None))
     wetting, rho = _wetting(), jnp.ones((4, 4, 1, 1, 1))
     with pytest.raises(TypeError, match=r"\[hysteresis\] is required"):
-        update_wetting_state(wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho))  # ty: ignore[invalid-argument-type]
+        update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))  # ty: ignore[invalid-argument-type]

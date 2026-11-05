@@ -8,6 +8,7 @@ registered, it must satisfy its protocol's structural requirements.
 import jax.numpy as jnp
 import pytest
 from src.config import SimulationConfig
+from src.config.boundary import IN_PLANE_EDGES
 from src.config.boundary import boundary_edges
 from src.config.multiphase import multiphase_params
 from src.lattice.lattice import build_lattice
@@ -294,7 +295,7 @@ class TestBoundaryProtocol:
 
         f_stream, f_col = test_state[0], test_state[0]
         mask = jnp.zeros((*f_stream.shape[:3], 1, 1), dtype=bool).at[3, 3].set(True)
-        boundary_conditions = dict.fromkeys(("top", "bottom", "left", "right"), "periodic")
+        boundary_conditions = dict.fromkeys(IN_PLANE_EDGES, "periodic")
 
         bc_fn = build_bc(_edges_of(boundary_conditions), lattice_d2q9, mask)
 

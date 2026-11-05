@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from src.config import SimulationConfig
+from src.config.boundary import IN_PLANE_EDGES
 from src.config.boundary import boundary_edges
 from src.lattice.lattice import build_lattice
 from src.operators.boundary import build_bc
@@ -14,7 +15,7 @@ def _edges_of(section):
 
 
 NX, NY, NZ = 8, 8, 1
-_PERIODIC = _edges_of(dict.fromkeys(("top", "bottom", "left", "right"), "periodic"))
+_PERIODIC = _edges_of(dict.fromkeys(IN_PLANE_EDGES, "periodic"))
 
 
 @pytest.fixture(scope="module")

@@ -12,6 +12,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from src.config.boundary import Edge
 
 # =====================================================================
 # Helpers — build a synthetic droplet rho_t_plus1 field
@@ -168,9 +169,9 @@ class TestEdgeGenericContactAngle:
         from src.operators.wetting._contact_angle import compute_contact_angle
 
         base = self._base_non_90()
-        ref_l, ref_r = compute_contact_angle(_place_on_edge(base, "bottom"), RHO_MEAN, edge="bottom")
+        ref_l, ref_r = compute_contact_angle(_place_on_edge(base, "bottom"), RHO_MEAN, edge=Edge.BOTTOM)
 
-        for edge in ("top", "left", "right"):
+        for edge in (Edge.TOP, Edge.LEFT, Edge.RIGHT):
             ca_l, ca_r = compute_contact_angle(_place_on_edge(base, edge), RHO_MEAN, edge=edge)
             np.testing.assert_allclose(float(ca_l), float(ref_l), atol=1e-6)
             np.testing.assert_allclose(float(ca_r), float(ref_r), atol=1e-6)
@@ -180,8 +181,8 @@ class TestEdgeGenericContactAngle:
         from src.operators.wetting._contact_angle import compute_contact_angle
 
         base = self._base_non_90()
-        ca_bottom, _ = compute_contact_angle(_place_on_edge(base, "bottom"), RHO_MEAN, edge="bottom")
-        ca_top, _ = compute_contact_angle(_place_on_edge(base, "top"), RHO_MEAN, edge="top")
+        ca_bottom, _ = compute_contact_angle(_place_on_edge(base, "bottom"), RHO_MEAN, edge=Edge.BOTTOM)
+        ca_top, _ = compute_contact_angle(_place_on_edge(base, "top"), RHO_MEAN, edge=Edge.TOP)
 
         # The geometry is non-90°, so the supplement differs from the true value.
         assert abs(float(ca_bottom) - 90.0) > 5.0
@@ -194,13 +195,13 @@ class TestEdgeGenericContactAngle:
 
         base = self._base_non_90()
         rho_b = _place_on_edge(base, "bottom")
-        ca_l, ca_r = compute_contact_angle(rho_b, RHO_MEAN, edge="bottom")
-        ref_l, ref_r = compute_contact_line_location(rho_b, ca_l, ca_r, RHO_MEAN, edge="bottom")
+        ca_l, ca_r = compute_contact_angle(rho_b, RHO_MEAN, edge=Edge.BOTTOM)
+        ref_l, ref_r = compute_contact_line_location(rho_b, ca_l, ca_r, RHO_MEAN, edge=Edge.BOTTOM)
 
         # Bottom/top share the x tangential axis; the CLL values are identical.
         rho_t = _place_on_edge(base, "top")
-        ca_l_t, ca_r_t = compute_contact_angle(rho_t, RHO_MEAN, edge="top")
-        cll_l_t, cll_r_t = compute_contact_line_location(rho_t, ca_l_t, ca_r_t, RHO_MEAN, edge="top")
+        ca_l_t, ca_r_t = compute_contact_angle(rho_t, RHO_MEAN, edge=Edge.TOP)
+        cll_l_t, cll_r_t = compute_contact_line_location(rho_t, ca_l_t, ca_r_t, RHO_MEAN, edge=Edge.TOP)
         np.testing.assert_allclose(float(cll_l_t), float(ref_l), atol=1e-6)
         np.testing.assert_allclose(float(cll_r_t), float(ref_r), atol=1e-6)
 
@@ -210,7 +211,7 @@ class TestEdgeGenericContactAngle:
 
         rho = _place_on_edge(self._base_non_90(), "bottom")
         default = compute_contact_angle(rho, RHO_MEAN)
-        explicit = compute_contact_angle(rho, RHO_MEAN, edge="bottom")
+        explicit = compute_contact_angle(rho, RHO_MEAN, edge=Edge.BOTTOM)
         np.testing.assert_allclose(float(default[0]), float(explicit[0]), atol=1e-12)
         np.testing.assert_allclose(float(default[1]), float(explicit[1]), atol=1e-12)
 
@@ -498,7 +499,7 @@ class TestUpdateWettingState:
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
         assert isinstance(new_wetting, WettingState)
 
     def test_ca_fields_updated(self):
@@ -509,7 +510,7 @@ class TestUpdateWettingState:
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
         # ca_left and ca_right should reflect the actual droplet angles
         # measured by compute_contact_angle (not the initial placeholder)
         expected_ca_l, expected_ca_r = compute_contact_angle(rho, RHO_MEAN)
@@ -531,7 +532,7 @@ class TestUpdateWettingState:
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
         # CLL should reflect actual droplet footprint
         assert float(new_wetting.cll_left) < float(new_wetting.cll_right)
 
@@ -542,7 +543,7 @@ class TestUpdateWettingState:
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
         assert 0.0 <= float(new_wetting.d_rho_left) <= 0.25
         assert 0.0 <= float(new_wetting.d_rho_right) <= 0.25
         assert 1.0 <= float(new_wetting.phi_left) <= 1.5
@@ -556,7 +557,7 @@ class TestUpdateWettingState:
         rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
         for field_name in WettingState._fields[:8]:  # skip opt_state
             val = getattr(new_wetting, field_name)
             if val is not None:
@@ -600,7 +601,7 @@ class TestUpdateWettingState:
             return rho, rho_out
 
         new_wetting = hysteresis_module.update_wetting_state(
-            wetting, rho, setup, edge="bottom", trial_step_fn=trial_step_fn
+            wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=trial_step_fn
         )
 
         assert not np.isclose(float(new_wetting.phi_right), float(wetting.phi_right))
@@ -625,7 +626,7 @@ class TestUpdateWettingState:
         )
 
         new_wetting = hysteresis_module.update_wetting_state(
-            wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho)
+            wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho)
         )
 
         np.testing.assert_allclose(float(new_wetting.cll_left), float(wetting.cll_left), atol=1e-6)
@@ -657,7 +658,7 @@ class TestUpdateWettingState:
         )
 
         new_wetting = hysteresis_module.update_wetting_state(
-            wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho)
+            wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho)
         )
 
         np.testing.assert_allclose(float(new_wetting.cll_left), expected_anchor, atol=1e-6)
@@ -711,7 +712,7 @@ class TestUpdateWettingState:
             wetting,
             rho,
             setup,
-            edge="bottom",
+            edge=Edge.BOTTOM,
             trial_step_fn=trial_step_fn,
         )
 
@@ -804,7 +805,7 @@ class TestUpdateWettingStateBubble:
         rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
 
         assert isinstance(new_wetting, WettingState)
         for field_name in WettingState._fields[:8]:
@@ -819,7 +820,7 @@ class TestUpdateWettingStateBubble:
         rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
 
         assert 0.0 <= float(new_wetting.d_rho_left) <= 1.5 / 4
         assert 0.0 <= float(new_wetting.d_rho_right) <= 1.5 / 4
@@ -833,7 +834,7 @@ class TestUpdateWettingStateBubble:
         rho = _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)
         wetting = self._make_wetting_state()
 
-        new_wetting = update_wetting_state(wetting, rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho))
+        new_wetting = update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))
         assert float(new_wetting.cll_left) < float(new_wetting.cll_right)
 
     # ── the directional assertions: which knob gets selected ─────────────
@@ -875,7 +876,7 @@ class TestUpdateWettingStateBubble:
         self._pin_measurements(monkeypatch, hysteresis_module, ca)
 
         new_wetting = hysteresis_module.update_wetting_state(
-            self._make_wetting_state(), rho, setup, edge="bottom", trial_step_fn=lambda p: (rho, rho)
+            self._make_wetting_state(), rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho)
         )
         (self._assert_phi_selected if expected == "phi" else self._assert_d_rho_selected)(new_wetting)
 
@@ -906,7 +907,7 @@ class TestUpdateWettingStateBubble:
             ("bubble", _bubble_rho(NX, NY, NZ, RHO_L, RHO_V)),
         ):
             new_wetting = hysteresis_module.update_wetting_state(
-                wetting, rho, setup, edge="bottom", trial_step_fn=lambda p, r=rho: (r, r)
+                wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p, r=rho: (r, r)
             )
             # phi snapped to neutral == d_rho was the selected knob.
             selected[label] = "d_rho" if float(new_wetting.phi_right) == 1.0 else "phi"
@@ -958,7 +959,7 @@ class TestUpdateWettingStateBubble:
         wetting = self._make_wetting_state()
 
         new_wetting = hysteresis_module.update_wetting_state(
-            wetting, rho, setup, edge="bottom", trial_step_fn=self._knob_encoding_trial_step(rho)
+            wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=self._knob_encoding_trial_step(rho)
         )
 
         # phi was selected, drove itself to the floor, and the fallback then
@@ -978,7 +979,7 @@ class TestUpdateWettingStateBubble:
         wetting = self._make_wetting_state(phi_right=jnp.array(1.0))
 
         new_wetting = hysteresis_module.update_wetting_state(
-            wetting, rho, setup, edge="bottom", trial_step_fn=self._knob_encoding_trial_step(rho)
+            wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=self._knob_encoding_trial_step(rho)
         )
 
         np.testing.assert_allclose(float(new_wetting.phi_right), 1.0, atol=1e-6)

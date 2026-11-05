@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
+from src.config.boundary import Edge
 from src.config.boundary import boundary_edges
 from src.config.run_config import ANALYSIS_DIRNAME
 from src.config.run_config import DATA_DIRNAME
@@ -34,13 +35,13 @@ from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import SETUP_FIGURE_FILENAME
 from src.config.run_config import SIMULATION_CSV_FILENAME
 from src.config.run_config import SNAPSHOT_GLOB
+from src.config.wetting import ContactLine
 from src.config.wetting import chemical_step_wall
 from src.simulation_io.analysis.droplet_metrics import extract_rho_2d
 from src.simulation_io.analysis.droplet_metrics import inclination_angle_deg
 from src.simulation_io.analysis.droplet_metrics import parse_timestep
 from src.simulation_io.analysis.interface_contour import config_rho_mean
 from src.simulation_io.analysis.interface_contour import interface_lines
-from src.simulation_io.analysis.wetting_overlay import SIDES
 from src.simulation_io.analysis.wetting_overlay import WALL_NORMAL
 from src.simulation_io.analysis.wetting_overlay import angle_glyph
 from src.simulation_io.analysis.wetting_overlay import contact_angles
@@ -52,7 +53,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     import matplotlib.axes
     from src.config import SimulationConfig
-    from src.simulation_io.analysis.wetting_overlay import Side
 
 #: Abbreviation and key text per boundary-condition name. A name missing here is
 #: labelled with the name itself, so a new BC is never mislabelled.
@@ -64,12 +64,15 @@ BC_ABBREVIATIONS: dict[str, tuple[str, str]] = {
 }
 
 #: In-plane edges with their outward normal in the domain frame.
-_EDGE_NORMALS: dict[str, tuple[float, float]] = {
-    "bottom": (0.0, -1.0),
-    "top": (0.0, 1.0),
-    "left": (-1.0, 0.0),
-    "right": (1.0, 0.0),
+_EDGE_NORMALS: dict[Edge, tuple[float, float]] = {
+    Edge.BOTTOM: (0.0, -1.0),
+    Edge.TOP: (0.0, 1.0),
+    Edge.LEFT: (-1.0, 0.0),
+    Edge.RIGHT: (1.0, 0.0),
 }
+#: Text alignment of an edge label, so it sits outside the domain.
+_EDGE_LABEL_HA: dict[Edge, str] = {Edge.LEFT: "right", Edge.RIGHT: "left"}
+_EDGE_LABEL_VA: dict[Edge, str] = {Edge.BOTTOM: "top", Edge.TOP: "bottom"}
 
 _FIGURE_WIDTH = 8.0
 _ALPHA_ARC_POINTS = 24
@@ -87,7 +90,7 @@ class SnapshotChoice:
 class _Wall:
     """The wetting wall in its own frame: tangential extent, step and surfaces."""
 
-    edge: str
+    edge: Edge
     length: int
     step: float | None
     #: Whether the surface before the step is the less wetting one.
@@ -107,9 +110,9 @@ def snapshot_files(run_dir: Path) -> dict[int, Path]:
     return dict(sorted(found.items()))
 
 
-def _front_side(config: SimulationConfig) -> Side:
+def _front_side(config: SimulationConfig) -> ContactLine:
     """The downhill contact line: gravity drives the liquid along ``+sin(angle)``."""
-    return "left" if inclination_angle_deg(config) < 0.0 else "right"
+    return ContactLine.LEFT if inclination_angle_deg(config) < 0.0 else ContactLine.RIGHT
 
 
 def _hysteresis_timestep(config: SimulationConfig, run_dir: Path, tolerance: float) -> tuple[int, str] | None:
@@ -130,7 +133,7 @@ def _hysteresis_timestep(config: SimulationConfig, run_dir: Path, tolerance: flo
 
     frame = pd.read_csv(csv_path, encoding="utf-8")
     front = _front_side(config)
-    rear: Side = "left" if front == "right" else "right"
+    rear = front.other
     on_pre = frame[f"cll_{front}"] < step.step_x
     advancing = frame[f"ca_{front}"] >= float(chem["ca_advancing_pre_step"]) - tolerance
     receding = frame[f"ca_{rear}"] <= float(chem["ca_receding_pre_step"]) + tolerance
@@ -200,7 +203,7 @@ def _wall(config: SimulationConfig) -> _Wall | None:
     if edge is None:
         return None
     nx, ny = _shape(config)
-    length = nx if edge in ("bottom", "top") else ny
+    length = ny if edge.normal_axis == 0 else nx
     step = chemical_step_wall(config)
     chem = config.chemical_step
     if step is None or chem is None:
@@ -236,7 +239,7 @@ def _surface_color(wall: _Wall, surface: str) -> str:
     return DEFAULT_STYLE.setup_wall_colors["hydrophobic" if hydrophobic else "hydrophilic"]
 
 
-def edge_labels(config: SimulationConfig) -> dict[str, str]:
+def edge_labels(config: SimulationConfig) -> dict[Edge, str]:
     """Abbreviation per in-plane edge; a stepped wetting wall is labelled per surface when drawn."""
     return {
         entry.edge: BC_ABBREVIATIONS.get(entry.name, (entry.name, entry.name))[0]
@@ -264,14 +267,14 @@ def key_text(config: SimulationConfig) -> str:
     return "\n".join(line for line in lines if line)
 
 
-def _angle_symbols(config: SimulationConfig, centre: float, wall: _Wall) -> dict[Side, str]:
+def _angle_symbols(config: SimulationConfig, centre: float, wall: _Wall) -> dict[ContactLine, str]:
     """Label per contact line: rear/front under gravity, else the surface it stands on."""
     if _has_gravity(config) and abs(inclination_angle_deg(config)) > 0.0:
         front = _front_side(config)
-        return {side: r"$\theta_A$" if side == front else r"$\theta_R$" for side in SIDES}
+        return {side: r"$\theta_A$" if side == front else r"$\theta_R$" for side in ContactLine}
     if wall.step is None:
-        return dict.fromkeys(SIDES, r"$\theta$")
-    return dict.fromkeys(SIDES, r"$\theta_1$" if centre < wall.step else r"$\theta_2$")
+        return dict.fromkeys(ContactLine, r"$\theta$")
+    return dict.fromkeys(ContactLine, r"$\theta_1$" if centre < wall.step else r"$\theta_2$")
 
 
 # --- Drawing -----------------------------------------------------------------
@@ -350,8 +353,8 @@ def _draw_edge_labels(
     half = np.array([nx / 2.0, ny / 2.0])
     for edge, label in edge_labels(config).items():
         normal = np.array(_EDGE_NORMALS[edge])
-        ha = {"left": "right", "right": "left"}.get(edge, "center")
-        va = {"bottom": "top", "top": "bottom"}.get(edge, "center")
+        ha = _EDGE_LABEL_HA.get(edge, "center")
+        va = _EDGE_LABEL_VA.get(edge, "center")
         if wall is not None and edge == wall.edge:
             segments = _wall_segments(wall)
             for index, (start, stop, _) in enumerate(segments, start=1):
@@ -384,7 +387,7 @@ def _draw_droplet(
         shape = (rho_2d.shape[0], rho_2d.shape[1])
         length = DEFAULT_STYLE.contact_angle_length_fraction * min(shape)
         symbols = _angle_symbols(config, 0.5 * (angles.cll_left + angles.cll_right), wall)
-        for side in SIDES:
+        for side in ContactLine:
             glyph = angle_glyph(angles, side, shape, length)
             for polyline in (glyph.tangent, glyph.arc):
                 canvas.line(
@@ -429,7 +432,7 @@ def _draw_inclination(canvas: _Canvas, wall: _Wall, shape: tuple[int, int], thic
     The slope is whichever wall-parallel edge is lowest on the page: the solid's
     outer face for a wall underneath the fluid, the opposite edge for a wall on top.
     """
-    across = shape[1] if wall.edge in ("bottom", "top") else shape[0]
+    across = shape[wall.edge.normal_axis]
     faces = [
         canvas.page(_wall_points(wall, [-0.5, wall.length - 0.5], [depth, depth], shape))
         for depth in (thickness, -float(across))

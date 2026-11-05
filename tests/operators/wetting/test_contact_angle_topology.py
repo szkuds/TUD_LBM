@@ -24,6 +24,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from src.config.boundary import Edge
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
 from src.operators.wetting._interface_crossings import detect_bubble
@@ -99,7 +100,7 @@ class TestTopologyDetection:
 
     @pytest.mark.parametrize("bubble", [False, True])
     def test_detects_dispersed_phase(self, bubble):
-        got = detect_bubble(_cap_rho(90.0, bubble=bubble), RHO_MEAN, edge="bottom")
+        got = detect_bubble(_cap_rho(90.0, bubble=bubble), RHO_MEAN, edge=Edge.BOTTOM)
         assert bool(got) is bubble
 
     @pytest.mark.parametrize("edge", ["bottom", "top", "left", "right"])
@@ -114,13 +115,13 @@ class TestDimensionGuards:
     def test_contact_angle_rejects_3d(self):
         rho = jnp.zeros((8, 8, 2, 1, 1))
         with pytest.raises(ValueError, match="only implemented in 2D"):
-            compute_contact_angle(rho, RHO_MEAN, edge="bottom")
+            compute_contact_angle(rho, RHO_MEAN, edge=Edge.BOTTOM)
 
     def test_contact_line_rejects_3d(self):
         rho = jnp.zeros((8, 8, 2, 1, 1))
         zero = jnp.array(90.0)
         with pytest.raises(ValueError, match="only implemented in 2D"):
-            compute_contact_line_location(rho, zero, zero, RHO_MEAN, edge="bottom")
+            compute_contact_line_location(rho, zero, zero, RHO_MEAN, edge=Edge.BOTTOM)
 
 
 class TestContactAngleThroughDispersedPhase:
@@ -129,15 +130,15 @@ class TestContactAngleThroughDispersedPhase:
     @pytest.mark.parametrize("theta", THETAS)
     @pytest.mark.parametrize("bubble", [False, True])
     def test_recovers_the_imposed_angle(self, theta, bubble):
-        ca_left, ca_right = compute_contact_angle(_cap_rho(theta, bubble=bubble), RHO_MEAN, edge="bottom")
+        ca_left, ca_right = compute_contact_angle(_cap_rho(theta, bubble=bubble), RHO_MEAN, edge=Edge.BOTTOM)
         assert float(ca_left) == pytest.approx(theta, abs=ANGLE_TOL)
         assert float(ca_right) == pytest.approx(theta, abs=ANGLE_TOL)
 
     @pytest.mark.parametrize("theta", THETAS)
     def test_droplet_and_bubble_agree_at_the_same_dispersed_angle(self, theta):
         """The invariant that lets one hysteresis window cover both topologies."""
-        drop_left, drop_right = compute_contact_angle(_cap_rho(theta, bubble=False), RHO_MEAN, edge="bottom")
-        bub_left, bub_right = compute_contact_angle(_cap_rho(theta, bubble=True), RHO_MEAN, edge="bottom")
+        drop_left, drop_right = compute_contact_angle(_cap_rho(theta, bubble=False), RHO_MEAN, edge=Edge.BOTTOM)
+        bub_left, bub_right = compute_contact_angle(_cap_rho(theta, bubble=True), RHO_MEAN, edge=Edge.BOTTOM)
         assert float(bub_left) == pytest.approx(float(drop_left), abs=ANGLE_TOL)
         assert float(bub_right) == pytest.approx(float(drop_right), abs=ANGLE_TOL)
 
@@ -147,7 +148,7 @@ class TestContactAngleThroughDispersedPhase:
 
         A bubble whose vapour subtends 60° must report ~60°, not ~120°.
         """
-        ca_bubble, _ = compute_contact_angle(_cap_rho(theta, bubble=True), RHO_MEAN, edge="bottom")
+        ca_bubble, _ = compute_contact_angle(_cap_rho(theta, bubble=True), RHO_MEAN, edge=Edge.BOTTOM)
         assert abs(float(ca_bubble) - theta) < abs(float(ca_bubble) - (180.0 - theta))
 
     @pytest.mark.parametrize("edge", ["bottom", "top", "left", "right"])
@@ -158,7 +159,7 @@ class TestContactAngleThroughDispersedPhase:
         assert float(ca_right) == pytest.approx(60.0, abs=ANGLE_TOL)
 
     def test_jittable_for_a_bubble(self):
-        fn = jax.jit(lambda r: compute_contact_angle(r, RHO_MEAN, edge="bottom"))
+        fn = jax.jit(lambda r: compute_contact_angle(r, RHO_MEAN, edge=Edge.BOTTOM))
         ca_left, _ = fn(_cap_rho(60.0, bubble=True))
         assert float(ca_left) == pytest.approx(60.0, abs=ANGLE_TOL)
 
@@ -176,8 +177,8 @@ class TestContactLinePositional:
     @pytest.mark.parametrize("bubble", [False, True])
     def test_matches_the_analytic_contact_lines(self, theta, bubble):
         rho = _cap_rho(theta, bubble=bubble)
-        ca_left, ca_right = compute_contact_angle(rho, RHO_MEAN, edge="bottom")
-        cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, RHO_MEAN, edge="bottom")
+        ca_left, ca_right = compute_contact_angle(rho, RHO_MEAN, edge=Edge.BOTTOM)
+        cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, RHO_MEAN, edge=Edge.BOTTOM)
 
         expected_left, expected_right = _analytic_contact_lines(theta)
         assert float(cll_left) < float(cll_right)
@@ -211,8 +212,8 @@ class TestMeasurementApplicatorAgreement:
     def test_phi_sides_address_the_reported_contact_lines(self, bubble):
         rho_2d = _cap_rho_2d(60.0, bubble=bubble)
         rho = jnp.asarray(rho_2d[:, :, None, None, None])
-        ca_left, ca_right = compute_contact_angle(rho, RHO_MEAN, edge="bottom")
-        cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, RHO_MEAN, edge="bottom")
+        ca_left, ca_right = compute_contact_angle(rho, RHO_MEAN, edge=Edge.BOTTOM)
+        cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, RHO_MEAN, edge=Edge.BOTTOM)
 
         ghost_row = jnp.asarray(rho_2d[:, 0])
         left_region = self._responsive_region(ghost_row, side="left")

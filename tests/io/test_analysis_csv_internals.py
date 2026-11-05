@@ -19,6 +19,7 @@ Exercises:
 from __future__ import annotations
 from unittest.mock import patch
 import matplotlib as mpl
+from src.config.boundary import Edge
 
 mpl.use("Agg")
 import matplotlib.pyplot as plt
@@ -203,8 +204,8 @@ def _offset_circle_rho_2d(nx: int = 64, ny: int = 32, cx: float = 32.0, cy: floa
     return np.where(np.sqrt((x - cx) ** 2 + (y - cy) ** 2) < r, _RHO_L, _RHO_V)
 
 
-@pytest.mark.parametrize("wall_edge", ["bottom", "top", "left", "right"])
-def test_fallback_matches_live_measurement(wall_edge: str):
+@pytest.mark.parametrize("wall_edge", [Edge.BOTTOM, Edge.TOP, Edge.LEFT, Edge.RIGHT])
+def test_fallback_matches_live_measurement(wall_edge: Edge):
     """The numpy fallback must agree with the JAX live path on every wall.
 
     The live simulation writes ``ca_*`` from ``compute_contact_angle``; the
@@ -218,11 +219,11 @@ def test_fallback_matches_live_measurement(wall_edge: str):
 
     # Orient the base droplet so it sits on the requested wall.
     base = _offset_circle_rho_2d()
-    if wall_edge == "top":
+    if wall_edge is Edge.TOP:
         rho_2d = base[:, ::-1]
-    elif wall_edge == "left":
+    elif wall_edge is Edge.LEFT:
         rho_2d = base.T
-    elif wall_edge == "right":
+    elif wall_edge is Edge.RIGHT:
         rho_2d = base.T[::-1, :]
     else:
         rho_2d = base

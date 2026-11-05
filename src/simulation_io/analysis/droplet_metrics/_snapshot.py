@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 import numpy as np
+from src.config.boundary import Edge
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -60,17 +61,18 @@ def extract_velocity_components_2d(u: np.ndarray) -> tuple[np.ndarray, np.ndarra
     raise ValueError(msg)
 
 
-def to_canonical_2d(rho_2d: np.ndarray, wall_edge: str) -> np.ndarray:
+def to_canonical_2d(rho_2d: np.ndarray, wall_edge: Edge) -> np.ndarray:
     """Numpy twin of :func:`src.operators.wetting._canonical_view.to_canonical`.
 
     Maps ``rho_2d`` (shape ``(nx, ny)``) into the wall-aligned frame where the
     wetting wall is at column 0 with liquid at increasing column index, so the
-    bottom-wall formulas below apply unchanged for all four edges. Must stay in
-    lock-step with the JAX version — the live simulation path uses that one and
-    this fallback runs only when a snapshot lacks ``ca_*``/``cll_*`` keys.
+    bottom-wall formulas below apply unchanged for all four edges. Both versions
+    read the orientation off :class:`~src.config.boundary.Edge`, so they cannot
+    disagree — the live simulation path uses the JAX one and this fallback runs
+    only when a snapshot lacks ``ca_*``/``cll_*`` keys.
     """
-    arr = rho_2d.T if wall_edge in ("left", "right") else rho_2d
-    return arr[:, ::-1] if wall_edge in ("top", "right") else arr
+    arr = rho_2d.T if wall_edge.normal_axis == 0 else rho_2d
+    return arr[:, ::-1] if wall_edge.at_far_end else arr
 
 
 def interpolate_interface(row: np.ndarray, rho_mean: float) -> tuple[float, float, bool]:
@@ -92,7 +94,7 @@ def interpolate_interface(row: np.ndarray, rho_mean: float) -> tuple[float, floa
     return x_left, x_right, bool(diff[li] > 0)
 
 
-def contact_angles_from_rho(rho_2d: np.ndarray, rho_mean: float, wall_edge: str = "bottom") -> tuple[float, float]:
+def contact_angles_from_rho(rho_2d: np.ndarray, rho_mean: float, wall_edge: Edge = Edge.BOTTOM) -> tuple[float, float]:
     """Derive ``(left, right)`` dispersed-phase contact angles in degrees.
 
     Measured through the dispersed phase — the liquid for a droplet, the vapour
@@ -112,7 +114,7 @@ def contact_angles_from_rho(rho_2d: np.ndarray, rho_mean: float, wall_edge: str 
     return left, right
 
 
-def contact_lines_from_rho(rho_2d: np.ndarray, rho_mean: float, wall_edge: str = "bottom") -> tuple[float, float]:
+def contact_lines_from_rho(rho_2d: np.ndarray, rho_mean: float, wall_edge: Edge = Edge.BOTTOM) -> tuple[float, float]:
     """Derive ``(left, right)`` contact-line positions from the density field."""
     x_left, x_right, _ = interpolate_interface(to_canonical_2d(rho_2d, wall_edge)[:, 1], rho_mean)
     return x_left, x_right

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from src.cli.analysis_routing import analyse_tree
 from src.config import SimulationConfig
+from src.config.boundary import Edge
 from src.simulation_io.analysis.droplet_metrics import DropletSeries
 from src.simulation_io.analysis.droplet_metrics import MetricScales
 from src.simulation_io.plotting._simulation_csv import build_simulation_csv
@@ -82,7 +83,7 @@ def _series(*, incl_deg: float) -> DropletSeries:
         offset_x=8.0,
         incl_deg=incl_deg,
         save_interval=5,
-        wall_edge="bottom",
+        wall_edge=Edge.BOTTOM,
     )
     return DropletSeries(
         iteration=np.array([5, 10]),

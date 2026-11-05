@@ -11,6 +11,7 @@ single-phase ``"standard_equilibrium"``, which carries the pressure.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
+from src.config.boundary import Edge
 from src.operators.equilibrium._equilibrium import compute_equilibrium
 from src.registry import boundary_condition
 
@@ -44,7 +45,7 @@ def apply_velocity_inlet(
     Returns:
         Populations with the inlet column reset to the prescribed equilibrium.
     """
-    if edge != "left":
+    if edge != Edge.LEFT:
         return f_streamed
 
     ny = f_streamed.shape[1]

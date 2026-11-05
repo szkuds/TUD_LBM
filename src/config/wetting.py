@@ -15,9 +15,11 @@ back onto a surface that should repel it.
 """
 
 from __future__ import annotations
+from enum import StrEnum
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
+from src.config.boundary import Edge
 from src.config.defaults import CHEMICAL_STEP
 from src.config.defaults import HYSTERESIS
 from src.config.defaults import NEUTRAL_WETTING
@@ -32,6 +34,25 @@ if TYPE_CHECKING:
 #: limits of the hysteresis optimiser, ``phi <= 1 + 5/W`` and ``d_rho <= 1.5/W``.
 PHI_SPAN_W: float = 5.0
 D_RHO_SPAN_W: float = 1.5
+
+
+class ContactLine(StrEnum):
+    """One of the two contact lines on a wetting wall, in ascending tangential order.
+
+    ``LEFT`` has the lower tangential coordinate: on a bottom or top wall the
+    smaller ``x``, on a left or right wall the smaller ``y``. The values are the
+    suffixes of the saved per-line keys (``ca_left``, ``phi_right``, ``cll_left``),
+    so they must not change.
+    """
+
+    LEFT = "left"
+    RIGHT = "right"
+
+    @property
+    def other(self) -> ContactLine:
+        """The contact line at the other end of the inclusion."""
+        return ContactLine.RIGHT if self is ContactLine.LEFT else ContactLine.LEFT
+
 
 #: Every key the hysteresis operators read.
 _HYSTERESIS_KEYS: frozenset[str] = frozenset({"ca_advancing", "ca_receding", "max_iterations_above", *HYSTERESIS})
@@ -51,7 +72,7 @@ class ChemicalStepWall(NamedTuple):
         post_d_rho: ``d_rho`` of post-step cells across the step from a line.
     """
 
-    edge: str
+    edge: Edge
     step_x: float
     pre_phi_left: float
     pre_phi_right: float
@@ -82,7 +103,7 @@ def complete_chemical_step(section: dict[str, Any] | None, edges: dict[str, Any]
     from src.operators.wetting._edge_config import first_wetting_edge
 
     completed = {**CHEMICAL_STEP, **section}
-    completed.setdefault("chemical_step_edge", first_wetting_edge(edges) or "bottom")
+    completed.setdefault("chemical_step_edge", (first_wetting_edge(edges) or Edge.BOTTOM).value)
     return completed
 
 
@@ -172,7 +193,7 @@ def chemical_step_wall(config: SimulationConfig) -> ChemicalStepWall | None:
     width = float(params.interface_width)
     post_wets_more = float(step["ca_advancing_post_step"]) < float(step["ca_advancing_pre_step"])
     return ChemicalStepWall(
-        edge=str(step["chemical_step_edge"]),
+        edge=Edge(step["chemical_step_edge"]),
         step_x=float(step["chemical_step_location"]) * config.grid_shape[0],
         pre_phi_left=wall["phi_left"],
         pre_phi_right=wall["phi_right"],

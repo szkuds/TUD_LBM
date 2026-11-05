@@ -7,28 +7,35 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
+from src.config.boundary import Edge
 
 if TYPE_CHECKING:
     from src.lattice.lattice import Lattice
 
-#: Edge -> ``(axis, index along it)``.
-_FACES: dict[str, tuple[int, int]] = {
-    "bottom": (1, 0),
-    "top": (1, -1),
-    "left": (0, 0),
-    "right": (0, -1),
-    "back": (2, 0),
-    "front": (2, -1),
-}
 #: Edge -> the lattice field listing the directions that point into the domain there.
-_INCOMING: dict[str, str] = {
-    "bottom": "top_indices",
-    "top": "bottom_indices",
-    "left": "right_indices",
-    "right": "left_indices",
-    "back": "front_indices",
-    "front": "back_indices",
+_INCOMING: dict[Edge, str] = {
+    Edge.BOTTOM: "top_indices",
+    Edge.TOP: "bottom_indices",
+    Edge.LEFT: "right_indices",
+    Edge.RIGHT: "left_indices",
+    Edge.BACK: "front_indices",
+    Edge.FRONT: "back_indices",
 }
+
+
+def _face(edge: str) -> Edge:
+    """*edge* as an :class:`~src.config.boundary.Edge`.
+
+    The boundary-condition protocol passes the edge as a plain string.
+
+    Raises:
+        ValueError: If *edge* is not a domain face.
+    """
+    try:
+        return Edge(edge)
+    except ValueError:
+        msg = f"Unknown edge '{edge}'"
+        raise ValueError(msg) from None
 
 
 def face_axis(edge: str) -> int:
@@ -37,21 +44,17 @@ def face_axis(edge: str) -> int:
     Raises:
         ValueError: If *edge* is not a domain face.
     """
-    if edge not in _FACES:
-        msg = f"Unknown edge '{edge}'"
-        raise ValueError(msg)
-    return _FACES[edge][0]
+    return _face(edge).normal_axis
 
 
 def face_cells(edge: str) -> tuple[slice | int, ...]:
     """The ``(x, y, z)`` index selecting the cells of *edge*."""
-    axis = face_axis(edge)
+    face = _face(edge)
     cells: list[slice | int] = [slice(None)] * 3
-    cells[axis] = _FACES[edge][1]
+    cells[face.normal_axis] = -1 if face.at_far_end else 0
     return tuple(cells)
 
 
 def incoming_directions(lattice: Lattice, edge: str) -> list[int]:
     """The direction indices pointing into the domain at *edge*, as static Python ints."""
-    face_axis(edge)
-    return [int(i) for i in np.array(getattr(lattice, _INCOMING[edge]))]
+    return [int(i) for i in np.array(getattr(lattice, _INCOMING[_face(edge)]))]

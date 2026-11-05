@@ -7,6 +7,7 @@ a worked channel-flow example.
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from src.config.boundary import Edge
 from src.registry import boundary_condition
 
 if TYPE_CHECKING:
@@ -32,7 +33,7 @@ def apply_outlet(
     Returns:
         Populations with the last column set to the second-to-last column.
     """
-    if edge != "right":
+    if edge != Edge.RIGHT:
         return f_streamed
 
     return f_streamed.at[-1, :, :, :, 0].set(f_streamed[-2, :, :, :, 0])

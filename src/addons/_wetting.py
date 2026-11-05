@@ -35,6 +35,7 @@ from src.operators.wetting._params import WettingState
 from src.registry import addon_operator
 
 if TYPE_CHECKING:
+    from src.config.boundary import Edge
     from src.config.simulation_config import SimulationConfig
     from src.pipeline.setup import SimulationSetup
     from src.pipeline.state.state import State
@@ -66,7 +67,7 @@ def wetting_ghost_fill(config: SimulationConfig) -> GhostFill[WallParams]:
     return ghost_fill
 
 
-def _wall(config: SimulationConfig) -> tuple[float, str]:
+def _wall(config: SimulationConfig) -> tuple[float, Edge]:
     """``(rho_mean, edge)``: the phase threshold and the wall the angles are measured at.
 
     Raises:
@@ -94,14 +95,14 @@ def _density(f: jnp.ndarray) -> jnp.ndarray:
     return jnp.sum(f, axis=-2, keepdims=True)
 
 
-def _measure(rho: jnp.ndarray, rho_mean: float, edge: str) -> dict[str, jnp.ndarray]:
+def _measure(rho: jnp.ndarray, rho_mean: float, edge: Edge) -> dict[str, jnp.ndarray]:
     """``ca_*`` and ``cll_*`` of *rho* at the measurement wall."""
     ca_left, ca_right = compute_contact_angle(rho, jnp.array(rho_mean), edge=edge)
     cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, jnp.array(rho_mean), edge=edge)
     return {"ca_left": ca_left, "ca_right": ca_right, "cll_left": cll_left, "cll_right": cll_right}
 
 
-def _init_state(config: SimulationConfig, rho_mean: float, edge: str) -> InitStateHook[WettingState]:
+def _init_state(config: SimulationConfig, rho_mean: float, edge: Edge) -> InitStateHook[WettingState]:
     """The configured wall parameters, the measured initial angles and, on a restart, the saved state."""
     defaults = wetting_scalars(config)
     assert defaults is not None  # noqa: S101 - the addon is built only with wetting defaults
@@ -134,7 +135,7 @@ def build_measurement_hook(config: SimulationConfig) -> PostStepHook:
     return post_step
 
 
-def _optimiser(config: SimulationConfig, edge: str) -> PostStepHook:
+def _optimiser(config: SimulationConfig, edge: Edge) -> PostStepHook:
     """Hysteresis: optimise the wall parameters for the next step on trial steps of the kernel."""
     hc = config.hysteresis
     assert hc is not None  # noqa: S101 - built only for a hysteresis run

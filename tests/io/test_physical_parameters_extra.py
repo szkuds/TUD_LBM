@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 import pytest
 from src.config import SimulationConfig
+from src.config.boundary import Edge
 from src.simulation_io.analysis.physical_parameters import build_overview
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _contact_line_length_from_rho
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _format_critical_inclination_angle_row
@@ -112,8 +113,8 @@ def _wall_attached_rho(wall_edge: str, nx: int = 24, ny: int = 12) -> np.ndarray
     return plane[:, :, np.newaxis, np.newaxis, np.newaxis]
 
 
-@pytest.mark.parametrize("wall_edge", ["bottom", "top", "left", "right"])
-def test_contact_line_length_is_measured_at_the_wetting_wall(wall_edge: str):
+@pytest.mark.parametrize("wall_edge", [Edge.BOTTOM, Edge.TOP, Edge.LEFT, Edge.RIGHT])
+def test_contact_line_length_is_measured_at_the_wetting_wall(wall_edge: Edge):
     """Every wall must give the same spacing — the field is the same, just moved.
 
     Slicing ``y = 0`` unconditionally sampled the far wall for a top-wall run,
@@ -129,12 +130,12 @@ def test_contact_line_length_is_measured_at_the_wetting_wall(wall_edge: str):
 def test_contact_line_length_defaults_to_the_bottom_wall():
     """The default keeps existing bottom-wall callers unchanged."""
     rho = _wall_attached_rho("bottom")
-    assert _contact_line_length_from_rho(rho, 0.6) == _contact_line_length_from_rho(rho, 0.6, "bottom")
+    assert _contact_line_length_from_rho(rho, 0.6) == _contact_line_length_from_rho(rho, 0.6, Edge.BOTTOM)
 
 
 def test_contact_line_length_misses_when_told_the_wrong_wall():
     """Guards the parametrised test above against passing for the wrong reason."""
-    assert _contact_line_length_from_rho(_wall_attached_rho("top"), 0.6, "bottom") is None
+    assert _contact_line_length_from_rho(_wall_attached_rho("top"), 0.6, Edge.BOTTOM) is None
 
 
 @pytest.mark.parametrize(

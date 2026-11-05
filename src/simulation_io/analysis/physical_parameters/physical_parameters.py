@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
 import numpy as np
+from src.config.boundary import Edge
 from src.config.init_field import load_init_field
 from src.config.multiphase import is_multiphase
 from src.config.multiphase import multiphase_params
@@ -137,31 +138,25 @@ _MIN_CROSSINGS = 2
 #: ``x == 0.0``, which is the one case that never needed guarding.
 _MIN_CROSSING_SLOPE = 1e-9
 
-#: Order in which ``[boundary_conditions]`` is scanned for the wetting wall. Matches
-#: :func:`src.operators.wetting._edge_config._resolve_wetting_edges`, so the wall
-#: reported here is the one the solver actually measured at.
-_EDGE_SCAN_ORDER = ("bottom", "top", "left", "right")
 
+def resolve_wall_edge(config: SimulationConfig) -> Edge:
+    """The wall the solver measures contact angles at, else :attr:`Edge.BOTTOM`.
 
-def resolve_wall_edge(config: SimulationConfig) -> str:
-    """The single wall marked ``"wetting"`` in ``[boundary_conditions]``, else ``"bottom"``.
-
-    Config validation guarantees exactly one wetting wall for wetting runs;
-    non-wetting runs fall back to ``"bottom"``, for which the canonical
+    The wall is :func:`~src.operators.wetting._edge_config.first_wetting_edge`,
+    so the wall reported here is the one the solver actually measured at.
+    Non-wetting runs fall back to the bottom wall, for which the canonical
     transform is the identity.
 
     Defined here rather than in :mod:`..droplet_metrics._scales` so that this
     module — which ``_scales`` already imports from lazily — does not have to
     import back into ``droplet_metrics``.
     """
-    bc = config.boundary_conditions or {}
-    for edge in _EDGE_SCAN_ORDER:
-        if bc.get(edge) == "wetting":
-            return edge
-    return "bottom"
+    from src.operators.wetting._edge_config import first_wetting_edge
+
+    return first_wetting_edge(config.boundary_conditions) or Edge.BOTTOM
 
 
-def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float, wall_edge: str = "bottom") -> float | None:
+def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float, wall_edge: Edge = Edge.BOTTOM) -> float | None:
     """Return setup contact-line spacing from a rho field using wall-row transitions.
 
     *wall_edge* names the wetting wall. The row is taken from the wall-aligned

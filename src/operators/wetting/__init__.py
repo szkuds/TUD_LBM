@@ -15,5 +15,5 @@ has no factory. Its modules are imported directly by the wetting addon
 Example:
     from src.operators.wetting._contact_angle import compute_contact_angle
 
-    ca_left, ca_right = compute_contact_angle(rho, rho_mean, edge="bottom")
+    ca_left, ca_right = compute_contact_angle(rho, rho_mean, edge=Edge.BOTTOM)
 """

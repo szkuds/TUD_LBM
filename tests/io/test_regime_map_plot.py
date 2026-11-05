@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 from src.config import SimulationConfig
+from src.config.analysis_options import AxisScale
 from src.simulation_io.analysis.accelerations import Regime
 from src.simulation_io.analysis.physical_parameters import DimensionlessNumbers
 from src.simulation_io.plotting.figure_config import REGIME_COLORS
@@ -297,7 +298,7 @@ def test_build_regime_map_names_the_figure_after_the_axis_pair(tmp_path: Path):
     txt_path = tmp_path / "dirs.txt"
     txt_path.write_text("mobile_run\n", encoding="utf-8")
 
-    out_path = build_regime_map(txt_path, allowed_roots=[tmp_path], x_key="la", y_key="bo", xscale="log")
+    out_path = build_regime_map(txt_path, allowed_roots=[tmp_path], x_key="la", y_key="bo", xscale=AxisScale.LOG)
 
     assert out_path is not None
     assert out_path.name == "regime_map_la_vs_bo.png"

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import matplotlib as mpl
 import numpy as np
 import pytest
+from src.config.boundary import Edge
 from src.config.run_config import ANALYSIS_DIRNAME
 from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import SETUP_FIGURE_FILENAME
@@ -169,7 +170,7 @@ def test_edge_labels_come_from_the_config():
 def test_unknown_boundary_name_labels_itself(monkeypatch):
     monkeypatch.delitem(setup_figure.BC_ABBREVIATIONS, "symmetry")
 
-    assert edge_labels(step_config())["top"] == "symmetry"
+    assert edge_labels(step_config())[Edge.TOP] == "symmetry"
 
 
 def test_key_lists_both_surface_windows():

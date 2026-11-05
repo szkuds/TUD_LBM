@@ -11,6 +11,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from src.config.boundary import IN_PLANE_EDGES
 from src.config.multiphase import is_multiphase
 from src.config.multiphase import multiphase_params
 
@@ -209,7 +210,7 @@ class TestSimulationConfigDefaults:
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         assert cfg.boundary_conditions is not None
-        for edge in ("top", "bottom", "left", "right"):
+        for edge in IN_PLANE_EDGES:
             assert cfg.boundary_conditions[edge] == "periodic"
 
     def test_is_single_phase_property(self):

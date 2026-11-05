@@ -14,6 +14,7 @@ from src.config.multiphase import multiphase_params
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
+    from src.config.boundary import Edge
 
 _WIDTH_EPS = 1e-15
 
@@ -115,7 +116,7 @@ class MetricScales:
     offset_x: float
     incl_deg: float
     save_interval: int
-    wall_edge: str
+    wall_edge: Edge
 
     @property
     def sigma_primary(self) -> float | None:
