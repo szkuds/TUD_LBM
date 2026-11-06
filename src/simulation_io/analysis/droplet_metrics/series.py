@@ -65,6 +65,7 @@ CSV_COLUMNS: tuple[str, ...] = (
     "sigma_lg",
     "sigma_lg_source",
     "Ca_analytical",
+    "We",
 )
 
 
@@ -198,6 +199,18 @@ class DropletSeries:
         """Reynolds number based on the initial droplet diameter."""
         return (self.avg_u_x * (2.0 * self.scales.r_zero)) / self.scales.nu
 
+    @cached_property
+    def we(self) -> np.ndarray:
+        """Weber number ``rho_l * u^2 * 2R_0 / sigma``, on the length and velocity of :attr:`re`.
+
+        Built on the liquid density and the primary sigma; all zeros when no
+        sigma is available, as for :attr:`ca`.
+        """
+        sigma = self.scales.sigma_primary
+        if not sigma:
+            return np.zeros_like(self.avg_u_x)
+        return (self.scales.rho_l * self.avg_u_x**2 * (2.0 * self.scales.r_zero)) / sigma
+
     def to_dataframe(self) -> pd.DataFrame:
         """Serialise to the ``simulation_data.csv`` column layout.
 
@@ -234,6 +247,7 @@ class DropletSeries:
                 "sigma_lg": self.scales.sigma_primary,
                 "sigma_lg_source": self.scales.sigma_source,
                 "Ca_analytical": self.ca_analytical,
+                "We": self.we,
             },
             columns=list(CSV_COLUMNS),
         )

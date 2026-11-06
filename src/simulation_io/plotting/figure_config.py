@@ -146,6 +146,7 @@ DEFAULT_STYLE = FigureStyle()
 #: that happens to share the symbol.
 LABEL_CA = r"$\mathrm{Ca}$"
 LABEL_RE = r"$\mathrm{Re}$"
+LABEL_WE = r"$\mathrm{We}$"
 LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
 LABEL_X_AVG_NORM = r"$X_{\mathrm{CM}}/R_0$"
 

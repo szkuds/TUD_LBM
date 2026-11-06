@@ -75,6 +75,7 @@ def _series(*, incl_deg: float) -> DropletSeries:
     """A two-sample series with simple, hand-checkable scales."""
     scales = MetricScales(
         rho_mean=0.6,
+        rho_l=1.0,
         sigma_measured=None,
         sigma_analytical=0.5,
         nu=0.1,
@@ -112,6 +113,14 @@ def test_ca_norm_equals_ca_when_not_inclined():
     series = _series(incl_deg=0.0)
 
     assert np.allclose(series.ca_norm, series.ca)
+
+
+def test_weber_number_is_liquid_inertia_over_surface_tension():
+    """We = rho_l * u^2 * 2R_0 / sigma: 1.0 * 0.01^2 * 4.0 / 0.5 = 8e-4 for the first sample."""
+    series = _series(incl_deg=0.0)
+
+    assert np.allclose(series.we, [8e-4, 3.2e-3])
+    assert "We" in series.to_dataframe().columns
 
 
 def test_safe_load_config_returns_none_on_parse_error(monkeypatch, tmp_path: Path):

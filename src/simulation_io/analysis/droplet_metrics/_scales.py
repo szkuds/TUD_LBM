@@ -108,6 +108,7 @@ class MetricScales:
     """Scalar quantities that normalise a run's droplet metrics."""
 
     rho_mean: float
+    rho_l: float
     sigma_measured: float | None
     sigma_analytical: float | None
     nu: float
@@ -160,6 +161,7 @@ def resolve_scales(config: SimulationConfig) -> MetricScales | None:
     step_x = resolve_step_x(config)
     return MetricScales(
         rho_mean=(float(params.rho_l) + float(params.rho_v)) / 2.0,
+        rho_l=float(params.rho_l),
         sigma_measured=sigma_measured,
         sigma_analytical=sigma_analytical,
         nu=(float(config.tau) - 0.5) / 3.0,
