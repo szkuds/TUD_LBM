@@ -178,7 +178,9 @@ and they combine:
 
 ``[multiphase]`` needs ``eos``, ``kappa``, ``rho_l``, ``rho_v`` and
 ``interface_width``; ``eos = "carnahan-starling"`` additionally needs
-``a_eos``, ``b_eos``, ``r_eos`` and ``t_eos``.  The wetting sections need
+``a_eos``, ``b_eos``, ``r_eos`` and ``t_eos``, and may omit ``rho_l``/``rho_v``:
+they are then the Maxwell coexistence pair of those four (omit them to sweep
+``t_eos``).  The wetting sections need
 ``[multiphase]`` and a ``"wetting"`` face.  A 3D run (``lattice_type =
 "D3Q19"``) supports the bulk physics only: see :doc:`operators`.
 

@@ -3,6 +3,12 @@
 Holds the section's schema, the per-EOS parameter table, the JIT-static
 :class:`MultiphaseParams` and the densities the run's phases actually sit at.
 Adding an EOS with its own parameters is one row of :data:`EOS_PARAMETERS`.
+
+``rho_l``/``rho_v`` may be omitted for an EOS that registers a coexistence
+solver (kind ``"coexistence"``, the Maxwell construction):
+:func:`complete_multiphase` fills them from the EOS's own parameters. A
+configured density always wins. To sweep ``t_eos``, omit them, since a
+configured density does not follow the temperature.
 """
 
 from __future__ import annotations
@@ -16,7 +22,8 @@ from src.config.init_field import measure_init_phase_densities
 if TYPE_CHECKING:
     from src.config.simulation_config import SimulationConfig
 
-#: Every EOS needs these.
+#: Every EOS needs these. ``rho_l``/``rho_v`` are filled by :func:`complete_multiphase`
+#: when omitted for an EOS with a registered coexistence solver.
 REQUIRED: tuple[str, ...] = ("kappa", "rho_l", "rho_v", "interface_width", "eos")
 #: Keys any EOS may carry.
 OPTIONAL: tuple[str, ...] = ("g",)
@@ -51,8 +58,39 @@ def is_multiphase(config: SimulationConfig) -> bool:
 
 
 def complete_multiphase(section: dict[str, Any] | None) -> dict[str, Any] | None:
-    """*section* without its null keys: a null means the key is not set, and TOML cannot write one."""
-    return None if section is None else {name: value for name, value in section.items() if value is not None}
+    """*section* without its null keys, and with omitted densities filled from the Maxwell construction.
+
+    A null means the key is not set, and TOML cannot write one. When ``rho_l``
+    or ``rho_v`` is missing and the EOS registers a coexistence solver with
+    every parameter of its :data:`EOS_PARAMETERS` row present, the missing
+    density is the Maxwell value. A configured density is never overwritten;
+    anything else is left to :func:`validate_multiphase`.
+
+    Raises:
+        ValueError: If the EOS parameters admit no liquid-vapour coexistence.
+    """
+    if section is None:
+        return None
+    completed = {name: value for name, value in section.items() if value is not None}
+    eos = completed.get("eos")
+    if not isinstance(eos, str) or {"rho_l", "rho_v"} <= completed.keys():
+        return completed
+    row = EOS_PARAMETERS.get(eos)
+    if row is None or not set(row) <= completed.keys():
+        return completed
+
+    # Imported here: the EOS package imports this module.
+    from src.operators.macroscopic.eos import coexistence_densities
+
+    pair = coexistence_densities(eos, completed)
+    if pair is not None:
+        rho_v, rho_l = pair
+        # Six significant figures: the saved config.toml stays readable, and the
+        # surface-tension cache key (which holds rho_l/rho_v) cannot differ in the
+        # last bits between machines.
+        completed.setdefault("rho_v", float(f"{rho_v:.6g}"))
+        completed.setdefault("rho_l", float(f"{rho_l:.6g}"))
+    return completed
 
 
 def validate_multiphase(config: SimulationConfig) -> None:
