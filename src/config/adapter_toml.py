@@ -51,8 +51,9 @@ class TomlAdapter(ConfigAdapter):
             raise FileNotFoundError(msg)
         with path_obj.open("rb") as fh:
             raw = tomllib.load(fh)
-        flat, upgraded = load_sections(raw)
-        if upgraded and path_obj.name == CONFIG_FILENAME:
+        saved = path_obj.name == CONFIG_FILENAME
+        flat, upgraded = load_sections(raw, saved=saved)
+        if upgraded and saved:
             self._write_back(dict(flat), path_obj)
         return flat
 

@@ -177,3 +177,98 @@ def test_force_defaults_come_from_one_table() -> None:
     config = SimulationConfig(grid_shape=(8, 8), forces={"gravity_force": {"force_g": 1e-6}})
 
     assert config.forces["gravity_force"] == {"force_g": 1e-6, "inclination_angle_deg": 0.0}
+
+
+def _stepped(centre_x: float, **chemical_step: object) -> dict[str, dict[str, object]]:
+    """A current-layout bubble config with windows labelled by position, as saved before 2c."""
+    return {
+        "simulation_type": {"grid_shape": [201, 101], "tau": 0.8},
+        "initialisation": {"centres": [[centre_x, 1]], "radii": [0.3], "dispersed": "vapour"},
+        "chemical_step": {
+            "chemical_step_location": 0.5,
+            "ca_advancing_pre_step": 70.0,
+            "ca_receding_pre_step": 50.0,
+            "ca_advancing_post_step": 120.0,
+            "ca_receding_post_step": 100.0,
+            **chemical_step,
+        },
+    }
+
+
+def test_a_saved_config_starting_on_the_high_side_is_relabelled() -> None:
+    raw = _stepped(0.7)
+
+    upgraded, changed = upgrade(raw, saved=True)
+
+    assert changed
+    assert upgraded["chemical_step"] == {
+        "chemical_step_location": 0.5,
+        "ca_advancing_pre_step": 120.0,
+        "ca_receding_pre_step": 100.0,
+        "ca_advancing_post_step": 70.0,
+        "ca_receding_post_step": 50.0,
+        "chemical_step_pre_side": "high",
+    }
+    assert raw["chemical_step"]["ca_advancing_pre_step"] == 70.0
+    assert upgrade(upgraded, saved=True) == (upgraded, False)
+
+
+@pytest.mark.parametrize(
+    ("raw", "saved"),
+    [
+        pytest.param(_stepped(0.7), False, id="an input TOML"),
+        pytest.param(_stepped(0.3), True, id="a low start"),
+        pytest.param(_stepped(0.7, chemical_step_pre_side="low"), True, id="a configured side"),
+    ],
+)
+def test_other_chemical_step_configs_keep_their_labels(raw: dict[str, dict[str, object]], saved: bool) -> None:
+    upgraded, changed = upgrade(raw, saved=saved)
+
+    assert not changed
+    assert upgraded is raw
+
+
+def test_the_removed_carry_option_is_dropped_when_it_was_off() -> None:
+    raw = {"simulation_type": {"tau": 0.8}, "hysteresis": {"ca_advancing": 90.0, "carry_inactive_params": False}}
+
+    upgraded, changed = upgrade(raw)
+
+    assert changed
+    assert upgraded == {"simulation_type": {"tau": 0.8}, "hysteresis": {"ca_advancing": 90.0}}
+
+
+def test_the_removed_carry_option_stays_on_record_when_it_was_on() -> None:
+    raw = {"simulation_type": {"tau": 0.8}, "hysteresis": {"ca_advancing": 90.0, "carry_inactive_params": True}}
+
+    upgraded, _ = upgrade(raw)
+
+    assert upgraded["hysteresis"] == {"ca_advancing": 90.0}
+    assert upgraded["simulation_type"] == {"tau": 0.8, "carry_inactive_params": True}
+    assert upgrade(upgraded) == (upgraded, False)
+
+
+def test_a_saved_bubble_run_loads_relabelled_and_is_rewritten(tmp_path: Path) -> None:
+    raw = _stepped(0.7, chemical_step_edge="top", edge_width=1.0)
+    raw["simulation_type"] |= {"nt": 10}
+    raw["multiphase"] = dict(_MULTIPHASE)
+    raw["boundary_conditions"] = {"top": "wetting", "bottom": "bounce-back"}
+    raw["hysteresis"] = {"carry_inactive_params": False}
+    path = tmp_path / CONFIG_FILENAME
+    TomlAdapter().save(DictAdapter().load(_stepped_current(raw)), str(path))
+    text = path.read_text(encoding="utf-8").replace('chemical_step_pre_side = "low"\n', "")
+    path.write_text(text.replace("[hysteresis]\n", "[hysteresis]\ncarry_inactive_params = false\n"), encoding="utf-8")
+
+    config = TomlAdapter().load(str(path))
+
+    assert config.chemical_step is not None
+    assert config.chemical_step["chemical_step_pre_side"] == "high"
+    assert config.chemical_step["ca_advancing_pre_step"] == 120.0
+    assert tomllib.loads(path.read_text(encoding="utf-8")) == build_sections(config)
+
+
+def _stepped_current(raw: dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
+    """*raw* as the pre-2c code read it: post at higher x, whatever the start side."""
+    current = {name: dict(section) for name, section in raw.items()}
+    current["chemical_step"]["chemical_step_pre_side"] = "low"
+    current["hysteresis"] = {}
+    return current

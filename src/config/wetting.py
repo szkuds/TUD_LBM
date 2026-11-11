@@ -148,7 +148,7 @@ def complete_hysteresis(section: dict[str, Any] | None) -> dict[str, Any] | None
     return completed
 
 
-def _start_side(location: float, centres: object, nx: int) -> TangentialSide | None:
+def start_side(location: float, centres: object, nx: int) -> TangentialSide | None:
     """The side of the step every initial centre lies on, or ``None`` if that is not one side.
 
     Centres are fractions of ``nx - 1`` (the initialiser's cell rule) and the step
@@ -188,7 +188,7 @@ def complete_chemical_step(
     completed = {**CHEMICAL_STEP, **section}
     completed.setdefault("chemical_step_edge", (first_wetting_edge(edges) or Edge.BOTTOM).value)
     if "chemical_step_pre_side" not in completed and "chemical_step_location" in completed:
-        side = _start_side(completed["chemical_step_location"], initialisation.get("centres"), nx)
+        side = start_side(completed["chemical_step_location"], initialisation.get("centres"), nx)
         if side is not None:
             completed["chemical_step_pre_side"] = side.value
     return completed

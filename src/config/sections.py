@@ -101,9 +101,12 @@ def merge_sections(raw: dict[str, Any]) -> dict[str, Any]:
     return sim_table
 
 
-def load_sections(raw: dict[str, Any]) -> tuple[dict[str, Any], bool]:
-    """The flat kwarg dict of nested *raw*, and whether *raw* was in the old layout."""
-    upgraded, changed = upgrade(raw)
+def load_sections(raw: dict[str, Any], *, saved: bool = False) -> tuple[dict[str, Any], bool]:
+    """The flat kwarg dict of nested *raw*, and whether *raw* had to be upgraded.
+
+    *saved* marks a run directory's own ``config.toml`` (see :func:`~src.config.legacy.upgrade`).
+    """
+    upgraded, changed = upgrade(raw, saved=saved)
     return merge_sections(upgraded), changed
 
 
