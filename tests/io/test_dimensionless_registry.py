@@ -118,6 +118,15 @@ def test_laplace_is_the_reciprocal_square_of_ohnesorge():
     assert math.isclose(la, 1.0 / oh**2, rel_tol=1e-12)
 
 
+def test_squared_ohnesorge_is_the_square_of_ohnesorge():
+    dn = compute_dimensionless_numbers(_config())
+
+    oh2, oh = dn.get("oh2"), dn.get("oh")
+    assert oh2 is not None
+    assert oh is not None
+    assert math.isclose(oh2, oh**2, rel_tol=1e-12)
+
+
 _CS_EOS = {"eos": "carnahan-starling", "a_eos": 1.0, "b_eos": 4.0, "r_eos": 1.0, "t_eos": 0.07}
 
 
