@@ -146,13 +146,19 @@ def test_empty_message_and_config_resolvers_cover_branches():
         grid_shape=(20, 10, 1),
         tau=0.9,
         nt=2,
-        initialisation={"radii": [0.5]},
-        chemical_step={"chemical_step_location": 0.25},
+        initialisation={"radii": [0.5], "dispersed": "liquid"},
+        chemical_step={"chemical_step_location": 0.25, "chemical_step_pre_side": "low"},
     )
     assert analytical_sigma_lg(cfg) is not None
     assert resolve_step_x(cfg) == 5.0
 
-    cfg_no_step = SimulationConfig(grid_shape=(8, 8, 1), tau=0.8, nt=2, chemical_step={})
+    cfg_no_step = SimulationConfig(
+        grid_shape=(8, 8, 1),
+        tau=0.8,
+        nt=2,
+        chemical_step={"chemical_step_pre_side": "low"},
+        initialisation={"dispersed": "liquid"},
+    )
     assert resolve_step_x(cfg_no_step) is None
 
 

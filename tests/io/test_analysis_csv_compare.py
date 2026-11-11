@@ -85,6 +85,7 @@ def _series(*, incl_deg: float) -> DropletSeries:
         incl_deg=incl_deg,
         save_interval=5,
         wall_edge=Edge.BOTTOM,
+        omega=10.0,
     )
     return DropletSeries(
         iteration=np.array([5, 10]),
@@ -113,6 +114,15 @@ def test_ca_norm_equals_ca_when_not_inclined():
     series = _series(incl_deg=0.0)
 
     assert np.allclose(series.ca_norm, series.ca)
+
+
+def test_contact_length_is_line_separation_over_initial_area():
+    """L = |x_R - x_L| = 3.0, 3.5 and L/Omega_D with Omega_D = 10."""
+    series = _series(incl_deg=0.0)
+
+    assert np.allclose(series.contact_length, [3.0, 3.5])
+    assert np.allclose(series.contact_length_norm, [0.3, 0.35])
+    assert {"L", "L_over_Omega"}.issubset(series.to_dataframe().columns)
 
 
 def test_weber_number_is_liquid_inertia_over_surface_tension():

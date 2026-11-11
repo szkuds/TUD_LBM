@@ -398,8 +398,11 @@ def _get_hysteresis_window_chemical_step(
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Return ``(ca_advancing, ca_receding, held_at_step)`` for one contact line.
 
-    The window is the surface's own: the post-step window once the line is
-    within ``edge_width`` of the step or past it, the pre-step window otherwise.
+    "Pre" and "post" are the inclusion's start and destination surfaces
+    (:meth:`~src.config.wetting.ChemicalStepWall.on_post`), so the rules hold for
+    either direction of travel. The window is the surface's own: the post-step
+    window once the line is within ``edge_width`` of the step (on the start side)
+    or past it, the pre-step window otherwise.
     It is stateless. The step itself is expressed through the wall: band cells
     across the step keep their own surface's wettability
     (:class:`~src.config.wetting.ChemicalStepWall`).
@@ -417,15 +420,15 @@ def _get_hysteresis_window_chemical_step(
     assert csc is not None  # noqa: S101 - a chemical-step run has the section
     # It also has wetting, so a stepped wall.
     assert wall is not None  # noqa: S101
-    step_x, delta = wall.step_x, csc["edge_width"]
+    delta = csc["edge_width"]
     ahead, behind = (cll - delta, cll + delta) if side == ContactLine.LEFT else (cll + delta, cll - delta)
-    post = cll + delta >= step_x
+    post = wall.on_post(cll + wall.travel * delta)
     ca_adv = jnp.where(post, csc["ca_advancing_post_step"], csc["ca_advancing_pre_step"])
     ca_rec = jnp.where(post, csc["ca_receding_post_step"], csc["ca_receding_pre_step"])
     # Held: the surface behind the line (the one it would uncover) is post, the
     # one ahead is pre, and post wets more.
     post_wets_more = csc["ca_receding_post_step"] < csc["ca_advancing_pre_step"]
-    held_at_step = (behind >= step_x) & ~(ahead >= step_x) & post_wets_more
+    held_at_step = wall.on_post(behind) & ~wall.on_post(ahead) & post_wets_more
     return ca_adv, ca_rec, held_at_step
 
 
@@ -738,9 +741,9 @@ def update_wetting_state_chemical_step(
         cll = measured[2 + i]
         ca_adv, ca_rec, held = _get_hysteresis_window_chemical_step(setup, cll, side=line)
         windows.append((ca_adv, ca_rec))
-        pins.append(jnp.where(held, wall.step_x, getattr(wetting, f"cll_{line}")))
+        pins.append(jnp.where(held, wall.hold_x, getattr(wetting, f"cll_{line}")))
         step_sides.append(
-            StepSide(cll >= wall.step_x, held, getattr(wall, f"pre_phi_{line}"), getattr(wall, f"pre_d_rho_{line}"))
+            StepSide(wall.on_post(cll), held, getattr(wall, f"pre_phi_{line}"), getattr(wall, f"pre_d_rho_{line}"))
         )
     return _update_wetting_state_impl(
         wetting,

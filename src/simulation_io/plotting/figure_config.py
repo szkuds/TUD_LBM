@@ -147,6 +147,7 @@ DEFAULT_STYLE = FigureStyle()
 LABEL_CA = r"$\mathrm{Ca}$"
 LABEL_RE = r"$\mathrm{Re}$"
 LABEL_WE = r"$\mathrm{We}$"
+LABEL_L_OMEGA = r"$L/\Omega_D$"
 LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
 LABEL_X_AVG_NORM = r"$X_{\mathrm{CM}}/R_0$"
 

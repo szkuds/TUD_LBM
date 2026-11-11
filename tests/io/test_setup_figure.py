@@ -48,6 +48,7 @@ def step_config(**overrides: object) -> SimulationConfig:
         },
         "boundary_conditions": {"bottom": "wetting", "top": "symmetry"},
         "plot_fields": ["density"],
+        "initialisation": {"radii": [0.25], "centres": [[0.5, 0.5]], "dispersed": "liquid"},
     }
     merge_overrides(params, overrides)
     return wetting(**params)

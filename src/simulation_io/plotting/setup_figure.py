@@ -29,6 +29,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from src.config.boundary import Edge
 from src.config.boundary import boundary_edges
+from src.config.initialisation import DispersedPhase
+from src.config.initialisation import dispersed_phase
 from src.config.run_config import ANALYSIS_DIRNAME
 from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import PLOTS_DIRNAME
@@ -36,6 +38,7 @@ from src.config.run_config import SETUP_FIGURE_FILENAME
 from src.config.run_config import SIMULATION_CSV_FILENAME
 from src.config.run_config import SNAPSHOT_GLOB
 from src.config.wetting import ContactLine
+from src.config.wetting import TangentialSide
 from src.config.wetting import chemical_step_wall
 from src.simulation_io.analysis.droplet_metrics import extract_rho_2d
 from src.simulation_io.analysis.droplet_metrics import inclination_angle_deg
@@ -73,6 +76,8 @@ _EDGE_NORMALS: dict[Edge, tuple[float, float]] = {
 #: Text alignment of an edge label, so it sits outside the domain.
 _EDGE_LABEL_HA: dict[Edge, str] = {Edge.LEFT: "right", Edge.RIGHT: "left"}
 _EDGE_LABEL_VA: dict[Edge, str] = {Edge.BOTTOM: "top", Edge.TOP: "bottom"}
+#: Subscript of a stepped wall's surface label: ``W_1`` the start surface, ``W_2`` the destination.
+_SURFACE_INDEX: dict[str, int] = {"pre": 1, "post": 2}
 
 _FIGURE_WIDTH = 8.0
 _ALPHA_ARC_POINTS = 24
@@ -93,8 +98,10 @@ class _Wall:
     edge: Edge
     length: int
     step: float | None
-    #: Whether the surface before the step is the less wetting one.
+    #: Whether the start surface is the less liquid-wetting one.
     pre_is_hydrophobic: bool
+    #: The side of the step the inclusion starts on.
+    pre_side: TangentialSide = TangentialSide.LOW
 
 
 # --- Snapshot selection ------------------------------------------------------
@@ -134,7 +141,7 @@ def _hysteresis_timestep(config: SimulationConfig, run_dir: Path, tolerance: flo
     frame = pd.read_csv(csv_path, encoding="utf-8")
     front = _front_side(config)
     rear = front.other
-    on_pre = frame[f"cll_{front}"] < step.step_x
+    on_pre = ~step.on_post(frame[f"cll_{front}"].to_numpy())
     advancing = frame[f"ca_{front}"] >= float(chem["ca_advancing_pre_step"]) - tolerance
     receding = frame[f"ca_{rear}"] <= float(chem["ca_receding_pre_step"]) + tolerance
     for mask, reason in (
@@ -208,11 +215,15 @@ def _wall(config: SimulationConfig) -> _Wall | None:
     chem = config.chemical_step
     if step is None or chem is None:
         return _Wall(edge, length, None, pre_is_hydrophobic=False)
+    # The windows are dispersed-frame: a high angle repels a droplet's liquid but a
+    # bubble's vapour, so "hydrophobic" flips for a bubble.
+    pre_repels_dispersed = float(chem["ca_advancing_pre_step"]) > float(chem["ca_advancing_post_step"])
     return _Wall(
         edge,
         length,
         step.step_x,
-        pre_is_hydrophobic=float(chem["ca_advancing_pre_step"]) > float(chem["ca_advancing_post_step"]),
+        pre_is_hydrophobic=pre_repels_dispersed == (dispersed_phase(config) != DispersedPhase.VAPOUR),
+        pre_side=step.pre_side,
     )
 
 
@@ -225,11 +236,12 @@ def _wall_points(
 
 
 def _wall_segments(wall: _Wall) -> list[tuple[float, float, str]]:
-    """``(start, stop, surface)`` per wall surface; surface is ``pre``, ``post`` or ``plain``."""
+    """``(start, stop, surface)`` per wall surface in ascending order; surface is ``pre``, ``post`` or ``plain``."""
     start, stop = -0.5, wall.length - 0.5
     if wall.step is None:
         return [(start, stop, "plain")]
-    return [(start, wall.step, "pre"), (wall.step, stop, "post")]
+    low, high = ("pre", "post") if wall.pre_side == TangentialSide.LOW else ("post", "pre")
+    return [(start, wall.step, low), (wall.step, stop, high)]
 
 
 def _surface_color(wall: _Wall, surface: str) -> str:
@@ -274,7 +286,8 @@ def _angle_symbols(config: SimulationConfig, centre: float, wall: _Wall) -> dict
         return {side: r"$\theta_A$" if side == front else r"$\theta_R$" for side in ContactLine}
     if wall.step is None:
         return dict.fromkeys(ContactLine, r"$\theta$")
-    return dict.fromkeys(ContactLine, r"$\theta_1$" if centre < wall.step else r"$\theta_2$")
+    on_pre = (centre < wall.step) == (wall.pre_side == TangentialSide.LOW)
+    return dict.fromkeys(ContactLine, r"$\theta_1$" if on_pre else r"$\theta_2$")
 
 
 # --- Drawing -----------------------------------------------------------------
@@ -357,8 +370,8 @@ def _draw_edge_labels(
         va = _EDGE_LABEL_VA.get(edge, "center")
         if wall is not None and edge == wall.edge:
             segments = _wall_segments(wall)
-            for index, (start, stop, _) in enumerate(segments, start=1):
-                text = label if len(segments) == 1 else rf"{label}$_{index}$"
+            for start, stop, surface in segments:
+                text = label if len(segments) == 1 else rf"{label}$_{_SURFACE_INDEX[surface]}$"
                 anchor = _wall_points(wall, [(start + stop) / 2.0], [thickness + pad], shape)[0]
                 canvas.text(anchor, text, ha=ha, va=va)
             continue

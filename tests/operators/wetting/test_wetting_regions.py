@@ -254,6 +254,7 @@ def test_band_cells_across_the_step_keep_their_own_surface():
     """A line's phi never reaches the pre surface, and the post surface always pulls."""
     import numpy as np
     from src.config.wetting import ChemicalStepWall
+    from src.config.wetting import TangentialSide
     from src.operators.wetting._wetting_modification import _apply_wetting_modification
     from src.operators.wetting._wetting_modification import wetting_regions
 
@@ -264,7 +265,9 @@ def test_band_cells_across_the_step_keep_their_own_surface():
     left, _ = wetting_regions(row, rho_l, rho_v)
     band = np.flatnonzero(np.asarray(left.mask))
     step_x = float(left.anchor) - 1.0  # the step cuts the left band just behind the line: it is on post
-    wall = ChemicalStepWall(Edge.BOTTOM, step_x, 1.0, 1.0, 0.07, 0.07, post_phi=2.0, post_d_rho=0.0)
+    wall = ChemicalStepWall(
+        Edge.BOTTOM, step_x, 1.0, 1.0, 0.07, 0.07, post_phi=2.0, post_d_rho=0.0, pre_side=TangentialSide.LOW
+    )
 
     out = np.asarray(_apply_wetting_modification(row, rho_l, rho_v, 1.3, 1.0, 0.0, 0.0, wall))
     lower, upper = float(left.rho_lower), float(left.rho_upper)

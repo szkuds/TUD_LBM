@@ -20,6 +20,10 @@ BOUNDARY_PARAMETERS: dict[str, dict[str, Any]] = {"velocity-inlet": {"u0": 0.05}
 #: The ``[obstacle]`` shape when the section names none.
 DEFAULT_OBSTACLE_SHAPE: str = "circle"
 
+#: ``[initialisation] dispersed`` of a ``multiphase_bubbles`` run that names none
+#: (the initialiser's own default; ``config.initialisation.dispersed_phase``).
+DISPERSED_PHASE: str = "vapour"
+
 #: The four wall parameters of ``[wetting]``; these values leave the wall unmodified.
 NEUTRAL_WETTING: dict[str, float] = {
     "phi_left": 1.0,

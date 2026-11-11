@@ -118,6 +118,9 @@ class MetricScales:
     incl_deg: float
     save_interval: int
     wall_edge: Edge
+    #: Initial droplet area Omega_D = L_eff**2, the square of the length the
+    #: dimensionless numbers are built from (so not a second area measurement).
+    omega: float
 
     @property
     def sigma_primary(self) -> float | None:
@@ -147,6 +150,9 @@ def resolve_scales(config: SimulationConfig) -> MetricScales | None:
     # same answer to pick the wall row for the setup contact-line measurement --
     # and imports back into this module, so it is reached lazily, as
     # :func:`resolve_r_zero` does.
+    from src.simulation_io.analysis.physical_parameters.physical_parameters import (
+        _resolve_length_for_dimensionless_numbers,
+    )
     from src.simulation_io.analysis.physical_parameters.physical_parameters import resolve_wall_edge
 
     params = multiphase_params(config)
@@ -171,4 +177,5 @@ def resolve_scales(config: SimulationConfig) -> MetricScales | None:
         incl_deg=inclination_angle_deg(config),
         save_interval=max(config.save_interval, 1),
         wall_edge=resolve_wall_edge(config),
+        omega=_resolve_length_for_dimensionless_numbers(config)[0] ** 2,
     )

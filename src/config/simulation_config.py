@@ -217,7 +217,9 @@ class SimulationConfig:
             "obstacle": complete_obstacle(self.obstacle),
             "wetting": complete_wetting(self.wetting, self.hysteresis),
             "hysteresis": complete_hysteresis(self.hysteresis),
-            "chemical_step": complete_chemical_step(self.chemical_step, edges),
+            "chemical_step": complete_chemical_step(
+                self.chemical_step, edges, self.initialisation, int(self.grid_shape[0])
+            ),
             "forces": apply_force_defaults(self.forces),
             "equilibrium": self.equilibrium or DEFAULT_EQUILIBRIUM[phase],
             "save_interval": self.save_interval or self.nt // 10,

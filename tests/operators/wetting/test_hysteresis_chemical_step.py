@@ -14,6 +14,7 @@ import pytest
 from src.config.boundary import Edge
 from src.config.wetting import ChemicalStepWall
 from src.config.wetting import ContactLine
+from src.config.wetting import TangentialSide
 from src.operators.wetting import _hysteresis as hyst
 from src.operators.wetting._hysteresis import _get_hysteresis_window_chemical_step
 from src.operators.wetting._hysteresis import update_wetting_state_chemical_step
@@ -43,7 +44,7 @@ _PRE = (120.0, 100.0)
 _POST = (50.0, 30.0)
 
 
-def _wall(nx: int = 100) -> ChemicalStepWall:
+def _wall(nx: int = 100, pre_side: TangentialSide = TangentialSide.LOW) -> ChemicalStepWall:
     return ChemicalStepWall(
         edge=Edge.BOTTOM,
         step_x=0.5 * nx,
@@ -53,14 +54,15 @@ def _wall(nx: int = 100) -> ChemicalStepWall:
         pre_d_rho_right=0.07,
         post_phi=2.0,
         post_d_rho=0.0,
+        pre_side=pre_side,
     )
 
 
-def _make_setup(nx: int = 100) -> SimpleNamespace:
+def _make_setup(nx: int = 100, pre_side: TangentialSide = TangentialSide.LOW) -> SimpleNamespace:
     config = SimpleNamespace(
         chemical_step=_CHEM_CFG,
         grid_shape=(nx, 50, 1),
-        chemical_step_wall=_wall(nx),
+        chemical_step_wall=_wall(nx, pre_side),
     )
     return SimpleNamespace(config=config)
 
@@ -110,6 +112,32 @@ class TestGetHysteresisWindowChemicalStep:
         setup = _make_setup()
         assert _window(setup, 48.9, ContactLine.LEFT) == _PRE
         assert _window(setup, 49.0, ContactLine.LEFT) == _POST
+
+    @pytest.mark.parametrize(
+        ("cll", "side"), [(51.0, ContactLine.LEFT), (50.5, ContactLine.RIGHT), (20.0, ContactLine.RIGHT)]
+    )
+    def test_a_high_start_mirrors_the_window(self, cll, side):
+        """Starting at high x, the post surface is below the step and the edge band is on the high side."""
+        low, high = _make_setup(), _make_setup(pre_side=TangentialSide.HIGH)
+        assert _window(high, 99.0 - cll, side) == _window(low, cll, side.other)
+
+    def test_a_high_start_has_its_edge_band_above_the_step(self):
+        setup = _make_setup(pre_side=TangentialSide.HIGH)
+        assert _window(setup, 50.1, ContactLine.RIGHT) == _PRE  # mirror of 48.9 about the cell face 49.5
+        assert _window(setup, 50.0, ContactLine.RIGHT) == _POST  # mirror of 49.0
+
+    @pytest.mark.parametrize(
+        ("cll", "side", "held"),
+        [
+            (49.5, ContactLine.RIGHT, True),  # the trailing line of a bubble rising toward -x
+            (48.5, ContactLine.RIGHT, True),
+            (49.5, ContactLine.LEFT, False),  # the leading line spreads onto the post surface
+            (80.0, ContactLine.RIGHT, False),
+            (20.0, ContactLine.RIGHT, False),
+        ],
+    )
+    def test_a_high_start_holds_its_right_line(self, cll, side, held):
+        assert _held(_make_setup(pre_side=TangentialSide.HIGH), cll, side) is held
 
     def test_different_grid_size_scales_step_x(self):
         """step_x = location * nx, so a different nx moves the edge."""

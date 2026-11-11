@@ -683,11 +683,13 @@ class TestUpdateWettingState:
             },
             chemical_step={
                 "chemical_step_location": 0.5,
+                "chemical_step_pre_side": "low",
                 "ca_advancing_pre_step": 120.0,
                 "ca_receding_pre_step": 60.0,
                 "ca_advancing_post_step": 120.0,
                 "ca_receding_post_step": 60.0,
             },
+            initialisation={"dispersed": "liquid"},
         )
         setup = build_setup(cfg)
         rho = jnp.zeros((NX, NY, NZ, 1, 1), dtype=jnp.float64)

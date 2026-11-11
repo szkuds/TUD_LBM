@@ -531,15 +531,27 @@ class TestDerivedProperties:
 # ---------------------------------------------------------------------------
 
 
+#: A droplet left of a mid-domain step: the start side and the dispersed phase both derive.
+_DROPLET_LEFT_OF_STEP: dict[str, Any] = {"centres": [[0.25, 0.0]], "radii": [0.2], "dispersed": "liquid"}
+
+
 def _hysteresis_config(
     hysteresis: dict[str, Any],
     *,
     chemical_step: dict[str, Any] | None = None,
     wall: str = "bottom",
+    initialisation: dict[str, Any] | None = None,
+    init_type: str = "multiphase_bubbles",
 ) -> SimulationConfig:
     base = dict(_DW_BASE)
     return SimulationConfig(
-        **base, boundary_conditions={wall: "wetting"}, hysteresis=hysteresis, chemical_step=chemical_step
+        **base,
+        boundary_conditions={wall: "wetting"},
+        hysteresis=hysteresis,
+        chemical_step=chemical_step,
+        init_type=init_type,
+        init_dir="unused.npz" if init_type == "init_from_file" else None,
+        initialisation=dict(_DROPLET_LEFT_OF_STEP) if initialisation is None else initialisation,
     )
 
 
@@ -668,6 +680,74 @@ class TestChemicalStepWall:
         step = dict(_STEP, chemical_step_edge="bottom")
         with pytest.raises(ValueError, match="chemical_step_edge must be the wetting wall 'top'"):
             _hysteresis_config({}, chemical_step=step, wall="top")
+
+    def test_a_bubble_pulls_its_post_surface_with_d_rho(self):
+        """The same dispersed-frame windows: post wets the vapour more, so the wall wets the liquid less."""
+        bubble = {"centres": [[0.25, 1.0]], "radii": [0.2], "dispersed": "vapour"}
+        cfg = _hysteresis_config({}, chemical_step=dict(_STEP), initialisation=bubble)
+        wall = chemical_step_wall(cfg)
+        assert wall is not None
+        assert (wall.post_phi, wall.post_d_rho) == (1.0, 1.5 / 4)
+
+
+class TestChemicalStepPreSide:
+    """``chemical_step_pre_side``: the side of the step the inclusion starts on."""
+
+    @pytest.mark.parametrize(("x", "side"), [(0.25, "low"), (0.75, "high")])
+    def test_it_is_derived_from_the_centres(self, x, side):
+        initialisation = {"centres": [[x, 0.0]], "radii": [0.2], "dispersed": "liquid"}
+        cfg = _hysteresis_config({}, chemical_step=dict(_STEP), initialisation=initialisation)
+        assert cfg.chemical_step is not None
+        assert cfg.chemical_step["chemical_step_pre_side"] == side
+        wall = chemical_step_wall(cfg)
+        assert wall is not None
+        assert wall.pre_side == side
+
+    def test_a_configured_side_wins(self):
+        cfg = _hysteresis_config({}, chemical_step=dict(_STEP, chemical_step_pre_side="high"))
+        assert cfg.chemical_step is not None
+        assert cfg.chemical_step["chemical_step_pre_side"] == "high"
+
+    @pytest.mark.parametrize(
+        "centres",
+        [None, [[0.25, 0.0], [0.75, 0.0]], [[4 / 7, 0.0]]],  # none, both sides, on the step (cell 4 of nx = 8)
+        ids=["no-centres", "both-sides", "on-the-step"],
+    )
+    def test_an_underived_side_is_required(self, centres):
+        initialisation = {"dispersed": "liquid"} if centres is None else {"centres": centres, "dispersed": "liquid"}
+        step = dict(_STEP)
+        with pytest.raises(ValueError, match="chemical_step_pre_side"):
+            _hysteresis_config({}, chemical_step=step, initialisation=initialisation, init_type="init_from_file")
+
+    def test_an_unknown_side_raises(self):
+        step = dict(_STEP, chemical_step_pre_side="left")
+        with pytest.raises(ValueError, match="chemical_step_pre_side must be one of"):
+            _hysteresis_config({}, chemical_step=step)
+
+    def test_a_restart_without_a_dispersed_phase_raises(self):
+        step = dict(_STEP, chemical_step_pre_side="low")
+        with pytest.raises(ValueError, match="dispersed"):
+            _hysteresis_config({}, chemical_step=step, initialisation={}, init_type="init_from_file")
+
+    def test_a_bubble_initialiser_defaults_to_vapour(self):
+        from src.config.initialisation import DispersedPhase
+        from src.config.initialisation import dispersed_phase
+
+        cfg = _hysteresis_config(
+            {}, chemical_step=dict(_STEP), initialisation={"centres": [[0.25, 1.0]], "radii": [0.2]}
+        )
+        assert dispersed_phase(cfg) == DispersedPhase.VAPOUR
+
+    @pytest.mark.parametrize(
+        ("side", "expected"), [("low", [False, False, True, True]), ("high", [True, True, False, False])]
+    )
+    def test_on_post_is_the_destination_side(self, side, expected):
+        import numpy as np
+
+        cfg = _hysteresis_config({}, chemical_step=dict(_STEP, chemical_step_pre_side=side))
+        wall = chemical_step_wall(cfg)
+        assert wall is not None
+        assert wall.on_post(np.array([2.0, 3.0, 4.0, 6.0])).tolist() == expected
 
 
 class TestSectionSchemas:

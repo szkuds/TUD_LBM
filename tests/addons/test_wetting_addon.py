@@ -95,7 +95,11 @@ def test_init_state_resumes_the_saved_wetting_state_on_a_hysteresis_restart(latt
     [
         pytest.param({"hysteresis": _HYSTERESIS}, "update_wetting_state", id="hysteresis"),
         pytest.param(
-            {"hysteresis": _HYSTERESIS, "chemical_step": _CHEMICAL_STEP},
+            {
+                "hysteresis": _HYSTERESIS,
+                "chemical_step": {**_CHEMICAL_STEP, "chemical_step_pre_side": "low"},
+                "initialisation": {"dispersed": "liquid"},
+            },
             "update_wetting_state_chemical_step",
             id="chemical_step",
         ),

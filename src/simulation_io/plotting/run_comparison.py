@@ -19,6 +19,7 @@ from src.simulation_io.analysis.run_labels import resolve_label_keys
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 from src.simulation_io.plotting.figure_config import LABEL_CA
 from src.simulation_io.plotting.figure_config import LABEL_IT_NORM
+from src.simulation_io.plotting.figure_config import LABEL_L_OMEGA
 from src.simulation_io.plotting.figure_config import LABEL_RE
 from src.simulation_io.plotting.figure_config import LABEL_WE
 from src.simulation_io.plotting.figure_config import LABEL_X_AVG_NORM
@@ -130,6 +131,20 @@ _COMPARISON_PLOT_CONFIGS: list[_PlotConfig] = [
         "y": "We",
         "xlabel": LABEL_X_AVG_NORM,
         "ylabel": LABEL_WE,
+    },
+    {
+        "filename": "14_contact_length_vs_iteration.png",
+        "x": "normalised_iteration",
+        "y": "L_over_Omega",
+        "xlabel": LABEL_IT_NORM,
+        "ylabel": LABEL_L_OMEGA,
+    },
+    {
+        "filename": "15_contact_length_vs_x_avg.png",
+        "x": "avg_x_location_norm",
+        "y": "L_over_Omega",
+        "xlabel": LABEL_X_AVG_NORM,
+        "ylabel": LABEL_L_OMEGA,
     },
 ]
 

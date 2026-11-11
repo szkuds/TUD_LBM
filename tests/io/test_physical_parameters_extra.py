@@ -354,8 +354,8 @@ def test_build_overview_includes_critical_inclination_angle_for_chemical_step_co
         multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
         forces={"gravity_masked_force": {"force_g": 1e-3}},
         grid_shape=(100, 100),
-        chemical_step={"ca_advancing_pre_step": 110.0, "ca_receding_pre_step": 80.0},
-        initialisation={"radii": [0.1], "centres": [[0.5, 0.5]]},
+        chemical_step={"ca_advancing_pre_step": 110.0, "ca_receding_pre_step": 80.0, "chemical_step_pre_side": "low"},
+        initialisation={"radii": [0.1], "centres": [[0.5, 0.5]], "dispersed": "liquid"},
         hysteresis={"ca_advancing": 110, "ca_receding": 80},
         wetting={"phi_left": 1.0},
     )

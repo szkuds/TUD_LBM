@@ -252,8 +252,8 @@ def _surface_params(
     (:class:`~src.config.wetting.ChemicalStepWall`), so a line can never
     make the other surface wet like its own.
     """
-    post_cell = jnp.arange(region.mask.shape[0]) >= step.step_x
-    across = post_cell != (region.anchor >= step.step_x)
+    post_cell = step.on_post(jnp.arange(region.mask.shape[0]))
+    across = post_cell != step.on_post(region.anchor)
     fixed_phi = jnp.where(post_cell, step.post_phi, pre_phi)
     fixed_d_rho = jnp.where(post_cell, step.post_d_rho, pre_d_rho)
     return jnp.where(across, fixed_phi, phi), jnp.where(across, fixed_d_rho, d_rho)
