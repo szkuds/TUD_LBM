@@ -369,6 +369,19 @@ def test_calibration_configs_are_one_plain_run_per_radius():
         assert st._cache_key(calib) == st._cache_key(config)
 
 
+def test_the_sweep_of_a_fluid_does_not_depend_on_the_equilibrium():
+    """Sigma belongs to the fluid: a run on another equilibrium stages the very same sweep."""
+    plain = _cs_config()
+    with_pressure = _cs_config(equilibrium="wb_hydro_inc")
+
+    sweep = st.calibration_configs(with_pressure)
+
+    assert with_pressure.multiphase is not None
+    assert "equilibrium_reference_density" in with_pressure.multiphase
+    assert sweep == st.calibration_configs(plain)
+    assert {c.equilibrium for c in sweep} == {"wb"}
+
+
 def test_a_sweep_config_is_recognised_by_its_name():
     config = _cs_config(simulation_name="surface_tension_notes")
 

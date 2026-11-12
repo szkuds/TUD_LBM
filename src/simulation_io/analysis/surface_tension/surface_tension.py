@@ -62,6 +62,7 @@ import numpy as np
 from rich.console import Console
 from src.config.boundary import IN_PLANE_EDGES
 from src.config.config_overview import BASE_RESULTS_DIR
+from src.config.multiphase import REFERENCE_DENSITY
 from src.config.multiphase import multiphase_params
 from src.config.run_config import CONFIG_FILENAME
 from src.config.run_config import DATA_DIRNAME
@@ -465,10 +466,19 @@ def _field_2d(field: np.ndarray) -> np.ndarray:
 
 
 def _calibration_config(config: SimulationConfig) -> SimulationConfig:
-    """An isolated single-droplet config: periodic, no forces, no wetting."""
+    """An isolated single-droplet config: periodic, no forces, no wetting.
+
+    The equilibrium is reset to the phase default. Sigma belongs to the fluid,
+    and the cache key does not name the equilibrium, so two runs of one fluid
+    must stage one and the same sweep whichever equilibrium each runs on. The
+    reference density goes with it: it belongs to the equilibrium that carries
+    a pressure and is rejected for any other.
+    """
+    dropped = {"g", REFERENCE_DENSITY}
     return replace(
         config,
-        multiphase={key: value for key, value in (config.multiphase or {}).items() if key != "g"},
+        equilibrium=None,
+        multiphase={key: value for key, value in (config.multiphase or {}).items() if key not in dropped},
         boundary_conditions=dict(_PERIODIC_BC),
         grid_shape=_CALIBRATION_GRID_SHAPE,
         nt=_N_ITERATIONS,
