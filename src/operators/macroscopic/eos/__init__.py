@@ -1,15 +1,17 @@
 """Equation-of-state operators for multiphase macroscopic computation.
 
 Public API: build_eos_fn(), build_pressure_fn(), analytical_surface_tension(),
-has_analytical_surface_tension()
+has_analytical_surface_tension(), coexistence_densities()
 
 Implementation modules (_double_well.py, _carnahan_starling.py) are internal;
 use the factories to access them. Each module registers its EOS under the
-``"eos"`` kind and, if it has them, its bulk pressure under ``"pressure"`` and
-its closed-form surface tension under ``"surface_tension"``, using the same
-name in each. To ask whether an EOS has one of those, query the registry —
+``"eos"`` kind and, if it has them, its bulk pressure under ``"pressure"``,
+its closed-form surface tension under ``"surface_tension"`` and its Maxwell
+coexistence solver under ``"coexistence"``, using the same name in each. To ask
+whether an EOS has one of those, query the registry —
 ``eos in get_operator_names("pressure")``,
-:func:`has_analytical_surface_tension` — rather than any list maintained here.
+:func:`has_analytical_surface_tension`, :func:`coexistence_densities` returning
+``None`` — rather than any list maintained here.
 
 Example:
     from src.operators.macroscopic.eos import build_eos_fn, build_pressure_fn
@@ -19,16 +21,21 @@ Example:
 
     pressure_fn = build_pressure_fn(mp)
     p_0 = pressure_fn(rho)
+
+    pair = coexistence_densities(section["eos"], section)  # (rho_v, rho_l), or None for double-well
 """
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from typing import Any
+from src.config.multiphase import EOS_PARAMETERS
 from src.config.multiphase import multiphase_params
 from src.operators._loader import auto_load_operators
 from src.registry import get_operator_names
 from src.registry import get_operators
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from src.config.multiphase import MultiphaseParams
     from src.protocols import EosOperator
 
@@ -101,10 +108,30 @@ def analytical_surface_tension(mp: MultiphaseParams) -> float | None:
     return None if sigma is None else float(sigma)
 
 
+def coexistence_densities(eos: str, parameters: Mapping[str, Any]) -> tuple[float, float] | None:
+    """Maxwell coexistence densities ``(rho_v, rho_l)`` of *eos*, or ``None``.
+
+    ``None`` when *eos* registers no coexistence solver: it is then
+    parameterised *by* its densities (the double-well's wells), so there is
+    nothing to compute. *parameters* is any mapping holding the EOS's row of
+    :data:`~src.config.multiphase.EOS_PARAMETERS` — the raw ``[multiphase]``
+    section or ``mp._asdict()`` alike; other keys are ignored.
+
+    Raises:
+        ValueError: If the parameters admit no liquid-vapour coexistence
+            (at or above the critical temperature).
+    """
+    if eos not in get_operator_names("coexistence"):
+        return None
+    solver = get_operators("coexistence")[eos].target
+    return solver(**{name: parameters[name] for name in EOS_PARAMETERS[eos]})
+
+
 __all__ = [
     "analytical_surface_tension",
     "build_eos_fn",
     "build_pressure_fn",
+    "coexistence_densities",
     "has_analytical_surface_tension",
     "multiphase_params",
 ]

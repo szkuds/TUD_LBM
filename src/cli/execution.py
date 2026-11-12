@@ -62,9 +62,11 @@ def _run_simulation(config: SimulationConfig) -> str:
         simulation_name=config.simulation_name,
     )
 
+    from src.simulation_io.analysis.coexistence import calibrate_coexistence
     from src.simulation_io.analysis.surface_tension import record_surface_tension
 
     config = record_surface_tension(config, io.run_dir)
+    calibrate_coexistence(config, io.run_dir)
 
     console.print("[bold green]Starting simulation...[/bold green]")
     console.print(f"[dim]Results directory: {io.run_dir}[/dim]")

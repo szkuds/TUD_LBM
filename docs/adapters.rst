@@ -129,6 +129,10 @@ wrote, but always what the run used:
   omitted (four edges on a 2D lattice, six on a 3D one), and an edge whose
   condition takes parameters gets them (``u0 = 0.05`` for a
   ``velocity-inlet``).
+* a ``[multiphase]`` section whose EOS has a coexistence solver
+  (Carnahan–Starling) gets any omitted ``rho_l``/``rho_v`` from the Maxwell
+  construction of its own parameters, rounded to six significant figures; a
+  configured density is kept.
 * ``equilibrium`` defaults by phase: ``standard_equilibrium`` single-phase,
   ``wb`` multiphase; the source term is the one it registered as its pair.
 * the ``[hysteresis]``, ``[chemical_step]`` and ``[*_force]`` sections get
@@ -144,8 +148,9 @@ collision scheme (with ``k_diag`` required for MRT), the equilibrium,
 ``save_fields`` membership, every boundary-condition name and parameter key,
 obstacle geometry, each force against its schema, the wetting, hysteresis
 and chemical-step sections, and — for multiphase — the common keys, that
-``rho_l > rho_v``, and the further parameters of the selected EOS (the four
-Carnahan–Starling ones).  Only one gravity force may be configured.  A 3D
+``rho_l > rho_v`` (both required for a double-well EOS), and the further
+parameters of the selected EOS (the four Carnahan–Starling ones).  Only one
+gravity force may be configured.  A 3D
 lattice refuses what is still two-dimensional: wetting, hysteresis, chemical
 step, the electric force, MRT and an obstacle.
 

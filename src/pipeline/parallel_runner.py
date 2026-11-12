@@ -129,9 +129,11 @@ def run_single_simulation(
             output_format=config.output_format,
         )
 
+        from src.simulation_io.analysis.coexistence import calibrate_coexistence
         from src.simulation_io.analysis.surface_tension import record_surface_tension
 
         config = record_surface_tension(config, io.run_dir)
+        calibrate_coexistence(config, io.run_dir)
 
         # Run simulation with streaming I/O
         _, _ = run_fn(

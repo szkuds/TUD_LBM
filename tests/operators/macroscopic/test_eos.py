@@ -14,6 +14,7 @@ Covers:
        - ``compute_macroscopic_multiphase`` with CS EOS: finite outputs
        - Uniform density field → zero interaction force
        - ``build_setup`` with full CS config succeeds
+    4. Coexistence (Maxwell construction) for CS; none for double-well
 """
 
 from __future__ import annotations
@@ -25,7 +26,8 @@ from src.lattice.lattice import build_lattice
 
 # ---------------------------------------------------------------------------
 # Shared CS EOS parameters (from examples/config_cs_simple.toml)
-# Subcritical temperature; coexistence at rho_v≈0.015, rho_l≈12.18
+# Subcritical temperature (T_r = 0.5); Maxwell coexistence at rho_v≈0.0168, rho_l≈12.18
+# (the configured rho_v = 0.015 sits below it)
 # Singularity at bρ = 4  →  ρ_sing ≈ 26.8 — well above rho_l
 # ---------------------------------------------------------------------------
 
@@ -545,3 +547,69 @@ class TestSurfaceTensionRegistry:
 
         assert get_operator_names("surface_tension") == {"double-well"}
         assert get_operator_names("surface_tension") <= get_operator_names("eos")
+
+
+# The Julia Maxwell script's preamble: rho_c = 3.5, p_c = 0.001, T_r = 0.65.
+_JULIA_B = 0.5218 / 3.5
+_JULIA_A = _JULIA_B**2 * 0.001 / (0.3773**2 * 0.4963)
+_JULIA_T_CRITICAL = 0.3773 * _JULIA_A / _JULIA_B
+
+
+class TestCoexistence:
+    """The Carnahan-Starling coexistence pair is the Maxwell construction of its own parameters."""
+
+    @staticmethod
+    def _pair(t: float = _T, a: float = _A, b: float = _B) -> tuple[float, float]:
+        from src.operators.macroscopic.eos import coexistence_densities
+
+        pair = coexistence_densities("carnahan-starling", {"a_eos": a, "b_eos": b, "r_eos": _R, "t_eos": t})
+        assert pair is not None
+        return pair
+
+    def test_shipped_fluid_matches_the_reference_pair(self):
+        rho_v, rho_l = self._pair()
+        assert rho_v == pytest.approx(0.01680445791, rel=1e-6)
+        assert rho_l == pytest.approx(12.18327187, rel=1e-6)
+
+    def test_pair_has_equal_pressure_and_chemical_potential(self):
+        from src.operators.macroscopic.eos._carnahan_starling import _eos_carnahan_starling
+        from src.operators.macroscopic.eos._carnahan_starling import _pressure_carnahan_starling
+
+        rho_v, rho_l = self._pair()
+        p_v, p_l = (float(_pressure_carnahan_starling(jnp.asarray(r), _A, _B, _R, _T)) for r in (rho_v, rho_l))
+        mu_v, mu_l = (float(_eos_carnahan_starling(jnp.asarray(r), _A, _B, _R, _T)) for r in (rho_v, rho_l))
+        assert p_l == pytest.approx(p_v, rel=1e-10)
+        assert mu_l == pytest.approx(mu_v, rel=1e-10)
+
+    def test_areas_are_equal_in_the_pressure_volume_plane(self):
+        from scipy.integrate import quad
+        from src.operators.macroscopic.eos._carnahan_starling import _pressure_carnahan_starling
+
+        rho_v, rho_l = self._pair()
+        p_sat = float(_pressure_carnahan_starling(jnp.asarray(rho_v), _A, _B, _R, _T))
+
+        def excess(volume: float) -> float:
+            return float(_pressure_carnahan_starling(jnp.asarray(1.0 / volume), _A, _B, _R, _T)) - p_sat
+
+        area, _ = quad(excess, 1.0 / rho_l, 1.0 / rho_v, limit=200)
+        assert area == pytest.approx(0.0, abs=1e-12)
+
+    def test_julia_defaults_reproduce_the_script(self):
+        rho_v, rho_l = self._pair(t=0.65 * _JULIA_T_CRITICAL, a=_JULIA_A, b=_JULIA_B)
+        assert rho_v == pytest.approx(0.14985544, rel=1e-6)
+        assert rho_l == pytest.approx(10.258465, rel=1e-6)
+
+    def test_supercritical_temperature_raises(self):
+        from src.operators.macroscopic.eos._carnahan_starling import carnahan_starling_coexistence
+
+        t_eos = 1.05 * _JULIA_T_CRITICAL
+        with pytest.raises(ValueError, match="critical temperature"):
+            carnahan_starling_coexistence(a_eos=_JULIA_A, b_eos=_JULIA_B, r_eos=_R, t_eos=t_eos)
+
+    def test_kind_membership_is_the_capability_check(self):
+        from src.operators.macroscopic.eos import coexistence_densities
+        from src.registry import get_operator_names
+
+        assert get_operator_names("coexistence") == {"carnahan-starling"}
+        assert get_operator_names("coexistence") <= get_operator_names("eos")
+        assert coexistence_densities("double-well", {}) is None

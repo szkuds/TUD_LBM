@@ -254,6 +254,20 @@ def surface_tension_operator(
     return register_operator("surface_tension", name=name, **meta)
 
 
+def coexistence_operator(
+    *,
+    name: str | None = None,
+    **meta: object,
+) -> Callable[[_OT], _OT]:
+    """Register a liquid-vapour coexistence solver (kind ``"coexistence"``).
+
+    Names match the ``"eos"`` kind: an EOS registers here when its coexistence
+    densities ``(rho_v, rho_l)`` follow from the Maxwell
+    construction. Absence means the EOS depends on the supplied density.
+    """
+    return register_operator("coexistence", name=name, **meta)
+
+
 def initialise_operator(
     *,
     name: str | None = None,

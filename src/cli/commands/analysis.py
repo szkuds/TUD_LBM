@@ -206,6 +206,32 @@ def _analyse_surface_tension(config: SimulationConfig, out_dir: Path) -> None:
     console.print(f"[bold green]Calibration outputs saved to:[/bold green] {surface_tension_dir(out_dir)}")
 
 
+def _analyse_coexistence(config: SimulationConfig, out_dir: Path) -> None:
+    """Write the Maxwell-construction artefacts for *config* and report the coexistence pair."""
+    if not is_multiphase(config):
+        msg = "coexistence requires a multiphase configuration; got no [multiphase] section"
+        raise ValueError(msg)
+
+    from src.config.jax_config import configure_jax
+
+    configure_jax()
+
+    from src.simulation_io.analysis.coexistence import calibrate_coexistence
+    from src.simulation_io.analysis.coexistence import coexistence_dir
+
+    pair = calibrate_coexistence(config, out_dir)
+    if pair is None:
+        eos = config.multiphase["eos"] if config.multiphase else None
+        console.print(
+            f"[yellow]EOS {eos!r} has no coexistence solver: its rho_l/rho_v are its own parameters.[/yellow]"
+        )
+        return
+
+    rho_v, rho_l = pair
+    success(f"Maxwell coexistence: rho_v = {rho_v:.6g}, rho_l = {rho_l:.6g}")
+    console.print(f"[bold green]Coexistence outputs saved to:[/bold green] {coexistence_dir(out_dir)}")
+
+
 def _analyse_length_scale(config: SimulationConfig, config_toml: str, out_dir: Path) -> None:
     """Plot the region behind the Bo/Oh length scale and refresh the parameter overview."""
     from src.simulation_io.analysis.physical_parameters import write_length_scale_figure
@@ -239,6 +265,13 @@ def _analyse_length_scale(config: SimulationConfig, config_toml: str, out_dir: P
     "Young-Laplace calibration figures (a fluid not yet measured prints how to stage the droplet sweep).",
 )
 @click.option(
+    "--coexistence",
+    "coexistence",
+    is_flag=True,
+    help="Report the Maxwell coexistence densities of the configured EOS beside the configured ones and "
+    "write the equal-area figure (an EOS without a coexistence solver prints that its densities are parameters).",
+)
+@click.option(
     "--length-scale",
     "length_scale",
     is_flag=True,
@@ -253,7 +286,13 @@ def _analyse_length_scale(config: SimulationConfig, config_toml: str, out_dir: P
     help="Directory for analysis outputs (default: the config file's directory).",
 )
 @cli_command(title="Analysis", interrupt_message="Analysis interrupted by user.")
-def analyse(config_toml: str, surface_tension: bool, length_scale: bool, out_dir: str | None) -> None:
+def analyse(
+    config_toml: str,
+    surface_tension: bool,
+    coexistence: bool,
+    length_scale: bool,
+    out_dir: str | None,
+) -> None:
     """Run standalone analyses for the configuration in CONFIG_TOML.
 
     --surface-tension reads the calibration cache for any multiphase EOS,
@@ -264,14 +303,17 @@ def analyse(config_toml: str, surface_tension: bool, length_scale: bool, out_dir
         # Report the measured surface tension for the configured fluid
         tud-lbm analyse config.toml --surface-tension
 
+        # Compare the configured densities with the EOS's own Maxwell pair
+        tud-lbm analyse config.toml --coexistence
+
         # Check the droplet region the Bond number is built from
         tud-lbm analyse run_dir/config.toml --length-scale
 
         # Write outputs somewhere other than the config's directory
         tud-lbm analyse config.toml --surface-tension --out-dir results/
     """
-    if not (surface_tension or length_scale):
-        msg = "select at least one analysis: --surface-tension or --length-scale"
+    if not (surface_tension or coexistence or length_scale):
+        msg = "select at least one analysis: --surface-tension, --coexistence or --length-scale"
         raise click.UsageError(msg)
 
     target_dir = Path(out_dir) if out_dir is not None else Path(config_toml).resolve().parent
@@ -280,5 +322,7 @@ def analyse(config_toml: str, surface_tension: bool, length_scale: bool, out_dir
     console.print()
     if surface_tension:
         _analyse_surface_tension(config, target_dir)
+    if coexistence:
+        _analyse_coexistence(config, target_dir)
     if length_scale:
         _analyse_length_scale(config, config_toml, target_dir)
