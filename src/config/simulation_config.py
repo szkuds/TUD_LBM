@@ -211,9 +211,10 @@ class SimulationConfig:
     def _apply_defaults(self) -> None:
         phase = "single_phase" if self.multiphase is None else "multiphase"
         edges = complete_boundary_conditions(self.boundary_conditions, self.lattice_type)
+        equilibrium = self.equilibrium or DEFAULT_EQUILIBRIUM[phase]
         defaults: dict[str, Any] = {
             "boundary_conditions": edges,
-            "multiphase": complete_multiphase(self.multiphase),
+            "multiphase": complete_multiphase(self.multiphase, equilibrium),
             "obstacle": complete_obstacle(self.obstacle),
             "wetting": complete_wetting(self.wetting, self.hysteresis),
             "hysteresis": complete_hysteresis(self.hysteresis),
@@ -221,7 +222,7 @@ class SimulationConfig:
                 self.chemical_step, edges, self.initialisation, int(self.grid_shape[0])
             ),
             "forces": apply_force_defaults(self.forces),
-            "equilibrium": self.equilibrium or DEFAULT_EQUILIBRIUM[phase],
+            "equilibrium": equilibrium,
             "save_interval": self.save_interval or self.nt // 10,
         }
         for name, value in defaults.items():
@@ -317,7 +318,7 @@ class SimulationConfig:
             msg = "k_diag must be provided when using MRT collision scheme"
             raise ValueError(msg)
         assert self.equilibrium is not None  # noqa: S101 - _apply_defaults fills it in
-        validate_equilibrium(self.equilibrium)
+        validate_equilibrium(self.equilibrium, multiphase=self.multiphase is not None)
 
     def _validate_init(self) -> None:
         """Validate initialisation parameters."""

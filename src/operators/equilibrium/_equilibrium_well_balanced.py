@@ -38,6 +38,7 @@ def compute_equilibrium(
     rho: jnp.ndarray,
     u: jnp.ndarray,
     lattice: Lattice,
+    pressure: jnp.ndarray | None = None,  # noqa: ARG001 - EquilibriumOperator shape
 ) -> jnp.ndarray:
     """Compute the well-balanced equilibrium distribution.
 
@@ -46,6 +47,7 @@ def compute_equilibrium(
         u: Velocity field, shape ``(nx, ny, nz, 1, 2)``.
         lattice: :class:`~setup.lattice.Lattice` with weights ``w``
             and velocity vectors ``c``.
+        pressure: Unused; this equilibrium's pressure is fixed by its form.
 
     Returns:
         Equilibrium populations ``feq``, shape ``(nx, ny, nz, q, 1)``.

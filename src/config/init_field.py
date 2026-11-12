@@ -169,11 +169,17 @@ RESTORED_WETTING_KEYS: tuple[str, ...] = (
 )
 
 
+#: The regime latch a hysteresis run also resumes. A snapshot from before the
+#: latch existed has none of these, and the restart then starts pinned.
+RESTORED_LATCH_KEYS: tuple[str, ...] = ("latch_left", "latch_right", "stall_left", "stall_right")
+
+
 def load_init_wetting(config: SimulationConfig) -> dict[str, float] | None:
     """The wetting state saved in the run's init NPZ, or ``None``.
 
     Returns ``None`` when no init file resolves or it lacks any of
-    :data:`RESTORED_WETTING_KEYS` (a snapshot from a run without wetting).
+    :data:`RESTORED_WETTING_KEYS` (a snapshot from a run without wetting). The
+    :data:`RESTORED_LATCH_KEYS` are included when the snapshot has them.
     """
     npz_path = resolve_npz_path(config.init_dir or config.initialisation.get("npz_path"))
     if not npz_path:
@@ -182,6 +188,7 @@ def load_init_wetting(config: SimulationConfig) -> dict[str, float] | None:
         with np.load(npz_path) as data:
             if not all(key in data for key in RESTORED_WETTING_KEYS):
                 return None
-            return {key: float(data[key]) for key in RESTORED_WETTING_KEYS}
+            keys = (*RESTORED_WETTING_KEYS, *(key for key in RESTORED_LATCH_KEYS if key in data))
+            return {key: float(data[key]) for key in keys}
     except (KeyError, OSError, TypeError, ValueError):
         return None

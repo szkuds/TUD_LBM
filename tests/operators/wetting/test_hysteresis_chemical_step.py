@@ -176,6 +176,8 @@ def test_receding_line_just_past_the_step_stays_pinned(monkeypatch):
                 "max_iterations_above": 3,
                 "loss_tol": 1e-4,
                 "saturation_gap": 1.0,
+                "latch_gap": 1.0,
+                "stall_steps": 5,
             },
         ),
     )

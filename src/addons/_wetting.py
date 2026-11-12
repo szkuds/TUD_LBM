@@ -115,7 +115,10 @@ def _init_state(config: SimulationConfig, rho_mean: float, edge: Edge) -> InitSt
         # the angles above are always measured off the field.
         restored = restored_wetting(setup.config)
         if restored is not None:
-            wetting = wetting._replace(**{key: jnp.array(value) for key, value in restored.items()})
+            # Each value takes its field's own type: the carry's types are fixed for the scan.
+            wetting = wetting._replace(
+                **{key: jnp.asarray(value, dtype=getattr(wetting, key).dtype) for key, value in restored.items()}
+            )
         return wetting
 
     return init_state

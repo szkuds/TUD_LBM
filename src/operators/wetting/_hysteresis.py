@@ -9,6 +9,8 @@ Design
 
 1. Measures contact angles and contact-line locations from ``rho_t_plus1``.
 2. Classifies each side as pinned, advancing or receding (:func:`_side_regime`).
+   A moving side is *latched*: it stays moving while its angle is within
+   ``latch_gap`` of its bound and its line keeps passing its anchor.
 3. Builds per-side objectives (CLL-pin or CA-bound, selected via
    ``jnp.where``).
 4. Runs **two** sequential ``jax.lax.while_loop`` optimisations —
@@ -17,8 +19,8 @@ Design
 
 The objective performs a single LBM step with trial wetting parameters so that
 ``jax.value_and_grad`` can differentiate through it. The knob that is not
-active on a side is snapped to neutral each step; that is what keeps the
-optimiser bounded.
+active on a side is snapped to neutral whenever the side is pinned or changes
+regime; that is what keeps the optimiser bounded.
 
 Angle convention
 ~~~~~~~~~~~~~~~~
@@ -36,7 +38,8 @@ looks more liquid, ``d_rho`` deflates it. Mapping a dispersed-frame angle
 error onto them therefore flips with topology, and :func:`_phi_is_active`
 is where that translation happens — the two contact-angle branches invert
 for a bubble, the two contact-line-pinning branches do not (see its
-docstring).
+docstring). A moving side within ``latch_gap`` of its bound keeps the knob
+it has (:func:`_held_phi_is_active`).
 """
 
 from __future__ import annotations
@@ -94,39 +97,83 @@ def _import_optax() -> types.ModuleType:
     return optax
 
 
+class _Regime(NamedTuple):
+    """One contact line's regime for this step (:func:`_side_regime`).
+
+    Attributes:
+        moving: The side targets a bound and its anchor may follow.
+        advancing: That bound is ``ca_adv`` (False with ``moving`` means ``ca_rec``).
+        expanding: The dispersed phase has spread past the anchor.
+        progressed: The line has passed its anchor the way its regime allows.
+        latch: The regime code the state carries to the next step.
+        stall: Consecutive steps a latched line has not passed its anchor.
+        entered: The regime differs from the one the previous step latched.
+    """
+
+    moving: jnp.ndarray
+    advancing: jnp.ndarray
+    expanding: jnp.ndarray
+    progressed: jnp.ndarray
+    latch: jnp.ndarray
+    stall: jnp.ndarray
+    entered: jnp.ndarray
+
+
 def _side_regime(
     ca: jnp.ndarray,
     cll: jnp.ndarray,
     anchor: jnp.ndarray,
-    ca_adv: jnp.ndarray | float,
-    ca_rec: jnp.ndarray | float,
+    window: tuple[jnp.ndarray | float, jnp.ndarray | float],
     *,
     side: ContactLine,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    latch: jnp.ndarray,
+    stall: jnp.ndarray,
+    latch_gap: float,
+    stall_steps: int,
+) -> _Regime:
     """Classify one contact line: may it move, and in which direction?
 
     The dispersed phase expanding is the left contact line moving in
     ``-tangential`` and the right one in ``+tangential``, measured against the
-    **anchor**, not the previous step. Out of window, a side targets its exceeded
-    bound and its anchor follows the contact line unless the line has moved the
-    *wrong* way for that bound — contracting above ``ca_adv``, expanding below
-    ``ca_rec``. That side, and every in-window side, is pinned.
+    **anchor**, not the previous step.
 
-    The two conditions are keyed on the direction of motion, not only on the
-    angle, because at a chemical step the window can be *inverted*
-    (``ca_rec > ca_adv``) and an angle can then exceed both bounds at once: the
-    line advances if it is not contracting, and recedes otherwise.
+    *Entering.* Out of window (*window* is ``(ca_adv, ca_rec)``), a side targets
+    its exceeded bound unless the line has moved the *wrong* way for that bound:
+    contracting above ``ca_adv``, expanding below ``ca_rec``. The two conditions
+    are keyed on the direction of motion, not only on the angle, because at a
+    chemical step the window can be *inverted* (``ca_rec > ca_adv``) and an angle
+    can then exceed both bounds at once: the line advances if it is not
+    contracting, and recedes otherwise.
 
-    Returns:
-        ``(moving, advancing, expanding)``: ``moving`` is True when the side
-        targets a bound and its anchor follows; ``advancing`` is True when that
-        bound is ``ca_adv`` (False with ``moving`` means ``ca_rec``);
-        ``expanding`` is True when the dispersed phase has spread past the anchor.
+    *Staying.* A side that moved last step (*latch*) keeps moving while its angle
+    is within *latch_gap* of that bound, on the window's side of it, and its line
+    has passed the anchor within the last *stall_steps* steps. Without the latch a
+    released line dropped back into the window on the next step and was pinned
+    again: every release lasted one step and the line crept at the rate of that
+    pin/release cycle, not at the speed the forces on it set. The anchor only
+    follows a line that has passed it, so a latched line that stops or turns back
+    makes no progress, stalls out and is pinned where it got to.
+
+    Every other side is pinned.
     """
+    ca_adv, ca_rec = window
     expanding, contracting = (cll < anchor, cll > anchor) if side == ContactLine.LEFT else (cll > anchor, cll < anchor)
-    advancing = (ca > ca_adv) & ~contracting
-    receding = (ca < ca_rec) & ~expanding
-    return advancing | receding, advancing, expanding
+    stalled = jnp.where(jnp.where(latch == REGIME_ADVANCING, expanding, contracting), 0, stall + 1)
+    alive = stalled < stall_steps
+    advancing = ((ca > ca_adv) & ~contracting) | ((latch == REGIME_ADVANCING) & (ca > ca_adv - latch_gap) & alive)
+    receding = ((ca < ca_rec) & ~expanding) | ((latch == REGIME_RECEDING) & (ca < ca_rec + latch_gap) & alive)
+    moving = advancing | receding
+    code = jnp.where(moving, jnp.where(advancing, REGIME_ADVANCING, REGIME_RECEDING), REGIME_PINNED)
+    entered = code != latch
+    return _Regime(
+        moving=moving,
+        advancing=advancing,
+        expanding=expanding,
+        progressed=moving & jnp.where(advancing, ~contracting, ~expanding),
+        latch=code.astype(latch.dtype),
+        stall=jnp.where(moving & ~entered, stalled, 0).astype(stall.dtype),
+        entered=entered,
+    )
 
 
 def _regime_code(moving: jnp.ndarray, advancing: jnp.ndarray, saturated: jnp.ndarray) -> jnp.ndarray:
@@ -245,6 +292,36 @@ def _phi_is_active(
     return jnp.where(pinned, ~forward_drift, ca_branch)
 
 
+def _held_phi_is_active(
+    phi: jnp.ndarray,
+    d_rho: jnp.ndarray,
+    *,
+    bound: jnp.ndarray,
+    is_bubble: jnp.ndarray,
+) -> jnp.ndarray:
+    """Return True if phi is the active parameter of a moving side *at* its bound.
+
+    A line within ``latch_gap`` of its bound is held there, from both sides, by
+    the wall it already has: the knob that is engaged stays the active one, and
+    nothing is reset. Only a wall at neutral has to choose, and takes the side of
+    neutral the bound lies on: the neutral wall holds 90°, so a bound below 90°
+    through the liquid needs ``phi`` and one above it ``d_rho``. The window is in
+    the dispersed frame, so a bubble's bound is read as ``180°`` minus it. A knob
+    that reaches its floor with the bound unmet hands over to the other one (the
+    fallbacks in :func:`_update_wetting_state_impl`).
+
+    :func:`_phi_is_active` keys the knob on the direction the angle has to move
+    instead, with the other knob reset. That is right for a line far past its
+    bound, and it is what released a bubble pinned at 120° (liquid 60°, a wall at
+    ``phi`` ≈ 1.07) onto a neutral wall: the angle fell by more than 1° per step
+    toward 90° and the line was pinned again two steps later.
+    """
+    bound_wets = jnp.where(is_bubble, 180.0 - bound, bound) < 90.0  # noqa: PLR2004 - the neutral wall's angle
+    phi_engaged = phi > _PHI_NEUTRAL + _PHI_FLOOR_EPS
+    d_rho_engaged = d_rho > _D_RHO_NEUTRAL + _PHI_FLOOR_EPS
+    return jnp.where(phi_engaged, True, jnp.where(d_rho_engaged, False, bound_wets))
+
+
 def _side_hyperparams(
     hysteresis_config: Mapping[str, float],
     urgent: jnp.ndarray,
@@ -311,14 +388,16 @@ def _side_cost(
 ) -> jnp.ndarray:
     """Objective of one side: its bound when moving, else its pin inside the window.
 
-    A pinned side holds its contact line *and* keeps its angle within
-    ``[ca_rec, ca_adv]``: no line can stay pinned above its advancing angle. The
+    A moving side targets its bound from both sides: a latched line is at its
+    advancing or receding angle, not merely not past it. A pinned side holds its
+    contact line *and* keeps its angle within ``[ca_rec, ca_adv]``: no line can
+    stay pinned above its advancing angle. The
     window terms are zero in window, so they only act on a side pinned because
     its line moved the wrong way for the bound it has exceeded, and there they
     ask for the same knob as the pin.
     """
     window_cost = _cost_above(ca_adv, ca) + _cost_below(ca_rec, ca)
-    bound_cost = jnp.where(advancing, _cost_above(ca_adv, ca), _cost_below(ca_rec, ca))
+    bound_cost = _cost_ca(jnp.where(advancing, ca_adv, ca_rec), ca)
     return jnp.where(moving, bound_cost, _cost_cll(anchor, cll) + window_cost)
 
 
@@ -448,6 +527,8 @@ class _Side(NamedTuple):
     ca_rec: jnp.ndarray
     moving: jnp.ndarray
     advancing: jnp.ndarray
+    regime: _Regime
+    at_bound: jnp.ndarray
     phi_active: jnp.ndarray
     max_iter: jnp.ndarray
     optimiser: OptaxLike
@@ -498,7 +579,20 @@ def _update_wetting_state_impl(
     for i, line in enumerate(ContactLine):
         ca, cll, anchor = measured[i], measured[2 + i], getattr(wetting, f"cll_{line}")
         ca_adv, ca_rec = windows[i]
-        moving, advancing, expanding = _side_regime(ca, cll, anchor, ca_adv, ca_rec, side=line)
+        regime = _side_regime(
+            ca,
+            cll,
+            anchor,
+            (ca_adv, ca_rec),
+            side=line,
+            latch=getattr(wetting, f"latch_{line}"),
+            stall=getattr(wetting, f"stall_{line}"),
+            latch_gap=float(hc["latch_gap"]),
+            stall_steps=int(hc["stall_steps"]),
+        )
+        moving, advancing, expanding = regime.moving, regime.advancing, regime.expanding
+        bound = jnp.where(advancing, ca_adv, ca_rec)
+        at_bound = moving & (jnp.abs(ca - bound) <= float(hc["latch_gap"]))
         lr, max_iter = _side_hyperparams(hc, advancing)
         if step_sides is None:
             saturated, sat_phi, sat_d_rho = jnp.array(False), _PHI_NEUTRAL, _D_RHO_NEUTRAL
@@ -526,7 +620,18 @@ def _update_wetting_state_impl(
                 ca_rec=ca_rec,
                 moving=moving,
                 advancing=advancing,
-                phi_active=_phi_is_active(~moving, advancing, expanding ^ is_bubble, is_bubble),
+                regime=regime,
+                at_bound=at_bound,
+                phi_active=jnp.where(
+                    at_bound,
+                    _held_phi_is_active(
+                        getattr(wetting, f"phi_{line}"),
+                        getattr(wetting, f"d_rho_{line}"),
+                        bound=bound,
+                        is_bubble=is_bubble,
+                    ),
+                    _phi_is_active(~moving, advancing, expanding ^ is_bubble, is_bubble),
+                ),
                 max_iter=max_iter,
                 # One optimiser per side: the learning rate is keyed on that
                 # side's own urgency flag, so a pinned side is not dragged along.
@@ -565,14 +670,17 @@ def _update_wetting_state_impl(
         zero_iters = jnp.zeros((), dtype=jnp.array(0).dtype)
         return lambda p: (_with_side(p, s.line, s.sat_phi, s.sat_d_rho), jnp.zeros(()), zero_iters)
 
-    # Start from the stored knobs, the inactive one of each side snapped to neutral.
+    # Start from the stored knobs, the inactive one of each side snapped to
+    # neutral. A moving side at its bound keeps both: it continues with the wall
+    # it has, and the other knob is neutral or what a fallback below set.
     params = wetting_params(wetting)
     for s in sides:
+        keep = s.at_bound
         params = _with_side(
             params,
             s.line,
-            jnp.where(s.phi_active, getattr(params, f"phi_{s.line}"), _PHI_NEUTRAL),
-            jnp.where(s.phi_active, _D_RHO_NEUTRAL, getattr(params, f"d_rho_{s.line}")),
+            jnp.where(s.phi_active | keep, getattr(params, f"phi_{s.line}"), _PHI_NEUTRAL),
+            jnp.where(s.phi_active & ~keep, _D_RHO_NEUTRAL, getattr(params, f"d_rho_{s.line}")),
         )
 
     def optimise_active(s: _Side) -> Callable[[WettingParams], tuple[WettingParams, jnp.ndarray, jnp.ndarray]]:
@@ -598,14 +706,29 @@ def _update_wetting_state_impl(
             params_fb, _loss_fb, iters_fb = optimise(s, "d_rho")(start)
             return params_fb, iters_fb
 
+        def fallback_phi(p: WettingParams, s: _Side = s) -> tuple[WettingParams, jnp.ndarray]:
+            params_fb, _loss_fb, iters_fb = optimise(s, "phi")(p)
+            return params_fb, iters_fb
+
+        unconverged = losses[s.index] > loss_tol
         on_floor = getattr(params, f"phi_{s.line}") <= _PHI_NEUTRAL + _PHI_FLOOR_EPS
         params, n_fb = jax.lax.cond(
-            s.phi_active & on_floor & (losses[s.index] > loss_tol),
+            s.phi_active & on_floor & unconverged,
             fallback,
             lambda p: (p, jnp.zeros_like(iters[0])),
             params,
         )
-        iters_fallback.append(n_fb)
+        # The mirror, for a moving side at its bound only: there the bound is held
+        # from both sides, so d_rho on its floor with the bound unmet means the
+        # wall has to pass neutral.
+        d_rho_on_floor = getattr(params, f"d_rho_{s.line}") <= _D_RHO_NEUTRAL + _PHI_FLOOR_EPS
+        params, n_fb_phi = jax.lax.cond(
+            s.at_bound & ~s.saturated & ~s.phi_active & d_rho_on_floor & unconverged,
+            fallback_phi,
+            lambda p: (p, jnp.zeros_like(iters[0])),
+            params,
+        )
+        iters_fallback.append(n_fb + n_fb_phi)
 
     final_params = params
 
@@ -638,8 +761,12 @@ def _update_wetting_state_impl(
         **final_params._asdict(),
         ca_left=sides[0].ca,
         ca_right=sides[1].ca,
-        cll_left=jnp.where(sides[0].moving, sides[0].cll, sides[0].anchor),
-        cll_right=jnp.where(sides[1].moving, sides[1].cll, sides[1].anchor),
+        cll_left=jnp.where(sides[0].regime.progressed, sides[0].cll, sides[0].anchor),
+        cll_right=jnp.where(sides[1].regime.progressed, sides[1].cll, sides[1].anchor),
+        latch_left=sides[0].regime.latch,
+        latch_right=sides[1].regime.latch,
+        stall_left=sides[0].regime.stall,
+        stall_right=sides[1].regime.stall,
     )
 
 

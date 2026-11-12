@@ -80,13 +80,19 @@ def test_init_state_resumes_the_saved_wetting_state_on_a_hysteresis_restart(latt
         "d_rho_right": 0.0,
         "cll_left": 11.5,
         "cll_right": 29.0,
+        "latch_left": 1.0,
+        "stall_left": 3.0,
     }
     addon = _addon(lattice, wetting=_WETTING, hysteresis=_HYSTERESIS)
     monkeypatch.setattr(_wetting, "restored_wetting", lambda _config: saved)
+    fresh = _addon(lattice, wetting=_WETTING).init_state(_init_setup())
     wetting = addon.init_state(_init_setup())
 
     for key, value in saved.items():
         assert float(getattr(wetting, key)) == value
+    # The carry's types are fixed for the scan, whatever the snapshot stored.
+    assert [value.dtype for value in wetting] == [value.dtype for value in fresh]
+    assert (int(wetting.latch_right), int(wetting.stall_right)) == (0, 0)
     assert (float(wetting.ca_left), float(wetting.ca_right)) == (75.0, 85.0)  # re-measured, not restored
 
 

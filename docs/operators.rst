@@ -137,6 +137,17 @@ twice.  :mod:`src.config.equilibrium` reads and checks the pairing.
     exactly.  It carries no pressure; a multiphase run supplies it as the
     force ``−ρ∇μ``.  Pairs with the ``wb`` source term.
 
+``wb_hydro_inc``
+    The ``wb`` equilibrium with a pressure ``p`` in its second moment
+    (``w_i p / cs²`` on the moving directions, the rest direction again from
+    mass conservation), after Zhang et al., Int. J. Multiphase Flow 198, 105668
+    (2026).  Multiphase only.  The macroscopic operator supplies
+    ``p = ρ₀(μ − μ_b)`` and reduces the interparticle force to
+    ``−(ρ − ρ₀)∇μ``, so the momentum equation is unchanged.  ``ρ₀`` is
+    ``[multiphase] equilibrium_reference_density`` (default: the vapour density
+    at coexistence) and ``μ_b`` the chemical potential there.  Pairs with the
+    ``wb`` source term.
+
 ``standard_equilibrium``
     Textbook second-order equilibrium, including the rest direction, so it
     carries the ideal-gas pressure ``cs²ρ``.  Pairs with ``standard_source``

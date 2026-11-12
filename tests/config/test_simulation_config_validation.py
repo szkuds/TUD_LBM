@@ -582,6 +582,23 @@ class TestValidateHysteresis:
         assert cfg.hysteresis["trial_steps"] == 2
         assert cfg.hysteresis["learning_rate_above"] == 0.05
         assert cfg.hysteresis["saturation_gap"] == 1.0
+        assert cfg.hysteresis["latch_gap"] == 1.0
+        assert cfg.hysteresis["stall_steps"] == 200
+
+    @pytest.mark.parametrize(
+        ("key", "value", "message"),
+        [
+            ("latch_gap", -0.5, "latch_gap must be a number of degrees >= 0"),
+            ("latch_gap", "1", "latch_gap must be a number of degrees >= 0"),
+            ("stall_steps", 0, "stall_steps must be an integer >= 1"),
+            ("stall_steps", 2.5, "stall_steps must be an integer >= 1"),
+        ],
+    )
+    def test_latch_settings_are_validated(self, key, value, message):
+        section = {"ca_advancing": 120.0, "ca_receding": 60.0, key: value}
+
+        with pytest.raises(ValueError, match=message):
+            _hysteresis_config(section)
 
     def test_chemical_step_edge_width_defaults_to_one_cell(self):
         chemical_step = {
@@ -630,6 +647,11 @@ class TestRestoredWetting:
     def test_hysteresis_restart_reads_the_snapshot(self, tmp_path):
         cfg = self._config(self._npz(tmp_path, **_SAVED_WETTING))
         assert restored_wetting(cfg) == _SAVED_WETTING
+
+    def test_hysteresis_restart_also_reads_a_saved_latch(self, tmp_path):
+        latch = {"latch_left": 1, "latch_right": 0, "stall_left": 3, "stall_right": 0}
+        cfg = self._config(self._npz(tmp_path, **_SAVED_WETTING, **latch))
+        assert restored_wetting(cfg) == _SAVED_WETTING | latch
 
     def test_snapshot_without_wetting_state_is_a_fresh_start(self, tmp_path):
         cfg = self._config(self._npz(tmp_path))

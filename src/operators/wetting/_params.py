@@ -54,9 +54,18 @@ class WettingState(NamedTuple):
         cll_right: Contact-line location, right. Tangential to the wetting wall
             (see ``cll_left``).
 
+        latch_left: Regime the left line is latched in: ``0`` pinned, ``1``
+            advancing, ``2`` receding (the hysteresis optimiser's regime codes).
+        latch_right: As ``latch_left``, right.
+        stall_left: Consecutive steps the latched left line has not passed its anchor.
+        stall_right: As ``stall_left``, right.
+
     ``cll_left`` / ``cll_right`` are the hysteresis *anchors*: they follow the
     measured contact line only while it moves the way its exceeded window bound
     allows, and hold still while it is pinned.
+
+    The latch fields default to "pinned", which is what a fixed-wetting run and a
+    restart from a snapshot without them carry.
     """
 
     phi_left: jnp.ndarray
@@ -67,3 +76,7 @@ class WettingState(NamedTuple):
     ca_right: jnp.ndarray
     cll_left: jnp.ndarray
     cll_right: jnp.ndarray
+    latch_left: jnp.ndarray = jnp.zeros((), dtype=jnp.int32)
+    latch_right: jnp.ndarray = jnp.zeros((), dtype=jnp.int32)
+    stall_left: jnp.ndarray = jnp.zeros((), dtype=jnp.int32)
+    stall_right: jnp.ndarray = jnp.zeros((), dtype=jnp.int32)

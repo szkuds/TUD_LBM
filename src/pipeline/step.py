@@ -56,8 +56,8 @@ def _moments(
     f: jnp.ndarray,
     force_ext: jnp.ndarray | None,
     ext: Mapping[str, Any],
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray]:
-    """``(rho, u, force, pressure)`` of *f* under *force_ext* and the addon substates *ext*."""
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray, jnp.ndarray | None]:
+    """``(rho, u, force, pressure, lattice_pressure)`` of *f* under *force_ext* and the addon substates *ext*."""
     return setup.macroscopic_fn(
         f,
         setup.lattice,
@@ -86,9 +86,9 @@ def kernel(
         The populations after collision, streaming, obstacle and boundary conditions.
     """
     lattice = setup.lattice
-    rho, u, force_tot, _pressure = _moments(setup, f, force_ext, ext)
+    rho, u, force_tot, _pressure, lattice_pressure = _moments(setup, f, force_ext, ext)
 
-    feq = setup.equilibrium_fn(rho, u, lattice)
+    feq = setup.equilibrium_fn(rho, u, lattice, lattice_pressure)
     if force_tot is None:
         f_col = setup.collision_fn(f, feq, setup.tau)
     else:
@@ -110,7 +110,7 @@ def observe(setup: SimulationSetup, state: State) -> Observables:
         :class:`Observables`, all at ``state.t``.
     """
     force_ext = compute_total_force_ext(setup, state)
-    rho, u, force, pressure = _moments(setup, state.f, force_ext, state.ext)
+    rho, u, force, pressure, _lattice_pressure = _moments(setup, state.f, force_ext, state.ext)
     if setup.obstacle_mask is not None:
         u = jnp.where(setup.obstacle_mask, 0.0, u)
     return Observables(rho=rho, u=u, force=force, force_ext=force_ext, pressure=pressure)

@@ -216,6 +216,14 @@ def validate_hysteresis(config: SimulationConfig) -> None:
     if unknown:
         msg = f"Unknown [hysteresis] keys {sorted(unknown)}; allowed: {sorted(_HYSTERESIS_KEYS)}"
         raise ValueError(msg)
+    gap = config.hysteresis["latch_gap"]
+    if isinstance(gap, bool) or not isinstance(gap, int | float) or gap < 0:
+        msg = f"[hysteresis] latch_gap must be a number of degrees >= 0, got {gap!r}"
+        raise ValueError(msg)
+    steps = config.hysteresis["stall_steps"]
+    if isinstance(steps, bool) or not isinstance(steps, int) or steps < 1:
+        msg = f"[hysteresis] stall_steps must be an integer >= 1, got {steps!r}"
+        raise ValueError(msg)
 
 
 def validate_chemical_step(config: SimulationConfig) -> None:

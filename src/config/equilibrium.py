@@ -26,17 +26,33 @@ def _registry() -> dict[str, OperatorEntry]:
     return get_operators("equilibrium")
 
 
-def validate_equilibrium(name: str) -> None:
-    """Reject an unregistered equilibrium, or one that declares no source term.
+def validate_equilibrium(name: str, *, multiphase: bool) -> None:
+    """Reject an unregistered equilibrium, one without a source term, or one the phase cannot supply.
 
     Raises:
-        ValueError: If *name* is not registered or has no ``source_term`` pair.
+        ValueError: If *name* is not registered, has no ``source_term`` pair, or
+            needs a reference density on a single-phase run.
     """
     registry = _registry()
     if name not in registry:
         msg = f"equilibrium must be one of {sorted(registry)}, got '{name}'"
         raise ValueError(msg)
     source_term_for(name)
+    if uses_reference_density(name) and not multiphase:
+        msg = f"equilibrium '{name}' takes its pressure from the chemical potential, so it needs a [multiphase] section"
+        raise ValueError(msg)
+
+
+def uses_reference_density(name: str | None) -> bool:
+    """Whether the equilibrium *name* carries a pressure built on a reference density.
+
+    Declared at registration (``reference_density=True``). Such an equilibrium needs
+    ``[multiphase] equilibrium_reference_density``, and the macroscopic operator
+    then supplies its pressure. ``False`` for an unregistered name, which
+    :func:`validate_equilibrium` reports.
+    """
+    entry = _registry().get(name) if name is not None else None
+    return entry is not None and bool((entry.metadata or {}).get("reference_density"))
 
 
 def source_term_for(name: str) -> str:

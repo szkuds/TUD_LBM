@@ -133,6 +133,19 @@ class TestEquilibriumProtocol:
         # Equilibrium should conserve mass
         assert jnp.allclose(jnp.sum(feq), jnp.sum(rho))
 
+    def test_wb_hydro_inc_equilibrium_conformance(self, lattice_d2q9, grid_shape, test_state):
+        """The equilibrium with a pressure satisfies the protocol, with and without one supplied."""
+        from src.operators.equilibrium import build_equilibrium_fn
+
+        equilibrium = build_equilibrium_fn("wb_hydro_inc")
+        _, rho, u = test_state
+        feq = equilibrium(rho, u, lattice_d2q9, 0.01 * rho)
+
+        nx, ny = grid_shape
+        assert feq.shape == (nx, ny, 1, lattice_d2q9.q, 1)
+        assert jnp.allclose(jnp.sum(feq), jnp.sum(rho))
+        assert equilibrium(rho, u, lattice_d2q9).shape == feq.shape
+
     def test_standard_equilibrium_conformance(self, lattice_d2q9, grid_shape, test_state):
         """The single-phase standard equilibrium satisfies the same protocol."""
         from src.operators.equilibrium import build_equilibrium_fn
@@ -203,7 +216,7 @@ class TestMacroscopicProtocol:
         gradient, laplacian = _differential(lattice_d2q9)
         f, rho_expected, u_expected = test_state
 
-        rho, u, _, pressure = macroscopic(
+        rho, u, _, pressure, _ = macroscopic(
             f, lattice_d2q9, None, gradient_standard=gradient, laplacian_density=laplacian
         )
         assert rho.shape == rho_expected.shape
@@ -220,7 +233,7 @@ class TestMacroscopicProtocol:
         f, rho_expected, u_expected = test_state
         force = jnp.zeros((grid_shape[0], grid_shape[1], 1, 1, 2))
 
-        rho, u, force_out, _ = macroscopic(
+        rho, u, force_out, _, _ = macroscopic(
             f, lattice_d2q9, force, gradient_standard=gradient, laplacian_density=laplacian
         )
         assert rho.shape == rho_expected.shape
@@ -243,7 +256,7 @@ class TestMacroscopicProtocol:
         gradient, laplacian = _differential(lattice_d2q9)
         f, rho_expected, u_expected = test_state
 
-        rho, u, force, pressure = macroscopic(
+        rho, u, force, pressure, _ = macroscopic(
             f, lattice_d2q9, None, gradient_standard=gradient, laplacian_density=laplacian
         )
         assert rho.shape == rho_expected.shape

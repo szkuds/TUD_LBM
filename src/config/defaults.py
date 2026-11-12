@@ -43,6 +43,14 @@ HYSTERESIS: dict[str, Any] = {
     # Chemical-step runs: degrees from its bound past which a line on (or held
     # at) the post surface skips the optimiser and takes its knob's clamp limit.
     "saturation_gap": 1.0,
+    # A moving line stays moving while its angle is within ``latch_gap`` degrees of
+    # its bound and it has passed its anchor within the last ``stall_steps`` steps.
+    # The count has to outlast the release transient: a line held at its bound
+    # jitters by ~1e-3 cells over ~10 steps and went up to 49 steps without passing
+    # its anchor right after release (R070 replay, 2026-11-11). At 5 every release
+    # ended in that transient.
+    "latch_gap": 1.0,
+    "stall_steps": 200,
 }
 
 #: ``[chemical_step]``: distance (lattice units) either side of a contact line at

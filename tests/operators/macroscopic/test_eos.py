@@ -254,7 +254,7 @@ class TestCsEosPipeline:
         # Use rho_l phase (uniform — interface not required for smoke test)
         f = jnp.ones((NX, NY, NZ, 9, 1)) * (_RHO_L / 9.0)
 
-        rho, u_eq, force_total, pressure = compute_macroscopic_multiphase(
+        rho, u_eq, force_total, pressure, _ = compute_macroscopic_multiphase(
             f,
             lattice,
             mp=cs_mp,
@@ -275,7 +275,7 @@ class TestCsEosPipeline:
         gradient_standard, laplacian_density = _build_gradient_and_laplacian(lattice)
         f = jnp.ones((NX, NY, NZ, 9, 1)) * (_RHO_L / 9.0)
 
-        rho, _, _, pressure = compute_macroscopic_multiphase(
+        rho, _, _, pressure, _ = compute_macroscopic_multiphase(
             f,
             lattice,
             mp=cs_mp,
@@ -294,7 +294,7 @@ class TestCsEosPipeline:
 
         f = jnp.ones((NX, NY, NZ, 9, 1)) * (_RHO_L / 9.0)
 
-        _, _, force_total, _ = compute_macroscopic_multiphase(
+        _, _, force_total, _, _ = compute_macroscopic_multiphase(
             f,
             lattice,
             mp=cs_mp,
@@ -310,7 +310,7 @@ class TestCsEosPipeline:
         gradient_standard, laplacian_density = _build_gradient_and_laplacian(lattice)
         f = jnp.ones((NX, NY, NZ, 9, 1)) * (_RHO_L / 9.0)
 
-        rho, u_eq, force_total, pressure = compute_macroscopic_multiphase(
+        rho, u_eq, force_total, pressure, _ = compute_macroscopic_multiphase(
             f,
             lattice,
             mp=cs_mp,
@@ -339,7 +339,7 @@ class TestCsEosPipeline:
                 laplacian_density=laplacian_density,
             )
         )
-        rho, _, _, _ = jitted(f)
+        rho, _, _, _, _ = jitted(f)
         assert rho.shape == (NX, NY, NZ, 1, 1)
 
     def test_build_setup_with_cs_eos(self):
@@ -382,14 +382,14 @@ class TestCsEosPipeline:
             _RHO_V / 9.0,
         ) * jnp.ones((NX, NY, NZ, 9, 1))
 
-        _, _, force_cs, _ = compute_macroscopic_multiphase(
+        _, _, force_cs, _, _ = compute_macroscopic_multiphase(
             rho_field,
             lattice,
             mp=cs_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )
-        _, _, force_dw, _ = compute_macroscopic_multiphase(
+        _, _, force_dw, _, _ = compute_macroscopic_multiphase(
             rho_field,
             lattice,
             mp=dw_mp,

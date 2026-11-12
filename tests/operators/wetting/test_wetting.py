@@ -989,6 +989,42 @@ class TestUpdateWettingStateBubble:
         # selected — the fallback never ran.
         np.testing.assert_allclose(float(new_wetting.d_rho_right), 0.0, atol=1e-6)
 
+    def test_a_side_held_at_its_bound_passes_neutral_when_d_rho_reaches_its_floor(self, monkeypatch):
+        """The mirror fallback: the bound needs a more wetting wall than d_rho's floor."""
+        import src.operators.wetting._hysteresis as hysteresis_module
+
+        # Half a degree above the advancing bound of 120, with d_rho engaged: the
+        # side is held at its bound on d_rho. In this trial step d_rho raises the
+        # angle, so it runs to its floor with the bound unmet, and only phi helps.
+        setup = self._make_setup()
+        rho = _droplet_rho(NX, NY, NZ, RHO_L, RHO_V)
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_angle",
+            lambda rho_in, rho_mean, **_: (
+                jnp.array(90.0),
+                jnp.array(120.5) if rho_in is rho else 120.5 + 50.0 * jnp.mean(rho_in),
+            ),
+        )
+        monkeypatch.setattr(
+            hysteresis_module,
+            "compute_contact_line_location",
+            lambda rho_in, ca_l, ca_r, rho_mean, **_: (jnp.array(16.0), jnp.array(48.0)),
+        )
+
+        def trial_step_fn(params):
+            return rho, jnp.full_like(rho, params.d_rho_right - (params.phi_right - 1.0))
+
+        wetting = self._make_wetting_state(phi_right=jnp.array(1.0))
+
+        new_wetting = hysteresis_module.update_wetting_state(
+            wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=trial_step_fn
+        )
+
+        assert int(new_wetting.latch_right) == hysteresis_module.REGIME_ADVANCING
+        np.testing.assert_allclose(float(new_wetting.d_rho_right), 0.0, atol=1e-6)
+        assert float(new_wetting.phi_right) > 1.0
+
 
 # =====================================================================
 # step_multiphase with wetting

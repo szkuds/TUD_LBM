@@ -135,6 +135,10 @@ wrote, but always what the run used:
   configured density is kept.
 * ``equilibrium`` defaults by phase: ``standard_equilibrium`` single-phase,
   ``wb`` multiphase; the source term is the one it registered as its pair.
+* with ``equilibrium = "wb_hydro_inc"`` an omitted
+  ``[multiphase] equilibrium_reference_density`` is the vapour density at
+  coexistence (the Maxwell one for Carnahan–Starling, else ``rho_v``).  The key
+  is rejected for any other equilibrium.
 * the ``[hysteresis]``, ``[chemical_step]`` and ``[*_force]`` sections get
   their optimiser, step and force defaults, and a ``[hysteresis]`` section
   without ``[wetting]`` gets neutral wetting parameters (``phi = 1.0``,

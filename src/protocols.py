@@ -127,15 +127,19 @@ class StreamingOperator(Protocol):
 
 
 class EquilibriumOperator(Protocol):
-    """Equilibrium operator — computes ``(rho, u, lattice) → feq``.
+    """Equilibrium operator — computes ``(rho, u, lattice[, pressure]) → feq``.
 
     The equilibrium distribution is the rest state toward which the
     collision operator relaxes the system. It encodes the
     hydrodynamic moment structure.
 
+    *pressure* is the isotropic part of the second moment when the run supplies
+    one (the macroscopic operator's ``lattice_pressure``). An equilibrium whose
+    pressure is fixed by its own form takes it and ignores it.
+
     Signature::
 
-        def compute_equilibrium(rho, u, lattice) -> feq
+        def compute_equilibrium(rho, u, lattice, pressure=None) -> feq
     """
 
     def __call__(
@@ -143,6 +147,7 @@ class EquilibriumOperator(Protocol):
         rho: jnp.ndarray,
         u: jnp.ndarray,
         lattice: Lattice,
+        pressure: jnp.ndarray | None = None,
     ) -> jnp.ndarray:
         """Compute the equilibrium distribution.
 
@@ -151,6 +156,8 @@ class EquilibriumOperator(Protocol):
             u: Velocity field, shape ``(nx, ny, nz, 1, d)`` where d ∈ {2, 3}.
             lattice: :class:`~setup.lattice.Lattice` with weights ``w``
                 and velocity vectors ``c``.
+            pressure: Pressure for the second moment, shape ``(nx, ny, nz, 1, 1)``,
+                or ``None`` when the run supplies none.
 
         Returns:
             Equilibrium distribution ``feq``, shape ``(nx, ny, nz, q, 1)``.
@@ -159,10 +166,10 @@ class EquilibriumOperator(Protocol):
 
 
 class MacroscopicOperator(Protocol):
-    """Macroscopic operator — computes ``(f, lattice) → (rho, u, force, pressure)``.
+    """Macroscopic operator — computes ``(f, lattice) → (rho, u, force, pressure, lattice_pressure)``.
 
     Every macroscopic field is a function of the moments of the population
-    distribution, and every macroscopic operator returns the same four:
+    distribution, and every macroscopic operator returns the same five:
 
     * ``rho`` — zeroth moment, shape ``(nx, ny, nz, 1, 1)``;
     * ``u`` — first moment over ``rho``, force-corrected when a force acts,
@@ -172,7 +179,11 @@ class MacroscopicOperator(Protocol):
     * ``pressure`` — the bulk pressure, shape ``(nx, ny, nz, 1, 1)``. The
       multiphase operator takes it from the EOS's registered ``p_0(rho)``;
       single-phase uses the lattice ideal gas ``cs^2 * rho``. Either way a
-      hydrostatic stratification shows up in it.
+      hydrostatic stratification shows up in it;
+    * ``lattice_pressure`` — the pressure the step hands to the equilibrium,
+      shape ``(nx, ny, nz, 1, 1)``, or ``None`` when the equilibrium needs none
+      supplied. It is not the physical pressure above: a multiphase run with a
+      reference density returns ``rho_0 * (mu - mu_b)`` here.
 
     Both operators share one signature. The differential operators come with
     the addon substates already bound; a single-phase operator ignores them,
@@ -181,7 +192,7 @@ class MacroscopicOperator(Protocol):
     Signature::
 
         def macroscopic_op(f, lattice, force, *, gradient_standard, laplacian_density)
-            -> (rho, u, force, pressure)
+            -> (rho, u, force, pressure, lattice_pressure)
     """
 
     def __call__(
@@ -192,7 +203,7 @@ class MacroscopicOperator(Protocol):
         *,
         gradient_standard: DifferentialOperator,
         laplacian_density: DifferentialOperator,
-    ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray]:
+    ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray, jnp.ndarray | None]:
         """Compute the macroscopic fields from the populations.
 
         Args:
@@ -203,7 +214,7 @@ class MacroscopicOperator(Protocol):
             laplacian_density: Laplacian of the density, ``lap(rho)``.
 
         Returns:
-            ``(rho, u, force, pressure)``; see the class docstring.
+            ``(rho, u, force, pressure, lattice_pressure)``; see the class docstring.
         """
         ...
 

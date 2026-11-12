@@ -30,13 +30,25 @@ def compute_macroscopic_multiphase(
     gradient_standard: DifferentialOperator,
     laplacian_density: DifferentialOperator,
     mp: MultiphaseParams,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Compute ``(rho, u, force, pressure)`` using the EOS selected by ``mp.eos``.
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray | None]:
+    """Compute ``(rho, u, force, pressure, lattice_pressure)`` using the EOS selected by ``mp.eos``.
 
     *mp* is not part of :class:`~src.protocols.MacroscopicOperator`;
     :func:`~src.operators.macroscopic.build_multiphase_macroscopic_fn` binds it.
     The chemical potential and the bulk pressure come from the same EOS, so the
     force and the reported pressure share one free energy.
+
+    With ``mp.equilibrium_reference_density`` (``rho_0``, set for an equilibrium
+    that carries a pressure) the pressure force is split, after Zhang et al.,
+    Int. J. Multiphase Flow 198, 105668 (2026): the equilibrium takes
+    ``lattice_pressure = rho_0 * (mu - mu_b)`` and the interparticle force becomes
+    ``-(rho - rho_0) * grad(mu)``. The momentum equation still sees
+    ``-rho * grad(mu)`` in total. ``mu_b`` is the chemical potential at
+    coexistence (``mp.equilibrium_reference_potential``, from
+    :func:`~src.config.multiphase.multiphase_params`), so the lattice pressure
+    vanishes at a flat equilibrium interface; any constant there is dynamically
+    neutral. Without ``rho_0`` nothing is supplied and the
+    force is the whole ``-rho * grad(mu)``.
 
     Args:
         f: Populations, shape ``(nx, ny, nz, q, 1)``.
@@ -59,7 +71,15 @@ def compute_macroscopic_multiphase(
     mu = eos_fn(rho) - mp.kappa * laplacian_density(rho)
 
     # Interparticle force from chemical potential gradient
-    force_int = -rho * gradient_standard(mu)
+    rho_0 = mp.equilibrium_reference_density
+    if rho_0 is None:
+        lattice_pressure = None
+        force_int = -rho * gradient_standard(mu)
+    else:
+        mu_b = mp.equilibrium_reference_potential
+        assert mu_b is not None  # noqa: S101 - multiphase_params sets it with rho_0
+        lattice_pressure = rho_0 * (mu - mu_b)
+        force_int = -(rho - rho_0) * gradient_standard(mu)
 
     # Total force
     force_total = force_int if force is None else force_int + force
@@ -70,4 +90,4 @@ def compute_macroscopic_multiphase(
     # Bulk pressure from the same EOS; the interfacial kappa terms are not included.
     pressure = pressure_fn(rho)
 
-    return rho, u_eq, force_total, pressure
+    return rho, u_eq, force_total, pressure, lattice_pressure

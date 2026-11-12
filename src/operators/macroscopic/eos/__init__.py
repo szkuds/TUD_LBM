@@ -26,8 +26,10 @@ Example:
 """
 
 from __future__ import annotations
+import functools
 from typing import TYPE_CHECKING
 from typing import Any
+import jax.numpy as jnp
 from src.config.multiphase import EOS_PARAMETERS
 from src.config.multiphase import multiphase_params
 from src.operators._loader import auto_load_operators
@@ -127,11 +129,26 @@ def coexistence_densities(eos: str, parameters: Mapping[str, Any]) -> tuple[floa
     return solver(**{name: parameters[name] for name in EOS_PARAMETERS[eos]})
 
 
+@functools.lru_cache(maxsize=32)
+def coexistence_potential(mp: MultiphaseParams) -> float:
+    """The bulk chemical potential ``mu_0`` at coexistence, the same in both phases.
+
+    Evaluated at the Maxwell vapour density when the EOS registers a coexistence
+    solver, and at the configured ``rho_v`` otherwise (the double-well's wells
+    *are* its coexistence densities). A configured Carnahan-Starling pair need not
+    be the Maxwell one, which is why the solver's is used there.
+    """
+    pair = coexistence_densities(mp.eos, mp._asdict())
+    rho_v = mp.rho_v if pair is None else pair[0]
+    return float(build_eos_fn(mp.eos, mp)(jnp.asarray(rho_v)))
+
+
 __all__ = [
     "analytical_surface_tension",
     "build_eos_fn",
     "build_pressure_fn",
     "coexistence_densities",
+    "coexistence_potential",
     "has_analytical_surface_tension",
     "multiphase_params",
 ]
