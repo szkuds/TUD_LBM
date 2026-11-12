@@ -28,6 +28,7 @@ from src.config.multiphase import is_multiphase
 from src.config.multiphase import multiphase_params
 from src.operators.macroscopic.eos import analytical_surface_tension
 from src.operators.macroscopic.eos import build_pressure_fn
+from src.operators.macroscopic.eos import coexistence_densities
 from src.operators.macroscopic.eos import has_analytical_surface_tension
 from src.registry import get_operator_names
 from src.registry import get_operators
@@ -670,9 +671,13 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
             _row("kappa:", params.kappa),
             _row("rho_liquid:", params.rho_l),
             _row("rho_vapour:", params.rho_v),
-            _row("Interface width:", params.interface_width),
         ]
     )
+    # The pair the EOS predicts for itself, beside the configured one, so a gap shows.
+    if (pair := coexistence_densities(params.eos, params._asdict())) is not None:
+        rho_v, rho_l = pair
+        lines.append(_row("Maxwell coexistence:", f"rho_v = {rho_v:.6g}, rho_l = {rho_l:.6g}"))
+    lines.append(_row("Interface width:", params.interface_width))
     _add_measured_density_rows(lines, config)
     if params.g is not None:
         lines.append(_row("g (gravity):", params.g))

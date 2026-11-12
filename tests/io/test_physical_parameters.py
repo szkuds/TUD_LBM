@@ -279,3 +279,26 @@ def test_inclusion_mask_selects_the_bubble_not_its_ambient():
 def test_inclusion_mask_returns_none_for_a_single_phase_field():
     rho = np.full((40, 20, 1, 1, 1), 0.5)
     assert inclusion_mask_from_rho(rho, rho_mean=0.75) is None
+
+
+def test_overview_reports_the_maxwell_pair_for_carnahan_starling():
+    cfg = _mp_config(
+        multiphase={
+            "eos": "carnahan-starling",
+            "rho_l": 12.18,
+            "rho_v": 0.015,
+            "a_eos": 0.00031459670905604266,
+            "b_eos": 0.1490857142857143,
+            "r_eos": 1.0,
+            "t_eos": 0.00039808421247983624,
+        },
+    )
+
+    text = build_overview(cfg)
+
+    assert "Maxwell coexistence:" in text
+    assert "rho_v = 0.0168045, rho_l = 12.1833" in text
+
+
+def test_overview_has_no_maxwell_row_for_double_well():
+    assert "Maxwell coexistence:" not in build_overview(_mp_config())

@@ -2714,6 +2714,42 @@ class TestAnalyseCommand:
         assert result.exit_code == 0
         assert "0.0123" in result.output
 
+    def test_coexistence_reports_the_maxwell_pair(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+        content = (tmp_path / "config.toml").read_text(encoding="utf-8")
+        cs_section = (
+            'eos = "carnahan-starling"\n'
+            "a_eos = 0.00031459670905604266\n"
+            "b_eos = 0.1490857142857143\n"
+            "r_eos = 1.0\n"
+            "t_eos = 0.00039808421247983624\n"
+        )
+        content = content.replace("rho_l = 1.0\nrho_v = 0.001\n", "").replace('eos = "double-well"\n', cs_section)
+        (tmp_path / "config.toml").write_text(content, encoding="utf-8")
+
+        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--coexistence"])
+
+        assert result.exit_code == 0
+        assert "rho_v = 0.0168045, rho_l = 12.1833" in result.output
+        assert (tmp_path / "coexistence" / "data" / "data.json").exists()
+
+    def test_coexistence_of_a_double_well_names_its_parameters(self, tmp_path):
+        cfg_toml = self._write_multiphase_toml(tmp_path)
+
+        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--coexistence"])
+
+        assert result.exit_code == 0
+        assert "own" in result.output
+        assert "parameters" in result.output
+        assert not (tmp_path / "coexistence").exists()
+
+    def test_coexistence_of_a_single_phase_config_errors(self, tmp_path):
+        cfg_toml = tmp_path / "config.toml"
+        cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\ngrid_shape=[8, 8]\n", encoding="utf-8")
+        result = CliRunner().invoke(cli, ["analyse", str(cfg_toml), "--coexistence"])
+        assert result.exit_code == 1
+        assert "multiphase" in result.output
+
     def test_length_scale_writes_figure_and_refreshes_overview(self, tmp_path):
         cfg_toml = self._write_multiphase_toml(tmp_path)
 

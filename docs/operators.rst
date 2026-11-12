@@ -56,6 +56,7 @@ Kind                        Decorator                       Resolved by
 ``eos``                     ``@eos_operator``               ``multiphase.eos``
 ``pressure``                ``@pressure_operator``          ``multiphase.eos`` (if it has one)
 ``surface_tension``         ``@surface_tension_operator``   ``multiphase.eos`` (if it has one)
+``coexistence``             ``@coexistence_operator``       ``multiphase.eos`` (if it has one)
 ``boundary_condition``      ``@boundary_condition``         ``config.boundary_conditions`` per face
 ``force``                   ``@force_model``                the keys of ``config.forces``
 ``stream``                  ``@stream_operator``            fixed (``"standard"``)
@@ -173,6 +174,32 @@ Equation of state — ``eos``
     it.  For typical LBM parameters ``μ₀`` is negative at both coexistence
     densities and positive in the unstable region between them — the
     double-well character is in the shape, not the sign.
+
+Coexistence densities — ``coexistence``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An EOS whose liquid and vapour densities follow from its own parameters
+registers a solver here under its own name; membership is the capability
+check, and :func:`~src.operators.macroscopic.eos.coexistence_densities`
+returns ``(ρ_v, ρ_l)``, or ``None`` for an EOS outside the kind.
+
+``carnahan-starling``
+    The Maxwell construction: equal bulk pressure and equal chemical
+    potential, i.e. equal areas under ``p₀(1/ρ)`` about the tie line
+    ``p_sat``.  Solved by nested bisection under ``jax.jit`` from the two
+    spinodals of ``dp₀/dρ``.  A ``t_eos`` at or above the critical
+    temperature raises ``ValueError``.  ``rho_l``/``rho_v`` may be omitted
+    from ``[multiphase]``; the config then fills them with this pair, rounded
+    to six significant figures.  A configured value is never overwritten.
+
+``double-well`` registers no solver: ``rho_l`` and ``rho_v`` are its
+parameters, so both are required.
+
+A multiphase run with a solver writes ``coexistence/data/data.json`` (the
+pair, ``p_sat`` and the configured densities) and
+``coexistence/plots/maxwell.png`` into its run directory at start, and
+``physical_parameters.txt`` gets a *Maxwell coexistence* row.
+``tud-lbm analyse config.toml --coexistence`` writes the same without a run.
 
 Boundary conditions — ``boundary_condition``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
