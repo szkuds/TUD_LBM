@@ -212,6 +212,19 @@ pair, ``p_sat`` and the configured densities) and
 ``physical_parameters.txt`` gets a *Maxwell coexistence* row.
 ``tud-lbm analyse config.toml --coexistence`` writes the same without a run.
 
+The solver takes an optional ``pressure_jump`` (``p_l − p_v``), zero for the
+Maxwell pair.  :func:`~src.operators.macroscopic.eos.kelvin_densities` passes
+the Laplace pressure ``±σ/r`` of a curved interface and returns the pair a
+bubble or droplet of that radius is in equilibrium at.  This is the
+`Kelvin equation <https://en.wikipedia.org/wiki/Kelvin_equation>`_ without its
+ideal-vapour and incompressible-liquid approximations: a bubble's vapour
+(concave surface) lies below the saturation density, a droplet's (convex)
+above.  ``physical_parameters.txt`` prints the pair as a *Kelvin densities (exact)*
+row beside the first-order *Kelvin shift*
+``(p(r) − P)/P = γρ_v/((ρ_l − ρ_v)·P·r)`` (number ``kelvin_shift``; one
+principal radius, since a 2D interface is a cylinder).  Both are diagnostics,
+never configuration values.
+
 Boundary conditions — ``boundary_condition``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

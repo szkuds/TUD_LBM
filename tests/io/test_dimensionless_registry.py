@@ -103,7 +103,8 @@ def test_a_resolvable_config_reports_every_registered_number():
     dn = compute_dimensionless_numbers(_config())
 
     assert set(dn.values) == set(dimensionless_keys())
-    assert all(dn.get(key) is not None for key in dimensionless_keys())
+    # The Kelvin shift is relative to a saturation pressure, which the double-well lacks.
+    assert {key for key in dimensionless_keys() if dn.get(key) is None} == {"kelvin_shift"}
 
 
 # --- the numbers themselves --------------------------------------------------
@@ -153,4 +154,5 @@ def test_gravity_driven_numbers_are_exactly_those_marked_needs_gravity():
 
     unresolved = {key for key in dimensionless_keys() if dn.get(key) is None}
     marked = {entry.name for entry in _entries() if _meta(entry, "needs_gravity")}
-    assert unresolved == marked
+    # The Kelvin shift is unresolved for another reason: the double-well has no saturation pressure.
+    assert unresolved - {"kelvin_shift"} == marked

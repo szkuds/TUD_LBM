@@ -1,7 +1,8 @@
 """Equation-of-state operators for multiphase macroscopic computation.
 
 Public API: build_eos_fn(), build_pressure_fn(), analytical_surface_tension(),
-has_analytical_surface_tension(), coexistence_densities()
+has_analytical_surface_tension(), coexistence_densities(), coexistence_potential(),
+kelvin_densities()
 
 Implementation modules (_double_well.py, _carnahan_starling.py) are internal;
 use the factories to access them. Each module registers its EOS under the
@@ -30,6 +31,7 @@ import functools
 from typing import TYPE_CHECKING
 from typing import Any
 import jax.numpy as jnp
+from src.config.initialisation import DispersedPhase
 from src.config.multiphase import EOS_PARAMETERS
 from src.config.multiphase import multiphase_params
 from src.operators._loader import auto_load_operators
@@ -110,8 +112,14 @@ def analytical_surface_tension(mp: MultiphaseParams) -> float | None:
     return None if sigma is None else float(sigma)
 
 
-def coexistence_densities(eos: str, parameters: Mapping[str, Any]) -> tuple[float, float] | None:
-    """Maxwell coexistence densities ``(rho_v, rho_l)`` of *eos*, or ``None``.
+def coexistence_densities(
+    eos: str, parameters: Mapping[str, Any], pressure_jump: float = 0.0
+) -> tuple[float, float] | None:
+    """Coexistence densities ``(rho_v, rho_l)`` of *eos*, or ``None``.
+
+    The Maxwell pair of a flat interface by default. With *pressure_jump*
+    (``p_l - p_v``) it is the pair across a curved one; :func:`kelvin_densities`
+    supplies the Laplace pressure.
 
     ``None`` when *eos* registers no coexistence solver: it is then
     parameterised *by* its densities (the double-well's wells), so there is
@@ -121,12 +129,38 @@ def coexistence_densities(eos: str, parameters: Mapping[str, Any]) -> tuple[floa
 
     Raises:
         ValueError: If the parameters admit no liquid-vapour coexistence
-            (at or above the critical temperature).
+            (at or above the critical temperature, or no pair carries the jump).
     """
     if eos not in get_operator_names("coexistence"):
         return None
     solver = get_operators("coexistence")[eos].target
-    return solver(**{name: parameters[name] for name in EOS_PARAMETERS[eos]})
+    return solver(**{name: parameters[name] for name in EOS_PARAMETERS[eos]}, pressure_jump=pressure_jump)
+
+
+def kelvin_densities(
+    eos: str,
+    parameters: Mapping[str, Any],
+    *,
+    sigma: float,
+    radius: float,
+    dispersed: DispersedPhase,
+) -> tuple[float, float] | None:
+    """Densities ``(rho_v, rho_l)`` in equilibrium across an interface of curvature ``1/radius``.
+
+    The inclusion is at the higher pressure, by the two-dimensional Laplace
+    pressure ``sigma / radius``: the vapour of a bubble, the liquid of a droplet.
+    Both phases then sit off the Maxwell pair — a bubble's vapour below it, a
+    droplet's above. This is what a closed simulation relaxes to; it is a
+    diagnostic and never a configuration value.
+
+    ``None`` when *eos* registers no coexistence solver, and when no pair
+    carries that pressure (an inclusion too small to exist at this fluid).
+    """
+    jump = sigma / radius if dispersed == DispersedPhase.LIQUID else -sigma / radius
+    try:
+        return coexistence_densities(eos, parameters, pressure_jump=jump)
+    except ValueError:
+        return None
 
 
 @functools.lru_cache(maxsize=32)
@@ -150,5 +184,6 @@ __all__ = [
     "coexistence_densities",
     "coexistence_potential",
     "has_analytical_surface_tension",
+    "kelvin_densities",
     "multiphase_params",
 ]

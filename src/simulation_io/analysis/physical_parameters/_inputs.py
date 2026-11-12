@@ -39,6 +39,14 @@ class DimensionlessInputs(NamedTuple):
     ``g`` and ``angle_deg`` — rather than to a neutral-looking value: ``Hs`` is
     a threshold diagnostic where ``>= 1`` means the run dies, so a caller that
     omits ``domain`` must get no answer, not the most reassuring one.
+
+    ``curvature_radius`` and ``coexistence`` serve the Kelvin equation: the
+    signed radius of curvature of the inclusion's interface (not ``length``,
+    which is ``sqrt(area)``) — positive for a convex liquid surface (a droplet),
+    negative for a concave one (a bubble) — and the fluid's coexistence pair
+    ``(rho_v, rho_l)`` (the Maxwell pair where the EOS has a solver, else the
+    configured densities). The radius is ``None`` when the geometry gives none or
+    the dispersed phase is not known.
     """
 
     gamma: float
@@ -53,3 +61,5 @@ class DimensionlessInputs(NamedTuple):
     angle_deg: float | None
     domain: tuple[float, float] | None = None
     pressure: Callable[[np.ndarray], np.ndarray] | None = None
+    curvature_radius: float | None = None
+    coexistence: tuple[float, float] | None = None

@@ -24,12 +24,15 @@ from typing import Any
 import numpy as np
 from src.config.boundary import Edge
 from src.config.init_field import load_init_field
+from src.config.initialisation import DispersedPhase
+from src.config.initialisation import dispersed_phase
 from src.config.multiphase import is_multiphase
 from src.config.multiphase import multiphase_params
 from src.operators.macroscopic.eos import analytical_surface_tension
 from src.operators.macroscopic.eos import build_pressure_fn
 from src.operators.macroscopic.eos import coexistence_densities
 from src.operators.macroscopic.eos import has_analytical_surface_tension
+from src.operators.macroscopic.eos import kelvin_densities
 from src.registry import get_operator_names
 from src.registry import get_operators
 from src.simulation_io.analysis.physical_parameters import (
@@ -288,6 +291,61 @@ def _get_droplet_area(config: SimulationConfig) -> tuple[float, str] | None:
     return (area, "init geometry") if area is not None else None
 
 
+#: Halvings of the contact-angle bracket in :func:`_cap_radius`; far below float resolution.
+_CAP_BISECTIONS = 80
+
+
+def _cap_radius(area: float, base: float) -> float:
+    """Radius of the circular cap with *area* standing on a chord of length *base*.
+
+    A cap of radius ``R`` and contact angle ``theta`` (through the cap) has area
+    ``R^2 (theta - sin(theta) cos(theta))`` and base ``2 R sin(theta)``, so
+    ``area / base^2`` rises monotonically with ``theta`` from 0 to infinity and
+    fixes it.
+    """
+    target = area / base**2
+    low, high = 0.0, math.pi
+    for _ in range(_CAP_BISECTIONS):
+        theta = 0.5 * (low + high)
+        ratio = (theta - math.sin(theta) * math.cos(theta)) / (4.0 * math.sin(theta) ** 2)
+        low, high = (theta, high) if ratio < target else (low, theta)
+    return base / (2.0 * math.sin(0.5 * (low + high)))
+
+
+def _resolve_curvature_radius(config: SimulationConfig) -> float | None:
+    """Signed radius of curvature of the inclusion's interface, or ``None``.
+
+    From the inclusion's area and, when it sits on a wall, the distance between
+    its contact lines: a circular cap through both (:func:`_cap_radius`). A free
+    inclusion is the circle of its area. The same area and contact lines the
+    Bond number and the critical inclination are built from.
+
+    Signed as the Kelvin equation is usually written: positive for a convex
+    liquid surface (a droplet), negative for a concave one (a bubble). ``None``
+    without an inclusion or when the config does not say which phase is dispersed.
+    """
+    resolved = _get_droplet_area(config)
+    phase = dispersed_phase(config)
+    if resolved is None or phase is None:
+        return None
+    area, _source = resolved
+    base = _get_setup_contact_line_length(config)
+    radius = math.sqrt(area / math.pi) if base is None or base <= 0.0 else _cap_radius(area, base)
+    return radius if phase == DispersedPhase.LIQUID else -radius
+
+
+def _resolve_coexistence(config: SimulationConfig) -> tuple[float, float] | None:
+    """The coexistence pair ``(rho_v, rho_l)`` of the run's fluid, or ``None`` for a single phase.
+
+    The Maxwell pair when the EOS has a coexistence solver, else the configured
+    densities, which are then the EOS's own (the double-well's wells).
+    """
+    params = multiphase_params(config)
+    if params is None:
+        return None
+    return coexistence_densities(params.eos, params._asdict()) or (float(params.rho_v), float(params.rho_l))
+
+
 def _gravity_section(config: SimulationConfig) -> dict[str, Any] | None:
     """The run's gravity force section; ``SimulationConfig`` allows at most one."""
     return next((params for name, params in config.forces.items() if name.startswith("gravity")), None)
@@ -465,6 +523,8 @@ def resolve_dimensionless_inputs(config: SimulationConfig) -> DimensionlessInput
         angle_deg=None if g_val is None else _resolve_gravity_inclination(config),
         domain=(float(config.grid_shape[0]), float(config.grid_shape[1])),
         pressure=_resolve_bulk_pressure(config),
+        curvature_radius=_resolve_curvature_radius(config),
+        coexistence=_resolve_coexistence(config),
     )
 
 
@@ -594,6 +654,55 @@ def _dimensionless_rows(config: SimulationConfig) -> list[str]:
     return rows
 
 
+#: The smallest Kelvin vapour-pressure shift, in magnitude, at which a run has been
+#: lost: R070 of the 2026-10-17 set (-0.34 to -0.36 over its run; every smaller
+#: bubble is further out), whose vapour went to a two-cell mode once the bubble
+#: moved. Provisional: the Phase 0 pilots near -0.2
+#: (``.claude/plan/261105_bubble_fix_db``) decide where the limit is.
+_KELVIN_SHIFT_WARNING = 0.34
+
+
+def _kelvin_rows(config: SimulationConfig) -> list[str]:
+    """The densities the Kelvin equation holds the phases at, and a warning when they are far off.
+
+    The first-order shift is the ``kelvin_shift`` number. This row is the same
+    equilibrium without its approximations: equal chemical potential with the
+    Laplace pressure across the interface, solved on the run's own EOS. Printed
+    for an EOS with a coexistence solver, a resolved surface tension and a signed
+    radius of curvature. It is what a closed run relaxes to, beside the Maxwell
+    pair it was configured near.
+    """
+    inputs = resolve_dimensionless_inputs(config)
+    params = multiphase_params(config)
+    if inputs is None or params is None or inputs.curvature_radius is None:
+        return []
+    radius = inputs.curvature_radius
+    phase = DispersedPhase.LIQUID if radius > 0.0 else DispersedPhase.VAPOUR
+    pair = kelvin_densities(params.eos, params._asdict(), sigma=inputs.gamma, radius=abs(radius), dispersed=phase)
+    if pair is None:
+        return []
+    rho_v, rho_l = pair
+    surface = "convex: droplet" if radius > 0.0 else "concave: bubble"
+    rows = [
+        _row(
+            "Kelvin densities (exact):",
+            f"rho_v = {rho_v:.6g}, rho_l = {rho_l:.6g}, rho_l/rho_v = {rho_l / rho_v:.4g}"
+            f"  [r = {radius:.4g}, {surface}]",
+        )
+    ]
+    shift = _evaluate_dimensionless(inputs).get("kelvin_shift")
+    if shift is not None and abs(shift) >= _KELVIN_SHIFT_WARNING:
+        rows.append(
+            _row(
+                "",
+                f"WARNING: the vapour pressure is shifted by {shift:+.2f} of saturation "
+                f"(|shift| >= {_KELVIN_SHIFT_WARNING}); moving bubbles this far from saturation lost their "
+                "vapour to a two-cell mode. A larger radius or a higher T_r reduces it.",
+            )
+        )
+    return rows
+
+
 _CRITICAL_ANGLE_LABEL = "Critical Inclination Angle: "  # wider than _row's 26-column pad
 
 
@@ -693,6 +802,7 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
 
     _add_buoyancy_delta_rho_row(lines, config)
     lines.extend(_dimensionless_rows(config))
+    lines.extend(_kelvin_rows(config))
     if config.chemical_step is not None and _resolve_gravity_value(config) is not None:
         lines.append(_format_critical_inclination_angle_row(config, gamma))
 

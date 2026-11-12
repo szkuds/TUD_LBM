@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 #: Halvings per bisection. Far below float64 resolution on every bracket used
 #: here, and a fixed count keeps each loop a ``fori_loop`` with a static trip count.
 _N_BISECT = 200
+#: Relative agreement of the two chemical potentials that counts as coexistence.
+#: A solved pair agrees to ~1e-13; an end of the bracket taken for want of a root does not.
+_POTENTIAL_TOLERANCE = 1e-8
 #: Samples of ``dp_0/drho`` across ``(0, 4/b)`` that bracket the two spinodals.
 _N_SCAN = 4096
 
@@ -86,21 +89,27 @@ def _maxwell_construction(
     b: float,
     r: float,
     t: float,
+    jump: float = 0.0,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """``(rho_v, rho_l, rho_s1, rho_s2)``: the coexistence pair and the two spinodals.
 
-    Coexistence is equal pressure and equal chemical potential. For a trial
-    pressure ``p*`` between the spinodal pressures, each stable branch has one
-    density at ``p*``; ``p_sat`` is the ``p*`` at which their chemical
-    potentials agree. That residual falls strictly with ``p*`` (Gibbs-Duhem:
-    its derivative is ``1/rho_l - 1/rho_v < 0``), so the root is unique. Equal
-    chemical potential is the Maxwell equal-area rule, since
-    ``∫(p - p*) dv`` from ``v_l`` to ``v_v`` equals ``mu_l - mu_v``.
+    Coexistence is equal chemical potential, with the liquid at the pressure
+    ``p_v + jump``. ``jump = 0`` is a flat interface (the Maxwell construction);
+    a curved one carries the Laplace pressure, which is the Kelvin equilibrium.
+    For a trial vapour pressure ``p*`` each stable branch has one density (the
+    vapour at ``p*``, the liquid at ``p* + jump``); the answer is the ``p*`` at
+    which their chemical potentials agree. That residual falls strictly with
+    ``p*`` (Gibbs-Duhem: its derivative is ``1/rho_l - 1/rho_v < 0``), so the
+    root is unique. At ``jump = 0`` equal chemical potential is the Maxwell
+    equal-area rule, since ``∫(p - p*) dv`` from ``v_l`` to ``v_v`` equals
+    ``mu_l - mu_v``.
 
-    The lower pressure bracket is clamped positive: on a low isotherm the
-    liquid spinodal pressure is negative, where the vapour branch has no
-    density. Above the critical temperature ``dp_0/drho`` never changes sign,
-    both spinodal indices fall to 0, and ``rho_s1 == rho_s2`` signals it.
+    The lower pressure bracket keeps the liquid above its spinodal pressure and
+    is clamped positive: on a low isotherm the liquid spinodal pressure is
+    negative, where the vapour branch has no density. Above the critical
+    temperature ``dp_0/drho`` never changes sign, both spinodal indices fall to
+    0, and ``rho_s1 == rho_s2`` signals it. A *jump* no pair of the two branches
+    can carry leaves the chemical potentials unequal, which the caller checks.
     """
 
     def pressure(rho: jnp.ndarray) -> jnp.ndarray:
@@ -123,7 +132,7 @@ def _maxwell_construction(
     rho_s2 = _bisect(slope, rho[i_liquid], rho[i_liquid + 1])
 
     p_hi = pressure(rho_s1)
-    p_lo = jnp.maximum(pressure(rho_s2), 1e-12 * p_hi)
+    p_lo = jnp.maximum(pressure(rho_s2) - jump, 1e-12 * p_hi)
 
     def vapour(p: jnp.ndarray) -> jnp.ndarray:
         return _bisect(lambda x: pressure(x) - p, 1e-14 * rho_s1, rho_s1)
@@ -131,27 +140,36 @@ def _maxwell_construction(
     def liquid(p: jnp.ndarray) -> jnp.ndarray:
         return _bisect(lambda x: pressure(x) - p, rho_s2, (1.0 - 1e-12) * pole)
 
-    p_sat = _bisect(lambda p: potential(liquid(p)) - potential(vapour(p)), p_lo, p_hi)
-    return vapour(p_sat), liquid(p_sat), rho_s1, rho_s2
+    p_sat = _bisect(lambda p: potential(liquid(p + jump)) - potential(vapour(p)), p_lo, p_hi)
+    return vapour(p_sat), liquid(p_sat + jump), rho_s1, rho_s2
 
 
 @coexistence_operator(name="carnahan-starling")
-def carnahan_starling_coexistence(*, a_eos: float, b_eos: float, r_eos: float, t_eos: float) -> tuple[float, float]:
-    """Maxwell coexistence densities ``(rho_v, rho_l)`` of the Carnahan-Starling EOS.
+def carnahan_starling_coexistence(
+    *, a_eos: float, b_eos: float, r_eos: float, t_eos: float, pressure_jump: float = 0.0
+) -> tuple[float, float]:
+    """Coexistence densities ``(rho_v, rho_l)`` of the Carnahan-Starling EOS.
 
     The keywords are the EOS's row of ``EOS_PARAMETERS``, so a caller passes
-    exactly that row. Precision relies on x64, which ``src`` enables at import.
+    exactly that row. *pressure_jump* is ``p_l - p_v`` across the interface:
+    zero for the Maxwell pair, the Laplace pressure for the Kelvin pair of a
+    curved one. Precision relies on x64, which ``src`` enables at import.
 
     Raises:
         ValueError: If ``t_eos`` is at or above the critical temperature, where
-            there is no liquid-vapour coexistence.
+            there is no liquid-vapour coexistence, or if no pair of the two
+            branches carries *pressure_jump*.
     """
-    rho_v, rho_l, rho_s1, rho_s2 = (float(x) for x in _maxwell_construction(a_eos, b_eos, r_eos, t_eos))
+    rho_v, rho_l, rho_s1, rho_s2 = (float(x) for x in _maxwell_construction(a_eos, b_eos, r_eos, t_eos, pressure_jump))
     if not (math.isfinite(rho_s1) and math.isfinite(rho_s2) and rho_s1 < rho_s2):
         msg = (
             f"t_eos = {t_eos} is at or above the critical temperature of the Carnahan-Starling EOS "
             f"(a_eos = {a_eos}, b_eos = {b_eos}): no liquid-vapour coexistence"
         )
+        raise ValueError(msg)
+    mu_v, mu_l = (float(_eos_carnahan_starling(jnp.asarray(x), a_eos, b_eos, r_eos, t_eos)) for x in (rho_v, rho_l))
+    if not math.isclose(mu_v, mu_l, rel_tol=_POTENTIAL_TOLERANCE):
+        msg = f"the Carnahan-Starling branches have no coexisting pair with p_l - p_v = {pressure_jump}"
         raise ValueError(msg)
     return rho_v, rho_l
 
