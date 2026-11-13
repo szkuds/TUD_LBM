@@ -11,7 +11,7 @@ Three collapses keep the automatic label short. Only one member of the Bond
 family appears: ``Bo_parallel`` when the runs are inclined, plain ``Bo`` when
 they are not. Only ``Re`` appears of the buoyancy pair, because ``Re = sqrt(Ar)``
 carries the same information; and only ``Oh`` of the viscous-capillary pair,
-because ``La = 1/Oh**2`` does likewise. ``Bo_perp``, ``Ar`` and ``La`` all remain
+because ``La = 1/Oh**2`` and ``Oh**2`` do likewise. ``Bo_perp``, ``Ar``, ``La`` and ``Oh**2`` all remain
 reachable by naming them explicitly (``tud-lbm compare --label-param``), which
 also bypasses the differing-only test.
 
@@ -77,8 +77,8 @@ def _is_inclined(numbers: Sequence[DimensionlessNumbers]) -> bool:
 #:
 #: Deliberately hand-curated rather than read off the registry: which numbers
 #: belong in a legend is a judgement about redundancy, not a fact about the
-#: number. ``ar`` is omitted because ``Re = sqrt(Ar)``, and ``la`` because
-#: ``La = 1/Oh**2`` -- both would print the same information twice. Every
+#: number. ``ar`` is omitted because ``Re = sqrt(Ar)``, and ``la`` and ``oh2``
+#: because ``La = 1/Oh**2`` -- each would print the same information twice. Every
 #: omitted number stays reachable through ``--label-param``.
 def _auto_candidates(numbers: Sequence[DimensionlessNumbers]) -> list[str]:
     """One representative per family, in the order a label renders them."""

@@ -1,14 +1,13 @@
-"""Shared stencil-padding utility for D2Q9 differential operators.
+"""Shared stencil-padding utility for the differential operators.
 
-The four ``jnp.pad`` mode strings come from the configuration,
-:attr:`SimulationConfig.pad_modes
-<src.config.simulation_config.SimulationConfig.pad_modes>`, which reads each
+The ``jnp.pad`` mode strings come from the configuration,
+``pad_modes(config)``, which reads each
 boundary condition's ``pad_edge_mode`` registration.
 
 The ordering convention is ``(y_end, y_start, x_end, x_start)`` — that is,
 ``(top, bottom, right, left)`` — which matches the order
-``SimulationConfig.pad_modes`` returns and the padding order in ``_gradient.py`` /
-``_laplacian.py``.
+``src.config.boundary.pad_modes`` returns and the padding order in ``_gradient.py`` /
+``_laplacian.py``. A 3D lattice appends ``(z_end, z_start)``, ``(front, back)``.
 
 **Both ghost layers of an axis are derived from that axis's original extent.**
 Padding the sides in sequence would let ``mode="wrap"`` on the start side copy
@@ -19,6 +18,9 @@ periodic axis (``tests/pipeline/test_translation_invariance.py``).
 
 from __future__ import annotations
 import jax.numpy as jnp
+
+#: Pad modes of a planar field; a 3D one has two more.
+_PLANAR_MODES = 4
 
 
 def _pad_axis(grid: jnp.ndarray, axis: int, mode_start: str, mode_end: str) -> jnp.ndarray:
@@ -44,23 +46,35 @@ def _pad_axis(grid: jnp.ndarray, axis: int, mode_start: str, mode_end: str) -> j
 
 
 def _apply_stencil_padding(
-    grid_2d: jnp.ndarray,
+    grid: jnp.ndarray,
     pad_mode: tuple[str, ...],
 ) -> jnp.ndarray:
-    """Pad a 2-D field with one ghost cell per edge.
+    """Pad a field with one ghost cell per face.
 
     Args:
-        grid_2d: Shape ``(nx, ny)``.
+        grid: Shape ``(nx, ny)``, or ``(nx, ny, nz)`` with six modes.
         pad_mode: ``(y_end, y_start, x_end, x_start)``, i.e.
             ``(top, bottom, right, left)`` — the order
-            ``SimulationConfig.pad_modes`` returns.
+            ``src.config.boundary.pad_modes`` returns — then
+            ``(z_end, z_start)`` on a 3D lattice.
 
     Returns:
-        Shape ``(nx + 2, ny + 2)``.
+        Shape ``(nx + 2, ny + 2)``, or ``(nx + 2, ny + 2, nz + 2)``.
     """
-    # y first, then x, so the corner cells are read off the y-padded field.
-    padded = _pad_axis(grid_2d, 1, pad_mode[1], pad_mode[0])
+    # z, then y, then x, so the edge and corner cells are read off the padded field.
+    padded = _pad_axis(grid, 2, pad_mode[5], pad_mode[4]) if len(pad_mode) > _PLANAR_MODES else grid
+    padded = _pad_axis(padded, 1, pad_mode[1], pad_mode[0])
     return _pad_axis(padded, 0, pad_mode[3], pad_mode[2])
+
+
+def to_3d(grid: jnp.ndarray) -> jnp.ndarray:
+    """Squeeze ``(nx, ny, nz, 1, 1)`` → ``(nx, ny, nz)``."""
+    return grid[:, :, :, 0, 0]
+
+
+def neighbour(padded: jnp.ndarray, direction: tuple[int, ...]) -> jnp.ndarray:
+    """The values one *direction* away from each interior cell of a padded 3D field."""
+    return padded[tuple(slice(1 + step, step - 1 if step < 1 else None) for step in direction)]
 
 
 def to_2d(grid: jnp.ndarray) -> jnp.ndarray:

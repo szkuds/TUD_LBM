@@ -18,6 +18,9 @@ from src.lattice.lattice import build_lattice
 from src.pipeline.runner import _t_from_snapshot
 from src.pipeline.runner import init_state
 from src.pipeline.setup import build_setup
+from src.pipeline.step import observe
+from src.pipeline.step import step
+from tests.support.config import merge_overrides
 
 # =====================================================================
 # Helpers
@@ -40,10 +43,10 @@ def _sp_setup():
 def _sp_setup_with_gravity():
     """Build a tiny single-phase setup with gravity enabled."""
     cfg = SimulationConfig(
+        forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 10.0}},
         grid_shape=(NX, NY, NZ),
         tau=0.8,
         nt=10,
-        gravity_force={"force_g": 1e-6, "inclination_angle_deg": 10.0},
     )
     return build_setup(cfg)
 
@@ -51,15 +54,10 @@ def _sp_setup_with_gravity():
 def _mp_setup():
     """Build a tiny multiphase SimulationSetup."""
     cfg = SimulationConfig(
-        sim_type="multiphase",
+        multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
         grid_shape=(16, 16),
         tau=0.99,
         nt=5,
-        eos="double-well",
-        kappa=0.017,
-        rho_l=1.0,
-        rho_v=0.33,
-        interface_width=4,
     )
     return build_setup(cfg)
 
@@ -67,23 +65,18 @@ def _mp_setup():
 def _mp_setup_with_gravity():
     """Build a tiny multiphase setup with gravity enabled."""
     cfg = SimulationConfig(
-        sim_type="multiphase",
+        multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
+        forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 10.0}},
         grid_shape=(16, 16),
         tau=0.99,
         nt=5,
-        eos="double-well",
-        kappa=0.017,
-        rho_l=1.0,
-        rho_v=0.33,
-        interface_width=4,
-        gravity_force={"force_g": 1e-6, "inclination_angle_deg": 10.0},
     )
     return build_setup(cfg)
 
 
 def _cfg(**kwargs) -> SimulationConfig:
     base = {"grid_shape": (8, 8), "tau": 0.8, "nt": 10}
-    base.update(kwargs)
+    merge_overrides(base, kwargs)
     return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
@@ -99,8 +92,8 @@ class TestInitState:
         setup = _single_phase_setup()
         state = init_state(setup)
         assert state.f.shape == (8, 8, 1, 9, 1)
-        assert state.rho.shape == (8, 8, 1, 1, 1)
-        np.testing.assert_allclose(float(jnp.sum(state.rho)), 64.0, rtol=1e-5)
+        assert observe(setup, state).rho.shape == (8, 8, 1, 1, 1)
+        np.testing.assert_allclose(float(jnp.sum(observe(setup, state).rho)), 64.0, rtol=1e-5)
 
     def test_custom_f(self):
         setup = _single_phase_setup()
@@ -108,34 +101,30 @@ class TestInitState:
         state = init_state(setup, f=f_custom)
         np.testing.assert_allclose(state.f, f_custom)
 
-    def test_pressure_seeded_as_zeros(self):
-        """``pressure`` starts as zeros so the lax.scan carry keeps one pytree structure."""
-        for setup in (_single_phase_setup(), _mp_setup()):
-            state = init_state(setup)
-            assert state.pressure is not None
-            assert state.pressure.shape == (*setup.grid_shape, 1, 1)
-            np.testing.assert_array_equal(np.asarray(state.pressure), 0.0)
-
     def test_single_phase_step_writes_ideal_gas_pressure(self):
-        """After a step the state carries the macroscopic operator's ``cs^2 * rho``."""
+        """The observed pressure is the macroscopic operator's ``cs^2 * rho``."""
         from src.pipeline.runner import run
 
         setup = _single_phase_setup()
         final_state, _ = run(setup, init_state(setup), nt=2)
-        assert final_state.pressure is not None
-        np.testing.assert_allclose(np.asarray(final_state.pressure), np.asarray(final_state.rho) / 3.0, rtol=1e-6)
+        assert observe(setup, final_state).pressure is not None
+        np.testing.assert_allclose(
+            np.asarray(observe(setup, final_state).pressure),
+            np.asarray(observe(setup, final_state).rho) / 3.0,
+            rtol=1e-6,
+        )
 
     def test_multiphase_step_writes_eos_pressure(self):
-        """After a step the state carries the EOS bulk pressure of the stored density."""
+        """The observed pressure is the EOS bulk pressure of the observed density."""
         from src.operators.macroscopic.eos import build_pressure_fn
         from src.pipeline.runner import run
 
         setup = _mp_setup()
         final_state, _ = run(setup, init_state(setup), nt=2)
-        assert final_state.pressure is not None
+        assert observe(setup, final_state).pressure is not None
         assert setup.multiphase_params is not None
-        expected = build_pressure_fn(setup.multiphase_params)(final_state.rho)
-        np.testing.assert_allclose(np.asarray(final_state.pressure), np.asarray(expected), rtol=1e-6)
+        expected = build_pressure_fn(setup.multiphase_params)(observe(setup, final_state).rho)
+        np.testing.assert_allclose(np.asarray(observe(setup, final_state).pressure), np.asarray(expected), rtol=1e-6)
 
     def test_resume_timestep_parsed_from_snapshot_name(self):
         cfg = SimulationConfig(
@@ -244,7 +233,7 @@ class TestIOCallbacks:
 
         setup = _single_phase_setup()
         state = init_state(setup)
-        np_dict = _state_to_numpy(state)
+        np_dict = _state_to_numpy(state, observe(setup, state))
         assert isinstance(np_dict, dict)
         assert "f" in np_dict
         assert isinstance(np_dict["f"], np.ndarray)
@@ -343,9 +332,10 @@ class TestSource:
 
     @staticmethod
     def _build_gradient_closure(lattice):
-        from src.operators.differential import build_gradient_fn
+        from src.operators.differential import build_differential
 
-        return build_gradient_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))
+        gradient, _ = build_differential(lattice, ("wrap", "wrap", "wrap", "wrap"))
+        return partial(gradient, ext={})
 
     def test_shape(self):
         from src.operators.source_term._source_well_balanced import compute_source
@@ -407,105 +397,85 @@ class TestStepSinglePhasePure:
     """``step_single_phase`` advances the state using pure functions."""
 
     def test_increments_t(self):
-        from src.operators.step import build_step_fn
-
-        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
-        new_state = step_single_phase(setup, state)
+        new_state = step(setup, state)
         assert int(new_state.t) == 1
 
     def test_preserves_shape(self):
-        from src.operators.step import build_step_fn
-
-        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
-        new_state = step_single_phase(setup, state)
+        new_state = step(setup, state)
 
         assert new_state.f.shape == state.f.shape
-        assert new_state.rho.shape == state.rho.shape
-        assert new_state.u.shape == state.u.shape
+        assert observe(setup, new_state).rho.shape == observe(setup, state).rho.shape
+        assert observe(setup, new_state).u.shape == observe(setup, state).u.shape
 
     def test_no_nan(self):
-        from src.operators.step import build_step_fn
-
-        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
-        new_state = step_single_phase(setup, state)
+        new_state = step(setup, state)
 
         assert not jnp.isnan(new_state.f).any()
-        assert not jnp.isnan(new_state.rho).any()
+        assert not jnp.isnan(observe(setup, new_state).rho).any()
 
     def test_output_is_state(self):
-        from src.operators.step import build_step_fn
         from src.pipeline.state import State
 
-        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
-        new_state = step_single_phase(setup, state)
+        new_state = step(setup, state)
         assert isinstance(new_state, State)
 
     def test_rest_equilibrium_unchanged(self):
-        from src.operators.step import build_step_fn
-
-        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
-        new_state = step_single_phase(setup, state)
+        new_state = step(setup, state)
 
-        np.testing.assert_allclose(np.array(new_state.rho), 1.0, atol=1e-5)
+        np.testing.assert_allclose(np.array(observe(setup, new_state).rho), 1.0, atol=1e-5)
 
     def test_mass_conservation(self):
-        from src.operators.step import build_step_fn
-
-        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
-        new_state = step_single_phase(setup, state)
+        new_state = step(setup, state)
 
         mass_before = float(jnp.sum(state.f))
         mass_after = float(jnp.sum(new_state.f))
         np.testing.assert_allclose(mass_before, mass_after, rtol=1e-6)
 
     def test_multiple_steps_stable(self):
-        from src.operators.step import build_step_fn
-
-        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup()
         state = init_state(setup)
 
         for _ in range(5):
-            state = step_single_phase(setup, state)
+            state = step(setup, state)
 
         assert not jnp.isnan(state.f).any()
         assert int(state.t) == 5
 
-    def test_persists_force_ext_when_forces_active(self):
-        from src.operators.step import build_step_fn
-
-        step_single_phase = build_step_fn("single_phase")
+    def test_observes_force_ext_when_forces_active(self):
         setup = _sp_setup_with_gravity()
         state = init_state(setup)
-        new_state = step_single_phase(setup, state)
+        new_state = step(setup, state)
 
-        assert new_state.force_ext is not None
-        assert new_state.force_ext.shape == (NX, NY, NZ, 1, 2)
-        assert not np.allclose(np.array(new_state.force_ext), 0.0)
+        force_ext = observe(setup, new_state).force_ext
+        assert force_ext is not None
+        assert force_ext.shape == (NX, NY, NZ, 1, 2)
+        assert not np.allclose(np.array(force_ext), 0.0)
 
     def test_force_ext_does_not_accumulate_between_steps(self):
-        from src.operators.step import build_step_fn
-
-        step_single_phase = build_step_fn("single_phase")
         setup = _sp_setup_with_gravity()
         state0 = init_state(setup)
 
-        state1 = step_single_phase(setup, state0)
-        state2 = step_single_phase(setup, state1)
+        state1 = step(setup, state0)
+        state2 = step(setup, state1)
 
-        np.testing.assert_allclose(np.array(state2.force_ext), np.array(state1.force_ext), rtol=1e-6, atol=1e-12)
+        np.testing.assert_allclose(
+            np.array(observe(setup, state2).force_ext),
+            np.array(observe(setup, state1).force_ext),
+            rtol=1e-6,
+            atol=1e-12,
+        )
 
 
 # =====================================================================
@@ -517,69 +487,58 @@ class TestStepMultiphasePure:
     """``step_multiphase`` advances multiphase state using pure functions."""
 
     def test_increments_t(self):
-        from src.operators.step import build_step_fn
-
-        step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
         state = init_state(setup)
-        new_state = step_multiphase(setup, state)
+        new_state = step(setup, state)
         assert int(new_state.t) == 1
 
     def test_preserves_shape(self):
-        from src.operators.step import build_step_fn
-
-        step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
         state = init_state(setup)
-        new_state = step_multiphase(setup, state)
+        new_state = step(setup, state)
 
         assert new_state.f.shape == state.f.shape
-        assert new_state.rho.shape == state.rho.shape
+        assert observe(setup, new_state).rho.shape == observe(setup, state).rho.shape
 
     def test_no_nan(self):
-        from src.operators.step import build_step_fn
-
-        step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
         state = init_state(setup)
-        new_state = step_multiphase(setup, state)
+        new_state = step(setup, state)
 
         assert not jnp.isnan(new_state.f).any()
 
     def test_produces_force(self):
-        from src.operators.step import build_step_fn
-
-        step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup()
         state = init_state(setup)
-        new_state = step_multiphase(setup, state)
+        new_state = step(setup, state)
 
-        assert new_state.force is not None
-        assert new_state.force.shape == (16, 16, 1, 1, 2)
+        force = observe(setup, new_state).force
+        assert force is not None
+        assert force.shape == (16, 16, 1, 1, 2)
 
-    def test_persists_force_ext_when_forces_active(self):
-        from src.operators.step import build_step_fn
-
-        step_multiphase = build_step_fn("multiphase")
+    def test_observes_force_ext_when_forces_active(self):
         setup = _mp_setup_with_gravity()
         state = init_state(setup)
-        new_state = step_multiphase(setup, state)
+        new_state = step(setup, state)
 
-        assert new_state.force_ext is not None
-        assert new_state.force_ext.shape == (16, 16, 1, 1, 2)
-        assert not np.allclose(np.array(new_state.force_ext), 0.0)
+        force_ext = observe(setup, new_state).force_ext
+        assert force_ext is not None
+        assert force_ext.shape == (16, 16, 1, 1, 2)
+        assert not np.allclose(np.array(force_ext), 0.0)
 
     def test_force_ext_does_not_accumulate_between_steps(self):
-        from src.operators.step import build_step_fn
-
-        step_multiphase = build_step_fn("multiphase")
         setup = _mp_setup_with_gravity()
         state0 = init_state(setup)
 
-        state1 = step_multiphase(setup, state0)
-        state2 = step_multiphase(setup, state1)
+        state1 = step(setup, state0)
+        state2 = step(setup, state1)
 
-        np.testing.assert_allclose(np.array(state2.force_ext), np.array(state1.force_ext), rtol=1e-6, atol=1e-12)
+        np.testing.assert_allclose(
+            np.array(observe(setup, state2).force_ext),
+            np.array(observe(setup, state1).force_ext),
+            rtol=1e-6,
+            atol=1e-12,
+        )
 
 
 # =====================================================================
@@ -588,18 +547,18 @@ class TestStepMultiphasePure:
 
 
 class TestSetupStep:
-    """Step function dispatch via setup.step()."""
+    """One ``step`` serves every phase; the setup decides what it does."""
 
     def test_single_phase_via_setup(self):
         setup = _sp_setup()
         state = init_state(setup)
-        new_state = setup.step_fn(setup, state)
+        new_state = step(setup, state)
         assert int(new_state.t) == 1
 
     def test_multiphase_via_setup(self):
         setup = _mp_setup()
         state = init_state(setup)
-        new_state = setup.step_fn(setup, state)
+        new_state = step(setup, state)
         assert int(new_state.t) == 1
 
 
@@ -627,7 +586,7 @@ class TestRunPure:
         final_state, _ = run(setup, state, nt=3)
 
         assert not jnp.isnan(final_state.f).any()
-        assert not jnp.isnan(final_state.rho).any()
+        assert not jnp.isnan(observe(setup, final_state).rho).any()
 
     def test_multiphase_trajectory(self):
         from src.pipeline.runner import run
@@ -685,7 +644,7 @@ class TestRunPure:
 
         final_state, _ = run(setup, state, nt=10)
 
-        np.testing.assert_allclose(np.array(final_state.rho), 1.0, atol=1e-5)
+        np.testing.assert_allclose(np.array(observe(setup, final_state).rho), 1.0, atol=1e-5)
 
 
 # =====================================================================
@@ -697,14 +656,11 @@ class TestStepWithBounceBack:
     """Pure-function step works with non-trivial BCs."""
 
     def test_bounce_back_step(self):
-        from src.operators.step import build_step_fn
-
-        step_single_phase = build_step_fn("single_phase")
         cfg = SimulationConfig(
             grid_shape=(NX, NY),
             tau=0.8,
             nt=5,
-            bc_config={
+            boundary_conditions={
                 "top": "bounce-back",
                 "bottom": "bounce-back",
                 "left": "periodic",
@@ -714,7 +670,7 @@ class TestStepWithBounceBack:
         setup = build_setup(cfg)
         state = init_state(setup)
 
-        new_state = step_single_phase(setup, state)
+        new_state = step(setup, state)
 
         assert new_state.f.shape == state.f.shape
         assert not jnp.isnan(new_state.f).any()
@@ -726,7 +682,7 @@ class TestStepWithBounceBack:
             grid_shape=(NX, NY, NZ),
             tau=0.8,
             nt=5,
-            bc_config={
+            boundary_conditions={
                 "top": "bounce-back",
                 "bottom": "bounce-back",
                 "left": "periodic",
@@ -748,17 +704,14 @@ class TestStepWithBounceBack:
 
 
 class TestLegacyAPIUnchanged:
-    """The ``step_single_phase(setup, state)`` functional API works."""
+    """The ``step(setup, state)`` functional API works."""
 
     def test_legacy_step_still_works(self):
-        from src.operators.step import build_step_fn
-
-        step_single_phase = build_step_fn("single_phase")
         cfg = SimulationConfig(grid_shape=(NX, NY), tau=0.8, nt=10)
         setup = build_setup(cfg)
         state = init_state(setup)
 
-        new_state = step_single_phase(setup, state)
+        new_state = step(setup, state)
         assert int(new_state.t) == 1
 
 
@@ -767,16 +720,8 @@ class TestLegacyAPIUnchanged:
 # =====================================================================
 
 
-import pytest  # noqa: E402
-
-
-class TestInitStateGuards:
-    """TypeError guards inside init_state."""
-
-    def test_raises_when_initial_f_fn_none_and_no_f_provided(self):
-        setup = _single_phase_setup()._replace(initial_f_fn=None)
-        with pytest.raises(TypeError, match="initial_f_fn is required"):
-            init_state(setup)
+class TestInitStateKwargs:
+    """init_state forwards its keywords to the initialiser."""
 
     def test_init_kwargs_forwarded_to_initial_f_fn(self):
         """init_kwargs dict is forwarded verbatim to the initialisation function."""
@@ -792,16 +737,7 @@ class TestInitStateGuards:
 
 
 class TestRunGuards:
-    """TypeError and nt-default guards in run()."""
-
-    def test_raises_when_step_fn_none(self):
-        from src.pipeline.runner import run
-
-        setup = _single_phase_setup()
-        state = init_state(setup)
-        setup_no_step = setup._replace(step_fn=None)
-        with pytest.raises(TypeError, match="step_fn is required"):
-            run(setup_no_step, state)
+    """The ``nt`` default of run()."""
 
     def test_nt_defaults_to_config_nt(self):
         from src.pipeline.runner import run

@@ -1,6 +1,6 @@
 r"""LBM-stencil gradient operator — pure function.
 
-Resolved through :func:`~src.operators.differential.build_gradient_fn`.
+Resolved through :func:`~src.operators.differential.build_differential`.
 
 The gradient formula follows the standard LBM moment approach:
 
@@ -22,13 +22,20 @@ close over it to get a jittable closure.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
+import numpy as np
 from src.operators.differential._pad_utils import _apply_stencil_padding
+from src.operators.differential._pad_utils import neighbour
 from src.operators.differential._pad_utils import to_2d
+from src.operators.differential._pad_utils import to_3d
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from collections.abc import Sequence
-    from src.operators.protocols import DifferentialOperator
-    from src.operators.wetting._params import WettingParams
+    from typing import Any
+    from src.protocols import ExtDifferentialOperator
+    from src.protocols import ExtGhostFill
+
+SPATIAL_3D = 3
 
 
 def compute_gradient(
@@ -59,35 +66,56 @@ def compute_gradient(
     return grad_core_2d(grid_padded, w, c)
 
 
-def reject_wetting(name: str, wetting: WettingParams | None) -> None:
-    """Refuse wetting parameters on an operator that has no wetting wall.
-
-    Runs in Python at trace time, so a hysteresis step handed a plain operator
-    fails loudly instead of optimising parameters nothing applies.
-    """
-    if wetting is not None:
-        msg = f"{name} has no wetting wall and does not accept wetting parameters"
-        raise TypeError(msg)
-
-
-def build_gradient(w: jnp.ndarray, c: jnp.ndarray, pad_mode: Sequence[str]) -> DifferentialOperator:
-    """Return the plain gradient closure over the lattice and *pad_mode*.
+def build_gradient(
+    w: jnp.ndarray, c: jnp.ndarray, pad_mode: Sequence[str], ghost_fill: ExtGhostFill | None = None
+) -> ExtDifferentialOperator:
+    """Return the gradient closure over the lattice, *pad_mode* and an optional ghost fill.
 
     Args:
         w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
         c: Lattice velocity vectors, shape ``(1, 1, 1, q, 2)``.
         pad_mode: Four padding modes ``(top, bottom, right, left)``.
+        ghost_fill: Rewrites the padded field's ghost layer from ``ext`` before
+            the stencil, or ``None`` for the plain stencil.
 
     Returns:
-        ``grad(grid) → (nx, ny, nz, 1, 2)``. Passing *wetting* raises :class:`TypeError`.
+        ``grad(grid, ext) → (nx, ny, nz, 1, d)``. Without a fill, *ext* is ignored.
     """
     _pad_mode = tuple(pad_mode)
+    three_dimensional = c.shape[-1] == SPATIAL_3D
+    squeeze = to_3d if three_dimensional else to_2d
+    core = grad_core_3d if three_dimensional else grad_core_2d
 
-    def gradient(grid: jnp.ndarray, wetting: WettingParams | None = None) -> jnp.ndarray:
-        reject_wetting("gradient", wetting)
-        return compute_gradient(grid, w, c, _pad_mode)
+    def gradient(grid: jnp.ndarray, ext: Mapping[str, Any]) -> jnp.ndarray:
+        padded = _apply_stencil_padding(squeeze(grid), _pad_mode)
+        if ghost_fill is not None:
+            padded = ghost_fill(padded, ext)
+        return core(padded, w, c)
 
     return gradient
+
+
+def grad_core_3d(padded: jnp.ndarray, w: jnp.ndarray, c: jnp.ndarray) -> jnp.ndarray:
+    """Gradient kernel on an already-padded ``(nx+2, ny+2, nz+2)`` array.
+
+    ``3 * sum_i w_i c_i f(x + c_i)``: the factor holds for any lattice with
+    ``sum_i w_i c_i c_i = I / 3``, D3Q19 among them.
+
+    Args:
+        padded: Shape ``(nx + 2, ny + 2, nz + 2)``.
+        w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
+        c: Lattice velocity vectors, shape ``(1, 1, 1, q, 3)``.
+
+    Returns:
+        Gradient field, shape ``(nx, ny, nz, 1, 3)``.
+    """
+    weights = np.asarray(w)[0, 0, 0, :, 0]
+    directions = np.asarray(c)[0, 0, 0]
+    total = jnp.zeros((*(n - 2 for n in padded.shape), 1, SPATIAL_3D), dtype=padded.dtype)
+    for weight, direction in zip(weights[1:], directions[1:], strict=True):
+        stencil = float(weight) * neighbour(padded, tuple(int(step) for step in direction))
+        total = total + 3.0 * stencil[..., None, None] * jnp.asarray(direction, dtype=padded.dtype)
+    return total
 
 
 def grad_core_2d(
@@ -96,8 +124,6 @@ def grad_core_2d(
     c: jnp.ndarray,
 ) -> jnp.ndarray:
     """Gradient kernel on an already-padded ``(nx+2, ny+2)`` array.
-
-    Public so the wetting addon can reuse it after modifying ghost cells.
 
     Args:
         padded: Shape ``(nx + 2, ny + 2)``.

@@ -14,10 +14,12 @@ compile-time constants derived from the :class:`Lattice`.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
+from src.lattice.lattice import incoming_directions
 from src.registry import boundary_condition
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
+    from src.config.boundary import Edge
     from src.lattice.lattice import Lattice
 
 
@@ -26,7 +28,7 @@ def apply_bounce_back(
     f_streamed: jnp.ndarray,
     f_collision: jnp.ndarray,
     lattice: Lattice,
-    edge: str,
+    edge: Edge,
 ) -> jnp.ndarray:
     """Apply half-way bounce-back on one edge.
 
@@ -34,39 +36,16 @@ def apply_bounce_back(
         f_streamed: Post-streaming populations, shape ``(nx, ny, nz, q, d)``.
         f_collision: Post-collision populations (before streaming), same shape.
         lattice: :class:`~setup.lattice.Lattice`.
-        edge: ``"top"``, ``"bottom"``, ``"left"``, or ``"right"``.
+        edge: The domain face.
 
     Returns:
         Updated populations with bounce-back applied on *edge*.
     """
-    # Pre-extract indices as plain Python ints so they are static
-    # under JAX tracing (no ConcretizationTypeError).
+    # Plain Python ints, so they are static under JAX tracing.
     opp = [int(x) for x in np.array(lattice.opp_indices)]
-
-    if edge == "bottom":
-        # Incoming at y=0: directions with positive cy → top_indices
-        incoming = [int(x) for x in np.array(lattice.top_indices)]
-        for i in incoming:
-            f_streamed = f_streamed.at[:, 0, 0, i, 0].set(f_collision[:, 0, 0, opp[i], 0])
-    elif edge == "top":
-        # Incoming at y=-1: directions with negative cy → bottom_indices
-        incoming = [int(x) for x in np.array(lattice.bottom_indices)]
-        for i in incoming:
-            f_streamed = f_streamed.at[:, -1, 0, i, 0].set(f_collision[:, -1, 0, opp[i], 0])
-    elif edge == "left":
-        # Incoming at x=0: directions with positive cx → right_indices
-        incoming = [int(x) for x in np.array(lattice.right_indices)]
-        for i in incoming:
-            f_streamed = f_streamed.at[0, :, 0, i, 0].set(f_collision[0, :, 0, opp[i], 0])
-    elif edge == "right":
-        # Incoming at x=-1: directions with negative cx → left_indices
-        incoming = [int(x) for x in np.array(lattice.left_indices)]
-        for i in incoming:
-            f_streamed = f_streamed.at[-1, :, 0, i, 0].set(f_collision[-1, :, 0, opp[i], 0])
-    else:
-        msg = f"Unknown edge '{edge}'"
-        raise ValueError(msg)
-
+    cells = edge.cells
+    for i in incoming_directions(lattice, edge):
+        f_streamed = f_streamed.at[(*cells, i, 0)].set(f_collision[(*cells, opp[i], 0)])
     return f_streamed
 
 

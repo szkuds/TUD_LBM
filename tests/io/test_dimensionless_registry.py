@@ -17,24 +17,20 @@ from src.simulation_io.analysis.physical_parameters import resolve_dimensionless
 from src.simulation_io.analysis.run_labels import LABEL_PARAM_CHOICES
 from src.simulation_io.analysis.run_labels import NAME_KEY
 from src.simulation_io.analysis.run_labels import resolve_label_keys
+from tests.support.config import merge_overrides
 
 _REQUIRED_META = ("label", "row_label", "formula", "order", "needs_gravity")
 
 
 def _config(**kwargs) -> SimulationConfig:
     base = {
-        "sim_type": "multiphase",
+        "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
+        "forces": {"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0}},
         "grid_shape": (40, 20),
-        "eos": "double-well",
-        "kappa": 0.02,
-        "rho_l": 1.0,
-        "rho_v": 0.5,
-        "interface_width": 2,
         "tau": 0.8,
-        "gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0},
         "initialisation": {"radii": [0.25], "centres": [[0.5, 0.5]]},
     }
-    base.update(kwargs)
+    merge_overrides(base, kwargs)
     return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
@@ -107,7 +103,8 @@ def test_a_resolvable_config_reports_every_registered_number():
     dn = compute_dimensionless_numbers(_config())
 
     assert set(dn.values) == set(dimensionless_keys())
-    assert all(dn.get(key) is not None for key in dimensionless_keys())
+    # The Kelvin shift is relative to a saturation pressure, which the double-well lacks.
+    assert {key for key in dimensionless_keys() if dn.get(key) is None} == {"kelvin_shift"}
 
 
 # --- the numbers themselves --------------------------------------------------
@@ -122,12 +119,21 @@ def test_laplace_is_the_reciprocal_square_of_ohnesorge():
     assert math.isclose(la, 1.0 / oh**2, rel_tol=1e-12)
 
 
-_CS_EOS_PARAMS = {"a_eos": 1.0, "b_eos": 4.0, "r_eos": 1.0, "t_eos": 0.07}
+def test_squared_ohnesorge_is_the_square_of_ohnesorge():
+    dn = compute_dimensionless_numbers(_config())
+
+    oh2, oh = dn.get("oh2"), dn.get("oh")
+    assert oh2 is not None
+    assert oh is not None
+    assert math.isclose(oh2, oh**2, rel_tol=1e-12)
+
+
+_CS_EOS = {"eos": "carnahan-starling", "a_eos": 1.0, "b_eos": 4.0, "r_eos": 1.0, "t_eos": 0.07}
 
 
 def test_no_inputs_without_a_surface_tension():
     """A calibration-only EOS with no measurement resolves nothing at all."""
-    cfg = _config(eos="carnahan-starling", **_CS_EOS_PARAMS)
+    cfg = _config(multiphase=_CS_EOS)
 
     assert resolve_dimensionless_inputs(cfg) is None
     assert compute_dimensionless_numbers(cfg).values == {}
@@ -135,7 +141,7 @@ def test_no_inputs_without_a_surface_tension():
 
 def test_gravity_is_carried_as_none_rather_than_failing_resolution():
     """Oh and La need no gravity, so a gravity-free run must still resolve inputs."""
-    inputs = resolve_dimensionless_inputs(_config(gravity_force=None))
+    inputs = resolve_dimensionless_inputs(_config(forces={}))
 
     assert inputs is not None
     assert inputs.g is None
@@ -144,8 +150,9 @@ def test_gravity_is_carried_as_none_rather_than_failing_resolution():
 
 def test_gravity_driven_numbers_are_exactly_those_marked_needs_gravity():
     """The metadata flag and the operator's own gate must agree."""
-    dn = compute_dimensionless_numbers(_config(gravity_force=None))
+    dn = compute_dimensionless_numbers(_config(forces={}))
 
     unresolved = {key for key in dimensionless_keys() if dn.get(key) is None}
     marked = {entry.name for entry in _entries() if _meta(entry, "needs_gravity")}
-    assert unresolved == marked
+    # The Kelvin shift is unresolved for another reason: the double-well has no saturation pressure.
+    assert unresolved - {"kelvin_shift"} == marked

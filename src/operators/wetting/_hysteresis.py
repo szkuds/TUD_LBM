@@ -9,6 +9,8 @@ Design
 
 1. Measures contact angles and contact-line locations from ``rho_t_plus1``.
 2. Classifies each side as pinned, advancing or receding (:func:`_side_regime`).
+   A moving side is *latched*: it stays moving while its angle is within
+   ``latch_gap`` of its bound and its line keeps passing its anchor.
 3. Builds per-side objectives (CLL-pin or CA-bound, selected via
    ``jnp.where``).
 4. Runs **two** sequential ``jax.lax.while_loop`` optimisations —
@@ -17,8 +19,8 @@ Design
 
 The objective performs a single LBM step with trial wetting parameters so that
 ``jax.value_and_grad`` can differentiate through it. The knob that is not
-active on a side is snapped to neutral each step; that is what keeps the
-optimiser bounded.
+active on a side is snapped to neutral whenever the side is pinned or changes
+regime; that is what keeps the optimiser bounded.
 
 Angle convention
 ~~~~~~~~~~~~~~~~
@@ -36,45 +38,37 @@ looks more liquid, ``d_rho`` deflates it. Mapping a dispersed-frame angle
 error onto them therefore flips with topology, and :func:`_phi_is_active`
 is where that translation happens — the two contact-angle branches invert
 for a bubble, the two contact-line-pinning branches do not (see its
-docstring).
+docstring). A moving side within ``latch_gap`` of its bound keeps the knob
+it has (:func:`_held_phi_is_active`).
 """
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing import NamedTuple
-from typing import Protocol
 import jax
 import jax.numpy as jnp
-from src.config.chemical_step import D_RHO_SPAN_W
-from src.config.chemical_step import PHI_SPAN_W
+from src.config.wetting import D_RHO_SPAN_W
+from src.config.wetting import PHI_SPAN_W
+from src.config.wetting import ContactLine
+from src.config.wetting import chemical_step_wall
+from src.config.wetting import wall_rho_mean
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
 from src.operators.wetting._interface_crossings import detect_bubble
 from src.operators.wetting._params import WettingParams
-from src.registry import wetting_operator
 from src.simulation_io.analysis import wetting_debug
 
 if TYPE_CHECKING:
     import types
     from collections.abc import Callable
     from collections.abc import Mapping
+    from src.config.boundary import Edge
+    from src.operators.wetting._params import WettingState
     from src.pipeline.setup import SimulationSetup
-    from src.pipeline.state.state import WettingState
-
-
-class _OptaxLike(Protocol):
-    """Minimal structural type for optax-compatible optimisers."""
-
-    def init(self, params: WettingParams) -> object: ...
-    def update(
-        self, updates: WettingParams, state: object, params: WettingParams | None = ...
-    ) -> tuple[WettingParams, object]: ...
+    from src.protocols import OptaxLike
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
-
-#: The two contact lines, in optimisation order.
-_SIDES = ("left", "right")
 
 # Neutral values — the inactive parameter is snapped to these when the
 # directional split is applied.
@@ -103,39 +97,83 @@ def _import_optax() -> types.ModuleType:
     return optax
 
 
+class _Regime(NamedTuple):
+    """One contact line's regime for this step (:func:`_side_regime`).
+
+    Attributes:
+        moving: The side targets a bound and its anchor may follow.
+        advancing: That bound is ``ca_adv`` (False with ``moving`` means ``ca_rec``).
+        expanding: The dispersed phase has spread past the anchor.
+        progressed: The line has passed its anchor the way its regime allows.
+        latch: The regime code the state carries to the next step.
+        stall: Consecutive steps a latched line has not passed its anchor.
+        entered: The regime differs from the one the previous step latched.
+    """
+
+    moving: jnp.ndarray
+    advancing: jnp.ndarray
+    expanding: jnp.ndarray
+    progressed: jnp.ndarray
+    latch: jnp.ndarray
+    stall: jnp.ndarray
+    entered: jnp.ndarray
+
+
 def _side_regime(
     ca: jnp.ndarray,
     cll: jnp.ndarray,
     anchor: jnp.ndarray,
-    ca_adv: jnp.ndarray | float,
-    ca_rec: jnp.ndarray | float,
+    window: tuple[jnp.ndarray | float, jnp.ndarray | float],
     *,
-    side: str,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    side: ContactLine,
+    latch: jnp.ndarray,
+    stall: jnp.ndarray,
+    latch_gap: float,
+    stall_steps: int,
+) -> _Regime:
     """Classify one contact line: may it move, and in which direction?
 
     The dispersed phase expanding is the left contact line moving in
     ``-tangential`` and the right one in ``+tangential``, measured against the
-    **anchor**, not the previous step. Out of window, a side targets its exceeded
-    bound and its anchor follows the contact line unless the line has moved the
-    *wrong* way for that bound — contracting above ``ca_adv``, expanding below
-    ``ca_rec``. That side, and every in-window side, is pinned.
+    **anchor**, not the previous step.
 
-    The two conditions are keyed on the direction of motion, not only on the
-    angle, because at a chemical step the window can be *inverted*
-    (``ca_rec > ca_adv``) and an angle can then exceed both bounds at once: the
-    line advances if it is not contracting, and recedes otherwise.
+    *Entering.* Out of window (*window* is ``(ca_adv, ca_rec)``), a side targets
+    its exceeded bound unless the line has moved the *wrong* way for that bound:
+    contracting above ``ca_adv``, expanding below ``ca_rec``. The two conditions
+    are keyed on the direction of motion, not only on the angle, because at a
+    chemical step the window can be *inverted* (``ca_rec > ca_adv``) and an angle
+    can then exceed both bounds at once: the line advances if it is not
+    contracting, and recedes otherwise.
 
-    Returns:
-        ``(moving, advancing, expanding)``: ``moving`` is True when the side
-        targets a bound and its anchor follows; ``advancing`` is True when that
-        bound is ``ca_adv`` (False with ``moving`` means ``ca_rec``);
-        ``expanding`` is True when the dispersed phase has spread past the anchor.
+    *Staying.* A side that moved last step (*latch*) keeps moving while its angle
+    is within *latch_gap* of that bound, on the window's side of it, and its line
+    has passed the anchor within the last *stall_steps* steps. Without the latch a
+    released line dropped back into the window on the next step and was pinned
+    again: every release lasted one step and the line crept at the rate of that
+    pin/release cycle, not at the speed the forces on it set. The anchor only
+    follows a line that has passed it, so a latched line that stops or turns back
+    makes no progress, stalls out and is pinned where it got to.
+
+    Every other side is pinned.
     """
-    expanding, contracting = (cll < anchor, cll > anchor) if side == "left" else (cll > anchor, cll < anchor)
-    advancing = (ca > ca_adv) & ~contracting
-    receding = (ca < ca_rec) & ~expanding
-    return advancing | receding, advancing, expanding
+    ca_adv, ca_rec = window
+    expanding, contracting = (cll < anchor, cll > anchor) if side == ContactLine.LEFT else (cll > anchor, cll < anchor)
+    stalled = jnp.where(jnp.where(latch == REGIME_ADVANCING, expanding, contracting), 0, stall + 1)
+    alive = stalled < stall_steps
+    advancing = ((ca > ca_adv) & ~contracting) | ((latch == REGIME_ADVANCING) & (ca > ca_adv - latch_gap) & alive)
+    receding = ((ca < ca_rec) & ~expanding) | ((latch == REGIME_RECEDING) & (ca < ca_rec + latch_gap) & alive)
+    moving = advancing | receding
+    code = jnp.where(moving, jnp.where(advancing, REGIME_ADVANCING, REGIME_RECEDING), REGIME_PINNED)
+    entered = code != latch
+    return _Regime(
+        moving=moving,
+        advancing=advancing,
+        expanding=expanding,
+        progressed=moving & jnp.where(advancing, ~contracting, ~expanding),
+        latch=code.astype(latch.dtype),
+        stall=jnp.where(moving & ~entered, stalled, 0).astype(stall.dtype),
+        entered=entered,
+    )
 
 
 def _regime_code(moving: jnp.ndarray, advancing: jnp.ndarray, saturated: jnp.ndarray) -> jnp.ndarray:
@@ -254,6 +292,36 @@ def _phi_is_active(
     return jnp.where(pinned, ~forward_drift, ca_branch)
 
 
+def _held_phi_is_active(
+    phi: jnp.ndarray,
+    d_rho: jnp.ndarray,
+    *,
+    bound: jnp.ndarray,
+    is_bubble: jnp.ndarray,
+) -> jnp.ndarray:
+    """Return True if phi is the active parameter of a moving side *at* its bound.
+
+    A line within ``latch_gap`` of its bound is held there, from both sides, by
+    the wall it already has: the knob that is engaged stays the active one, and
+    nothing is reset. Only a wall at neutral has to choose, and takes the side of
+    neutral the bound lies on: the neutral wall holds 90°, so a bound below 90°
+    through the liquid needs ``phi`` and one above it ``d_rho``. The window is in
+    the dispersed frame, so a bubble's bound is read as ``180°`` minus it. A knob
+    that reaches its floor with the bound unmet hands over to the other one (the
+    fallbacks in :func:`_update_wetting_state_impl`).
+
+    :func:`_phi_is_active` keys the knob on the direction the angle has to move
+    instead, with the other knob reset. That is right for a line far past its
+    bound, and it is what released a bubble pinned at 120° (liquid 60°, a wall at
+    ``phi`` ≈ 1.07) onto a neutral wall: the angle fell by more than 1° per step
+    toward 90° and the line was pinned again two steps later.
+    """
+    bound_wets = jnp.where(is_bubble, 180.0 - bound, bound) < 90.0  # noqa: PLR2004 - the neutral wall's angle
+    phi_engaged = phi > _PHI_NEUTRAL + _PHI_FLOOR_EPS
+    d_rho_engaged = d_rho > _D_RHO_NEUTRAL + _PHI_FLOOR_EPS
+    return jnp.where(phi_engaged, True, jnp.where(d_rho_engaged, False, bound_wets))
+
+
 def _side_hyperparams(
     hysteresis_config: Mapping[str, float],
     urgent: jnp.ndarray,
@@ -320,14 +388,16 @@ def _side_cost(
 ) -> jnp.ndarray:
     """Objective of one side: its bound when moving, else its pin inside the window.
 
-    A pinned side holds its contact line *and* keeps its angle within
-    ``[ca_rec, ca_adv]``: no line can stay pinned above its advancing angle. The
+    A moving side targets its bound from both sides: a latched line is at its
+    advancing or receding angle, not merely not past it. A pinned side holds its
+    contact line *and* keeps its angle within ``[ca_rec, ca_adv]``: no line can
+    stay pinned above its advancing angle. The
     window terms are zero in window, so they only act on a side pinned because
     its line moved the wrong way for the bound it has exceeded, and there they
     ask for the same knob as the pin.
     """
     window_cost = _cost_above(ca_adv, ca) + _cost_below(ca_rec, ca)
-    bound_cost = jnp.where(advancing, _cost_above(ca_adv, ca), _cost_below(ca_rec, ca))
+    bound_cost = _cost_ca(jnp.where(advancing, ca_adv, ca_rec), ca)
     return jnp.where(moving, bound_cost, _cost_cll(anchor, cll) + window_cost)
 
 
@@ -340,7 +410,7 @@ def _grad_mask(field: str) -> Callable[[WettingParams], WettingParams]:
     return mask
 
 
-def _with_side(params: WettingParams, side: str, phi: jnp.ndarray, d_rho: jnp.ndarray) -> WettingParams:
+def _with_side(params: WettingParams, side: ContactLine, phi: jnp.ndarray, d_rho: jnp.ndarray) -> WettingParams:
     """*params* with one side's ``phi``/``d_rho`` replaced."""
     return params._replace(**{f"phi_{side}": phi, f"d_rho_{side}": d_rho})
 
@@ -352,7 +422,7 @@ def _optimise_single_param(
     objective_fn: Callable[[WettingParams], jnp.ndarray],
     initial_params: WettingParams,
     grad_mask_fn: Callable[[WettingParams], WettingParams],
-    optimiser: _OptaxLike,
+    optimiser: OptaxLike,
     max_iterations: int | jnp.ndarray,
     w: jnp.ndarray,
     loss_tol: float = 1e-4,
@@ -403,37 +473,41 @@ def _optimise_single_param(
 
 
 def _get_hysteresis_window_chemical_step(
-    setup: SimulationSetup, cll: jnp.ndarray, *, side: str
+    setup: SimulationSetup, cll: jnp.ndarray, *, side: ContactLine
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Return ``(ca_advancing, ca_receding, held_at_step)`` for one contact line.
 
-    The window is the surface's own: the post-step window once the line is
-    within ``edge_width`` of the step or past it, the pre-step window otherwise.
+    "Pre" and "post" are the inclusion's start and destination surfaces
+    (:meth:`~src.config.wetting.ChemicalStepWall.on_post`), so the rules hold for
+    either direction of travel. The window is the surface's own: the post-step
+    window once the line is within ``edge_width`` of the step (on the start side)
+    or past it, the pre-step window otherwise.
     It is stateless. The step itself is expressed through the wall: band cells
     across the step keep their own surface's wettability
-    (:class:`~src.config.chemical_step.ChemicalStepWall`).
+    (:class:`~src.config.wetting.ChemicalStepWall`).
 
     ``held_at_step`` marks a line at the edge that is receding onto the more
-    wetting surface: its probes ``edge_width`` either side straddle the step,
+    wetting surface: its probes ``edge_width`` either side passes the step,
     with the less wetting surface ahead of it (outward: ``-tangential`` for the
     left line, ``+tangential`` for the right). The operator pins it to the step
     position and saturates it toward the post receding angle
     (:func:`_step_saturation`). A line advancing onto the more wetting surface is
     never held; it spreads.
     """
-    csc = setup.config.chemical_step_config
-    wall = setup.config.chemical_step_wall
-    assert csc is not None  # noqa: S101 - a chemical-step run has a chemical_step_config
-    assert wall is not None  # noqa: S101 - and a wetting config, so a stepped wall
-    step_x, delta = wall.step_x, csc["edge_width"]
-    ahead, behind = (cll - delta, cll + delta) if side == "left" else (cll + delta, cll - delta)
-    post = cll + delta >= step_x
+    csc = setup.config.chemical_step
+    wall = chemical_step_wall(setup.config)
+    assert csc is not None  # noqa: S101 - a chemical-step run has the section
+    # It also has wetting, so a stepped wall.
+    assert wall is not None  # noqa: S101
+    delta = csc["edge_width"]
+    ahead, behind = (cll - delta, cll + delta) if side == ContactLine.LEFT else (cll + delta, cll - delta)
+    post = wall.on_post(cll + wall.travel * delta)
     ca_adv = jnp.where(post, csc["ca_advancing_post_step"], csc["ca_advancing_pre_step"])
     ca_rec = jnp.where(post, csc["ca_receding_post_step"], csc["ca_receding_pre_step"])
     # Held: the surface behind the line (the one it would uncover) is post, the
     # one ahead is pre, and post wets more.
     post_wets_more = csc["ca_receding_post_step"] < csc["ca_advancing_pre_step"]
-    held_at_step = (behind >= step_x) & ~(ahead >= step_x) & post_wets_more
+    held_at_step = wall.on_post(behind) & ~wall.on_post(ahead) & post_wets_more
     return ca_adv, ca_rec, held_at_step
 
 
@@ -443,7 +517,7 @@ def _get_hysteresis_window_chemical_step(
 class _Side(NamedTuple):
     """One contact line's classification and optimiser settings for this step."""
 
-    name: str
+    line: ContactLine
     index: int
     ca: jnp.ndarray
     cll: jnp.ndarray
@@ -453,9 +527,11 @@ class _Side(NamedTuple):
     ca_rec: jnp.ndarray
     moving: jnp.ndarray
     advancing: jnp.ndarray
+    regime: _Regime
+    at_bound: jnp.ndarray
     phi_active: jnp.ndarray
     max_iter: jnp.ndarray
-    optimiser: _OptaxLike
+    optimiser: OptaxLike
     saturated: jnp.ndarray
     sat_phi: jnp.ndarray
     sat_d_rho: jnp.ndarray
@@ -471,6 +547,7 @@ def _update_wetting_state_impl(
     measured: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray],
     pins: tuple[jnp.ndarray, jnp.ndarray] | None = None,
     step_sides: tuple[StepSide, StepSide] | None = None,
+    edge: Edge,
     t: jnp.ndarray | None = None,
 ) -> WettingState:
     """Shared implementation for hysteresis wetting updates.
@@ -483,26 +560,39 @@ def _update_wetting_state_impl(
 
     ``step_sides`` (chemical-step runs only) lets a side on the post surface, or
     held at the step, skip the optimiser while its angle is more than
-    ``hysteresis_config["saturation_gap"]`` from its bound (:func:`_step_saturation`).
+    ``hysteresis["saturation_gap"]`` from its bound (:func:`_step_saturation`).
 
     ``measured`` is ``(ca_left, ca_right, cll_left, cll_right)`` of
-    ``rho_t_plus1`` (:func:`_measure`). ``t`` is used only by the
-    ``--debug-wetting`` trace.
+    ``rho_t_plus1`` (:func:`_measure`) at the wall *edge*. ``t`` is used only by
+    the ``--debug-wetting`` trace.
     """
-    rho_mean, w, edge = _wall_constants(setup)
-    hc = setup.config.hysteresis_config
+    rho_mean, w = _wall_constants(setup)
+    hc = setup.config.hysteresis
     if hc is None:
-        msg = "hysteresis_config is required for hysteresis wetting update"
+        msg = "[hysteresis] is required for hysteresis wetting update"
         raise TypeError(msg)
     loss_tol = float(hc["loss_tol"])
     is_bubble = detect_bubble(rho_t_plus1, rho_mean, edge=edge)
     optax = _import_optax()
 
     sides: list[_Side] = []
-    for i, name in enumerate(_SIDES):
-        ca, cll, anchor = measured[i], measured[2 + i], getattr(wetting, f"cll_{name}")
+    for i, line in enumerate(ContactLine):
+        ca, cll, anchor = measured[i], measured[2 + i], getattr(wetting, f"cll_{line}")
         ca_adv, ca_rec = windows[i]
-        moving, advancing, expanding = _side_regime(ca, cll, anchor, ca_adv, ca_rec, side=name)
+        regime = _side_regime(
+            ca,
+            cll,
+            anchor,
+            (ca_adv, ca_rec),
+            side=line,
+            latch=getattr(wetting, f"latch_{line}"),
+            stall=getattr(wetting, f"stall_{line}"),
+            latch_gap=float(hc["latch_gap"]),
+            stall_steps=int(hc["stall_steps"]),
+        )
+        moving, advancing, expanding = regime.moving, regime.advancing, regime.expanding
+        bound = jnp.where(advancing, ca_adv, ca_rec)
+        at_bound = moving & (jnp.abs(ca - bound) <= float(hc["latch_gap"]))
         lr, max_iter = _side_hyperparams(hc, advancing)
         if step_sides is None:
             saturated, sat_phi, sat_d_rho = jnp.array(False), _PHI_NEUTRAL, _D_RHO_NEUTRAL
@@ -520,7 +610,7 @@ def _update_wetting_state_impl(
             )
         sides.append(
             _Side(
-                name=name,
+                line=line,
                 index=i,
                 ca=ca,
                 cll=cll,
@@ -530,7 +620,18 @@ def _update_wetting_state_impl(
                 ca_rec=ca_rec,
                 moving=moving,
                 advancing=advancing,
-                phi_active=_phi_is_active(~moving, advancing, expanding ^ is_bubble, is_bubble),
+                regime=regime,
+                at_bound=at_bound,
+                phi_active=jnp.where(
+                    at_bound,
+                    _held_phi_is_active(
+                        getattr(wetting, f"phi_{line}"),
+                        getattr(wetting, f"d_rho_{line}"),
+                        bound=bound,
+                        is_bubble=is_bubble,
+                    ),
+                    _phi_is_active(~moving, advancing, expanding ^ is_bubble, is_bubble),
+                ),
                 max_iter=max_iter,
                 # One optimiser per side: the learning rate is keyed on that
                 # side's own urgency flag, so a pinned side is not dragged along.
@@ -560,23 +661,26 @@ def _update_wetting_state_impl(
 
     def optimise(s: _Side, knob: str) -> Callable[[WettingParams], tuple[WettingParams, jnp.ndarray, jnp.ndarray]]:
         return lambda p: _optimise_single_param(
-            objective(s), p, _grad_mask(f"{knob}_{s.name}"), s.optimiser, s.max_iter, w, loss_tol
+            objective(s), p, _grad_mask(f"{knob}_{s.line}"), s.optimiser, s.max_iter, w, loss_tol
         )
 
     def skip(s: _Side) -> Callable[[WettingParams], tuple[WettingParams, jnp.ndarray, jnp.ndarray]]:
         # Reports zero loss and zero iterations, so the d_rho fallback below —
         # gated on loss > loss_tol — never runs on a saturated side.
         zero_iters = jnp.zeros((), dtype=jnp.array(0).dtype)
-        return lambda p: (_with_side(p, s.name, s.sat_phi, s.sat_d_rho), jnp.zeros(()), zero_iters)
+        return lambda p: (_with_side(p, s.line, s.sat_phi, s.sat_d_rho), jnp.zeros(()), zero_iters)
 
-    # Start from the stored knobs, the inactive one of each side snapped to neutral.
+    # Start from the stored knobs, the inactive one of each side snapped to
+    # neutral. A moving side at its bound keeps both: it continues with the wall
+    # it has, and the other knob is neutral or what a fallback below set.
     params = wetting_params(wetting)
     for s in sides:
+        keep = s.at_bound
         params = _with_side(
             params,
-            s.name,
-            jnp.where(s.phi_active, getattr(params, f"phi_{s.name}"), _PHI_NEUTRAL),
-            jnp.where(s.phi_active, _D_RHO_NEUTRAL, getattr(params, f"d_rho_{s.name}")),
+            s.line,
+            jnp.where(s.phi_active | keep, getattr(params, f"phi_{s.line}"), _PHI_NEUTRAL),
+            jnp.where(s.phi_active & ~keep, _D_RHO_NEUTRAL, getattr(params, f"d_rho_{s.line}")),
         )
 
     def optimise_active(s: _Side) -> Callable[[WettingParams], tuple[WettingParams, jnp.ndarray, jnp.ndarray]]:
@@ -598,18 +702,33 @@ def _update_wetting_state_impl(
     for s in sides:
 
         def fallback(p: WettingParams, s: _Side = s) -> tuple[WettingParams, jnp.ndarray]:
-            start = _with_side(p, s.name, _PHI_NEUTRAL, getattr(wetting, f"d_rho_{s.name}"))
+            start = _with_side(p, s.line, _PHI_NEUTRAL, getattr(wetting, f"d_rho_{s.line}"))
             params_fb, _loss_fb, iters_fb = optimise(s, "d_rho")(start)
             return params_fb, iters_fb
 
-        on_floor = getattr(params, f"phi_{s.name}") <= _PHI_NEUTRAL + _PHI_FLOOR_EPS
+        def fallback_phi(p: WettingParams, s: _Side = s) -> tuple[WettingParams, jnp.ndarray]:
+            params_fb, _loss_fb, iters_fb = optimise(s, "phi")(p)
+            return params_fb, iters_fb
+
+        unconverged = losses[s.index] > loss_tol
+        on_floor = getattr(params, f"phi_{s.line}") <= _PHI_NEUTRAL + _PHI_FLOOR_EPS
         params, n_fb = jax.lax.cond(
-            s.phi_active & on_floor & (losses[s.index] > loss_tol),
+            s.phi_active & on_floor & unconverged,
             fallback,
             lambda p: (p, jnp.zeros_like(iters[0])),
             params,
         )
-        iters_fallback.append(n_fb)
+        # The mirror, for a moving side at its bound only: there the bound is held
+        # from both sides, so d_rho on its floor with the bound unmet means the
+        # wall has to pass neutral.
+        d_rho_on_floor = getattr(params, f"d_rho_{s.line}") <= _D_RHO_NEUTRAL + _PHI_FLOOR_EPS
+        params, n_fb_phi = jax.lax.cond(
+            s.at_bound & ~s.saturated & ~s.phi_active & d_rho_on_floor & unconverged,
+            fallback_phi,
+            lambda p: (p, jnp.zeros_like(iters[0])),
+            params,
+        )
+        iters_fallback.append(n_fb + n_fb_phi)
 
     final_params = params
 
@@ -623,8 +742,8 @@ def _update_wetting_state_impl(
                 ca_rec=jnp.asarray(s.ca_rec),
                 cll=s.cll,
                 regime=_regime_code(s.moving, s.advancing, s.saturated),
-                phi=getattr(final_params, f"phi_{s.name}"),
-                d_rho=getattr(final_params, f"d_rho_{s.name}"),
+                phi=getattr(final_params, f"phi_{s.line}"),
+                d_rho=getattr(final_params, f"d_rho_{s.line}"),
                 phi_active=s.phi_active,
                 loss=objective(s)(final_params),
                 iters=iters[s.index],
@@ -642,8 +761,12 @@ def _update_wetting_state_impl(
         **final_params._asdict(),
         ca_left=sides[0].ca,
         ca_right=sides[1].ca,
-        cll_left=jnp.where(sides[0].moving, sides[0].cll, sides[0].anchor),
-        cll_right=jnp.where(sides[1].moving, sides[1].cll, sides[1].anchor),
+        cll_left=jnp.where(sides[0].regime.progressed, sides[0].cll, sides[0].anchor),
+        cll_right=jnp.where(sides[1].regime.progressed, sides[1].cll, sides[1].anchor),
+        latch_left=sides[0].regime.latch,
+        latch_right=sides[1].regime.latch,
+        stall_left=sides[0].regime.stall,
+        stall_right=sides[1].regime.stall,
     )
 
 
@@ -652,33 +775,32 @@ def wetting_params(wetting: WettingState) -> WettingParams:
     return WettingParams(**{name: getattr(wetting, name) for name in WettingParams._fields})
 
 
-def _wall_constants(setup: SimulationSetup) -> tuple[jnp.ndarray, jnp.ndarray, str]:
-    """``(rho_mean, interface_width, wetting_edge)`` of a hysteresis run."""
-    if setup.multiphase_params is None:
-        msg = "multiphase_params is required for hysteresis wetting update"
-        raise TypeError(msg)
-    if setup.wetting_edge is None:
-        msg = "wetting_edge is required for hysteresis wetting update"
-        raise TypeError(msg)
+def _wall_constants(setup: SimulationSetup) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """``(rho_mean, interface_width)`` of a hysteresis run."""
     mp = setup.multiphase_params
-    return jnp.array(0.5 * (mp.rho_l + mp.rho_v)), jnp.array(float(mp.interface_width)), setup.wetting_edge
+    rho_mean = wall_rho_mean(setup.config)
+    assert mp is not None  # noqa: S101 - SimulationConfig rejects wetting on a single-phase run
+    assert rho_mean is not None  # noqa: S101 - as above: two phases
+    return jnp.array(rho_mean), jnp.array(float(mp.interface_width))
 
 
-def _measure(rho: jnp.ndarray, setup: SimulationSetup) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """``(ca_left, ca_right, cll_left, cll_right)`` of *rho* at the wetting wall."""
-    rho_mean, _w, edge = _wall_constants(setup)
+def _measure(
+    rho: jnp.ndarray, setup: SimulationSetup, edge: Edge
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """``(ca_left, ca_right, cll_left, cll_right)`` of *rho* at the wetting wall *edge*."""
+    rho_mean, _w = _wall_constants(setup)
     ca_left, ca_right = compute_contact_angle(rho, rho_mean, edge=edge)
     cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, rho_mean, edge=edge)
     return ca_left, ca_right, cll_left, cll_right
 
 
-@wetting_operator(name="hysteresis")
 def update_wetting_state(
     wetting: WettingState,
     rho_t_plus1: jnp.ndarray,
     setup: SimulationSetup,
     *,
     trial_step_fn: Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray]],
+    edge: Edge,
     t: jnp.ndarray | None = None,
 ) -> WettingState:
     """Pure JAX update of wetting / hysteresis parameters.
@@ -694,17 +816,18 @@ def update_wetting_state(
         wetting: Current :class:`WettingState`.
         rho_t_plus1: Density field, shape ``(nx, ny, nz, 1, 1)``.
         setup: :class:`~setup.simulation_setup.SimulationSetup` (closed-over, not traced).
-        trial_step_fn: ``(WettingParams) → (f_out, rho_out)``, a single
-            multiphase physics pass with trial wetting parameters.
+        trial_step_fn: ``(WettingParams) → (f_out, rho_out)``, the trial steps of
+            the kernel with candidate wall parameters.
+        edge: The wall the contact angles are measured at.
         t: Current timestep, for the ``--debug-wetting`` trace. Physics-inert.
 
     Returns:
         Updated :class:`WettingState`.
     """
-    if setup.config.hysteresis_config is None:
-        msg = "hysteresis_config is required for wetting state update"
+    if setup.config.hysteresis is None:
+        msg = "[hysteresis] is required for wetting state update"
         raise TypeError(msg)
-    hc = setup.config.hysteresis_config
+    hc = setup.config.hysteresis
     window = (hc["ca_advancing"], hc["ca_receding"])
     return _update_wetting_state_impl(
         wetting,
@@ -712,18 +835,19 @@ def update_wetting_state(
         setup,
         trial_step_fn,
         windows=(window, window),
-        measured=_measure(rho_t_plus1, setup),
+        measured=_measure(rho_t_plus1, setup, edge),
+        edge=edge,
         t=t,
     )
 
 
-@wetting_operator(name="chemical_step_hysteresis")
 def update_wetting_state_chemical_step(
     wetting: WettingState,
     rho_t_plus1: jnp.ndarray,
     setup: SimulationSetup,
     *,
     trial_step_fn: Callable[[WettingParams], tuple[jnp.ndarray, jnp.ndarray]],
+    edge: Edge,
     t: jnp.ndarray | None = None,
 ) -> WettingState:
     """Hysteresis update where CA targets are determined per-side by chemical step position.
@@ -736,17 +860,17 @@ def update_wetting_state_chemical_step(
     edge while the droplet stretches, until its angle falls to the post-step
     receding angle.
     """
-    measured = _measure(rho_t_plus1, setup)
-    wall = setup.config.chemical_step_wall
+    measured = _measure(rho_t_plus1, setup, edge)
+    wall = chemical_step_wall(setup.config)
     assert wall is not None  # noqa: S101 - a chemical-step run has a wetting config and a step
     windows, pins, step_sides = [], [], []
-    for i, name in enumerate(_SIDES):
+    for i, line in enumerate(ContactLine):
         cll = measured[2 + i]
-        ca_adv, ca_rec, held = _get_hysteresis_window_chemical_step(setup, cll, side=name)
+        ca_adv, ca_rec, held = _get_hysteresis_window_chemical_step(setup, cll, side=line)
         windows.append((ca_adv, ca_rec))
-        pins.append(jnp.where(held, wall.step_x, getattr(wetting, f"cll_{name}")))
+        pins.append(jnp.where(held, wall.hold_x, getattr(wetting, f"cll_{line}")))
         step_sides.append(
-            StepSide(cll >= wall.step_x, held, getattr(wall, f"pre_phi_{name}"), getattr(wall, f"pre_d_rho_{name}"))
+            StepSide(wall.on_post(cll), held, getattr(wall, f"pre_phi_{line}"), getattr(wall, f"pre_d_rho_{line}"))
         )
     return _update_wetting_state_impl(
         wetting,
@@ -757,5 +881,6 @@ def update_wetting_state_chemical_step(
         measured=measured,
         pins=(pins[0], pins[1]),
         step_sides=(step_sides[0], step_sides[1]),
+        edge=edge,
         t=t,
     )

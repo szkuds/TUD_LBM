@@ -13,13 +13,14 @@ from src.operators.wetting._wetting_modification import wetting_regions
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
-    from src.config.chemical_step import ChemicalStepWall
+    from src.config.boundary import Edge
+    from src.config.wetting import ChemicalStepWall
     from src.operators.wetting._wetting_modification import WettingRegion
 
 
 def _oriented_ghost_row(
     grid_padded: jnp.ndarray,
-    edge: str,
+    edge: Edge,
     perp_start_periodic: bool,
     perp_end_periodic: bool,
 ) -> tuple[jnp.ndarray, int, bool]:
@@ -32,11 +33,11 @@ def _oriented_ghost_row(
         ``(arr, ghost_idx, transposed)`` — the oriented array with its ghost
         column reconstructed, that column's index, and whether *arr* is ``grid_padded.T``.
     """
-    transposed = edge in ("left", "right")
+    transposed = edge.normal_axis == 0
     arr = grid_padded.T if transposed else grid_padded
 
     # Ghost column index in the padded array and interior neighbour offset.
-    ghost_idx = 0 if edge in ("bottom", "left") else -1
+    ghost_idx = -1 if edge.at_far_end else 0
     interior_offset = 1 if ghost_idx == 0 else -1
 
     arr = _reconstruct_ghost_row(
@@ -51,7 +52,7 @@ def _oriented_ghost_row(
 
 def _apply_wetting_edge(
     grid_padded: jnp.ndarray,
-    edge: str,
+    edge: Edge,
     perp_start_periodic: bool,
     perp_end_periodic: bool,
     rho_l: jnp.ndarray,
@@ -88,7 +89,7 @@ def _apply_wetting_edge(
 
 def wetting_edge_regions(
     gp: jnp.ndarray,
-    edge: str,
+    edge: Edge,
     perp_start_periodic: bool,
     perp_end_periodic: bool,
     rho_l: float | jnp.ndarray,

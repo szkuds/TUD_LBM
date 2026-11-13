@@ -10,7 +10,6 @@
 
 [simulation_type]
 simulation_name = 'von_karman_vortex_street'
-type = "single_phase"
 grid_shape = [400, 100, 1]
 lattice_type = "D2Q9"
 tau = 0.99

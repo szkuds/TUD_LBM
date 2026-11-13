@@ -5,7 +5,7 @@ import pytest
 from src.cli.commands import cli
 from src.cli.field_select import build_choices
 from tests.support.run_dirs import build_run_dir
-from tests.support.run_dirs import wetting_config
+from tests.support.run_dirs import wetting
 
 
 def _entries(kind: str) -> dict:
@@ -65,7 +65,7 @@ def test_animate_marks_against_animate_fields(runner, tmp_path, monkeypatch):
     monkeypatch.setattr("src.cli.commands.visualise.prompt_fields_marked", _capture)
     monkeypatch.setattr("src.simulation_io.plotting.Animator.create", lambda self, output: tmp_path / "a.mp4")
 
-    config = wetting_config(animate_fields=["velocity"], plot_fields=["density"])
+    config = wetting(animate_fields=["velocity"], plot_fields=["density"])
     run_dir = build_run_dir(tmp_path, config=config)
 
     result = runner.invoke(cli, ["animate", str(run_dir)])
@@ -79,7 +79,7 @@ _CONTACT_ANGLE_QUESTION = "Overlay contact angles and wetting band on field pane
 
 
 def _no_wetting_config():
-    return wetting_config(sim_type="multiphase", bc_config=None, wetting_config=None)
+    return wetting(boundary_conditions=None, wetting=None)
 
 
 def test_prompt_overlays_is_opt_out(monkeypatch):
@@ -109,7 +109,7 @@ def test_contact_angle_question_is_only_asked_with_a_wetting_wall(monkeypatch):
     assert [q for q, _ in asked] == [_OVERLAY_QUESTION]
 
     asked.clear()
-    assert field_select.prompt_overlays(plotting, wetting_config()) == ["contact_angle", "interface"]
+    assert field_select.prompt_overlays(plotting, wetting()) == ["contact_angle", "interface"]
     assert asked == [(_CONTACT_ANGLE_QUESTION, True), (_OVERLAY_QUESTION, True)]
 
 
@@ -121,7 +121,7 @@ def test_no_overlay_question_is_asked_for_a_single_phase_run(monkeypatch):
         pytest.fail("a single-phase run has no interface to overlay")
 
     monkeypatch.setattr(field_select.Confirm, "ask", _ask)
-    config = SimulationConfig(sim_type="single_phase", grid_shape=(16, 16), nt=10)
+    config = SimulationConfig(grid_shape=(16, 16), nt=10)
 
     assert field_select.prompt_overlays(_entries("plotting"), config) is None
 
@@ -134,7 +134,7 @@ def test_prompt_overlays_keeps_default_on_end_of_input(monkeypatch):
 
     monkeypatch.setattr(field_select.Confirm, "ask", _eof)
 
-    assert field_select.prompt_overlays(_entries("plotting"), wetting_config()) == ["contact_angle", "interface"]
+    assert field_select.prompt_overlays(_entries("plotting"), wetting()) == ["contact_angle", "interface"]
 
 
 def test_interactive_visualise_overlays_by_default_for_a_wetting_run(runner, run_dir):
@@ -198,7 +198,7 @@ def test_declining_overrides_overlay_fields_from_config(runner, tmp_path, monkey
         raise KeyboardInterrupt
 
     monkeypatch.setattr("src.simulation_io.plotting.FigureBuilder.__init__", _capture)
-    run_dir = build_run_dir(tmp_path, config=wetting_config(overlay_fields=["interface"]))
+    run_dir = build_run_dir(tmp_path, config=wetting(overlay_fields=["interface"]))
 
     runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\nn\nn\n")
 

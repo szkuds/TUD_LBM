@@ -12,7 +12,6 @@ collision_scheme = "bgk"
 init_type = "multiphase_bubbles"
 save_interval = 50
 skip_interval = 0
-type = "multiphase_hysteresis_chemical_step"
 
 [boundary_conditions]
 left = "periodic"

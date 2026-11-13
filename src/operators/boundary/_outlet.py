@@ -7,6 +7,7 @@ a worked channel-flow example.
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from src.config.boundary import Edge
 from src.registry import boundary_condition
 
 if TYPE_CHECKING:
@@ -19,7 +20,7 @@ def apply_outlet(
     f_streamed: jnp.ndarray,
     _f_collision: jnp.ndarray,
     _lattice: Lattice,
-    edge: str,
+    edge: Edge,
 ) -> jnp.ndarray:
     """Apply a zero-gradient outlet on the ``"right"`` edge.
 
@@ -27,12 +28,12 @@ def apply_outlet(
         f_streamed: Post-streaming populations, shape ``(nx, ny, nz, q, 1)``.
         _f_collision: Post-collision populations (unused).
         _lattice: Lattice (unused).
-        edge: Edge name; only ``"right"`` is handled, other edges are no-ops.
+        edge: The domain face; only ``"right"`` is handled, other edges are no-ops.
 
     Returns:
         Populations with the last column set to the second-to-last column.
     """
-    if edge != "right":
+    if edge != Edge.RIGHT:
         return f_streamed
 
-    return f_streamed.at[-1, :, 0, :, 0].set(f_streamed[-2, :, 0, :, 0])
+    return f_streamed.at[-1, :, :, :, 0].set(f_streamed[-2, :, :, :, 0])

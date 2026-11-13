@@ -23,17 +23,17 @@ the scatter-only rule for data-series plots.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from matplotlib.collections import LineCollection
+from src.config.wetting import ContactLine
+from src.protocols import PlotOperator
 from src.registry import plotting_operator
 from src.simulation_io.analysis.droplet_metrics import extract_rho_2d
 from src.simulation_io.analysis.interface_contour import interface_lines
-from src.simulation_io.analysis.wetting_overlay import SIDES
 from src.simulation_io.analysis.wetting_overlay import anchor_tick
 from src.simulation_io.analysis.wetting_overlay import angle_glyph
 from src.simulation_io.analysis.wetting_overlay import band_cell_segments
 from src.simulation_io.analysis.wetting_overlay import contact_angles
 from src.simulation_io.analysis.wetting_overlay import wall_bands
 from src.simulation_io.analysis.wetting_overlay import wetting_edge
-from src.simulation_io.plotting.base import PlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
@@ -108,7 +108,7 @@ class ContactAnglePlotOperator(PlotOperator):
         bound visible.
         """
         for band in bands:
-            for side in SIDES:
+            for side in ContactLine:
                 sideband = band.side(side)
                 if sideband.cells.size == 0:
                     continue
@@ -125,7 +125,7 @@ class ContactAnglePlotOperator(PlotOperator):
 
     def _draw_wall_cells(self, ax: matplotlib.axes.Axes, shape: tuple[int, int], bands: list[WallBand]) -> None:
         for band in bands:
-            for side in SIDES:
+            for side in ContactLine:
                 segments = band_cell_segments(band, side, shape)
                 if not segments:
                     continue
@@ -155,7 +155,7 @@ class ContactAnglePlotOperator(PlotOperator):
             return
         length = max(3.0, DEFAULT_STYLE.contact_angle_length_fraction * min(shape))
         color = DEFAULT_STYLE.contact_angle_color
-        for side in SIDES:
+        for side in ContactLine:
             glyph = angle_glyph(angles, side, shape, length)
             for line in (glyph.tangent, glyph.arc):
                 ax.plot(line[:, 0], line[:, 1], color=color, linewidth=DEFAULT_STYLE.contact_angle_linewidth)

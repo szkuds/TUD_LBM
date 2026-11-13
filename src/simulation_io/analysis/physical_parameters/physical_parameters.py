@@ -20,12 +20,19 @@ from datetime import UTC
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
-from typing import cast
+from typing import Any
 import numpy as np
+from src.config.boundary import Edge
 from src.config.init_field import load_init_field
+from src.config.initialisation import DispersedPhase
+from src.config.initialisation import dispersed_phase
+from src.config.multiphase import is_multiphase
+from src.config.multiphase import multiphase_params
 from src.operators.macroscopic.eos import analytical_surface_tension
 from src.operators.macroscopic.eos import build_pressure_fn
+from src.operators.macroscopic.eos import coexistence_densities
 from src.operators.macroscopic.eos import has_analytical_surface_tension
+from src.operators.macroscopic.eos import kelvin_densities
 from src.registry import get_operator_names
 from src.registry import get_operators
 from src.simulation_io.analysis.physical_parameters import (
@@ -37,8 +44,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Mapping
     from src.config.simulation_config import SimulationConfig
+    from src.protocols import DimensionlessNumberOperator
     from src.registry import OperatorEntry
-    from src.simulation_io.analysis.physical_parameters._inputs import DimensionlessNumberOperator
 
 _CS2 = 1.0 / 3.0  # Speed of sound squared for D2Q9/D3Q19
 
@@ -61,7 +68,7 @@ def _add_simulation_section(lines: list[str], config: SimulationConfig) -> None:
     lines.append(_section("Simulation"))
     if config.simulation_name:
         lines.append(_row("Name:", config.simulation_name))
-    lines.append(_row("Type:", config.sim_type))
+    lines.append(_row("Type:", "multiphase" if is_multiphase(config) else "single_phase"))
     lines.append(_row("Lattice:", config.lattice_type))
 
 
@@ -135,31 +142,25 @@ _MIN_CROSSINGS = 2
 #: ``x == 0.0``, which is the one case that never needed guarding.
 _MIN_CROSSING_SLOPE = 1e-9
 
-#: Order in which ``bc_config`` is scanned for the wetting wall. Matches
-#: :func:`src.operators.wetting._edge_config._resolve_wetting_edges`, so the wall
-#: reported here is the one the solver actually measured at.
-_EDGE_SCAN_ORDER = ("bottom", "top", "left", "right")
 
+def resolve_wall_edge(config: SimulationConfig) -> Edge:
+    """The wall the solver measures contact angles at, else :attr:`Edge.BOTTOM`.
 
-def resolve_wall_edge(config: SimulationConfig) -> str:
-    """The single wall marked ``"wetting"`` in ``bc_config``, else ``"bottom"``.
-
-    Config validation guarantees exactly one wetting wall for wetting runs;
-    non-wetting runs fall back to ``"bottom"``, for which the canonical
+    The wall is :func:`~src.operators.wetting._edge_config.first_wetting_edge`,
+    so the wall reported here is the one the solver actually measured at.
+    Non-wetting runs fall back to the bottom wall, for which the canonical
     transform is the identity.
 
     Defined here rather than in :mod:`..droplet_metrics._scales` so that this
     module — which ``_scales`` already imports from lazily — does not have to
     import back into ``droplet_metrics``.
     """
-    bc = config.bc_config or {}
-    for edge in _EDGE_SCAN_ORDER:
-        if bc.get(edge) == "wetting":
-            return edge
-    return "bottom"
+    from src.operators.wetting._edge_config import first_wetting_edge
+
+    return first_wetting_edge(config.boundary_conditions) or Edge.BOTTOM
 
 
-def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float, wall_edge: str = "bottom") -> float | None:
+def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float, wall_edge: Edge = Edge.BOTTOM) -> float | None:
     """Return setup contact-line spacing from a rho field using wall-row transitions.
 
     *wall_edge* names the wetting wall. The row is taken from the wall-aligned
@@ -290,36 +291,79 @@ def _get_droplet_area(config: SimulationConfig) -> tuple[float, str] | None:
     return (area, "init geometry") if area is not None else None
 
 
-def _ensure_single_gravity_force_source(config: SimulationConfig) -> None:
-    """Reject configs that define both gravity force variants simultaneously."""
-    if config.gravity_force is not None and config.gravity_masked_force is not None:
-        msg = "Only one gravity force can be applied: set either gravity_force or gravity_masked_force, not both."
-        raise ValueError(msg)
+#: Halvings of the contact-angle bracket in :func:`_cap_radius`; far below float resolution.
+_CAP_BISECTIONS = 80
+
+
+def _cap_radius(area: float, base: float) -> float:
+    """Radius of the circular cap with *area* standing on a chord of length *base*.
+
+    A cap of radius ``R`` and contact angle ``theta`` (through the cap) has area
+    ``R^2 (theta - sin(theta) cos(theta))`` and base ``2 R sin(theta)``, so
+    ``area / base^2`` rises monotonically with ``theta`` from 0 to infinity and
+    fixes it.
+    """
+    target = area / base**2
+    low, high = 0.0, math.pi
+    for _ in range(_CAP_BISECTIONS):
+        theta = 0.5 * (low + high)
+        ratio = (theta - math.sin(theta) * math.cos(theta)) / (4.0 * math.sin(theta) ** 2)
+        low, high = (theta, high) if ratio < target else (low, theta)
+    return base / (2.0 * math.sin(0.5 * (low + high)))
+
+
+def _resolve_curvature_radius(config: SimulationConfig) -> float | None:
+    """Signed radius of curvature of the inclusion's interface, or ``None``.
+
+    From the inclusion's area and, when it sits on a wall, the distance between
+    its contact lines: a circular cap through both (:func:`_cap_radius`). A free
+    inclusion is the circle of its area. The same area and contact lines the
+    Bond number and the critical inclination are built from.
+
+    Signed as the Kelvin equation is usually written: positive for a convex
+    liquid surface (a droplet), negative for a concave one (a bubble). ``None``
+    without an inclusion or when the config does not say which phase is dispersed.
+    """
+    resolved = _get_droplet_area(config)
+    phase = dispersed_phase(config)
+    if resolved is None or phase is None:
+        return None
+    area, _source = resolved
+    base = _get_setup_contact_line_length(config)
+    radius = math.sqrt(area / math.pi) if base is None or base <= 0.0 else _cap_radius(area, base)
+    return radius if phase == DispersedPhase.LIQUID else -radius
+
+
+def _resolve_coexistence(config: SimulationConfig) -> tuple[float, float] | None:
+    """The coexistence pair ``(rho_v, rho_l)`` of the run's fluid, or ``None`` for a single phase.
+
+    The Maxwell pair when the EOS has a coexistence solver, else the configured
+    densities, which are then the EOS's own (the double-well's wells).
+    """
+    params = multiphase_params(config)
+    if params is None:
+        return None
+    return coexistence_densities(params.eos, params._asdict()) or (float(params.rho_v), float(params.rho_l))
+
+
+def _gravity_section(config: SimulationConfig) -> dict[str, Any] | None:
+    """The run's gravity force section; ``SimulationConfig`` allows at most one."""
+    return next((params for name, params in config.forces.items() if name.startswith("gravity")), None)
 
 
 def _resolve_gravity_value(config: SimulationConfig) -> float | None:
     """Resolve gravity from config.g or known force dictionaries."""
-    _ensure_single_gravity_force_source(config)
-
-    if config.g is not None:
-        return float(config.g)
-
-    for force_name in ("gravity_force", "gravity_masked_force"):
-        force_dict = getattr(config, force_name, None)
-        if force_dict and isinstance(force_dict, dict) and "force_g" in force_dict:
-            return float(force_dict["force_g"])
-    return None
+    params = multiphase_params(config)
+    if params is not None and params.g is not None:
+        return float(params.g)
+    section = _gravity_section(config)
+    return None if section is None else float(section["force_g"])
 
 
 def _resolve_gravity_inclination(config: SimulationConfig) -> float:
     """Return inclination_angle_deg from the active force config, or 0.0."""
-    _ensure_single_gravity_force_source(config)
-
-    for force_name in ("gravity_force", "gravity_masked_force"):
-        force_dict = getattr(config, force_name, None)
-        if force_dict and isinstance(force_dict, dict):
-            return float(force_dict.get("inclination_angle_deg", 0.0))
-    return 0.0
+    section = _gravity_section(config)
+    return 0.0 if section is None else float(section["inclination_angle_deg"])
 
 
 def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, float] | None:
@@ -331,14 +375,14 @@ def _derive_multiphase_parameters(config: SimulationConfig) -> tuple[float, floa
     names in this module. ``None`` likewise for a non-multiphase run, or when
     the interface width cannot define an interface.
     """
-    params = config.multiphase_params
+    params = multiphase_params(config)
     if params is None:
         return None
 
     gamma = analytical_surface_tension(params)
-    if gamma is None or config.rho_l is None or config.rho_v is None:
+    if gamma is None:
         return None
-    return float(config.rho_l) - float(config.rho_v), gamma
+    return float(params.rho_l) - float(params.rho_v), gamma
 
 
 def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, str] | None:
@@ -352,9 +396,10 @@ def _resolve_surface_tension(config: SimulationConfig) -> tuple[float, float, st
     drho^2``). The buoyancy contrast in Bo/Ar/Re comes from
     :func:`_resolve_buoyancy_delta_rho` instead.
     """
-    if config.rho_l is None or config.rho_v is None:
+    params = multiphase_params(config)
+    if params is None:
         return None
-    drho = float(config.rho_l) - float(config.rho_v)
+    drho = float(params.rho_l) - float(params.rho_v)
 
     from src.simulation_io.analysis.surface_tension import cached_surface_tension
 
@@ -381,9 +426,8 @@ def _resolve_buoyancy_delta_rho(config: SimulationConfig) -> tuple[float, str] |
         field = load_init_field(config)
         if field is not None:
             return field.drho, "measured"
-    if config.rho_l is not None and config.rho_v is not None:
-        return float(config.rho_l) - float(config.rho_v), "config"
-    return None
+    params = multiphase_params(config)
+    return None if params is None else (float(params.rho_l) - float(params.rho_v), "config")
 
 
 def _resolve_bulk_pressure(config: SimulationConfig) -> Callable[[np.ndarray], np.ndarray] | None:
@@ -395,10 +439,8 @@ def _resolve_bulk_pressure(config: SimulationConfig) -> Callable[[np.ndarray], n
     :func:`build_pressure_fn` above performs the registration side-effect import
     that query needs.
     """
-    if config.eos is None or config.eos not in get_operator_names("pressure"):
-        return None
-    params = config.multiphase_params
-    if params is None:
+    params = multiphase_params(config)
+    if params is None or params.eos not in get_operator_names("pressure"):
         return None
     import jax
     import jax.numpy as jnp
@@ -461,7 +503,8 @@ def resolve_dimensionless_inputs(config: SimulationConfig) -> DimensionlessInput
     _drho_config, gamma, gamma_source = resolved
 
     buoyancy = _resolve_buoyancy_delta_rho(config)
-    if buoyancy is None or config.rho_l is None:
+    params = multiphase_params(config)
+    if buoyancy is None or params is None:
         return None
     drho, drho_source = buoyancy
 
@@ -475,11 +518,13 @@ def resolve_dimensionless_inputs(config: SimulationConfig) -> DimensionlessInput
         length=length,
         length_label=length_label,
         nu=_nu(float(config.tau)),
-        rho_l=float(config.rho_l),
+        rho_l=float(params.rho_l),
         g=g_val,
         angle_deg=None if g_val is None else _resolve_gravity_inclination(config),
         domain=(float(config.grid_shape[0]), float(config.grid_shape[1])),
         pressure=_resolve_bulk_pressure(config),
+        curvature_radius=_resolve_curvature_radius(config),
+        coexistence=_resolve_coexistence(config),
     )
 
 
@@ -517,6 +562,11 @@ def dimensionless_label(key: str) -> str:
     return str(_meta_of(entry).get("label", key))
 
 
+def _number_operator(entry: OperatorEntry) -> DimensionlessNumberOperator:
+    """The registered number of *entry*, typed by its contract."""
+    return entry.target
+
+
 def _evaluate_dimensionless(inputs: DimensionlessInputs) -> dict[str, float | None]:
     """Call every registered number, recording a failure as an unresolved value.
 
@@ -525,7 +575,7 @@ def _evaluate_dimensionless(inputs: DimensionlessInputs) -> dict[str, float | No
     """
     values: dict[str, float | None] = {}
     for entry in _dimensionless_entries():
-        operator = cast("DimensionlessNumberOperator", entry.target)
+        operator = _number_operator(entry)
         try:
             values[entry.name] = operator(inputs)
         except (ArithmeticError, TypeError, ValueError):
@@ -604,6 +654,55 @@ def _dimensionless_rows(config: SimulationConfig) -> list[str]:
     return rows
 
 
+#: The smallest Kelvin vapour-pressure shift, in magnitude, at which a run has been
+#: lost: R070 of the 2026-10-17 set (-0.34 to -0.36 over its run; every smaller
+#: bubble is further out), whose vapour went to a two-cell mode once the bubble
+#: moved. Provisional: the Phase 0 pilots near -0.2
+#: (``.claude/plan/261105_bubble_fix_db``) decide where the limit is.
+_KELVIN_SHIFT_WARNING = 0.34
+
+
+def _kelvin_rows(config: SimulationConfig) -> list[str]:
+    """The densities the Kelvin equation holds the phases at, and a warning when they are far off.
+
+    The first-order shift is the ``kelvin_shift`` number. This row is the same
+    equilibrium without its approximations: equal chemical potential with the
+    Laplace pressure across the interface, solved on the run's own EOS. Printed
+    for an EOS with a coexistence solver, a resolved surface tension and a signed
+    radius of curvature. It is what a closed run relaxes to, beside the Maxwell
+    pair it was configured near.
+    """
+    inputs = resolve_dimensionless_inputs(config)
+    params = multiphase_params(config)
+    if inputs is None or params is None or inputs.curvature_radius is None:
+        return []
+    radius = inputs.curvature_radius
+    phase = DispersedPhase.LIQUID if radius > 0.0 else DispersedPhase.VAPOUR
+    pair = kelvin_densities(params.eos, params._asdict(), sigma=inputs.gamma, radius=abs(radius), dispersed=phase)
+    if pair is None:
+        return []
+    rho_v, rho_l = pair
+    surface = "convex: droplet" if radius > 0.0 else "concave: bubble"
+    rows = [
+        _row(
+            "Kelvin densities (exact):",
+            f"rho_v = {rho_v:.6g}, rho_l = {rho_l:.6g}, rho_l/rho_v = {rho_l / rho_v:.4g}"
+            f"  [r = {radius:.4g}, {surface}]",
+        )
+    ]
+    shift = _evaluate_dimensionless(inputs).get("kelvin_shift")
+    if shift is not None and abs(shift) >= _KELVIN_SHIFT_WARNING:
+        rows.append(
+            _row(
+                "",
+                f"WARNING: the vapour pressure is shifted by {shift:+.2f} of saturation "
+                f"(|shift| >= {_KELVIN_SHIFT_WARNING}); moving bubbles this far from saturation lost their "
+                "vapour to a two-cell mode. A larger radius or a higher T_r reduces it.",
+            )
+        )
+    return rows
+
+
 _CRITICAL_ANGLE_LABEL = "Critical Inclination Angle: "  # wider than _row's 26-column pad
 
 
@@ -618,11 +717,11 @@ def _format_critical_inclination_angle_row(config: SimulationConfig, gamma: floa
     identical for a bubble and a droplet.
     """
     g_val = _resolve_gravity_value(config)
-    if config.chemical_step_config is None or g_val is None:
-        msg = "chemical_step_config and a gravity force must be set"
+    if config.chemical_step is None or g_val is None:
+        msg = "[chemical_step] and a gravity force must be set"
         raise RuntimeError(msg)
-    ca_adv = math.radians(float(config.chemical_step_config["ca_advancing_pre_step"]))
-    ca_rec = math.radians(float(config.chemical_step_config["ca_receding_pre_step"]))
+    ca_adv = math.radians(float(config.chemical_step["ca_advancing_pre_step"]))
+    ca_rec = math.radians(float(config.chemical_step["ca_receding_pre_step"]))
     hysteresis = math.cos(ca_rec) - math.cos(ca_adv)
 
     area_resolved = _get_droplet_area(config)
@@ -671,25 +770,30 @@ def _add_buoyancy_delta_rho_row(lines: list[str], config: SimulationConfig) -> N
 
 
 def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
-    if "multiphase" not in config.sim_type:
+    params = multiphase_params(config)
+    if params is None:
         return
     lines.extend(
         [
             _section("Multiphase"),
-            _row("EOS:", config.eos or "-"),
-            _row("kappa:", config.kappa),
-            _row("rho_liquid:", config.rho_l),
-            _row("rho_vapour:", config.rho_v),
-            _row("Interface width:", config.interface_width),
+            _row("EOS:", params.eos),
+            _row("kappa:", params.kappa),
+            _row("rho_liquid:", params.rho_l),
+            _row("rho_vapour:", params.rho_v),
         ]
     )
+    # The pair the EOS predicts for itself, beside the configured one, so a gap shows.
+    if (pair := coexistence_densities(params.eos, params._asdict())) is not None:
+        rho_v, rho_l = pair
+        lines.append(_row("Maxwell coexistence:", f"rho_v = {rho_v:.6g}, rho_l = {rho_l:.6g}"))
+    lines.append(_row("Interface width:", params.interface_width))
     _add_measured_density_rows(lines, config)
-    if config.g is not None:
-        lines.append(_row("g (gravity):", config.g))
+    if params.g is not None:
+        lines.append(_row("g (gravity):", params.g))
 
     resolved = _resolve_surface_tension(config)
     if resolved is None:
-        if not has_analytical_surface_tension(config.eos):
+        if not has_analytical_surface_tension(params.eos):
             lines.append(_row("gamma (surface tension):", "requires Young–Laplace calibration"))
         return
     _drho_config, gamma, source = resolved
@@ -698,7 +802,8 @@ def _add_multiphase_section(lines: list[str], config: SimulationConfig) -> None:
 
     _add_buoyancy_delta_rho_row(lines, config)
     lines.extend(_dimensionless_rows(config))
-    if config.chemical_step_config is not None and _resolve_gravity_value(config) is not None:
+    lines.extend(_kelvin_rows(config))
+    if config.chemical_step is not None and _resolve_gravity_value(config) is not None:
         lines.append(_format_critical_inclination_angle_row(config, gamma))
 
 
@@ -711,15 +816,14 @@ def _add_key_value_section(lines: list[str], title: str, values: dict | None) ->
 
 
 def _add_forces_section(lines: list[str], config: SimulationConfig) -> None:
-    force_fields = [
-        f for f in ("gravity_force", "electric_force", "gravity_masked_force") if getattr(config, f, None) is not None
-    ]
-    if not force_fields:
+    if not config.forces:
         return
     lines.append(_section("Forces"))
-    for fname in force_fields:
+    for fname in ("gravity_force", "electric_force", "gravity_masked_force"):
+        if fname not in config.forces:
+            continue
         lines.append(f"  {fname}:")
-        for k, v in getattr(config, fname).items():
+        for k, v in config.forces[fname].items():
             lines.append(_row(f"{k}:", v, indent=4))
 
 
@@ -739,10 +843,10 @@ def build_overview(config: SimulationConfig) -> str:
     _add_grid_section(lines, config)
     _add_collision_section(lines, config)
     _add_multiphase_section(lines, config)
-    _add_key_value_section(lines, "Boundary Conditions", config.bc_config)
-    _add_key_value_section(lines, "Wetting", config.wetting_config)
-    _add_key_value_section(lines, "Hysteresis", config.hysteresis_config)
-    _add_key_value_section(lines, "Chemical Step", config.chemical_step_config)
+    _add_key_value_section(lines, "Boundary Conditions", config.boundary_conditions)
+    _add_key_value_section(lines, "Wetting", config.wetting)
+    _add_key_value_section(lines, "Hysteresis", config.hysteresis)
+    _add_key_value_section(lines, "Chemical Step", config.chemical_step)
     _add_forces_section(lines, config)
 
     lines.append("\n" + sep)

@@ -14,7 +14,7 @@ from tests.support.run_dirs import NONUNIFORM_ITERATIONS
 from tests.support.run_dirs import SAVE_INTERVAL
 from tests.support.run_dirs import UNIFORM_ITERATIONS
 from tests.support.run_dirs import build_run_dir
-from tests.support.run_dirs import wetting_config
+from tests.support.run_dirs import wetting
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -29,7 +29,7 @@ def test_simulation_csv_matches_golden(tmp_path: Path, name: str) -> None:
     """The CSV matches its committed golden fixture exactly."""
     run_dir = build_run_dir(tmp_path, iterations=_GOLDEN[name])
 
-    out = build_simulation_csv(run_dir, wetting_config())
+    out = build_simulation_csv(run_dir, wetting())
 
     assert out is not None
     produced = pd.read_csv(out)

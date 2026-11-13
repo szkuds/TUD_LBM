@@ -11,6 +11,7 @@ from src.config import SimulationConfig
 from src.registry import get_operators
 from src.simulation_io.plotting import FigureBuilder
 from src.simulation_io.plotting.animator import Animator
+from tests.support.config import merge_overrides
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -21,15 +22,10 @@ _STEPS = (0, 10, 20)
 
 def _config(**overrides: object) -> SimulationConfig:
     params: dict[str, object] = {
-        "sim_type": "multiphase",
+        "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.1, "interface_width": 4},
         "grid_shape": (_NX, _NY),
-        "eos": "double-well",
-        "kappa": 0.02,
-        "interface_width": 4,
-        "rho_l": 1.0,
-        "rho_v": 0.1,
     }
-    params.update(overrides)
+    merge_overrides(params, overrides)
     return SimulationConfig(**params)  # ty: ignore[invalid-argument-type]
 
 

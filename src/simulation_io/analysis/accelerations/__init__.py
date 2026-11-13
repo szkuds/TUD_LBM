@@ -1,7 +1,6 @@
 """Acceleration-based regime analysis for contact-line dynamics."""
 
 from src.simulation_io.analysis.accelerations.acceleration_analysis import AccelerationResult
-from src.simulation_io.analysis.accelerations.acceleration_analysis import Smoothing
 from src.simulation_io.analysis.accelerations.acceleration_analysis import compute_acceleration
 from src.simulation_io.analysis.accelerations.acceleration_analysis import find_slope_window
 from src.simulation_io.analysis.accelerations.acceleration_analysis import save_diagnostic_plot
@@ -16,7 +15,6 @@ __all__ = [
     "AccelerationResult",
     "Regime",
     "RegimeResult",
-    "Smoothing",
     "TrendFit",
     "classify_regime",
     "compute_acceleration",

@@ -52,6 +52,7 @@ rather than dropped flat into the run directory, in the same ``data/`` +
 from __future__ import annotations
 import hashlib
 import json
+import math
 import re
 from dataclasses import replace
 from pathlib import Path
@@ -59,7 +60,10 @@ from typing import TYPE_CHECKING
 from typing import NamedTuple
 import numpy as np
 from rich.console import Console
+from src.config.boundary import edges_of
 from src.config.config_overview import BASE_RESULTS_DIR
+from src.config.multiphase import REFERENCE_DENSITY
+from src.config.multiphase import multiphase_params
 from src.config.run_config import CONFIG_FILENAME
 from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import PHYSICAL_PARAMETERS_FILENAME
@@ -126,7 +130,7 @@ _SWEEP_NAME_PREFIX = "surface_tension"
 _SWEEP_NAME_PATTERN = re.compile(rf"(?:^|_){_SWEEP_NAME_PREFIX}_.+_R\d+$")
 
 
-_PERIODIC_BC = {"top": "periodic", "bottom": "periodic", "left": "periodic", "right": "periodic"}
+_PERIODIC_BC = {edge.value: "periodic" for edge in edges_of(2)}
 
 _CACHE_FILENAME = "surface_tension_cache.json"
 # Every per-run artefact is grouped under this subdirectory of the run
@@ -217,7 +221,8 @@ def needs_calibration(config: SimulationConfig) -> bool:
     That is registry membership: an EOS registered under the
     ``"surface_tension"`` kind has a closed form.
     """
-    return config.is_multiphase and not has_analytical_surface_tension(config.eos)
+    params = multiphase_params(config)
+    return params is not None and not has_analytical_surface_tension(params.eos)
 
 
 def is_calibrated(config: SimulationConfig) -> bool:
@@ -296,8 +301,10 @@ def fluid_label(config: SimulationConfig) -> str:
     fluid's folder and its sweep runs; two fluids differing only in parameters
     the label leaves out share it, which is why nothing reads identity off it.
     """
-    initials = "".join(word[0] for word in str(config.eos).split("-"))
-    return f"{initials}_kappa{config.kappa:g}_rho{config.rho_l:g}_{config.rho_v:g}"
+    params = multiphase_params(config)
+    assert params is not None  # noqa: S101 - only a multiphase fluid is calibrated
+    initials = "".join(word[0] for word in params.eos.split("-"))
+    return f"{initials}_kappa{params.kappa:g}_rho{params.rho_l:g}_{params.rho_v:g}"
 
 
 def sweep_run_name(config: SimulationConfig, radius: float) -> str:
@@ -405,6 +412,9 @@ def collect_calibration(run_dirs: Iterable[str | Path], out_dir: str | Path | No
     radii = np.array([sample.radius for sample in ordered])
     delta_p = np.array([sample.delta_p for sample in ordered])
     sigma = _fit_sigma(radii, delta_p)
+    if not math.isfinite(sigma):
+        console.print(f"[red]Fitted σ = {sigma} is not finite — nothing stored.[/red]")
+        return None
     _store_cache(key, radii, delta_p, sigma, _CALIBRATION_GRID_SHAPE)
     _store_fields(key, [sample.density for sample in ordered])
     if out_dir is not None:
@@ -436,6 +446,10 @@ def _read_sweep_run(run_dir: Path) -> _SweepSample | None:
     with np.load(snapshots[-1]) as snapshot:
         pressure = _field_2d(snapshot["pressure"])
         density = _field_2d(snapshot["rho"])
+    # A diverged droplet has no Laplace jump; an older finished run of the radius may still stand.
+    if not (np.isfinite(pressure).all() and np.isfinite(density).all()):
+        console.print(f"[red]{run_dir}: final snapshot is not finite (diverged) — skipped.[/red]")
+        return None
 
     return _SweepSample(
         key=_cache_key(config),
@@ -452,11 +466,20 @@ def _field_2d(field: np.ndarray) -> np.ndarray:
 
 
 def _calibration_config(config: SimulationConfig) -> SimulationConfig:
-    """An isolated single-droplet config: periodic, no forces, no wetting."""
+    """An isolated single-droplet config: periodic, no forces, no wetting.
+
+    The equilibrium is reset to the phase default. Sigma belongs to the fluid,
+    and the cache key does not name the equilibrium, so two runs of one fluid
+    must stage one and the same sweep whichever equilibrium each runs on. The
+    reference density goes with it: it belongs to the equilibrium that carries
+    a pressure and is rejected for any other.
+    """
+    dropped = {"g", REFERENCE_DENSITY}
     return replace(
         config,
-        sim_type="multiphase",
-        bc_config=dict(_PERIODIC_BC),
+        equilibrium=None,
+        multiphase={key: value for key, value in (config.multiphase or {}).items() if key not in dropped},
+        boundary_conditions=dict(_PERIODIC_BC),
         grid_shape=_CALIBRATION_GRID_SHAPE,
         nt=_N_ITERATIONS,
         save_interval=0,
@@ -465,13 +488,10 @@ def _calibration_config(config: SimulationConfig) -> SimulationConfig:
         plot_fields=None,
         animate_fields=None,
         overlay_fields=None,
-        g=None,
-        gravity_force=None,
-        gravity_masked_force=None,
-        electric_force=None,
-        wetting_config=None,
-        hysteresis_config=None,
-        chemical_step_config=None,
+        forces={},
+        wetting=None,
+        hysteresis=None,
+        chemical_step=None,
         init_type="multiphase_bubbles",
         init_dir=None,
         initialisation={"centres": [[0.5, 0.5]], "radii": [0.2], "dispersed": "liquid"},
@@ -536,7 +556,8 @@ def _cache_key(config: SimulationConfig) -> str:
     the key depends on the fluid alone; it stays in the key because the stored
     entries carry it.
     """
-    values = {k: getattr(config, k, None) for k in _CACHE_KEYS}
+    section = config.multiphase or {}
+    values = {k: section.get(k) for k in _CACHE_KEYS}
     values["grid_shape"] = list(_CALIBRATION_GRID_SHAPE)
     return json.dumps(values, sort_keys=True)
 
@@ -589,9 +610,9 @@ def _sanitize_key_field(field: str, value: object) -> str | int | float | list[i
 
 
 def _sanitize_entry(raw_entry: dict) -> dict | None:
-    """Coerce a stored measurement to floats, or reject it."""
+    """Coerce a stored measurement to floats, or reject it (a non-finite value included)."""
     try:
-        return {
+        entry = {
             "sigma": float(raw_entry["sigma"]),
             "radii": [float(x) for x in raw_entry["radii"]],
             "delta_p": [float(x) for x in raw_entry["delta_p"]],
@@ -599,6 +620,8 @@ def _sanitize_entry(raw_entry: dict) -> dict | None:
         }
     except (KeyError, TypeError, ValueError):
         return None
+    values = [entry["sigma"], *entry["radii"], *entry["delta_p"]]
+    return entry if all(math.isfinite(value) for value in values) else None
 
 
 def _sanitize_grid_shape(raw_grid_shape: object) -> list[int]:

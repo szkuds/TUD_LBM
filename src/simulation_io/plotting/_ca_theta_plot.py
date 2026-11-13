@@ -5,11 +5,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
+from src.protocols import AnalysisPlot
 from src.registry import analysis_operator
 from src.simulation_io.analysis.droplet_metrics import series_for_files
 from src.simulation_io.plotting._analysis_common import _CONTACT_ANGLE_Y_LABEL
 from src.simulation_io.plotting._analysis_common import _set_empty_state
-from src.simulation_io.plotting.base import AnalysisPlot
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 from src.simulation_io.plotting.figure_config import LABEL_IT_NORM
 from src.simulation_io.plotting.figure_config import LABEL_X_AVG_NORM

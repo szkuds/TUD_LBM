@@ -62,9 +62,11 @@ def _run_simulation(config: SimulationConfig) -> str:
         simulation_name=config.simulation_name,
     )
 
+    from src.simulation_io.analysis.coexistence import calibrate_coexistence
     from src.simulation_io.analysis.surface_tension import record_surface_tension
 
     config = record_surface_tension(config, io.run_dir)
+    calibrate_coexistence(config, io.run_dir)
 
     console.print("[bold green]Starting simulation...[/bold green]")
     console.print(f"[dim]Results directory: {io.run_dir}[/dim]")
@@ -193,7 +195,7 @@ def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
 
     console.print("[dim]Running comparison analysis...[/dim]")
     if analyse_run(run_dir, config) is None:
-        console.print("[yellow]--compare: CSV export skipped (unsupported sim_type).[/yellow]")
+        console.print("[yellow]--compare: CSV export skipped (no wetting wall).[/yellow]")
         return
     # compare_runs expects a parent directory that contains run dirs; passing
     # the single run directory makes it plot that one run via rglob.

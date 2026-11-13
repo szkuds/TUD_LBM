@@ -51,7 +51,7 @@ def _build_gravity_template(
 # ══════════════════════════════════════════════════════════════════════
 
 
-@force_model(name="gravity_force", required=("force_g",), defaults={"inclination_angle_deg": 0.0})
+@force_model(name="gravity_force")
 class GravityForceModule(NamedTuple):
     """Constant gravity force, bound to its template (:class:`ForceOperator`).
 

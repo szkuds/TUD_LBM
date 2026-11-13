@@ -66,9 +66,15 @@ Contrast floor
     spurious crossing in that run had a local contrast of 5.25 against a global
     12.17.
 
-``rho_mean`` stays prescribed: it only has to *separate* the phases, never track
-them, so it needs classifier-grade accuracy — the same argument
+``rho_mean`` and the contrast floor come from the run's phase references
+(:func:`~src.config.wetting.wall_rho_mean`): the init field's own densities on
+an ``init_from_file`` run, else the configured ones. They are fixed for the run
+and not tracked: ``rho_mean`` only has to *separate* the phases, so it needs
+classifier-grade accuracy — the same argument
 :mod:`~src.operators.force._gravity_masked` rests its ``_PHASE_BAND`` on.
+Measuring them every step was tried (2026-11) and changed angles by at most
+0.6° on the test cases, ran 6.5x slower on a 201x101 bubble, and lost its
+meaning once the inclusion detached.
 """
 
 from __future__ import annotations
@@ -79,7 +85,7 @@ from src.operators.wetting._interface_crossings import interface_crossings
 
 if TYPE_CHECKING:
     from jax.typing import ArrayLike
-    from src.config.chemical_step import ChemicalStepWall
+    from src.config.wetting import ChemicalStepWall
 
 #: Inset from each measured phase density, as a fraction of the measured contrast.
 _BAND_FRAC = 0.05
@@ -243,11 +249,11 @@ def _surface_params(
 
     Cells on the contact line's own side of the step take the line's live
     parameters; cells across the step keep their own surface's fixed values
-    (:class:`~src.config.chemical_step.ChemicalStepWall`), so a line can never
+    (:class:`~src.config.wetting.ChemicalStepWall`), so a line can never
     make the other surface wet like its own.
     """
-    post_cell = jnp.arange(region.mask.shape[0]) >= step.step_x
-    across = post_cell != (region.anchor >= step.step_x)
+    post_cell = step.on_post(jnp.arange(region.mask.shape[0]))
+    across = post_cell != step.on_post(region.anchor)
     fixed_phi = jnp.where(post_cell, step.post_phi, pre_phi)
     fixed_d_rho = jnp.where(post_cell, step.post_d_rho, pre_d_rho)
     return jnp.where(across, fixed_phi, phi), jnp.where(across, fixed_d_rho, d_rho)

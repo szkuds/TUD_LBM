@@ -30,19 +30,12 @@ Field                Shape                     Meaning
 ``c``                ``(1, 1, 1, q, d)``       velocity vectors
 ``w``                ``(1, 1, 1, q, 1)``       quadrature weights
 ``opp_indices``      ``(q,)``                  index of the opposite direction
-``main_indices``     ``(m,)``                  cardinal (non-diagonal) directions
-``right_indices``    ``(nr,)``                 directions with ``cx > 0``
-``left_indices``     ``(nl,)``                 directions with ``cx < 0``
-``top_indices``      ``(nt,)``                 directions with ``cy > 0``
-``bottom_indices``   ``(nb,)``                 directions with ``cy < 0``
-``front_indices``    ``(nf,)`` or ``None``     directions with ``cz > 0`` (3-D only)
-``back_indices``     ``(nbk,)`` or ``None``    directions with ``cz < 0`` (3-D only)
 ===================  ========================  =====================================
 
-The directional index sets are what boundary conditions and wetting operators
-use to pick out the populations pointing into or out of a wall.  They are 1-D
-and encode a direction → ``q``-index mapping only, with no spatial
-assumptions baked in.
+The populations pointing into the domain at a face are read off ``c``:
+``incoming_directions(lattice, edge)`` returns the ``q`` indices whose
+component along the face's normal axis points inward.  The boundary
+conditions use it; there is no stored index set per face.
 
 The 5-D array convention
 ------------------------

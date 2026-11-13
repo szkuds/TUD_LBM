@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from rich.panel import Panel
 from rich.table import Table
 from src.cli._console import console
+from src.config.multiphase import multiphase_params
 
 if TYPE_CHECKING:
     from src.cli.field_select import OperatorChoice
@@ -168,14 +169,17 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
     table.add_column("Parameter", style="cyan", no_wrap=True)
     table.add_column("Value", style="green")
 
-    table.add_row("Simulation Type", config.sim_type)
+    params = multiphase_params(config)
+    table.add_row("Simulation Type", "multiphase" if params is not None else "single_phase")
     table.add_row("Grid Shape", str(config.grid_shape))
     table.add_row("Lattice Type", config.lattice_type)
     table.add_row("Relaxation Time (tau)", str(config.tau))
     table.add_row("Time Steps", str(config.nt))
     table.add_row("Save Interval", str(config.save_interval))
-    if config.bc_config:
-        table.add_row("Boundary Conditions", ", ".join(f"{face}={bc}" for face, bc in config.bc_config.items()))
+    if config.boundary_conditions:
+        table.add_row(
+            "Boundary Conditions", ", ".join(f"{face}={bc}" for face, bc in config.boundary_conditions.items())
+        )
     table.add_row("Results Directory", config.results_dir)
     if config.save_fields:
         table.add_row("Save Fields", ", ".join(config.save_fields))
@@ -186,19 +190,14 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
     if config.overlay_fields:
         table.add_row("Overlay Fields", ", ".join(config.overlay_fields))
 
-    if config.is_multiphase:
-        table.add_row("Kappa", str(config.kappa))
-        table.add_row("Liquid Density", str(config.rho_l))
-        table.add_row("Vapor Density", str(config.rho_v))
-        table.add_row("Interface Width", str(config.interface_width))
+    if params is not None:
+        table.add_row("Kappa", str(params.kappa))
+        table.add_row("Liquid Density", str(params.rho_l))
+        table.add_row("Vapor Density", str(params.rho_v))
+        table.add_row("Interface Width", str(params.interface_width))
 
-    if config.force_enabled:
-        active_forces = [
-            f.name
-            for f in config.__dataclass_fields__.values()
-            if f.name.endswith("_force") and getattr(config, f.name) is not None
-        ]
-        table.add_row("Forces", ", ".join(active_forces) if active_forces else "enabled")
+    if config.forces:
+        table.add_row("Forces", ", ".join(config.forces))
 
     console.print(table)
     console.print()

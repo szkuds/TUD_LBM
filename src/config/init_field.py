@@ -2,7 +2,7 @@
 
 Part of the configuration rather than the analysis layer: the phase densities
 measured here are a property of the run's input, consumed both by the
-configuration (:attr:`SimulationConfig.phase_references`, which bands the
+configuration (:func:`~src.config.multiphase.phase_references`, which bands the
 masked-gravity force) and by ``physical_parameters`` (the reported Bond and
 Archimedes numbers). Keeping one reader under ``config`` lets the force and
 the report share it without the configuration importing ``simulation_io``.
@@ -144,8 +144,7 @@ def measure_field(rho: np.ndarray) -> InitField | None:
 def measure_init_phase_densities(config: SimulationConfig) -> tuple[float, float] | None:
     """Return ``(rho_min, rho_max)`` measured off the run's init NPZ, or None.
 
-    :attr:`SimulationConfig.phase_references
-    <src.config.simulation_config.SimulationConfig.phase_references>` bands the
+    :func:`~src.config.multiphase.phase_references` bands the
     masked-gravity phase indicator on these, and ``physical_parameters.txt``
     reports the buoyancy contrast off the same :func:`load_init_field`, so the
     contrast a run injects and the one its Bond number quotes cannot diverge.
@@ -170,11 +169,17 @@ RESTORED_WETTING_KEYS: tuple[str, ...] = (
 )
 
 
+#: The regime latch a hysteresis run also resumes. A snapshot from before the
+#: latch existed has none of these, and the restart then starts pinned.
+RESTORED_LATCH_KEYS: tuple[str, ...] = ("latch_left", "latch_right", "stall_left", "stall_right")
+
+
 def load_init_wetting(config: SimulationConfig) -> dict[str, float] | None:
     """The wetting state saved in the run's init NPZ, or ``None``.
 
     Returns ``None`` when no init file resolves or it lacks any of
-    :data:`RESTORED_WETTING_KEYS` (a snapshot from a run without wetting).
+    :data:`RESTORED_WETTING_KEYS` (a snapshot from a run without wetting). The
+    :data:`RESTORED_LATCH_KEYS` are included when the snapshot has them.
     """
     npz_path = resolve_npz_path(config.init_dir or config.initialisation.get("npz_path"))
     if not npz_path:
@@ -183,6 +188,7 @@ def load_init_wetting(config: SimulationConfig) -> dict[str, float] | None:
         with np.load(npz_path) as data:
             if not all(key in data for key in RESTORED_WETTING_KEYS):
                 return None
-            return {key: float(data[key]) for key in RESTORED_WETTING_KEYS}
+            keys = (*RESTORED_WETTING_KEYS, *(key for key in RESTORED_LATCH_KEYS if key in data))
+            return {key: float(data[key]) for key in keys}
     except (KeyError, OSError, TypeError, ValueError):
         return None

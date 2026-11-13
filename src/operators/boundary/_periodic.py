@@ -10,6 +10,7 @@ from src.registry import boundary_condition
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
+    from src.config.boundary import Edge
     from src.lattice.lattice import Lattice
 
 
@@ -18,7 +19,7 @@ def apply_periodic(
     f_streamed: jnp.ndarray,
     _f_collision: jnp.ndarray,
     _lattice: Lattice,
-    _edge: str,
+    _edge: Edge,
 ) -> jnp.ndarray:
     """No-op: streaming already handles periodicity.
 
@@ -26,7 +27,7 @@ def apply_periodic(
         f_streamed: Post-streaming populations.
         _f_collision: Post-collision populations (unused).
         _lattice: Lattice (unused).
-        _edge: Edge name (unused).
+        _edge: The domain face (unused).
 
     Returns:
         ``f_streamed`` unchanged.

@@ -16,7 +16,7 @@ from src.cli.display import _display_full_overview
 from src.cli.display import _print_dry_run_message
 from src.cli.overrides import _apply_overrides
 from src.cli.overrides import confirm_or_override
-from src.config.wetting_defaults import NEUTRAL_WETTING_CONFIG
+from src.config.defaults import NEUTRAL_WETTING
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
@@ -44,14 +44,14 @@ _DRY_RUN_SNAPSHOT = "<Phase 1 final snapshot>"
 
 def _prompt_wetting_params(base_raw: dict[str, Any], *, no_prompt: bool) -> dict[str, float]:
     """Return wetting params, reading from config and only prompting for missing ones."""
-    from_config: dict[str, Any] = base_raw.get("wetting_config") or {}
-    missing = [k for k in NEUTRAL_WETTING_CONFIG if k not in from_config]
+    from_config: dict[str, Any] = base_raw.get("wetting") or {}
+    missing = [k for k in NEUTRAL_WETTING if k not in from_config]
 
     if missing and not no_prompt:
         console.print("[cyan]Wetting init - enter missing wetting boundary parameters:[/cyan]")
 
     params: dict[str, float] = {}
-    for key, default in NEUTRAL_WETTING_CONFIG.items():
+    for key, default in NEUTRAL_WETTING.items():
         if key in from_config:
             params[key] = float(from_config[key])
         elif no_prompt:
@@ -76,14 +76,10 @@ def _build_wetting_init_raw(
     nt: int = _WETTING_INIT_NT,
 ) -> dict[str, Any]:
     init_raw = deepcopy(base_raw)
-    init_raw["sim_type"] = "multiphase_wetting"
     init_raw["init_type"] = "multiphase_bubbles"
-    init_raw.pop("hysteresis_config", None)
-    init_raw.pop("chemical_step_config", None)
-    init_raw.pop("gravity_force", None)
-    init_raw.pop("gravity_masked_force", None)
-    if "bc_config" in init_raw:
-        init_raw["bc_config"] = dict(init_raw["bc_config"])
+    init_raw.pop("hysteresis", None)
+    init_raw.pop("chemical_step", None)
+    init_raw["forces"] = {k: v for k, v in init_raw.get("forces", {}).items() if not k.startswith("gravity")}
     init_raw["nt"] = nt
     # Equilibration history, not just the end state: the convergence plot needs
     # intermediate snapshots, and skip_interval would drop the early ones.
@@ -92,7 +88,7 @@ def _build_wetting_init_raw(
     init_raw["output_format"] = "numpy"
     base_name = base_raw.get("simulation_name")
     init_raw["simulation_name"] = f"wetting_init_{base_name}" if base_name else "wetting_init"
-    init_raw.setdefault("wetting_config", {}).update(wetting_params)
+    init_raw.setdefault("wetting", {}).update(wetting_params)
     return init_raw
 
 
@@ -104,7 +100,7 @@ def _build_wetting_gravity_raw(
     gravity_raw = deepcopy(base_raw)
     gravity_raw["init_type"] = "init_from_file"
     gravity_raw["init_dir"] = init_snapshot
-    gravity_raw.setdefault("wetting_config", {}).update(wetting_params)
+    gravity_raw.setdefault("wetting", {}).update(wetting_params)
     return gravity_raw
 
 
@@ -231,7 +227,7 @@ def _run_two_phase_wetting_init(
     either is built. *override_phase1* / *override_phase2* apply to one phase
     each and are folded in **after** that phase's raw dict is built, so they
     beat the values this module sets itself — ``_build_wetting_init_raw``
-    rewrites ``sim_type``, ``nt``, ``save_interval`` and the rest, which would
+    rewrites ``init_type``, ``nt``, ``save_interval`` and the rest, which would
     otherwise silently discard a matching ``--override``.
     """
     # Imported here rather than at module scope: execution.py imports this

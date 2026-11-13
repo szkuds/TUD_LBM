@@ -13,7 +13,7 @@ from src.simulation_io.analysis.droplet_metrics import clear_series_cache
 from src.simulation_io.analysis.droplet_metrics import droplet_series_for_run
 from src.simulation_io.analysis.droplet_metrics import series_for_files
 from tests.support.run_dirs import build_run_dir
-from tests.support.run_dirs import wetting_config
+from tests.support.run_dirs import wetting
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -44,7 +44,7 @@ def count_loads(monkeypatch) -> dict[str, int]:
 def test_repeated_calls_read_snapshots_only_once(tmp_path: Path, count_loads) -> None:
     """A second request for the same run is served from cache."""
     run_dir = build_run_dir(tmp_path)
-    config = wetting_config()
+    config = wetting()
 
     first = droplet_series_for_run(run_dir, config)
     loads_after_first = count_loads["n"]
@@ -61,7 +61,7 @@ def test_each_snapshot_is_read_exactly_once(tmp_path: Path, count_loads) -> None
     iterations = (5, 10, 15, 20)
     run_dir = build_run_dir(tmp_path, iterations=iterations)
 
-    droplet_series_for_run(run_dir, wetting_config())
+    droplet_series_for_run(run_dir, wetting())
 
     assert count_loads["n"] == len(iterations)
 
@@ -78,7 +78,7 @@ def test_two_analysis_operators_share_one_read(tmp_path: Path, count_loads) -> N
     iterations = (5, 10, 15, 20)
     run_dir = build_run_dir(tmp_path, iterations=iterations)
     files = sorted((run_dir / "data").glob("timestep_*.npz"))
-    config = wetting_config()
+    config = wetting()
 
     CaThetaVsTimePlot(config=config).compute(files)
     CaThetaVsXPlot(config=config).compute(files)
@@ -93,7 +93,7 @@ def test_ca_theta_operators_agree_on_shared_columns(tmp_path: Path) -> None:
 
     run_dir = build_run_dir(tmp_path)
     files = sorted((run_dir / "data").glob("timestep_*.npz"))
-    config = wetting_config()
+    config = wetting()
 
     by_time = CaThetaVsTimePlot(config=config).compute(files)
     by_x = CaThetaVsXPlot(config=config).compute(files)
@@ -108,7 +108,7 @@ def test_ca_theta_arrays_match_the_csv_columns(tmp_path: Path) -> None:
     from src.simulation_io.plotting._ca_theta_plot import CaThetaVsXPlot
     from src.simulation_io.plotting._simulation_csv import build_simulation_csv
 
-    config = wetting_config()
+    config = wetting()
     run_dir = build_run_dir(tmp_path, config=config)
     files = sorted((run_dir / "data").glob("timestep_*.npz"))
 
@@ -129,8 +129,8 @@ def test_changed_config_is_not_served_from_cache(tmp_path: Path) -> None:
     """A config change that affects scaling produces a distinct series."""
     run_dir = build_run_dir(tmp_path)
 
-    base = droplet_series_for_run(run_dir, wetting_config())
-    altered = droplet_series_for_run(run_dir, wetting_config(rho_l=1.5))
+    base = droplet_series_for_run(run_dir, wetting())
+    altered = droplet_series_for_run(run_dir, wetting(multiphase={"rho_l": 1.5}))
 
     assert base is not None
     assert altered is not None
@@ -142,7 +142,7 @@ def test_cache_is_bounded(tmp_path: Path) -> None:
     """The cache evicts rather than growing without limit."""
     from src.simulation_io.analysis.droplet_metrics import series as series_mod
 
-    config = wetting_config()
+    config = wetting()
     for i in range(series_mod._MAX_CACHED_RUNS + 4):
         run = build_run_dir(tmp_path / f"r{i}", iterations=(5, 10))
         droplet_series_for_run(run, config)
@@ -152,7 +152,7 @@ def test_cache_is_bounded(tmp_path: Path) -> None:
 
 def test_series_for_files_returns_none_without_usable_snapshots(tmp_path: Path) -> None:
     """No parseable snapshots is a capability failure, not an error."""
-    assert series_for_files([], wetting_config()) is None
+    assert series_for_files([], wetting()) is None
 
 
 def test_series_is_none_when_config_lacks_interface(tmp_path: Path) -> None:

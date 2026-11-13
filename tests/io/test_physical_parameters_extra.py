@@ -2,7 +2,6 @@
 
 Targets the 13 uncovered lines / 9 uncovered conditions reported by SonarCloud:
 - _contact_line_length_from_rho edge cases (zero-denominator, boundary index guards)
-- _ensure_single_gravity_force_source conflict path
 - _resolve_gravity_value branches (g attr, force dict lookup, None)
 - _resolve_gravity_inclination branches
 - _add_multiphase_section with no gravity
@@ -14,12 +13,13 @@ Targets the 13 uncovered lines / 9 uncovered conditions reported by SonarCloud:
 from __future__ import annotations
 import math
 from types import SimpleNamespace
+from typing import Any
 import numpy as np
 import pytest
 from src.config import SimulationConfig
+from src.config.boundary import Edge
 from src.simulation_io.analysis.physical_parameters import build_overview
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _contact_line_length_from_rho
-from src.simulation_io.analysis.physical_parameters.physical_parameters import _ensure_single_gravity_force_source
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _format_critical_inclination_angle_row
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _nu
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_inclination
@@ -113,8 +113,8 @@ def _wall_attached_rho(wall_edge: str, nx: int = 24, ny: int = 12) -> np.ndarray
     return plane[:, :, np.newaxis, np.newaxis, np.newaxis]
 
 
-@pytest.mark.parametrize("wall_edge", ["bottom", "top", "left", "right"])
-def test_contact_line_length_is_measured_at_the_wetting_wall(wall_edge: str):
+@pytest.mark.parametrize("wall_edge", [Edge.BOTTOM, Edge.TOP, Edge.LEFT, Edge.RIGHT])
+def test_contact_line_length_is_measured_at_the_wetting_wall(wall_edge: Edge):
     """Every wall must give the same spacing — the field is the same, just moved.
 
     Slicing ``y = 0`` unconditionally sampled the far wall for a top-wall run,
@@ -130,16 +130,16 @@ def test_contact_line_length_is_measured_at_the_wetting_wall(wall_edge: str):
 def test_contact_line_length_defaults_to_the_bottom_wall():
     """The default keeps existing bottom-wall callers unchanged."""
     rho = _wall_attached_rho("bottom")
-    assert _contact_line_length_from_rho(rho, 0.6) == _contact_line_length_from_rho(rho, 0.6, "bottom")
+    assert _contact_line_length_from_rho(rho, 0.6) == _contact_line_length_from_rho(rho, 0.6, Edge.BOTTOM)
 
 
 def test_contact_line_length_misses_when_told_the_wrong_wall():
     """Guards the parametrised test above against passing for the wrong reason."""
-    assert _contact_line_length_from_rho(_wall_attached_rho("top"), 0.6, "bottom") is None
+    assert _contact_line_length_from_rho(_wall_attached_rho("top"), 0.6, Edge.BOTTOM) is None
 
 
 @pytest.mark.parametrize(
-    ("bc_config", "expected"),
+    ("boundary_conditions", "expected"),
     [
         ({"bottom": "wetting", "top": "bounce-back"}, "bottom"),
         ({"top": "wetting", "bottom": "bounce-back"}, "top"),
@@ -147,26 +147,8 @@ def test_contact_line_length_misses_when_told_the_wrong_wall():
         (None, "bottom"),
     ],
 )
-def test_resolve_wall_edge(bc_config, expected):
-    assert resolve_wall_edge(SimpleNamespace(bc_config=bc_config)) == expected  # ty: ignore[invalid-argument-type]
-
-
-# ---------------------------------------------------------------------------
-# _ensure_single_gravity_force_source
-# ---------------------------------------------------------------------------
-
-
-def test_ensure_single_source_raises_on_both():
-    from types import SimpleNamespace
-
-    cfg = SimpleNamespace(gravity_force={"force_g": 1e-6}, gravity_masked_force={"force_g": 2e-6})
-    with pytest.raises(ValueError, match="Only one gravity force"):
-        _ensure_single_gravity_force_source(cfg)  # ty: ignore[invalid-argument-type]
-
-
-def test_ensure_single_source_ok_with_one():
-    cfg = SimulationConfig(gravity_force={"force_g": 1e-6})
-    _ensure_single_gravity_force_source(cfg)  # must not raise
+def test_resolve_wall_edge(boundary_conditions, expected):
+    assert resolve_wall_edge(SimpleNamespace(boundary_conditions=boundary_conditions)) == expected  # ty: ignore[invalid-argument-type]
 
 
 # ---------------------------------------------------------------------------
@@ -175,17 +157,19 @@ def test_ensure_single_source_ok_with_one():
 
 
 def test_resolve_gravity_value_from_g_attr():
-    cfg = SimulationConfig(g=3e-7)
+    cfg = SimulationConfig(
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2, "g": 3e-7}
+    )
     assert _resolve_gravity_value(cfg) == pytest.approx(3e-7)
 
 
 def test_resolve_gravity_value_from_gravity_force_dict():
-    cfg = SimulationConfig(gravity_force={"force_g": 5e-7})
+    cfg = SimulationConfig(forces={"gravity_force": {"force_g": 5e-7}})
     assert _resolve_gravity_value(cfg) == pytest.approx(5e-7)
 
 
 def test_resolve_gravity_value_from_gravity_masked_force_dict():
-    cfg = SimulationConfig(gravity_masked_force={"force_g": 4e-7})
+    cfg = SimulationConfig(forces={"gravity_masked_force": {"force_g": 4e-7}})
     assert _resolve_gravity_value(cfg) == pytest.approx(4e-7)
 
 
@@ -200,12 +184,12 @@ def test_resolve_gravity_value_none_when_no_gravity():
 
 
 def test_resolve_gravity_inclination_from_gravity_force():
-    cfg = SimulationConfig(gravity_force={"force_g": 1e-6, "inclination_angle_deg": 30.0})
+    cfg = SimulationConfig(forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0}})
     assert _resolve_gravity_inclination(cfg) == pytest.approx(30.0)
 
 
 def test_resolve_gravity_inclination_defaults_to_zero():
-    cfg = SimulationConfig(gravity_force={"force_g": 1e-6})
+    cfg = SimulationConfig(forces={"gravity_force": {"force_g": 1e-6}})
     assert _resolve_gravity_inclination(cfg) == pytest.approx(0.0)
 
 
@@ -233,7 +217,7 @@ def test_build_overview_includes_simulation_name_when_set():
 
 
 def test_build_overview_3d_grid_displays_full_shape():
-    cfg = SimulationConfig(grid_shape=(8, 8, 4), tau=0.8, nt=10)
+    cfg = SimulationConfig(lattice_type="D3Q19", grid_shape=(8, 8, 4), tau=0.8, nt=10)
     text = build_overview(cfg)
     # 3-D: all three dimensions must appear in the shape line
     assert "4" in text
@@ -241,14 +225,8 @@ def test_build_overview_3d_grid_displays_full_shape():
 
 def test_build_overview_multiphase_no_gravity_omits_bond_number():
     cfg = SimulationConfig(
-        sim_type="multiphase",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
         grid_shape=(20, 20),
-        eos="double-well",
-        kappa=0.02,
-        rho_l=1.0,
-        rho_v=0.5,
-        interface_width=2,
-        # deliberately no gravity_force / g
     )
     text = build_overview(cfg)
     assert "gamma (surface tension):" in text
@@ -261,26 +239,21 @@ def test_build_overview_wetting_and_hysteresis_sections():
         grid_shape=(8, 8),
         tau=0.8,
         nt=10,
-        wetting_config={"contact_angle": 90},
-        hysteresis_config={"ca_advancing": 100, "ca_receding": 80},
+        wetting={"phi_left": 1.0},
+        hysteresis={"ca_advancing": 100, "ca_receding": 80},
     )
     text = build_overview(cfg)
     assert "Wetting" in text
-    assert "contact_angle" in text
+    assert "phi_left" in text
     assert "Hysteresis" in text
     assert "ca_advancing" in text
 
 
 def test_build_overview_forces_section_with_masked_gravity():
     cfg = SimulationConfig(
-        sim_type="multiphase",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
+        forces={"gravity_masked_force": {"force_g": 1e-6}},
         grid_shape=(20, 20),
-        eos="double-well",
-        kappa=0.02,
-        rho_l=1.0,
-        rho_v=0.5,
-        interface_width=2,
-        gravity_masked_force={"force_g": 1e-6},
     )
     text = build_overview(cfg)
     assert "gravity_masked_force" in text
@@ -288,14 +261,9 @@ def test_build_overview_forces_section_with_masked_gravity():
 
 def test_build_overview_archimedes_number_present_when_gravity():
     cfg = SimulationConfig(
-        sim_type="multiphase",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
+        forces={"gravity_force": {"force_g": 1e-6}},
         grid_shape=(40, 20),
-        eos="double-well",
-        kappa=0.02,
-        rho_l=1.0,
-        rho_v=0.5,
-        interface_width=2,
-        gravity_force={"force_g": 1e-6},
     )
     text = build_overview(cfg)
     assert "Ar (Archimedes number):" in text
@@ -305,16 +273,11 @@ def test_build_overview_archimedes_number_present_when_gravity():
 # _format_critical_inclination_angle_row
 # ---------------------------------------------------------------------------
 
-_CRITICAL_ANGLE_BASE = {
-    "chemical_step_config": {"ca_advancing_pre_step": 110.0, "ca_receding_pre_step": 80.0},
-    # Both gravity keys, because the row resolves gravity from either one.
-    "gravity_force": None,
-    "gravity_masked_force": {"force_g": 1e-3},
-    "g": None,
-    "rho_l": 1.0,
-    "rho_v": 0.5,
+_CRITICAL_ANGLE_BASE: dict[str, Any] = {
+    "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
+    "forces": {"gravity_masked_force": {"force_g": 1e-3}},
+    "chemical_step": {"ca_advancing_pre_step": 110.0, "ca_receding_pre_step": 80.0},
     "init_type": "standard",
-    # A radius-10 circle clear of every wall: A = 100*pi from the init geometry.
     "initialisation": {"radii": [0.1], "centres": [[0.5, 0.5]]},
     "grid_shape": (100, 100, 1),
 }
@@ -325,13 +288,13 @@ def _critical_angle_ns(**overrides) -> SimpleNamespace:
 
 
 def test_critical_inclination_raises_without_chemical_step_config():
-    ns = _critical_angle_ns(chemical_step_config=None)
-    with pytest.raises(RuntimeError, match="chemical_step_config"):
+    ns = _critical_angle_ns(chemical_step=None)
+    with pytest.raises(RuntimeError, match="chemical_step"):
         _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
 
 
 def test_critical_inclination_raises_without_any_gravity():
-    ns = _critical_angle_ns(gravity_masked_force=None)
+    ns = _critical_angle_ns(forces={})
     with pytest.raises(RuntimeError, match="gravity force"):
         _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
 
@@ -343,7 +306,7 @@ def test_critical_inclination_accepts_either_gravity_force(force_key):
     Gating on ``gravity_masked_force`` alone dropped this row from every run
     using plain ``[gravity_force]``, which is the validated bubble setup.
     """
-    forces = {"gravity_force": None, "gravity_masked_force": None, force_key: {"force_g": 1e-3}}
+    forces = {force_key: {"force_g": 1e-3}}
     ns = _critical_angle_ns(**forces)
     result = _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
     assert "Critical Inclination Angle" in result
@@ -351,14 +314,14 @@ def test_critical_inclination_accepts_either_gravity_force(force_key):
 
 
 def test_critical_inclination_unresolved_without_density_contrast():
-    ns = _critical_angle_ns(rho_v=None)
+    ns = _critical_angle_ns(multiphase=None)
     result = _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
     assert "unresolved" in result
 
 
 def test_critical_inclination_pinned_when_sina_exceeds_one():
     # Vanishingly small g: no inclination can overcome the window, and no arcsin of an out-of-range value.
-    ns = _critical_angle_ns(gravity_force=None, gravity_masked_force={"force_g": 1e-20})
+    ns = _critical_angle_ns(forces={"gravity_masked_force": {"force_g": 1e-20}})
     result = _format_critical_inclination_angle_row(ns, gamma=0.01)  # ty: ignore[invalid-argument-type]
     assert "pinned at any inclination" in result
 
@@ -377,10 +340,9 @@ def test_critical_inclination_is_the_inclination_where_bo_parallel_equals_h():
     assert bo_parallel == pytest.approx(hysteresis)
 
     ns = _critical_angle_ns(
-        chemical_step_config={"ca_advancing_pre_step": ca_adv_deg, "ca_receding_pre_step": ca_rec_deg},
-        gravity_masked_force={"force_g": g},
-        rho_l=rho_l,
-        rho_v=rho_v,
+        multiphase={**_CRITICAL_ANGLE_BASE["multiphase"], "rho_l": rho_l, "rho_v": rho_v},
+        forces={"gravity_masked_force": {"force_g": g}},
+        chemical_step={"ca_advancing_pre_step": ca_adv_deg, "ca_receding_pre_step": ca_rec_deg},
     )
     result = _format_critical_inclination_angle_row(ns, gamma=gamma)  # ty: ignore[invalid-argument-type]
     assert f"{expected_deg:.6g} deg" in result
@@ -389,18 +351,13 @@ def test_critical_inclination_is_the_inclination_where_bo_parallel_equals_h():
 
 def test_build_overview_includes_critical_inclination_angle_for_chemical_step_config():
     cfg = SimulationConfig(
-        sim_type="multiphase_hysteresis_chemical_step",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
+        forces={"gravity_masked_force": {"force_g": 1e-3}},
         grid_shape=(100, 100),
-        eos="double-well",
-        kappa=0.02,
-        rho_l=1.0,
-        rho_v=0.5,
-        interface_width=2,
-        gravity_masked_force={"force_g": 1e-3},
-        chemical_step_config={"ca_advancing_pre_step": 110.0, "ca_receding_pre_step": 80.0},
-        initialisation={"radii": [0.1], "centres": [[0.5, 0.5]]},
-        hysteresis_config={"ca_advancing": 110, "ca_receding": 80},
-        wetting_config={"contact_angle": 95},
+        chemical_step={"ca_advancing_pre_step": 110.0, "ca_receding_pre_step": 80.0, "chemical_step_pre_side": "low"},
+        initialisation={"radii": [0.1], "centres": [[0.5, 0.5]], "dispersed": "liquid"},
+        hysteresis={"ca_advancing": 110, "ca_receding": 80},
+        wetting={"phi_left": 1.0},
     )
     text = build_overview(cfg)
     assert "Critical Inclination Angle" in text
@@ -408,14 +365,9 @@ def test_build_overview_includes_critical_inclination_angle_for_chemical_step_co
 
 def test_build_overview_omits_critical_inclination_angle_without_chemical_step_config():
     cfg = SimulationConfig(
-        sim_type="multiphase",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
+        forces={"gravity_force": {"force_g": 1e-6}},
         grid_shape=(40, 20),
-        eos="double-well",
-        kappa=0.02,
-        rho_l=1.0,
-        rho_v=0.5,
-        interface_width=2,
-        gravity_force={"force_g": 1e-6},
     )
     text = build_overview(cfg)
     assert "Critical Inclination Angle" not in text

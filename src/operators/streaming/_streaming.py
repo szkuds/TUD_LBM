@@ -25,16 +25,15 @@ def stream(
     f: jnp.ndarray,
     lattice: Lattice,
     *,
-    periodic_axes: tuple[bool, bool] = (True, True),
+    periodic_axes: tuple[bool, ...] = (True, True, True),
 ) -> jnp.ndarray:
     """Propagate populations; zero-fill the wrap-around on non-periodic axes.
 
     Args:
         f: Population distributions, shape ``(nx, ny, nz, q, 1)``.
         lattice: :class:`~lattice.lattice.Lattice` with velocity vectors ``c``.
-        periodic_axes: Per-axis periodicity ``(x, y)`` —
-            :attr:`SimulationConfig.periodic_axes
-            <src.config.simulation_config.SimulationConfig.periodic_axes>`.
+        periodic_axes: Per-axis periodicity ``(x, y, z)`` —
+            ``periodic_axes(config)``.
             The default, fully periodic, zero-fills nothing.
 
     Returns:

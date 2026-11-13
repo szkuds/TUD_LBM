@@ -187,17 +187,12 @@ def _wetting_config():
     from src.config import SimulationConfig
 
     return SimulationConfig(
-        sim_type="multiphase_wetting",
+        multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.2, "interface_width": 2},
         grid_shape=(16, 12),
         tau=0.9,
         nt=20,
         save_interval=5,
-        eos="double-well",
-        kappa=0.02,
-        interface_width=2,
-        rho_l=1.0,
-        rho_v=0.2,
-        wetting_config={"advancing_ca": 100.0},
+        wetting={"phi_left": 1.0},
         initialisation={"radii": [0.25], "centres": [[0.5, 0.5]]},
     )
 

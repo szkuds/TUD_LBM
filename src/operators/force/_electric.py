@@ -27,8 +27,8 @@ from src.registry import force_model
 if TYPE_CHECKING:
     from src import Lattice
     from src.config import SimulationConfig
-    from src.operators.protocols import DifferentialOperator
     from src.pipeline.state import State
+    from src.protocols import DifferentialOperator
 
 # ══════════════════════════════════════════════════════════════════════
 # Data types
@@ -55,16 +55,16 @@ class ElectricParams(NamedTuple):
         The gradient closure is *not* stored here.  ``compute`` receives
         ``gradient_standard`` as a keyword argument, injected per step by
         ``compute_total_force_ext`` from ``SimulationSetup.gradient_standard``
-        (built once in ``build_setup`` via ``build_diff_ops``).
+        (built once in ``build_setup`` via ``build_differential``, bound to ``state.ext``).
     """
 
     permittivity_liquid: float
     permittivity_vapour: float
     conductivity_liquid: float
     conductivity_vapour: float
-    applied_voltage: float = 0.0
-    voltage_top: float = 0.0
-    voltage_bottom: float = 0.0
+    applied_voltage: float
+    voltage_top: float
+    voltage_bottom: float
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -72,7 +72,7 @@ class ElectricParams(NamedTuple):
 # ══════════════════════════════════════════════════════════════════════
 
 
-def _rho_to_phi(
+def rho_to_phi(
     rho: jnp.ndarray,
     phi_liquid: float,
     phi_vapour: float,
@@ -96,7 +96,7 @@ def _rho_to_phi(
     return frac * phi_liquid + (1.0 - frac) * phi_vapour
 
 
-def _equilibrium_h(
+def equilibrium_h(
     potential: jnp.ndarray,
     w: jnp.ndarray,
 ) -> jnp.ndarray:
@@ -119,16 +119,12 @@ def _equilibrium_h(
 # ══════════════════════════════════════════════════════════════════════
 
 
-@force_model(
-    name="electric_force",
-    required=tuple(f for f in ElectricParams._fields if f not in ElectricParams._field_defaults),
-    defaults=ElectricParams._field_defaults,
-)
+@force_model(name="electric_force")
 class ElectricForceModule(NamedTuple):
     """Electric force, bound to its parameters (:class:`ForceOperator`).
 
-    Stateful — carries auxiliary electric potential distribution ``h``
-    that evolves each time step via a secondary LBM sub-step.
+    Reads the electric potential distribution ``h`` from ``state.ext["electric"]``,
+    which the electric addon (:mod:`src.addons._electric`) evolves each step.
 
     Attributes:
         params: The electric parameters built from the ``[electric_force]`` section.
@@ -148,8 +144,8 @@ class ElectricForceModule(NamedTuple):
         """Build electric parameters (setup-time, non-jitted).
 
         Args:
-            params: The validated ``[electric_force]`` section; its schema is
-                :class:`ElectricParams`' own fields and defaults.
+            params: The validated ``[electric_force]`` section; its schema and
+                defaults are in :mod:`src.config.forces`.
             grid_shape: Spatial dimensions (unused, but required by protocol).
             config: Full simulation configuration (unused).
             lattice: Simulation lattice (unused).
@@ -168,7 +164,7 @@ class ElectricForceModule(NamedTuple):
     ) -> jnp.ndarray:
         """Compute electric force (step-time, jittable).
 
-        Reads ``state.f`` for density and ``state.h`` for the current
+        Reads ``state.f`` for density and ``state.ext["electric"].h`` for the current
         electric potential distribution.  Uses the ``gradient_standard``
         passed via keyword argument from :func:`compute_total_force_ext`.
 
@@ -183,22 +179,19 @@ class ElectricForceModule(NamedTuple):
         if gradient_standard is None:
             msg = "gradient_standard is required for electric force computation"
             raise TypeError(msg)
-        if state.h is None:
-            msg = "state.h (electric potential distributions) is required for electric force"
-            raise TypeError(msg)
         grad = gradient_standard
 
         # Sum over q-axis (axis 3) to get density; extract z-slice to 2D
         rho_3d = jnp.sum(state.f, axis=3, keepdims=True)  # (nx, ny, nz, 1, 1)
         rho_2d = rho_3d[:, :, 0, 0, 0]  # (nx, ny) - squeeze all singleton dims
-        epsilon_2d = _rho_to_phi(
+        epsilon_2d = rho_to_phi(
             rho_2d,
             self.params.permittivity_liquid,
             self.params.permittivity_vapour,
         )
 
         # Sum over q-axis for potential; extract z-slice to 2D
-        potential_3d = jnp.sum(state.h, axis=3, keepdims=True)  # (nx, ny, nz, 1, 1)
+        potential_3d = jnp.sum(state.ext["electric"].h, axis=3, keepdims=True)  # (nx, ny, nz, 1, 1)
         potential_3d_for_grad = potential_3d[:, :, :1, :, :]  # (nx, ny, 1, 1, 1) - take z slice for gradient
 
         # Gradient of potential → electric field

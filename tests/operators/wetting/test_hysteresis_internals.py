@@ -10,6 +10,8 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import pytest
+from src.config.boundary import Edge
+from src.config.wetting import ContactLine
 from src.operators.wetting import _hysteresis as hyst
 from src.operators.wetting._hysteresis import _cost_cll
 from src.operators.wetting._hysteresis import _import_optax
@@ -36,6 +38,29 @@ def _wetting(**overrides: float | jnp.ndarray) -> WettingState:
     return WettingState(**{k: jnp.array(v) for k, v in values.items()})
 
 
+def _regime(
+    side: ContactLine,
+    ca: float,
+    cll: float,
+    *,
+    window: tuple[float, float] = (80.0, 60.0),
+    latch: int | jnp.ndarray = 0,
+    stall: int | jnp.ndarray = 0,
+) -> hyst._Regime:
+    """The regime of a line at *cll* against an anchor at 10, with the default latch settings."""
+    return _side_regime(
+        jnp.array(ca),
+        jnp.array(cll),
+        jnp.array(10.0),
+        window,
+        side=side,
+        latch=jnp.asarray(latch, dtype=jnp.int32),
+        stall=jnp.asarray(stall, dtype=jnp.int32),
+        latch_gap=1.0,
+        stall_steps=5,
+    )
+
+
 def test_import_optax_raises_clear_message(mock_optax_missing):
     with pytest.raises(ImportError, match="pip install optax"):
         _import_optax()
@@ -51,26 +76,26 @@ def test_import_optax_raises_clear_message(mock_optax_missing):
     [
         # Window [60, 80], anchor at 10. Left CL expands in -x, right in +x.
         # Above the advancing bound: pinned only while contracting.
-        ("left", 90.0, 9.0, True, True),
-        ("left", 90.0, 11.0, False, False),  # receding at the advancing bound -> pinned
-        ("right", 90.0, 11.0, True, True),
-        ("right", 90.0, 9.0, False, False),
+        (ContactLine.LEFT, 90.0, 9.0, True, True),
+        (ContactLine.LEFT, 90.0, 11.0, False, False),  # receding at the advancing bound -> pinned
+        (ContactLine.RIGHT, 90.0, 11.0, True, True),
+        (ContactLine.RIGHT, 90.0, 9.0, False, False),
         # Below the receding bound: pinned only while expanding.
-        ("left", 50.0, 11.0, True, False),
-        ("left", 50.0, 9.0, False, False),  # advancing at the receding bound -> pinned
-        ("right", 50.0, 9.0, True, False),
-        ("right", 50.0, 11.0, False, False),
+        (ContactLine.LEFT, 50.0, 11.0, True, False),
+        (ContactLine.LEFT, 50.0, 9.0, False, False),  # advancing at the receding bound -> pinned
+        (ContactLine.RIGHT, 50.0, 9.0, True, False),
+        (ContactLine.RIGHT, 50.0, 11.0, False, False),
         # At the anchor: an out-of-window side still targets its bound.
-        ("left", 90.0, 10.0, True, True),
-        ("right", 50.0, 10.0, True, False),
+        (ContactLine.LEFT, 90.0, 10.0, True, True),
+        (ContactLine.RIGHT, 50.0, 10.0, True, False),
         # In window: always pinned, whichever way it drifted.
-        ("left", 70.0, 9.0, False, False),
-        ("right", 70.0, 11.0, False, False),
+        (ContactLine.LEFT, 70.0, 9.0, False, False),
+        (ContactLine.RIGHT, 70.0, 11.0, False, False),
     ],
 )
 def test_side_regime_truth_table(side, ca, cll, expected_moving, expected_advancing):
-    moving, advancing, _ = _side_regime(jnp.array(ca), jnp.array(cll), jnp.array(10.0), 80.0, 60.0, side=side)
-    assert (bool(moving), bool(advancing)) == (expected_moving, expected_advancing)
+    regime = _regime(side, ca, cll)
+    assert (bool(regime.moving), bool(regime.advancing)) == (expected_moving, expected_advancing)
 
 
 @pytest.mark.parametrize(
@@ -79,16 +104,87 @@ def test_side_regime_truth_table(side, ca, cll, expected_moving, expected_advanc
         # Inverted window adv 50 < rec 100 (a line advancing onto a more wetting
         # surface at a chemical step): CA 70 exceeds both bounds, so the motion
         # decides which one it targets. At the anchor it advances.
-        ("left", 9.0, True),
-        ("left", 10.0, True),
-        ("left", 11.0, False),
-        ("right", 11.0, True),
-        ("right", 9.0, False),
+        (ContactLine.LEFT, 9.0, True),
+        (ContactLine.LEFT, 10.0, True),
+        (ContactLine.LEFT, 11.0, False),
+        (ContactLine.RIGHT, 11.0, True),
+        (ContactLine.RIGHT, 9.0, False),
     ],
 )
 def test_side_regime_inverted_window_follows_the_motion(side, cll, expected_advancing):
-    moving, advancing, _ = _side_regime(jnp.array(70.0), jnp.array(cll), jnp.array(10.0), 50.0, 100.0, side=side)
-    assert (bool(moving), bool(advancing)) == (True, expected_advancing)
+    regime = _regime(side, 70.0, cll, window=(50.0, 100.0))
+    assert (bool(regime.moving), bool(regime.advancing)) == (True, expected_advancing)
+
+
+# The latch: a side that moved last step stays moving near its bound.
+
+_ADVANCING, _RECEDING = hyst.REGIME_ADVANCING, hyst.REGIME_RECEDING
+
+
+@pytest.mark.parametrize(
+    ("side", "latch", "ca", "cll", "expected"),
+    [
+        # Window [60, 80], gap 1, anchor 10. Inside the gap the latched side keeps moving.
+        (ContactLine.LEFT, _ADVANCING, 79.5, 9.0, _ADVANCING),
+        (ContactLine.RIGHT, _ADVANCING, 79.5, 11.0, _ADVANCING),
+        (ContactLine.LEFT, _RECEDING, 60.5, 11.0, _RECEDING),
+        # It need not pass its anchor on every step...
+        (ContactLine.LEFT, _ADVANCING, 79.5, 10.5, _ADVANCING),
+        # ...but outside the gap it is pinned,
+        (ContactLine.LEFT, _ADVANCING, 78.5, 9.0, hyst.REGIME_PINNED),
+        (ContactLine.LEFT, _RECEDING, 61.5, 11.0, hyst.REGIME_PINNED),
+        # and a latch does not carry over to the other bound.
+        (ContactLine.LEFT, _RECEDING, 79.5, 9.0, hyst.REGIME_PINNED),
+        # Never latched: in window is pinned, as before.
+        (ContactLine.LEFT, hyst.REGIME_PINNED, 79.5, 9.0, hyst.REGIME_PINNED),
+    ],
+)
+def test_a_latched_side_stays_moving_within_the_gap(side, latch, ca, cll, expected):
+    regime = _regime(side, ca, cll, latch=latch)
+
+    assert int(regime.latch) == expected
+    assert bool(regime.entered) == (expected != latch)
+
+
+def test_a_latched_line_that_stops_passing_its_anchor_stalls_out():
+    """Five steps behind the anchor (``stall_steps``) end the latch; the anchor never follows back."""
+    latch, stall = jnp.array(_ADVANCING), jnp.array(0)
+    codes = []
+    for _ in range(5):
+        regime = _regime(ContactLine.LEFT, 79.5, 10.5, latch=latch, stall=stall)
+        assert not bool(regime.progressed)
+        latch, stall = regime.latch, regime.stall
+        codes.append(int(latch))
+
+    assert codes == [_ADVANCING] * 4 + [hyst.REGIME_PINNED]
+    assert int(stall) == 0
+
+
+def test_passing_the_anchor_clears_the_stall_count():
+    regime = _regime(ContactLine.LEFT, 79.5, 9.0, latch=_ADVANCING, stall=4)
+
+    assert bool(regime.progressed)
+    assert int(regime.stall) == 0
+
+
+def test_a_moving_side_is_penalised_on_both_sides_of_its_bound():
+    below, above = (
+        float(
+            hyst._side_cost(
+                jnp.array(ca),
+                jnp.array(10.0),
+                anchor=jnp.array(10.0),
+                moving=jnp.array(True),
+                advancing=jnp.array(True),
+                ca_adv=jnp.array(80.0),
+                ca_rec=jnp.array(60.0),
+            )
+        )
+        for ca in (79.5, 80.5)
+    )
+
+    assert below == pytest.approx(above)
+    assert below > 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +245,32 @@ def test_phi_is_active_pinned_is_topology_independent(forward_drift):
     assert droplet != forward_drift
 
 
+# A moving side at its bound keeps the knob it has; only a neutral wall chooses.
+
+
+@pytest.mark.parametrize(
+    ("phi", "d_rho", "bound", "is_bubble", "expected"),
+    [
+        # An engaged knob stays active, whatever the bound and the topology.
+        (1.07, 0.0, 120.0, True, True),
+        (1.07, 0.0, 120.0, False, True),
+        (1.0, 0.2, 60.0, False, False),
+        (1.0, 0.2, 60.0, True, False),
+        # A neutral wall takes the side of 90 deg its bound lies on, through the liquid:
+        # a droplet at 120 needs a less wetting wall, a bubble at 120 (liquid 60) a more wetting one.
+        (1.0, 0.0, 120.0, False, False),
+        (1.0, 0.0, 120.0, True, True),
+        (1.0, 0.0, 60.0, False, True),
+        (1.0, 0.0, 60.0, True, False),
+    ],
+)
+def test_a_side_at_its_bound_keeps_its_engaged_knob(phi, d_rho, bound, is_bubble, expected):
+    result = hyst._held_phi_is_active(
+        jnp.array(phi), jnp.array(d_rho), bound=jnp.array(bound), is_bubble=jnp.array(is_bubble)
+    )
+    assert bool(result) == expected
+
+
 # ---------------------------------------------------------------------------
 # _side_cost — a pinned side also keeps its angle inside the window
 # ---------------------------------------------------------------------------
@@ -203,11 +325,16 @@ def _fake_setup() -> SimpleNamespace:
         "max_iterations_above": 3,
         "loss_tol": 1e-4,
         "saturation_gap": 1.0,
+        "latch_gap": 1.0,
+        "stall_steps": 5,
     }
     return SimpleNamespace(
         multiphase_params=SimpleNamespace(rho_l=1.0, rho_v=0.1, interface_width=5),
-        wetting_edge="bottom",
-        config=SimpleNamespace(hysteresis_config=hc),
+        config=SimpleNamespace(
+            hysteresis=hc,
+            init_type="multiphase_bubbles",
+            multiphase={"eos": "double-well", "kappa": 0.01, "rho_l": 1.0, "rho_v": 0.1, "interface_width": 5},
+        ),
     )
 
 
@@ -228,6 +355,7 @@ def test_advancing_side_targets_its_bound_and_its_anchor_follows(monkeypatch):
         _wetting(phi_left=1.05),
         measured,
         _fake_setup(),  # ty: ignore[invalid-argument-type]
+        edge=Edge.BOTTOM,
         trial_step_fn=_trial(9.0, 30.0),
     )
 
@@ -246,6 +374,7 @@ def test_plain_hysteresis_never_saturates(monkeypatch):
         _wetting(phi_left=1.05),
         measured,
         _fake_setup(),  # ty: ignore[invalid-argument-type]
+        edge=Edge.BOTTOM,
         trial_step_fn=_trial(9.0, 30.0),
     )
 
@@ -321,6 +450,7 @@ def test_receding_at_the_advancing_bound_stays_pinned(monkeypatch):
         _wetting(phi_left=1.2, d_rho_left=0.05),
         measured,
         _fake_setup(),  # ty: ignore[invalid-argument-type]
+        edge=Edge.BOTTOM,
         trial_step_fn=_trial(11.0, 30.0),
     )
 
@@ -332,7 +462,7 @@ def test_receding_at_the_advancing_bound_stays_pinned(monkeypatch):
 
 
 def test_update_wetting_state_requires_a_hysteresis_config():
-    setup = SimpleNamespace(config=SimpleNamespace(hysteresis_config=None))
+    setup = SimpleNamespace(config=SimpleNamespace(hysteresis=None))
     wetting, rho = _wetting(), jnp.ones((4, 4, 1, 1, 1))
-    with pytest.raises(TypeError, match="hysteresis_config is required"):
-        update_wetting_state(wetting, rho, setup, trial_step_fn=lambda p: (rho, rho))  # ty: ignore[invalid-argument-type]
+    with pytest.raises(TypeError, match=r"\[hysteresis\] is required"):
+        update_wetting_state(wetting, rho, setup, edge=Edge.BOTTOM, trial_step_fn=lambda p: (rho, rho))  # ty: ignore[invalid-argument-type]

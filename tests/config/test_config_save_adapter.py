@@ -10,10 +10,10 @@ Covers:
 
 from pathlib import Path
 import pytest
-from src.config.adapter_base import ConfigAdapter
 from src.config.adapter_base import get_adapter
 from src.config.adapter_toml import TomlAdapter
 from src.config.simulation_config import SimulationConfig
+from src.protocols import ConfigAdapter
 
 
 class TestTomlAdapterSave:
@@ -39,40 +39,35 @@ class TestTomlAdapterSave:
         assert loaded.tau == 0.8
         assert loaded.nt == 500
 
-    def test_save_roundtrip_preserves_sim_type(self, tmp_path):
-        """sim_type should survive a save/load round-trip."""
-        cfg = SimulationConfig(grid_shape=(10, 10), sim_type="single_phase")
+    def test_save_roundtrip_keeps_a_single_phase_run_single_phase(self, tmp_path):
+        """A run without a ``[multiphase]`` section loads back without one."""
+        cfg = SimulationConfig(grid_shape=(10, 10))
         adapter = TomlAdapter()
         dest = tmp_path / "config.toml"
         adapter.save(cfg, str(dest))
 
         loaded = TomlAdapter().load(str(dest))
-        assert loaded.sim_type == "single_phase"
+        assert loaded.multiphase is None
 
     def test_save_roundtrip_multiphase(self, tmp_path):
         """Multiphase fields should round-trip correctly."""
         cfg = SimulationConfig(
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
             grid_shape=(64, 64),
-            sim_type="multiphase",
             tau=0.99,
             nt=2000,
-            eos="double-well",
-            kappa=0.017,
-            rho_l=1.0,
-            rho_v=0.33,
-            interface_width=4,
         )
         adapter = TomlAdapter()
         dest = tmp_path / "config.toml"
         adapter.save(cfg, str(dest))
 
         loaded = TomlAdapter().load(str(dest))
-        assert loaded.sim_type == "multiphase"
-        assert loaded.eos == "double-well"
-        assert loaded.kappa == 0.017
-        assert loaded.rho_l == 1.0
-        assert loaded.rho_v == 0.33
-        assert loaded.interface_width == 4
+        assert loaded.multiphase is not None
+        assert loaded.multiphase["eos"] == "double-well"
+        assert loaded.multiphase["kappa"] == 0.017
+        assert loaded.multiphase["rho_l"] == 1.0
+        assert loaded.multiphase["rho_v"] == 0.33
+        assert loaded.multiphase["interface_width"] == 4
 
     def test_save_roundtrip_collision_scheme(self, tmp_path):
         """collision_scheme should be preserved."""
@@ -199,13 +194,8 @@ class TestSimulationIOConfigFileType:
         from src.simulation_io import SimulationIO
 
         cfg = SimulationConfig(
+            multiphase={"eos": "double-well", "kappa": 0.017, "rho_l": 1.0, "rho_v": 0.33, "interface_width": 4},
             grid_shape=(16, 16),
-            sim_type="multiphase_wetting",
-            eos="double-well",
-            kappa=0.017,
-            rho_l=1.0,
-            rho_v=0.33,
-            interface_width=4,
         )
         io = SimulationIO(
             base_dir=str(tmp_path),
@@ -215,9 +205,9 @@ class TestSimulationIOConfigFileType:
         )
 
         loaded = TomlAdapter().load(str(Path(io.run_dir) / "config.toml"))
-        assert loaded.sim_type == "multiphase_wetting"
-        assert loaded.eos == "double-well"
-        assert loaded.kappa == 0.017
-        assert loaded.rho_l == 1.0
-        assert loaded.rho_v == 0.33
-        assert loaded.interface_width == 4
+        assert loaded.multiphase is not None
+        assert loaded.multiphase["eos"] == "double-well"
+        assert loaded.multiphase["kappa"] == 0.017
+        assert loaded.multiphase["rho_l"] == 1.0
+        assert loaded.multiphase["rho_v"] == 0.33
+        assert loaded.multiphase["interface_width"] == 4

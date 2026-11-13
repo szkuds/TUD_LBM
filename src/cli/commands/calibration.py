@@ -20,6 +20,7 @@ from src.cli._console import success
 from src.cli.app import cli
 from src.cli.config_loading import _expand_raw_config
 from src.cli.config_loading import _load_raw_config
+from src.config.multiphase import multiphase_params
 from src.config.run_config import CONFIG_FILENAME
 
 if TYPE_CHECKING:
@@ -42,7 +43,7 @@ def _stageable(config: SimulationConfig, *, closed_form: bool) -> bool:
     from src.simulation_io.analysis.surface_tension import is_sweep_config
     from src.simulation_io.analysis.surface_tension import needs_calibration
 
-    if not config.is_multiphase or config.eos not in get_operator_names("pressure"):
+    if (params := multiphase_params(config)) is None or params.eos not in get_operator_names("pressure"):
         return False
     # A sweep run is the measurement of its fluid, not a run that needs one:
     # staging for it would duplicate the very sweep it belongs to.

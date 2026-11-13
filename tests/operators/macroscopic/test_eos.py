@@ -14,6 +14,7 @@ Covers:
        - ``compute_macroscopic_multiphase`` with CS EOS: finite outputs
        - Uniform density field → zero interaction force
        - ``build_setup`` with full CS config succeeds
+    4. Coexistence (Maxwell construction) for CS; none for double-well
 """
 
 from __future__ import annotations
@@ -25,7 +26,8 @@ from src.lattice.lattice import build_lattice
 
 # ---------------------------------------------------------------------------
 # Shared CS EOS parameters (from examples/config_cs_simple.toml)
-# Subcritical temperature; coexistence at rho_v≈0.015, rho_l≈12.18
+# Subcritical temperature (T_r = 0.5); Maxwell coexistence at rho_v≈0.0168, rho_l≈12.18
+# (the configured rho_v = 0.015 sits below it)
 # Singularity at bρ = 4  →  ρ_sing ≈ 26.8 — well above rho_l
 # ---------------------------------------------------------------------------
 
@@ -48,7 +50,7 @@ def lattice():
 
 @pytest.fixture(scope="module")
 def cs_mp():
-    from src.config.multiphase_params import MultiphaseParams
+    from src.config.multiphase import MultiphaseParams
 
     return MultiphaseParams(
         eos="carnahan-starling",
@@ -65,7 +67,7 @@ def cs_mp():
 
 @pytest.fixture(scope="module")
 def dw_mp():
-    from src.config.multiphase_params import MultiphaseParams
+    from src.config.multiphase import MultiphaseParams
 
     return MultiphaseParams(
         eos="double-well",
@@ -88,12 +90,9 @@ def _numpy_cs_mu0(rho: np.ndarray, a: float, b: float, r: float, t: float) -> np
 
 def _build_gradient_and_laplacian(lattice):
     """Return (gradient_standard, laplacian_density) operators for multiphase pipeline."""
-    from src.operators.differential import build_gradient_fn
-    from src.operators.differential import build_laplacian_fn
+    from tests.support.differential import bound_operators
 
-    return jax.jit(build_gradient_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))), jax.jit(
-        build_laplacian_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))
-    )
+    return bound_operators(lattice)
 
 
 # =====================================================================
@@ -223,7 +222,7 @@ class TestEosFactory:
 
     def test_missing_cs_params_raises(self):
         """Building CS EOS without a/b/r/t raises ValueError."""
-        from src.config.multiphase_params import MultiphaseParams
+        from src.config.multiphase import MultiphaseParams
         from src.operators.macroscopic.eos import build_eos_fn
 
         mp_incomplete = MultiphaseParams(
@@ -255,10 +254,10 @@ class TestCsEosPipeline:
         # Use rho_l phase (uniform — interface not required for smoke test)
         f = jnp.ones((NX, NY, NZ, 9, 1)) * (_RHO_L / 9.0)
 
-        rho, u_eq, force_total, pressure = compute_macroscopic_multiphase(
+        rho, u_eq, force_total, pressure, _ = compute_macroscopic_multiphase(
             f,
             lattice,
-            cs_mp,
+            mp=cs_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )
@@ -276,10 +275,10 @@ class TestCsEosPipeline:
         gradient_standard, laplacian_density = _build_gradient_and_laplacian(lattice)
         f = jnp.ones((NX, NY, NZ, 9, 1)) * (_RHO_L / 9.0)
 
-        rho, _, _, pressure = compute_macroscopic_multiphase(
+        rho, _, _, pressure, _ = compute_macroscopic_multiphase(
             f,
             lattice,
-            cs_mp,
+            mp=cs_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )
@@ -295,10 +294,10 @@ class TestCsEosPipeline:
 
         f = jnp.ones((NX, NY, NZ, 9, 1)) * (_RHO_L / 9.0)
 
-        _, _, force_total, _ = compute_macroscopic_multiphase(
+        _, _, force_total, _, _ = compute_macroscopic_multiphase(
             f,
             lattice,
-            cs_mp,
+            mp=cs_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )
@@ -311,10 +310,10 @@ class TestCsEosPipeline:
         gradient_standard, laplacian_density = _build_gradient_and_laplacian(lattice)
         f = jnp.ones((NX, NY, NZ, 9, 1)) * (_RHO_L / 9.0)
 
-        rho, u_eq, force_total, pressure = compute_macroscopic_multiphase(
+        rho, u_eq, force_total, pressure, _ = compute_macroscopic_multiphase(
             f,
             lattice,
-            cs_mp,
+            mp=cs_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )
@@ -340,7 +339,7 @@ class TestCsEosPipeline:
                 laplacian_density=laplacian_density,
             )
         )
-        rho, _, _, _ = jitted(f)
+        rho, _, _, _, _ = jitted(f)
         assert rho.shape == (NX, NY, NZ, 1, 1)
 
     def test_build_setup_with_cs_eos(self):
@@ -349,26 +348,26 @@ class TestCsEosPipeline:
         from src.pipeline.setup import build_setup
 
         cfg = SimulationConfig(
-            sim_type="multiphase",
+            multiphase={
+                "eos": "carnahan-starling",
+                "kappa": _KAPPA,
+                "rho_l": _RHO_L,
+                "rho_v": _RHO_V,
+                "interface_width": _INTERFACE_WIDTH,
+                "a_eos": _A,
+                "b_eos": _B,
+                "r_eos": _R,
+                "t_eos": _T,
+            },
             grid_shape=(8, 8),
             tau=0.99,
             nt=5,
-            eos="carnahan-starling",
-            kappa=_KAPPA,
-            rho_l=_RHO_L,
-            rho_v=_RHO_V,
-            interface_width=_INTERFACE_WIDTH,
-            a_eos=_A,
-            b_eos=_B,
-            r_eos=_R,
-            t_eos=_T,
         )
 
         setup = build_setup(cfg)
 
         assert setup.multiphase_params is not None
         assert setup.multiphase_params.eos == "carnahan-starling"
-        assert setup.step_fn is not None
 
     def test_cs_and_dw_produce_different_force(self, lattice, cs_mp, dw_mp):
         """CS and double-well EOS differ on a non-uniform density field (sanity check)."""
@@ -383,17 +382,17 @@ class TestCsEosPipeline:
             _RHO_V / 9.0,
         ) * jnp.ones((NX, NY, NZ, 9, 1))
 
-        _, _, force_cs, _ = compute_macroscopic_multiphase(
+        _, _, force_cs, _, _ = compute_macroscopic_multiphase(
             rho_field,
             lattice,
-            cs_mp,
+            mp=cs_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )
-        _, _, force_dw, _ = compute_macroscopic_multiphase(
+        _, _, force_dw, _, _ = compute_macroscopic_multiphase(
             rho_field,
             lattice,
-            dw_mp,
+            mp=dw_mp,
             gradient_standard=gradient_standard,
             laplacian_density=laplacian_density,
         )
@@ -449,7 +448,7 @@ class TestPressureRegistry:
 
     def test_registered_pressure_operator_is_resolved_by_build_pressure_fn(self):
         """``build_pressure_fn`` dispatches on the registry, not a hardcoded EOS branch."""
-        from src.config.multiphase_params import MultiphaseParams
+        from src.config.multiphase import MultiphaseParams
         from src.operators.macroscopic.eos import build_pressure_fn
         from src.registry import pressure_operator
         from src.registry import unregister_operator
@@ -483,7 +482,7 @@ class TestSurfaceTensionRegistry:
     """Whether an EOS needs a Young-Laplace calibration is registry membership."""
 
     def test_double_well_closed_form_matches_the_formula(self):
-        from src.config.multiphase_params import MultiphaseParams
+        from src.config.multiphase import MultiphaseParams
         from src.operators.macroscopic.eos import analytical_surface_tension
 
         mp = MultiphaseParams(
@@ -506,7 +505,7 @@ class TestSurfaceTensionRegistry:
 
     def test_degenerate_interface_width_resolves_to_none(self):
         """A width that cannot define an interface yields None, not a division by zero."""
-        from src.config.multiphase_params import MultiphaseParams
+        from src.config.multiphase import MultiphaseParams
         from src.operators.macroscopic.eos import analytical_surface_tension
 
         mp = MultiphaseParams(
@@ -519,7 +518,7 @@ class TestSurfaceTensionRegistry:
         assert analytical_surface_tension(mp) is None
 
     def test_registering_gives_an_eos_a_closed_form_with_no_list_to_edit(self):
-        from src.config.multiphase_params import MultiphaseParams
+        from src.config.multiphase import MultiphaseParams
         from src.operators.macroscopic.eos import analytical_surface_tension
         from src.operators.macroscopic.eos import has_analytical_surface_tension
         from src.registry import surface_tension_operator
@@ -548,3 +547,69 @@ class TestSurfaceTensionRegistry:
 
         assert get_operator_names("surface_tension") == {"double-well"}
         assert get_operator_names("surface_tension") <= get_operator_names("eos")
+
+
+# The Julia Maxwell script's preamble: rho_c = 3.5, p_c = 0.001, T_r = 0.65.
+_JULIA_B = 0.5218 / 3.5
+_JULIA_A = _JULIA_B**2 * 0.001 / (0.3773**2 * 0.4963)
+_JULIA_T_CRITICAL = 0.3773 * _JULIA_A / _JULIA_B
+
+
+class TestCoexistence:
+    """The Carnahan-Starling coexistence pair is the Maxwell construction of its own parameters."""
+
+    @staticmethod
+    def _pair(t: float = _T, a: float = _A, b: float = _B) -> tuple[float, float]:
+        from src.operators.macroscopic.eos import coexistence_densities
+
+        pair = coexistence_densities("carnahan-starling", {"a_eos": a, "b_eos": b, "r_eos": _R, "t_eos": t})
+        assert pair is not None
+        return pair
+
+    def test_shipped_fluid_matches_the_reference_pair(self):
+        rho_v, rho_l = self._pair()
+        assert rho_v == pytest.approx(0.01680445791, rel=1e-6)
+        assert rho_l == pytest.approx(12.18327187, rel=1e-6)
+
+    def test_pair_has_equal_pressure_and_chemical_potential(self):
+        from src.operators.macroscopic.eos._carnahan_starling import _eos_carnahan_starling
+        from src.operators.macroscopic.eos._carnahan_starling import _pressure_carnahan_starling
+
+        rho_v, rho_l = self._pair()
+        p_v, p_l = (float(_pressure_carnahan_starling(jnp.asarray(r), _A, _B, _R, _T)) for r in (rho_v, rho_l))
+        mu_v, mu_l = (float(_eos_carnahan_starling(jnp.asarray(r), _A, _B, _R, _T)) for r in (rho_v, rho_l))
+        assert p_l == pytest.approx(p_v, rel=1e-10)
+        assert mu_l == pytest.approx(mu_v, rel=1e-10)
+
+    def test_areas_are_equal_in_the_pressure_volume_plane(self):
+        from scipy.integrate import quad
+        from src.operators.macroscopic.eos._carnahan_starling import _pressure_carnahan_starling
+
+        rho_v, rho_l = self._pair()
+        p_sat = float(_pressure_carnahan_starling(jnp.asarray(rho_v), _A, _B, _R, _T))
+
+        def excess(volume: float) -> float:
+            return float(_pressure_carnahan_starling(jnp.asarray(1.0 / volume), _A, _B, _R, _T)) - p_sat
+
+        area, _ = quad(excess, 1.0 / rho_l, 1.0 / rho_v, limit=200)
+        assert area == pytest.approx(0.0, abs=1e-12)
+
+    def test_julia_defaults_reproduce_the_script(self):
+        rho_v, rho_l = self._pair(t=0.65 * _JULIA_T_CRITICAL, a=_JULIA_A, b=_JULIA_B)
+        assert rho_v == pytest.approx(0.14985544, rel=1e-6)
+        assert rho_l == pytest.approx(10.258465, rel=1e-6)
+
+    def test_supercritical_temperature_raises(self):
+        from src.operators.macroscopic.eos._carnahan_starling import carnahan_starling_coexistence
+
+        t_eos = 1.05 * _JULIA_T_CRITICAL
+        with pytest.raises(ValueError, match="critical temperature"):
+            carnahan_starling_coexistence(a_eos=_JULIA_A, b_eos=_JULIA_B, r_eos=_R, t_eos=t_eos)
+
+    def test_kind_membership_is_the_capability_check(self):
+        from src.operators.macroscopic.eos import coexistence_densities
+        from src.registry import get_operator_names
+
+        assert get_operator_names("coexistence") == {"carnahan-starling"}
+        assert get_operator_names("coexistence") <= get_operator_names("eos")
+        assert coexistence_densities("double-well", {}) is None

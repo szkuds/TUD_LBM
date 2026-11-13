@@ -8,8 +8,8 @@ from src.registry import surface_tension_operator
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
-    from src.config.multiphase_params import MultiphaseParams
-    from src.operators.protocols import EosOperator
+    from src.config.multiphase import MultiphaseParams
+    from src.protocols import EosOperator
 
 
 def _beta(mp: MultiphaseParams) -> float:

@@ -1,9 +1,8 @@
 # Test config for step_multiphase
-# Triggers: sim_type="multiphase", no [wetting], no [hysteresis], no [chemical_step]
+# Triggers: [multiphase], no [wetting], no [hysteresis], no [chemical_step]
 
 [simulation_type]
 simulation_name = "test_multiphase"
-type = "multiphase"
 grid_shape = [128, 128]
 lattice_type = "D2Q9"
 tau = 0.99

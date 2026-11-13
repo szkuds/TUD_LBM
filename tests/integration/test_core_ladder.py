@@ -25,6 +25,7 @@ from src.config.simulation_config import SimulationConfig
 from src.pipeline.runner import init_state
 from src.pipeline.runner import run
 from src.pipeline.setup import build_setup
+from src.pipeline.step import observe
 
 TAU = 0.99
 K_DIAG = (0.0, 0.5, 0.6, 0.0, 1.2, 0.0, 1.2, 1.0 / TAU, 1.0 / TAU)
@@ -44,13 +45,12 @@ BOX_BCS = {**CHANNEL_BCS, "left": "bounce-back", "right": "bounce-back"}
 def _run(scheme: str, grid: tuple[int, int, int], bcs: dict, force_g: float, angle_deg: float, nt: int):
     mrt = scheme == "mrt"
     config = SimulationConfig(
-        sim_type="single_phase",
+        forces={"gravity_force": {"force_g": force_g, "inclination_angle_deg": angle_deg}},
         grid_shape=grid,
         lattice_type="D2Q9",
         tau=TAU,
         nt=nt,
-        gravity_force={"force_g": force_g, "inclination_angle_deg": angle_deg},
-        bc_config=bcs,
+        boundary_conditions=bcs,
         save_interval=nt,
         collision_scheme="mrt" if mrt else "bgk",
         k_diag=K_DIAG if mrt else None,
@@ -58,9 +58,9 @@ def _run(scheme: str, grid: tuple[int, int, int], bcs: dict, force_g: float, ang
     setup = build_setup(config)
     state = init_state(setup)
     final_state, _ = run(setup, state, nt=nt)
-    rho = np.asarray(final_state.rho)[:, :, 0, 0, 0]
-    u = np.asarray(final_state.u)[:, :, 0, 0, :]
-    return rho, u, float(np.asarray(state.rho).sum())
+    rho = np.asarray(observe(setup, final_state).rho)[:, :, 0, 0, 0]
+    u = np.asarray(observe(setup, final_state).u)[:, :, 0, 0, :]
+    return rho, u, float(np.asarray(observe(setup, state).rho).sum())
 
 
 def _poiseuille(ny: int, force: float) -> np.ndarray:

@@ -1,0 +1,78 @@
+[simulation_type]
+simulation_name = "wetting_init_bds_F04"
+lattice_type = "D2Q9"
+grid_shape = [
+    401,
+    101,
+    1,
+]
+nt = 50000
+tau = 0.99
+collision_scheme = "mrt"
+k_diag = [
+    0.0,
+    0.5,
+    0.6,
+    0.0,
+    1.2,
+    0.0,
+    1.2,
+    1.0101010101010102,
+    1.0101010101010102,
+]
+init_type = "multiphase_bubbles"
+save_interval = 2500
+skip_interval = 0
+type = "multiphase_wetting"
+
+[boundary_conditions]
+left = "bounce-back"
+right = "bounce-back"
+top = "wetting"
+bottom = "bounce-back"
+front = "periodic"
+back = "periodic"
+
+[initialisation]
+centres = [
+    [
+        0.7,
+        1,
+    ],
+]
+radii = [
+    0.5,
+]
+dispersed = "vapour"
+
+[multiphase]
+eos = "carnahan-starling"
+kappa = 0.015
+rho_l = 12.18
+rho_v = 0.015
+interface_width = 5
+a_eos = 0.00031459670905604266
+b_eos = 0.1490857142857143
+r_eos = 1.0
+t_eos = 0.00039808421247983624
+
+[output]
+results_dir = "/scratch/sbszkudlarek/LBM/26_TUD_LBM/TUD_LBM_data"
+save_fields = [
+    "f",
+    "rho",
+    "u",
+    "force",
+    "force_ext",
+]
+plot_fields = [
+    "density",
+    "velocity",
+]
+output_format = "numpy"
+
+[wetting]
+phi_left = 1.05
+phi_right = 1.05
+d_rho_left = 0.0
+d_rho_right = 0.0

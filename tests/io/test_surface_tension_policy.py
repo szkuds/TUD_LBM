@@ -14,7 +14,7 @@ from src.simulation_io.analysis.droplet_metrics import measured_sigma_lg
 from src.simulation_io.analysis.droplet_metrics import resolve_scales
 from src.simulation_io.plotting._simulation_csv import build_simulation_csv
 from tests.support.run_dirs import build_run_dir
-from tests.support.run_dirs import wetting_config
+from tests.support.run_dirs import wetting
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -23,7 +23,7 @@ _MEASURED = 0.011
 
 
 def _calibrated_config():
-    return wetting_config(extra={"surface_tension": _MEASURED})
+    return wetting(extra={"surface_tension": _MEASURED})
 
 
 def test_measured_sigma_read_from_config_extra():
@@ -31,7 +31,7 @@ def test_measured_sigma_read_from_config_extra():
 
 
 def test_measured_sigma_absent_without_calibration():
-    assert measured_sigma_lg(wetting_config()) is None
+    assert measured_sigma_lg(wetting()) is None
 
 
 def test_primary_prefers_measured_over_analytical():
@@ -45,7 +45,7 @@ def test_primary_prefers_measured_over_analytical():
 
 
 def test_primary_falls_back_to_analytical_without_calibration():
-    scales = resolve_scales(wetting_config())
+    scales = resolve_scales(wetting())
 
     assert scales is not None
     assert scales.sigma_source == "analytical"
@@ -80,7 +80,7 @@ def test_csv_records_which_sigma_was_used(tmp_path: Path):
 
 
 def test_uncalibrated_csv_reports_analytical_source(tmp_path: Path):
-    config = wetting_config()
+    config = wetting()
     run_dir = build_run_dir(tmp_path, config=config)
 
     out = build_simulation_csv(run_dir, config)
@@ -93,27 +93,29 @@ def test_uncalibrated_csv_reports_analytical_source(tmp_path: Path):
 
 
 _CS_FLUID = {
-    "eos": "carnahan-starling",
-    "kappa": 0.01,
-    "rho_l": 0.4,
-    "rho_v": 0.02,
-    "interface_width": 4,
-    "a_eos": 0.5,
-    "b_eos": 4.0,
-    "r_eos": 1.0,
-    "t_eos": 0.05,
+    "multiphase": {
+        "eos": "carnahan-starling",
+        "kappa": 0.01,
+        "rho_l": 0.4,
+        "rho_v": 0.02,
+        "interface_width": 4,
+        "a_eos": 0.00031459670905604266,
+        "b_eos": 0.1490857142857143,
+        "r_eos": 1.0,
+        "t_eos": 0.00039808421247983624,
+    }
 }
 
 
 def test_uncalibrated_fluid_without_a_closed_form_has_no_measured_sigma():
-    assert measured_sigma_lg(wetting_config(**_CS_FLUID)) is None
+    assert measured_sigma_lg(wetting(**_CS_FLUID)) is None
 
 
 def test_measured_sigma_is_resolved_from_the_cache_not_the_config():
     """A run's config.toml stores no sigma; its fluid parameters find the cache entry."""
     from src.simulation_io.analysis.surface_tension import surface_tension as st
 
-    config = wetting_config(**_CS_FLUID)
+    config = wetting(**_CS_FLUID)
     radii = st.sweep_radii()
     st._store_cache(st._cache_key(config), radii, _MEASURED / radii, _MEASURED, st._CALIBRATION_GRID_SHAPE)
 

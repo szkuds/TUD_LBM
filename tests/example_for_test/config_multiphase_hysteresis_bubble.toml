@@ -5,7 +5,6 @@
 
 [simulation_type]
 simulation_name = "test_multiphase_hysteresis_bubble"
-type = "multiphase_hysteresis"
 grid_shape = [256, 64]
 lattice_type = "D2Q9"
 tau = 0.99

@@ -11,21 +11,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
 from src.config.run_config import SIMULATION_CSV_FILENAME
+from src.config.wetting import has_wetting_wall
+from src.protocols import AnalysisPlot
 from src.registry import analysis_operator
 from src.simulation_io.analysis.droplet_metrics import droplet_series_for_run
 from src.simulation_io.plotting._analysis_common import _set_empty_state
-from src.simulation_io.plotting.base import AnalysisPlot
 
 if TYPE_CHECKING:
     import matplotlib.axes
     from src.config import SimulationConfig
     from src.simulation_io.analysis.droplet_metrics import MetricScales
-
-_SUPPORTED_SIM_TYPES = {
-    "multiphase_wetting",
-    "multiphase_hysteresis",
-    "multiphase_hysteresis_chemical_step",
-}
 
 
 def _warn_r_zero_fallback(config: SimulationConfig, scales: MetricScales) -> None:
@@ -45,7 +40,7 @@ def _warn_r_zero_fallback(config: SimulationConfig, scales: MetricScales) -> Non
 def build_simulation_csv(run_dir: str | Path, config: SimulationConfig) -> Path | None:
     """Compute per-timestep metrics and write ``simulation_data.csv``.
 
-    Skips silently (returns ``None``) when *config.sim_type* is not a supported
+    Skips silently (returns ``None``) when *config* has no wetting wall, the supported
     wetting variant, or when the run has no usable snapshots.
 
     Args:
@@ -61,7 +56,7 @@ def build_simulation_csv(run_dir: str | Path, config: SimulationConfig) -> Path 
         print("pandas is required for CSV export. Install with: pip install pandas")
         return None
 
-    if config.sim_type not in _SUPPORTED_SIM_TYPES:
+    if not has_wetting_wall(config):
         return None
 
     run_dir = Path(run_dir)

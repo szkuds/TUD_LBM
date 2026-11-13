@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 _KERNEL = """
 [simulation_type]
 simulation_name = "bench test"
-type = "multiphase"
 grid_shape = [32, 32]
 lattice_type = "D2Q9"
 tau = 0.99
@@ -49,7 +48,6 @@ save_fields = ["rho", "u"]
 _HYSTERESIS = """
 [simulation_type]
 simulation_name = "bench hysteresis test"
-type = "multiphase_hysteresis"
 grid_shape = [32, 16]
 lattice_type = "D2Q9"
 tau = 0.99
@@ -140,7 +138,7 @@ def test_fingerprint_captures_hysteresis_work_per_step(tmp_path):
     config = _load_single_config(str(_write_config(tmp_path, _HYSTERESIS)))
     fingerprint = _fingerprint(config)
 
-    assert fingerprint["sim_type"] == "multiphase_hysteresis"
+    assert fingerprint["phase"] == "multiphase"
     assert fingerprint["max_iterations"] == 2
     assert fingerprint["loss_tol"] == 0.0
 
@@ -149,17 +147,24 @@ def test_fingerprint_captures_hysteresis_work_per_step(tmp_path):
 
 
 def test_breakdown_isolates_the_optimiser_for_hysteresis(tmp_path):
-    """no_optimiser must null wetting_fn and change nothing else."""
+    """Each rung replaces only the wetting addon's post_step; its wall and everything else stay."""
     from src.cli.config_loading import _load_single_config
     from src.pipeline.setup import build_setup
 
     setup = build_setup(_load_single_config(str(_write_config(tmp_path, _HYSTERESIS))))
     variants = {name: ablated for name, ablated, _why in _breakdown_variants(setup)}
+    configured = dict(setup.addons)["wetting"]
 
-    assert set(variants) == {"no_optimiser", "plain_step"}
-    assert variants["no_optimiser"].wetting_fn is None
-    assert variants["no_optimiser"].step_fn is setup.step_fn
-    assert variants["plain_step"].step_fn is not setup.step_fn
+    assert set(variants) == {"no_optimiser", "no_measurement"}
+    no_optimiser = dict(variants["no_optimiser"].addons)["wetting"]
+    no_measurement = dict(variants["no_measurement"].addons)["wetting"]
+    assert no_optimiser.post_step is not None
+    assert no_optimiser.post_step is not configured.post_step
+    assert no_measurement.post_step is None
+    for ablated in (no_optimiser, no_measurement):
+        assert ablated.ghost_fill is configured.ghost_fill
+        assert ablated.init_state is configured.init_state
+    assert variants["no_optimiser"]._replace(addons=setup.addons) == setup
 
 
 def test_breakdown_is_empty_for_a_plain_multiphase_run(tmp_path):
@@ -230,5 +235,5 @@ def test_benchmark_breakdown_attributes_cost_to_the_optimiser(tmp_path):
     result = run_benchmark(str(config_path), steps=2, warmup=0, repeats=1, breakdown=True)
 
     labels = [m.label for m in result.breakdown]
-    assert labels == ["no_optimiser", "plain_step"]
+    assert labels == ["no_optimiser", "no_measurement"]
     assert result.breakdown[0].best < result.steady.best

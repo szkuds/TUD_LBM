@@ -11,6 +11,7 @@ single-phase ``"standard_equilibrium"``, which carries the pressure.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
+from src.config.boundary import Edge
 from src.operators.equilibrium._equilibrium import compute_equilibrium
 from src.registry import boundary_condition
 
@@ -23,9 +24,9 @@ def apply_velocity_inlet(
     f_streamed: jnp.ndarray,
     _f_collision: jnp.ndarray,
     lattice: Lattice,
-    edge: str,
+    edge: Edge,
     *,
-    u0: float = 0.05,
+    u0: float,
 ) -> jnp.ndarray:
     """Apply an equilibrium-reset velocity inlet on the ``"left"`` edge.
 
@@ -38,13 +39,13 @@ def apply_velocity_inlet(
         _f_collision: Post-collision populations (unused — inlet overwrites
             unconditionally rather than blending with streamed values).
         lattice: :class:`~src.lattice.lattice.Lattice`.
-        edge: Edge name; only ``"left"`` is handled, other edges are no-ops.
+        edge: The domain face; only ``"left"`` is handled, other edges are no-ops.
         u0: Peak inflow velocity (lattice units).
 
     Returns:
         Populations with the inlet column reset to the prescribed equilibrium.
     """
-    if edge != "left":
+    if edge != Edge.LEFT:
         return f_streamed
 
     ny = f_streamed.shape[1]
@@ -57,4 +58,4 @@ def apply_velocity_inlet(
     rho_in = jnp.ones((1, ny, 1, 1, 1), dtype=f_streamed.dtype)
 
     feq_inlet = compute_equilibrium(rho_in, u_in, lattice)
-    return f_streamed.at[0, :, 0, :, 0].set(feq_inlet[0, :, 0, :, 0])
+    return f_streamed.at[0, :, :, :, 0].set(feq_inlet[0, :, :, :, 0])

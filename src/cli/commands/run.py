@@ -1,16 +1,13 @@
 """The ``tud-lbm run`` command."""
 
 from __future__ import annotations
-from typing import cast
 import click
 from src.cli._console import cli_command
 from src.cli._console import success
 from src.cli.app import cli
 from src.cli.execution import RunFlags
 from src.cli.execution import _run_impl
-from src.cli.options import optional_int
 from src.cli.options import optional_int_option
-from src.cli.options import str_tuple
 from src.cli.wetting_init import _WETTING_INIT_NT
 
 # From-imports on purpose: these are the defaults as they stand before
@@ -134,7 +131,26 @@ from src.config.config_overview import DEBUG_WETTING_INTERVAL
     help="Generate comparison plots after a parameter sweep completes.",
 )
 @cli_command(title="Lattice Boltzmann Method Solver", interrupt_message="Simulation interrupted by user.")
-def run(**cli_kwargs: object) -> None:
+def run(
+    *,
+    config_path: str | None,
+    no_prompt: bool,
+    dry_run: bool,
+    list_operators: bool,
+    list_analysis: bool,
+    max_workers: int | None,
+    fail_fast: bool,
+    overrides: tuple[str, ...],
+    override_phase1: tuple[str, ...],
+    override_phase2: tuple[str, ...],
+    overview: bool,
+    debug_wetting: int | None,
+    debug_stability: int | None,
+    init_wetting: int | None,
+    init_dir: str | None,
+    continue_run: bool,
+    run_compare: bool,
+) -> None:
     """Run a TUD-LBM simulation from CONFIG_PATH.
 
     CONFIG_PATH is an optional path to a configuration file (.toml).
@@ -214,24 +230,19 @@ def run(**cli_kwargs: object) -> None:
         # Resume from the latest snapshot saved by this run
         tud-lbm run /path/to/run/config.toml --continue
     """
-    config_path = cast("str | None", cli_kwargs["config_path"])
-    max_workers = cast("int | None", cli_kwargs["max_workers"])
-    overrides = str_tuple(cli_kwargs["overrides"])
-    init_dir = cast("str | None", cli_kwargs["init_dir"])
-    continue_run = cast("bool", cli_kwargs["continue_run"])
     flags = RunFlags(
-        no_prompt=cast("bool", cli_kwargs["no_prompt"]),
-        dry_run=cast("bool", cli_kwargs["dry_run"]),
-        list_operators=cast("bool", cli_kwargs["list_operators"]),
-        list_analysis=cast("bool", cli_kwargs["list_analysis"]),
-        fail_fast=cast("bool", cli_kwargs["fail_fast"]),
-        overview=cast("bool", cli_kwargs["overview"]),
-        debug_wetting=optional_int(cli_kwargs["debug_wetting"]),
-        debug_stability=optional_int(cli_kwargs["debug_stability"]),
-        init_wetting=optional_int(cli_kwargs["init_wetting"]),
-        override_phase1=str_tuple(cli_kwargs["override_phase1"]),
-        override_phase2=str_tuple(cli_kwargs["override_phase2"]),
-        run_compare=cast("bool", cli_kwargs["run_compare"]),
+        no_prompt=no_prompt,
+        dry_run=dry_run,
+        list_operators=list_operators,
+        list_analysis=list_analysis,
+        fail_fast=fail_fast,
+        overview=overview,
+        debug_wetting=debug_wetting,
+        debug_stability=debug_stability,
+        init_wetting=init_wetting,
+        override_phase1=override_phase1,
+        override_phase2=override_phase2,
+        run_compare=run_compare,
         continue_run=continue_run,
     )
 

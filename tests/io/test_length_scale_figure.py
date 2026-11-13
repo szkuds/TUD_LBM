@@ -8,23 +8,19 @@ from src.simulation_io.analysis.physical_parameters import write_length_scale_fi
 from src.simulation_io.analysis.physical_parameters.length_scale_figure import _analytic_region
 from src.simulation_io.analysis.physical_parameters.length_scale_figure import _counted_panel
 from src.simulation_io.analysis.physical_parameters.length_scale_figure import _snapshot_panels
+from tests.support.config import merge_overrides
 
 _FIGURE_REL = ("plots", "analysis", "length_scale.png")
 
 
 def _mp_config(**kwargs) -> SimulationConfig:
     base = {
-        "sim_type": "multiphase",
+        "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
+        "forces": {"gravity_force": {"force_g": 1e-6}},
         "grid_shape": (40, 20),
-        "eos": "double-well",
-        "kappa": 0.02,
-        "rho_l": 1.0,
-        "rho_v": 0.5,
-        "interface_width": 2,
-        "gravity_force": {"force_g": 1e-6},
         "initialisation": {"centres": [[0.5, 0.1]], "radii": [0.4]},
     }
-    base.update(kwargs)
+    merge_overrides(base, kwargs)
     return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
 
 
@@ -80,7 +76,7 @@ def test_output_directory_is_independent_of_the_snapshot_directory(tmp_path):
 
 def test_renders_without_gravity(tmp_path):
     """No gravity means no Bo to caption; the figure must still be written."""
-    path = write_length_scale_figure(_mp_config(gravity_force=None), tmp_path)
+    path = write_length_scale_figure(_mp_config(forces={}), tmp_path)
 
     assert path is not None
     assert path.exists()

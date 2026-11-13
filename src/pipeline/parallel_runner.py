@@ -36,10 +36,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from collections.abc import Sequence
     from src.config.simulation_config import SimulationConfig
 
 
@@ -129,9 +129,11 @@ def run_single_simulation(
             output_format=config.output_format,
         )
 
+        from src.simulation_io.analysis.coexistence import calibrate_coexistence
         from src.simulation_io.analysis.surface_tension import record_surface_tension
 
         config = record_surface_tension(config, io.run_dir)
+        calibrate_coexistence(config, io.run_dir)
 
         # Run simulation with streaming I/O
         _, _ = run_fn(
@@ -208,7 +210,8 @@ def run_parallel_simulations(
         return []
 
     n_configs = len(configs)
-    params_iter: list[dict[str, Any] | None]
+    # Sequence, not list: it is covariant, so the caller's list of dicts fits as is.
+    params_iter: Sequence[dict[str, Any] | None]
     if parameters_list is None:
         params_iter = [None] * n_configs
     elif len(parameters_list) != n_configs:
@@ -217,7 +220,7 @@ def run_parallel_simulations(
             msg,
         )
     else:
-        params_iter = cast("list[dict[str, Any] | None]", parameters_list)
+        params_iter = parameters_list
 
     results: list[SimulationResult] = []
     futures_to_idx: dict[Any, int] = {}

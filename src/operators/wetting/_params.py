@@ -1,4 +1,10 @@
-"""Shared wetting parameter container."""
+"""Wetting containers: the four wall parameters and the per-step wetting state.
+
+:class:`WettingState` is the wetting addon's substate, ``State.ext["wetting"]``.
+It carries the same four parameter names as :class:`WettingParams`, so the wall
+ghost fill reads either one: the live state, or the hysteresis optimiser's
+candidate parameters.
+"""
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
@@ -23,8 +29,54 @@ class WettingParams(NamedTuple):
 
     @classmethod
     def from_defaults(cls, defaults: Mapping[str, float]) -> WettingParams:
-        """Build the parameters from ``SimulationConfig.wetting_defaults``.
+        """Build the parameters from ``src.config.wetting.wetting_scalars``.
 
         Each of the four scalars becomes a 0-d array.
         """
         return cls(**{name: jnp.array(defaults[name]) for name in cls._fields})
+
+
+class WettingState(NamedTuple):
+    """Dynamic wetting / hysteresis parameters, updated every step.
+
+    All fields are ``jax.Array`` scalars so that the state can flow through
+    ``jax.lax.scan`` as part of the carry.
+
+    Attributes:
+        phi_left: Wetting potential parameter (left).
+        phi_right: Wetting potential parameter (right).
+        d_rho_left: Density offset parameter (left contact line).
+        d_rho_right: Density offset parameter (right contact line).
+        ca_left: Current contact angle, left.
+        ca_right: Current contact angle, right.
+        cll_left: Contact-line location, left. A coordinate *tangential* to the
+            wetting wall: x for bottom/top walls, y for left/right walls.
+        cll_right: Contact-line location, right. Tangential to the wetting wall
+            (see ``cll_left``).
+
+        latch_left: Regime the left line is latched in: ``0`` pinned, ``1``
+            advancing, ``2`` receding (the hysteresis optimiser's regime codes).
+        latch_right: As ``latch_left``, right.
+        stall_left: Consecutive steps the latched left line has not passed its anchor.
+        stall_right: As ``stall_left``, right.
+
+    ``cll_left`` / ``cll_right`` are the hysteresis *anchors*: they follow the
+    measured contact line only while it moves the way its exceeded window bound
+    allows, and hold still while it is pinned.
+
+    The latch fields default to "pinned", which is what a fixed-wetting run and a
+    restart from a snapshot without them carry.
+    """
+
+    phi_left: jnp.ndarray
+    phi_right: jnp.ndarray
+    d_rho_left: jnp.ndarray
+    d_rho_right: jnp.ndarray
+    ca_left: jnp.ndarray
+    ca_right: jnp.ndarray
+    cll_left: jnp.ndarray
+    cll_right: jnp.ndarray
+    latch_left: jnp.ndarray = jnp.zeros((), dtype=jnp.int32)
+    latch_right: jnp.ndarray = jnp.zeros((), dtype=jnp.int32)
+    stall_left: jnp.ndarray = jnp.zeros((), dtype=jnp.int32)
+    stall_right: jnp.ndarray = jnp.zeros((), dtype=jnp.int32)
