@@ -8,8 +8,8 @@ registered, it must satisfy its protocol's structural requirements.
 import jax.numpy as jnp
 import pytest
 from src.config import SimulationConfig
-from src.config.boundary import IN_PLANE_EDGES
 from src.config.boundary import boundary_edges
+from src.config.boundary import edges_of
 from src.config.multiphase import multiphase_params
 from src.lattice.lattice import build_lattice
 
@@ -302,18 +302,19 @@ class TestBoundaryProtocol:
         assert result.shape == f_stream.shape
 
     def test_obstacle_heads_the_boundary_chain(self, lattice_d2q9, test_state):
-        """With a mask, the chain is the obstacle bounce-back, then the edges; it keeps the protocol."""
+        """With a mask, the composite carries it ahead of the edges; it keeps the protocol."""
         from src.operators.boundary import build_bc
         from src.operators.boundary._boundary_condition_aggregator import CompositeBoundary
 
         f_stream, f_col = test_state[0], test_state[0]
         mask = jnp.zeros((*f_stream.shape[:3], 1, 1), dtype=bool).at[3, 3].set(True)
-        boundary_conditions = dict.fromkeys(IN_PLANE_EDGES, "periodic")
+        boundary_conditions = dict.fromkeys(edges_of(2), "periodic")
 
         bc_fn = build_bc(_edges_of(boundary_conditions), lattice_d2q9, mask)
 
         assert isinstance(bc_fn, CompositeBoundary)
-        assert [edge for edge, _ in bc_fn.edges] == ["obstacle", "bottom", "top", "left", "right"]
+        assert bc_fn.obstacle_mask is mask
+        assert [edge for edge, _ in bc_fn.edges] == ["bottom", "top", "left", "right"]
         assert bc_fn(f_stream, f_col).shape == f_stream.shape
 
 

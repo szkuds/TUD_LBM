@@ -23,7 +23,7 @@ from typing import Any
 from src.config._checks import registered_names
 from src.config._checks import validate_nonnegative
 from src.config.boundary import complete_boundary_conditions
-from src.config.boundary import is_three_dimensional
+from src.config.boundary import lattice_dim
 from src.config.boundary import validate_boundary_conditions
 from src.config.config_overview import BASE_RESULTS_DIR
 from src.config.defaults import DEFAULT_EQUILIBRIUM
@@ -258,7 +258,7 @@ class SimulationConfig:
         A 3D run of any of these would otherwise fail deep in a trace, or use
         only the ``z = 0`` plane without a word.
         """
-        if not is_three_dimensional(self.lattice_type):
+        if lattice_dim(self.lattice_type) < 3:  # noqa: PLR2004
             if self.grid_shape[2] != 1:
                 msg = f"{self.lattice_type} is two-dimensional, got nz={self.grid_shape[2]}; use a 3D lattice"
                 raise ValueError(msg)

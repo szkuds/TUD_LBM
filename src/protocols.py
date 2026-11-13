@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     import matplotlib.axes
     import matplotlib.figure
     import numpy as np
+    from src.config.boundary import Edge
     from src.config.simulation_config import SimulationConfig
     from src.lattice.lattice import Lattice
     from src.operators.wetting._params import WettingParams
@@ -232,7 +233,7 @@ class BoundaryCondition(Protocol):
         f_streamed: jnp.ndarray,
         f_collision: jnp.ndarray,
         lattice: Lattice,
-        edge: str,
+        edge: Edge,
         /,
     ) -> jnp.ndarray:
         """Apply this boundary condition on *edge*.
@@ -241,7 +242,7 @@ class BoundaryCondition(Protocol):
             f_streamed: Post-streaming populations.
             f_collision: Post-collision populations (for symmetry BC).
             lattice: :class:`~src.lattice.lattice.Lattice`.
-            edge: Edge name, e.g. ``"bottom"``.
+            edge: The domain face.
 
         Returns:
             Populations with the boundary condition applied on *edge*.

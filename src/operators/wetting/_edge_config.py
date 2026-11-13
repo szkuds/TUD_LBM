@@ -5,9 +5,7 @@ Determines which edges need wetting and whether the edges bounding them are peri
 
 from __future__ import annotations
 from src.config.boundary import Edge
-
-#: Order in which ``[boundary_conditions]`` is scanned for wetting walls; the first is measured.
-_WETTING_SCAN_ORDER = (Edge.BOTTOM, Edge.TOP, Edge.LEFT, Edge.RIGHT)
+from src.config.boundary import edges_of
 
 
 def _resolve_wetting_edges(
@@ -19,7 +17,8 @@ def _resolve_wetting_edges(
         List of ``(edge, perp_start_periodic, perp_end_periodic)``.
     """
     edges = []
-    for edge in _WETTING_SCAN_ORDER:
+    # The in-plane edges, in application order; the first wetting one is measured.
+    for edge in edges_of(2):
         if boundary_conditions.get(edge) != "wetting":
             continue
         perp_start, perp_end = edge.tangential_ends

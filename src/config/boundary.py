@@ -37,12 +37,19 @@ class Edge(StrEnum):
     @property
     def normal_axis(self) -> int:
         """The spatial axis normal to this face: 0 (x), 1 (y) or 2 (z)."""
-        return _NORMAL_AXIS[self]
+        return _FACE[self][0]
 
     @property
     def at_far_end(self) -> bool:
         """Whether this face is the last index of its normal axis (``top``, ``right``, ``front``)."""
-        return self in _FAR_END
+        return _FACE[self][1]
+
+    @property
+    def cells(self) -> tuple[slice | int, ...]:
+        """The ``(x, y, z)`` index selecting the cells of this face."""
+        cells: list[slice | int] = [slice(None)] * 3
+        cells[self.normal_axis] = -1 if self.at_far_end else 0
+        return tuple(cells)
 
     @property
     def tangential_ends(self) -> tuple[Edge, Edge]:
@@ -50,21 +57,20 @@ class Edge(StrEnum):
         return (Edge.BOTTOM, Edge.TOP) if self.normal_axis == 0 else (Edge.LEFT, Edge.RIGHT)
 
 
-_NORMAL_AXIS: dict[Edge, int] = {
-    Edge.LEFT: 0,
-    Edge.RIGHT: 0,
-    Edge.BOTTOM: 1,
-    Edge.TOP: 1,
-    Edge.BACK: 2,
-    Edge.FRONT: 2,
+#: Edge -> (normal axis, at the far end of it). ``front`` is ``z = nz - 1``.
+_FACE: dict[Edge, tuple[int, bool]] = {
+    Edge.BOTTOM: (1, False),
+    Edge.TOP: (1, True),
+    Edge.LEFT: (0, False),
+    Edge.RIGHT: (0, True),
+    Edge.BACK: (2, False),
+    Edge.FRONT: (2, True),
 }
-_FAR_END: frozenset[Edge] = frozenset({Edge.TOP, Edge.RIGHT, Edge.FRONT})
 
-BC_APPLICATION_ORDER: tuple[Edge, ...] = tuple(Edge)
-#: In this order the completed ``[boundary_conditions]`` table, and so a saved ``config.toml``, lists them.
-IN_PLANE_EDGES: tuple[Edge, ...] = (Edge.TOP, Edge.BOTTOM, Edge.LEFT, Edge.RIGHT)
-OUT_OF_PLANE_EDGES: tuple[Edge, ...] = (Edge.FRONT, Edge.BACK)
-_PLANAR_DIM: int = 2
+
+def edges_of(dim: int) -> tuple[Edge, ...]:
+    """The faces of a *dim*-dimensional domain, in application order."""
+    return tuple(edge for edge in Edge if edge.normal_axis < dim)
 
 
 class BoundaryEdge(NamedTuple):
@@ -91,33 +97,18 @@ def parameter_section_key(edge: str, name: str) -> str:
     return f"{edge}_{name.replace('-', '_')}"
 
 
-def lattice_edges(lattice_type: str) -> tuple[Edge, ...]:
-    """The edges a domain on *lattice_type* has.
+def lattice_dim(lattice_type: str) -> int:
+    """The number of spatial dimensions *lattice_type* declares at its registration.
 
-    A two-dimensional lattice has no ``front``/``back`` face, so those edges are
-    neither completed, validated, printed nor saved for it. The dimension is the
-    ``dim`` the lattice declares at its registration.
-
-    Args:
-        lattice_type: A lattice name. An unregistered one gets every edge;
-            :class:`~src.config.simulation_config.SimulationConfig` rejects the
-            name itself.
-
-    Returns:
-        The in-plane edges, followed by ``front``/``back`` for a 3D lattice.
+    An unregistered name counts as three-dimensional, so every edge is kept;
+    :class:`~src.config.simulation_config.SimulationConfig` rejects the name itself.
     """
     # Imported for its registration side effect, as in pad_modes.
     import src.lattice.lattice  # noqa: F401
 
     entry = get_operators("lattice").get(lattice_type)
-    if entry is not None and (entry.metadata or {}).get("dim") == _PLANAR_DIM:
-        return IN_PLANE_EDGES
-    return IN_PLANE_EDGES + OUT_OF_PLANE_EDGES
-
-
-def is_three_dimensional(lattice_type: str) -> bool:
-    """Whether *lattice_type* has ``front``/``back`` faces."""
-    return set(OUT_OF_PLANE_EDGES) <= set(lattice_edges(lattice_type))
+    dim = (entry.metadata or {}).get("dim") if entry is not None else None
+    return dim if isinstance(dim, int) else len(Edge) // 2
 
 
 def complete_boundary_conditions(section: dict[str, Any] | None, lattice_type: str) -> dict[str, Any]:
@@ -131,9 +122,9 @@ def complete_boundary_conditions(section: dict[str, Any] | None, lattice_type: s
     parameters gets its ``{edge}_{name}`` key, the defaults under what it sets.
     """
     completed = dict(section) if section is not None else {}
-    edges = lattice_edges(lattice_type)
-    for edge in OUT_OF_PLANE_EDGES:
-        if edge not in edges and completed.get(edge) == "periodic":
+    edges = edges_of(lattice_dim(lattice_type))
+    for edge in set(Edge) - set(edges):
+        if completed.get(edge) == "periodic":
             del completed[edge]
     for edge in edges:
         # A plain-string key, so the table saved to ``config.toml`` holds no enum members.
@@ -148,8 +139,8 @@ def validate_boundary_conditions(config: SimulationConfig) -> None:
     """Reject an unregistered BC type, and a parameter key no edge's BC reads."""
     section = _section(config)
     valid_bcs = registered_names("src.operators.boundary", "boundary_condition")
-    edges = lattice_edges(config.lattice_type)
-    for edge in OUT_OF_PLANE_EDGES:
+    edges = edges_of(lattice_dim(config.lattice_type))
+    for edge in Edge:
         if edge not in edges and edge in section:
             msg = (
                 f"boundary_conditions['{edge}'] has no face on the {config.lattice_type} lattice, got '{section[edge]}'"
@@ -211,7 +202,7 @@ def pad_modes(config: SimulationConfig) -> tuple[str, ...]:
         return str(metadata.get("pad_edge_mode", "edge"))
 
     modes = _mode(Edge.TOP), _mode(Edge.BOTTOM), _mode(Edge.RIGHT), _mode(Edge.LEFT)
-    if is_three_dimensional(config.lattice_type):
+    if Edge.FRONT in section:
         return (*modes, _mode(Edge.FRONT), _mode(Edge.BACK))
     return modes
 
@@ -225,6 +216,6 @@ def boundary_edges(config: SimulationConfig) -> tuple[BoundaryEdge, ...]:
             name=section[edge],
             params=dict(section.get(parameter_section_key(edge, section[edge]), {})),
         )
-        for edge in BC_APPLICATION_ORDER
+        for edge in Edge
         if edge in section
     )

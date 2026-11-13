@@ -9,13 +9,9 @@ from __future__ import annotations
 import pytest
 from src.config.analysis_options import AxisScale
 from src.config.analysis_options import Smoothing
-from src.config.boundary import BC_APPLICATION_ORDER
-from src.config.boundary import IN_PLANE_EDGES
-from src.config.boundary import OUT_OF_PLANE_EDGES
 from src.config.boundary import Edge
+from src.config.boundary import edges_of
 from src.config.wetting import ContactLine
-from src.operators.boundary._faces import face_axis
-from src.operators.boundary._faces import face_cells
 from src.operators.wetting._params import WettingState
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
@@ -39,9 +35,9 @@ def test_contact_line_style_tables_name_every_line():
 
 
 def test_edges_are_declared_in_application_order():
-    assert tuple(Edge) == BC_APPLICATION_ORDER
-    assert [edge.value for edge in BC_APPLICATION_ORDER] == ["bottom", "top", "left", "right", "front", "back"]
-    assert set(IN_PLANE_EDGES) | set(OUT_OF_PLANE_EDGES) == set(Edge)
+    assert [edge.value for edge in Edge] == ["bottom", "top", "left", "right", "front", "back"]
+    assert edges_of(2) == tuple(Edge)[:4]
+    assert edges_of(3) == tuple(Edge)
 
 
 @pytest.mark.parametrize(
@@ -58,8 +54,8 @@ def test_edges_are_declared_in_application_order():
 def test_edge_orientation(edge: Edge, axis: int, far: bool):
     assert edge.normal_axis == axis
     assert edge.at_far_end is far
-    assert face_axis(edge) == axis
-    assert face_cells(edge)[axis] == (-1 if far else 0)
+    assert edge.cells[axis] == (-1 if far else 0)
+    assert [i for i, cell in enumerate(edge.cells) if cell != slice(None)] == [axis]
 
 
 def test_tangential_ends_bound_the_wall():

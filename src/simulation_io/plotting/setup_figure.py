@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from src.config.boundary import Edge
 from src.config.boundary import boundary_edges
+from src.config.boundary import edges_of
 from src.config.initialisation import DispersedPhase
 from src.config.initialisation import dispersed_phase
 from src.config.run_config import ANALYSIS_DIRNAME
@@ -66,13 +67,6 @@ BC_ABBREVIATIONS: dict[str, tuple[str, str]] = {
     "wetting": ("NS+W", "no-slip + wetting"),
 }
 
-#: In-plane edges with their outward normal in the domain frame.
-_EDGE_NORMALS: dict[Edge, tuple[float, float]] = {
-    Edge.BOTTOM: (0.0, -1.0),
-    Edge.TOP: (0.0, 1.0),
-    Edge.LEFT: (-1.0, 0.0),
-    Edge.RIGHT: (1.0, 0.0),
-}
 #: Text alignment of an edge label, so it sits outside the domain.
 _EDGE_LABEL_HA: dict[Edge, str] = {Edge.LEFT: "right", Edge.RIGHT: "left"}
 _EDGE_LABEL_VA: dict[Edge, str] = {Edge.BOTTOM: "top", Edge.TOP: "bottom"}
@@ -256,13 +250,13 @@ def edge_labels(config: SimulationConfig) -> dict[Edge, str]:
     return {
         entry.edge: BC_ABBREVIATIONS.get(entry.name, (entry.name, entry.name))[0]
         for entry in boundary_edges(config)
-        if entry.edge in _EDGE_NORMALS
+        if entry.edge in edges_of(2)
     }
 
 
 def key_text(config: SimulationConfig) -> str:
     """The key under the figure: each abbreviation in use, and the surfaces' angle windows."""
-    names = dict.fromkeys(entry.name for entry in boundary_edges(config) if entry.edge in _EDGE_NORMALS)
+    names = dict.fromkeys(entry.name for entry in boundary_edges(config) if entry.edge in edges_of(2))
     entries = [
         f"{abbr}: {text}" for abbr, text in (BC_ABBREVIATIONS[name] for name in names if name in BC_ABBREVIATIONS)
     ]
@@ -365,7 +359,8 @@ def _draw_edge_labels(
     centre = np.array([(nx - 1) / 2.0, (ny - 1) / 2.0])
     half = np.array([nx / 2.0, ny / 2.0])
     for edge, label in edge_labels(config).items():
-        normal = np.array(_EDGE_NORMALS[edge])
+        normal = np.zeros(2)
+        normal[edge.normal_axis] = 1.0 if edge.at_far_end else -1.0
         ha = _EDGE_LABEL_HA.get(edge, "center")
         va = _EDGE_LABEL_VA.get(edge, "center")
         if wall is not None and edge == wall.edge:

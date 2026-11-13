@@ -11,7 +11,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from src.config.boundary import IN_PLANE_EDGES
+from src.config.boundary import edges_of
 from src.config.multiphase import is_multiphase
 from src.config.multiphase import multiphase_params
 
@@ -55,11 +55,10 @@ class TestBuildLattice:
         from src.lattice.lattice import build_lattice
 
         lat = build_lattice("D2Q9")
-        assert len(lat.main_indices) > 0
-        assert len(lat.right_indices) > 0
-        assert len(lat.left_indices) > 0
-        assert len(lat.top_indices) > 0
-        assert len(lat.bottom_indices) > 0
+        from src.lattice.lattice import incoming_directions
+
+        for edge in edges_of(2):
+            assert len(incoming_directions(lat, edge)) == 3
 
     def test_d2q9_arrays_are_jax(self):
         from src.lattice.lattice import build_lattice
@@ -69,11 +68,6 @@ class TestBuildLattice:
             lat.c,
             lat.w,
             lat.opp_indices,
-            lat.main_indices,
-            lat.right_indices,
-            lat.left_indices,
-            lat.top_indices,
-            lat.bottom_indices,
         ):
             assert isinstance(arr, jax.Array), f"{arr} is not a jax.Array"
 
@@ -210,7 +204,7 @@ class TestSimulationConfigDefaults:
 
         cfg = SimulationConfig(grid_shape=(8, 8))
         assert cfg.boundary_conditions is not None
-        for edge in IN_PLANE_EDGES:
+        for edge in edges_of(2):
             assert cfg.boundary_conditions[edge] == "periodic"
 
     def test_is_single_phase_property(self):

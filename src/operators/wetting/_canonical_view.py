@@ -26,20 +26,10 @@ the wall-normal axis, so gradients route back to the correct original rows).
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from src.config.boundary import Edge
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
-
-#: Physical axis that the canonical *tangential* coordinate (axis 0 of the
-#: returned view) corresponds to. Bottom/top scan along x; left/right along y.
-#: This is what ``cll_left`` / ``cll_right`` are measured in.
-EDGE_TANGENTIAL_AXIS: dict[Edge, str] = {
-    Edge.BOTTOM: "x",
-    Edge.TOP: "x",
-    Edge.LEFT: "y",
-    Edge.RIGHT: "y",
-}
+    from src.config.boundary import Edge
 
 
 def to_canonical(rho_2d: jnp.ndarray, edge: Edge) -> jnp.ndarray:

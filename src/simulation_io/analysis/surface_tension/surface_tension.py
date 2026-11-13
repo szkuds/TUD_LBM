@@ -60,7 +60,7 @@ from typing import TYPE_CHECKING
 from typing import NamedTuple
 import numpy as np
 from rich.console import Console
-from src.config.boundary import IN_PLANE_EDGES
+from src.config.boundary import edges_of
 from src.config.config_overview import BASE_RESULTS_DIR
 from src.config.multiphase import REFERENCE_DENSITY
 from src.config.multiphase import multiphase_params
@@ -130,7 +130,7 @@ _SWEEP_NAME_PREFIX = "surface_tension"
 _SWEEP_NAME_PATTERN = re.compile(rf"(?:^|_){_SWEEP_NAME_PREFIX}_.+_R\d+$")
 
 
-_PERIODIC_BC = {edge.value: "periodic" for edge in IN_PLANE_EDGES}
+_PERIODIC_BC = {edge.value: "periodic" for edge in edges_of(2)}
 
 _CACHE_FILENAME = "surface_tension_cache.json"
 # Every per-run artefact is grouped under this subdirectory of the run

@@ -48,7 +48,7 @@ def build_bc(
         A callable ``bc_fn(f_stream, f_col) → f``.
     """
     bc_ops = get_operators("boundary_condition")
-    return CompositeBoundary.from_parts(
+    return CompositeBoundary(
         edges=tuple((e.edge, functools.partial(bc_ops[e.name].target, **e.params)) for e in edges),
         lattice=lattice,
         obstacle_mask=obstacle_mask,

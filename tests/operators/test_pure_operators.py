@@ -23,9 +23,11 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from src.config import SimulationConfig
-from src.config.boundary import IN_PLANE_EDGES
+from src.config.boundary import Edge
 from src.config.boundary import boundary_edges
+from src.config.boundary import edges_of
 from src.lattice.lattice import build_lattice
+from src.lattice.lattice import incoming_directions
 
 
 def _edges_of(section):
@@ -511,12 +513,12 @@ class TestApplyBounceBack:
         f_s = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
         f_c = jax.random.uniform(key, (NX, NY, NZ, 9, 1)) * 2.0
 
-        f_out = apply_bounce_back(f_s, f_c, lattice, "bottom")
+        f_out = apply_bounce_back(f_s, f_c, lattice, Edge.BOTTOM)
 
-        # For incoming directions at bottom (top_indices), the bottom row
+        # For the directions incoming at the bottom, the bottom row
         # should have values from the opposite directions of f_c
         opp = np.array(lattice.opp_indices)
-        for idx in np.array(lattice.top_indices):
+        for idx in incoming_directions(lattice, Edge.BOTTOM):
             np.testing.assert_allclose(
                 np.array(f_out[:, 0, 0, idx, 0]),
                 np.array(f_c[:, 0, 0, opp[idx], 0]),
@@ -529,10 +531,10 @@ class TestApplyBounceBack:
         f_s = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
         f_c = jax.random.uniform(key, (NX, NY, NZ, 9, 1)) * 2.0
 
-        f_out = apply_bounce_back(f_s, f_c, lattice, "top")
+        f_out = apply_bounce_back(f_s, f_c, lattice, Edge.TOP)
 
         opp = np.array(lattice.opp_indices)
-        for idx in np.array(lattice.bottom_indices):
+        for idx in incoming_directions(lattice, Edge.TOP):
             np.testing.assert_allclose(
                 np.array(f_out[:, -1, 0, idx, 0]),
                 np.array(f_c[:, -1, 0, opp[idx], 0]),
@@ -542,7 +544,7 @@ class TestApplyBounceBack:
         from src.operators.boundary._bounce_back import apply_bounce_back
 
         f = jnp.ones((NX, NY, NZ, 9, 1))
-        f_out = apply_bounce_back(f, f, lattice, "bottom")
+        f_out = apply_bounce_back(f, f, lattice, Edge.BOTTOM)
         assert f_out.shape == f.shape
 
     def test_jittable(self, lattice):
@@ -553,18 +555,11 @@ class TestApplyBounceBack:
             partial(
                 apply_bounce_back,
                 lattice=lattice,
-                edge="bottom",
+                edge=Edge.BOTTOM,
             ),
         )
         f_out = jitted_bb(f, f)
         assert f_out.shape == f.shape
-
-    def test_unknown_edge_raises(self, lattice):
-        from src.operators.boundary._bounce_back import apply_bounce_back
-
-        f = jnp.ones((NX, NY, NZ, 9, 1))
-        with pytest.raises(ValueError, match="Unknown edge"):
-            apply_bounce_back(f, f, lattice, "diagonal")
 
 
 # =====================================================================
@@ -579,7 +574,7 @@ class TestApplySymmetry:
         from src.operators.boundary._symmetry import apply_symmetry
 
         f = jnp.ones((NX, NY, NZ, 9, 1))
-        f_out = apply_symmetry(f, f, lattice, "bottom")
+        f_out = apply_symmetry(f, f, lattice, Edge.BOTTOM)
         assert f_out.shape == f.shape
 
     def test_jittable(self, lattice):
@@ -590,18 +585,11 @@ class TestApplySymmetry:
             partial(
                 apply_symmetry,
                 lattice=lattice,
-                edge="bottom",
+                edge=Edge.BOTTOM,
             ),
         )
         f_out = jitted_sym(f, f)
         assert f_out.shape == f.shape
-
-    def test_unknown_edge_raises(self, lattice):
-        from src.operators.boundary._symmetry import apply_symmetry
-
-        f = jnp.ones((NX, NY, NZ, 9, 1))
-        with pytest.raises(ValueError, match="Unknown edge"):
-            apply_symmetry(f, f, lattice, "diagonal")
 
 
 # =====================================================================
@@ -618,7 +606,7 @@ class TestApplyPeriodic:
         key = jax.random.PRNGKey(20)
         f = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
 
-        f_out = apply_periodic(f, f, lattice, "top")
+        f_out = apply_periodic(f, f, lattice, Edge.TOP)
 
         np.testing.assert_array_equal(np.array(f_out), np.array(f))
 
@@ -630,7 +618,7 @@ class TestApplyPeriodic:
             partial(
                 apply_periodic,
                 _lattice=lattice,
-                _edge="top",
+                _edge=Edge.TOP,
             ),
         )
         f_out = jitted_per(f, f)
@@ -732,7 +720,7 @@ class TestBuildBC:
     def test_all_periodic(self, lattice):
         from src.operators.boundary import build_bc
 
-        bc_fn = build_bc(_edges_of(dict.fromkeys(IN_PLANE_EDGES, "periodic")), lattice)
+        bc_fn = build_bc(_edges_of(dict.fromkeys(edges_of(2), "periodic")), lattice)
 
         key = jax.random.PRNGKey(30)
         f = jax.random.uniform(key, (NX, NY, NZ, 9, 1))
@@ -760,7 +748,7 @@ class TestBuildBC:
 
         # Bottom row should have bounce-back applied
         opp = np.array(lattice.opp_indices)
-        for idx in np.array(lattice.top_indices):
+        for idx in incoming_directions(lattice, Edge.BOTTOM):
             np.testing.assert_allclose(
                 np.array(f_out[:, 0, 0, idx, 0]),
                 np.array(f_c[:, 0, 0, opp[idx], 0]),
@@ -786,7 +774,7 @@ class TestBuildBC:
         from src.config.boundary import pad_modes
         from src.operators.boundary import build_bc
 
-        periodic = dict.fromkeys(IN_PLANE_EDGES, "periodic")
+        periodic = dict.fromkeys(edges_of(2), "periodic")
         wetting_fn = build_bc(_edges_of({**periodic, "bottom": "wetting"}), lattice)
         bounce_back_fn = build_bc(_edges_of({**periodic, "bottom": "bounce-back"}), lattice)
 

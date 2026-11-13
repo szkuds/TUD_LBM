@@ -21,11 +21,15 @@ Usage::
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 from src.registry import get_operators
 from src.registry import lattice_operator
+
+if TYPE_CHECKING:
+    from src.config.boundary import Edge
 
 
 class Lattice(NamedTuple):
@@ -43,14 +47,6 @@ class Lattice(NamedTuple):
         w: Quadrature weights, shape ``(1, 1, 1, q, 1)`` — ``jax.Array``.
         opp_indices: Opposite-direction index for each velocity,
             shape ``(q,)`` — ``jax.Array`` of ints.
-        main_indices: Indices of the cardinal (non-diagonal) directions,
-            shape ``(m,)`` — ``jax.Array`` of ints.
-        right_indices: Indices with positive x-component, shape ``(nr,)`` — ``jax.Array``.
-        left_indices: Indices with negative x-component, shape ``(nl,)`` — ``jax.Array``.
-        top_indices: Indices with positive y-component, shape ``(nt,)`` — ``jax.Array``.
-        bottom_indices: Indices with negative y-component, shape ``(nb,)`` — ``jax.Array``.
-        front_indices: Indices with positive z-component (3D only), shape ``(nf,)`` — ``jax.Array``.
-        back_indices: Indices with negative z-component (3D only), shape ``(nbk,)`` — ``jax.Array``.
     """
 
     name: str
@@ -59,13 +55,12 @@ class Lattice(NamedTuple):
     c: jnp.ndarray
     w: jnp.ndarray
     opp_indices: jnp.ndarray
-    main_indices: jnp.ndarray
-    right_indices: jnp.ndarray
-    left_indices: jnp.ndarray
-    top_indices: jnp.ndarray
-    bottom_indices: jnp.ndarray
-    front_indices: jnp.ndarray | None = None
-    back_indices: jnp.ndarray | None = None
+
+
+def incoming_directions(lattice: Lattice, edge: Edge) -> list[int]:
+    """The direction indices pointing into the domain at *edge*, as static Python ints."""
+    inward = -1 if edge.at_far_end else 1
+    return [int(i) for i in np.flatnonzero(np.array(lattice.c)[0, 0, 0, :, edge.normal_axis] == inward)]
 
 
 # ── D2Q9 constants (computed once at import time) ────────────────────
@@ -88,13 +83,6 @@ def _build_d2q9() -> Lattice:
 
     opp = jnp.array([c_np[0, 0, 0].tolist().index((-ci).tolist()) for ci in c_np[0, 0, 0]])
 
-    main = jnp.nonzero(np.sum(np.abs(c_np), axis=-1) == 1)[-1]
-
-    right = jnp.nonzero(c_np[0, 0, 0][:, 0] == 1)[0]
-    left = jnp.nonzero(c_np[0, 0, 0][:, 0] == -1)[0]
-    top = jnp.nonzero(c_np[0, 0, 0][:, 1] == 1)[0]
-    bottom = jnp.nonzero(c_np[0, 0, 0][:, 1] == -1)[0]
-
     return Lattice(
         name="D2Q9",
         d=2,
@@ -102,13 +90,6 @@ def _build_d2q9() -> Lattice:
         c=jnp.array(c_np),
         w=jnp.array(w_np),
         opp_indices=jnp.array(opp),
-        main_indices=jnp.array(main),
-        right_indices=jnp.array(right),
-        left_indices=jnp.array(left),
-        top_indices=jnp.array(top),
-        bottom_indices=jnp.array(bottom),
-        front_indices=None,
-        back_indices=None,
     )
 
 
@@ -155,15 +136,6 @@ def _build_d3q19() -> Lattice:
 
     opp = jnp.array([c_np[0, 0, 0].tolist().index((-ci).tolist()) for ci in c_np[0, 0, 0]])
 
-    main = jnp.nonzero(np.sum(np.abs(c_np), axis=-1) == 1)[-1]
-
-    right = jnp.nonzero(c_np[0, 0, 0][:, 0] == 1)[0]
-    left = jnp.nonzero(c_np[0, 0, 0][:, 0] == -1)[0]
-    top = jnp.nonzero(c_np[0, 0, 0][:, 1] == 1)[0]
-    bottom = jnp.nonzero(c_np[0, 0, 0][:, 1] == -1)[0]
-    front = jnp.nonzero(c_np[0, 0, 0][:, 2] == 1)[0]
-    back = jnp.nonzero(c_np[0, 0, 0][:, 2] == -1)[0]
-
     return Lattice(
         name="D3Q19",
         d=3,
@@ -171,13 +143,6 @@ def _build_d3q19() -> Lattice:
         c=jnp.array(c_np),
         w=jnp.array(w_np),
         opp_indices=jnp.array(opp),
-        main_indices=jnp.array(main),
-        right_indices=jnp.array(right),
-        left_indices=jnp.array(left),
-        top_indices=jnp.array(top),
-        bottom_indices=jnp.array(bottom),
-        front_indices=jnp.array(front),
-        back_indices=jnp.array(back),
     )
 
 

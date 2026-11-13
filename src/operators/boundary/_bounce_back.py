@@ -14,12 +14,12 @@ compile-time constants derived from the :class:`Lattice`.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
-from src.operators.boundary._faces import face_cells
-from src.operators.boundary._faces import incoming_directions
+from src.lattice.lattice import incoming_directions
 from src.registry import boundary_condition
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
+    from src.config.boundary import Edge
     from src.lattice.lattice import Lattice
 
 
@@ -28,7 +28,7 @@ def apply_bounce_back(
     f_streamed: jnp.ndarray,
     f_collision: jnp.ndarray,
     lattice: Lattice,
-    edge: str,
+    edge: Edge,
 ) -> jnp.ndarray:
     """Apply half-way bounce-back on one edge.
 
@@ -36,14 +36,14 @@ def apply_bounce_back(
         f_streamed: Post-streaming populations, shape ``(nx, ny, nz, q, d)``.
         f_collision: Post-collision populations (before streaming), same shape.
         lattice: :class:`~setup.lattice.Lattice`.
-        edge: a domain face: ``"top"``, ``"bottom"``, ``"left"``, ``"right"``, ``"front"`` or ``"back"``.
+        edge: The domain face.
 
     Returns:
         Updated populations with bounce-back applied on *edge*.
     """
     # Plain Python ints, so they are static under JAX tracing.
     opp = [int(x) for x in np.array(lattice.opp_indices)]
-    cells = face_cells(edge)
+    cells = edge.cells
     for i in incoming_directions(lattice, edge):
         f_streamed = f_streamed.at[(*cells, i, 0)].set(f_collision[(*cells, opp[i], 0)])
     return f_streamed

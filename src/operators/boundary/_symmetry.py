@@ -22,12 +22,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import numpy as np
-from src.operators.boundary._faces import face_axis
-from src.operators.boundary._faces import face_cells
-from src.operators.boundary._faces import incoming_directions
+from src.lattice.lattice import incoming_directions
 from src.registry import boundary_condition
 
 if TYPE_CHECKING:
+    from src.config.boundary import Edge
     from src.lattice.lattice import Lattice
 
 
@@ -36,7 +35,7 @@ def apply_symmetry(
     f_streamed: jnp.ndarray,
     f_collision: jnp.ndarray,
     lattice: Lattice,
-    edge: str,
+    edge: Edge,
 ) -> jnp.ndarray:
     """Reflect the populations leaving through *edge* specularly back into the domain.
 
@@ -49,9 +48,9 @@ def apply_symmetry(
     Returns:
         Updated populations with symmetry applied on *edge*.
     """
-    axis = face_axis(edge)
+    axis = edge.normal_axis
     directions = [tuple(int(v) for v in ci) for ci in np.array(lattice.c)[0, 0, 0]]
-    cells = face_cells(edge)
+    cells = edge.cells
     for dst in incoming_directions(lattice, edge):
         mirrored = list(directions[dst])
         mirrored[axis] = -mirrored[axis]

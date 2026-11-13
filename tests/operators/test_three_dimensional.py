@@ -6,12 +6,12 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from src.config import SimulationConfig
-from src.config.boundary import BC_APPLICATION_ORDER
 from src.config.boundary import Edge
 from src.config.boundary import boundary_edges
 from src.config.boundary import pad_modes
 from src.config.boundary import periodic_axes
 from src.lattice.lattice import build_lattice
+from src.lattice.lattice import incoming_directions
 from src.operators.boundary import build_bc
 from src.operators.differential import build_differential
 from src.operators.differential._pad_utils import _apply_stencil_padding
@@ -25,7 +25,7 @@ from src.pipeline.step import kernel
 _PERIODIC = ("wrap",) * 6
 _N = 16
 _MULTIPHASE = {"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.1, "interface_width": 3}
-_ALL_FACES = BC_APPLICATION_ORDER
+_ALL_FACES = tuple(Edge)
 
 
 @pytest.fixture(scope="module")
@@ -105,7 +105,7 @@ def test_a_two_dimensional_config_keeps_its_four_faces() -> None:
 
 def test_streaming_zeroes_the_wrapped_z_layer_only_when_z_is_walled(lattice) -> None:
     f = jnp.ones((4, 4, 4, lattice.q, 1))
-    upward = int(lattice.front_indices[0])
+    upward = incoming_directions(lattice, Edge.BACK)[0]
 
     walled = np.asarray(build_streaming_fn((True, True, False))(f, lattice))
     periodic = np.asarray(build_streaming_fn((True, True, True))(f, lattice))

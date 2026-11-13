@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 from src.config.adapter_toml import TomlAdapter
-from src.config.boundary import IN_PLANE_EDGES
+from src.config.boundary import edges_of
 from src.config.config_overview import BASE_RESULTS_DIR
 from src.config.run_config import CONFIG_FILENAME
 from src.config.run_config import DATA_DIRNAME
@@ -682,7 +682,7 @@ def test_calibration_config_isolates_single_droplet():
     assert calib.save_interval == calib.nt // 10
     assert calib.skip_interval == 0
     assert calib.boundary_conditions is not None
-    for face in IN_PLANE_EDGES:
+    for face in edges_of(2):
         assert calib.boundary_conditions[face] == "periodic"
     for name in (
         "save_fields",
