@@ -22,6 +22,7 @@ def build_wetting_applicator(
     rho_v: float,
     boundary_conditions: dict[str, Any] | None = None,
     step: ChemicalStepWall | None = None,
+    interface_width: float | None = None,
 ) -> Callable[..., jnp.ndarray]:
     """Build a wetting ghost-cell applicator with baked-in static parameters.
 
@@ -33,6 +34,9 @@ def build_wetting_applicator(
             ``None`` defaults to bottom-only wetting.
         step: The chemical-step wall (``src.config.wetting.chemical_step_wall``),
             or ``None``. Splits the modification on its edge by surface.
+        interface_width: The run's measured interface width in cells
+            (``src.config.wetting.wall_interface_width``), or ``None``. Bounds
+            the modified region around each contact line.
 
     Returns:
         ``(grid_padded, phi_l, phi_r, d_rho_l, d_rho_r) → grid_padded``
@@ -76,6 +80,7 @@ def build_wetting_applicator(
                 d_rho_l,
                 d_rho_r,
                 step,
+                interface_width,
             )
         return grid_padded
 

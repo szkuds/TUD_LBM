@@ -246,6 +246,95 @@ def test_gradients_stay_finite_when_a_side_is_empty():
 
 
 # ---------------------------------------------------------------------------
+# Bound by the measured interface width
+# ---------------------------------------------------------------------------
+
+#: A measured interface width for the baseline profile (its tanh scale is 6 cells).
+_INTERFACE_WIDTH = 6.0
+_REGION_LIMIT = 1.5 * _INTERFACE_WIDTH
+
+
+def _reach(region) -> float:
+    cells = np.flatnonzero(np.asarray(region.mask))
+    return float(np.abs(cells - float(region.anchor)).max())
+
+
+def _row_with_liquid_tail_in_band() -> jnp.ndarray:
+    """The baseline row with the liquid ahead of the left line held just inside the band.
+
+    That is the wall of a bubble approaching a chemical step: the destination
+    surface's values lower the liquid tail below ``rho_upper``, so the in-band run
+    at the left line no longer ends at the interface.
+    """
+    base = _wall_row()
+    left, _ = wetting_regions(base, _RHO_L, _RHO_V)
+    row = np.asarray(base).copy()
+    tail = np.arange(int(_LEFT) - 60, int(_LEFT))
+    row[tail] = np.minimum(row[tail], float(left.rho_upper) - 0.05)
+    return jnp.asarray(row)
+
+
+def test_without_a_width_the_window_is_the_only_bound():
+    row = _row_with_liquid_tail_in_band()
+
+    left, _ = wetting_regions(row, _RHO_L, _RHO_V)
+
+    assert _reach(left) > 0.9 * anchor_window_half_width(_N)
+
+
+def test_a_width_cuts_a_region_that_left_its_interface():
+    row = _row_with_liquid_tail_in_band()
+
+    left, right = wetting_regions(row, _RHO_L, _RHO_V, _INTERFACE_WIDTH)
+
+    assert _extent(left) > 0
+    assert _extent(right) > 0
+    assert _reach(left) <= _REGION_LIMIT
+    assert _reach(right) <= _REGION_LIMIT
+
+
+def test_a_width_leaves_the_density_bounds_alone():
+    row = _row_with_liquid_tail_in_band()
+
+    unbounded, _ = wetting_regions(row, _RHO_L, _RHO_V)
+    bounded, _ = wetting_regions(row, _RHO_L, _RHO_V, _INTERFACE_WIDTH)
+
+    assert float(bounded.rho_lower) == float(unbounded.rho_lower)
+    assert float(bounded.rho_upper) == float(unbounded.rho_upper)
+    assert float(bounded.anchor) == float(unbounded.anchor)
+
+
+def test_a_width_wider_than_the_region_changes_nothing():
+    row = _wall_row()
+
+    for plain, wide in zip(
+        wetting_regions(row, _RHO_L, _RHO_V), wetting_regions(row, _RHO_L, _RHO_V, 1e6), strict=True
+    ):
+        np.testing.assert_array_equal(np.asarray(wide.mask), np.asarray(plain.mask))
+
+
+def test_only_cells_inside_the_width_are_modified():
+    row = _row_with_liquid_tail_in_band()
+
+    neutral = np.asarray(_apply_wetting_modification(row, _RHO_L, _RHO_V, 1.0, 1.0, 0.0, 0.0, None, _INTERFACE_WIDTH))
+    shifted = np.asarray(_apply_wetting_modification(row, _RHO_L, _RHO_V, 1.0, 1.0, 0.3, 0.3, None, _INTERFACE_WIDTH))
+
+    moved = np.flatnonzero(neutral != shifted)
+    assert moved.size > 0
+    assert np.minimum(np.abs(moved - _LEFT), np.abs(moved - _RIGHT)).max() <= _REGION_LIMIT + 1.0
+
+
+def test_bounded_regions_are_jittable_and_differentiable():
+    row = _row_with_liquid_tail_in_band()
+
+    def total(phi: jnp.ndarray) -> jnp.ndarray:
+        return jnp.sum(_apply_wetting_modification(row, _RHO_L, _RHO_V, phi, phi, 0.0, 0.0, None, _INTERFACE_WIDTH))
+
+    grad = jax.jit(jax.grad(total))(jnp.asarray(1.1))
+    assert np.isfinite(float(grad))
+
+
+# ---------------------------------------------------------------------------
 # Surface split on a stepped wall
 # ---------------------------------------------------------------------------
 

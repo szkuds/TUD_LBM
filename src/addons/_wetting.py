@@ -22,6 +22,7 @@ from src.addons.hooks import Hooks
 from src.config.multiphase import phase_references
 from src.config.wetting import chemical_step_wall
 from src.config.wetting import restored_wetting
+from src.config.wetting import wall_interface_width
 from src.config.wetting import wall_rho_mean
 from src.config.wetting import wetting_scalars
 from src.operators.wetting._applicator import build_wetting_applicator
@@ -59,7 +60,9 @@ def wetting_ghost_fill(config: SimulationConfig) -> GhostFill[WallParams]:
     references = phase_references(config)
     assert references is not None  # noqa: S101 - build_wetting_addon checks the phase first (_wall)
     rho_v, rho_l = references
-    apply = build_wetting_applicator(rho_l, rho_v, config.boundary_conditions, chemical_step_wall(config))
+    apply = build_wetting_applicator(
+        rho_l, rho_v, config.boundary_conditions, chemical_step_wall(config), wall_interface_width(config)
+    )
 
     def ghost_fill(padded: jnp.ndarray, wall: WallParams) -> jnp.ndarray:
         return apply(padded, wall.phi_left, wall.phi_right, wall.d_rho_left, wall.d_rho_right)

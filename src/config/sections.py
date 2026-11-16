@@ -13,44 +13,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 from src.config.forces import FORCE_SCHEMAS
+from src.config.legacy import OLD_FLAT_KEYS
 from src.config.legacy import upgrade
 from src.config.simulation_config import CONFIG_SECTION
 from src.config.simulation_config import SimulationConfig
-
-#: Sections stored whole on the :class:`SimulationConfig` field of the same name.
-_DICT_SECTIONS: tuple[str, ...] = (
-    "multiphase",
-    "boundary_conditions",
-    "wetting",
-    "hysteresis",
-    "chemical_step",
-    "obstacle",
-    "initialisation",
-)
-#: Field names of the old layout. ``config_from_flat`` keeps an unknown key in
-#: ``extra`` without a word, which would turn a flat ``kappa`` into a single-phase run.
-_RETIRED_FIELDS: frozenset[str] = frozenset(
-    {
-        "sim_type",
-        "type",
-        "bc_config",
-        "obstacle_config",
-        "wetting_config",
-        "hysteresis_config",
-        "chemical_step_config",
-        "eos",
-        "kappa",
-        "rho_l",
-        "rho_v",
-        "interface_width",
-        "g",
-        "a_eos",
-        "b_eos",
-        "r_eos",
-        "t_eos",
-        *FORCE_SCHEMAS,
-    }
-)
+from src.config.simulation_config import get_whole_section_fields
 
 
 def _process_forces(raw: dict[str, Any], sim_table: dict[str, Any]) -> None:
@@ -92,7 +59,7 @@ def merge_sections(raw: dict[str, Any]) -> dict[str, Any]:
     if "k_diag" in sim_table and isinstance(sim_table["k_diag"], list):
         sim_table["k_diag"] = tuple(sim_table["k_diag"])
 
-    for section in _DICT_SECTIONS:
+    for section in get_whole_section_fields():
         if section in raw:
             sim_table[section] = dict(raw[section])
 
@@ -128,7 +95,7 @@ def build_sections(config: SimulationConfig) -> dict[str, Any]:
     buckets: dict[str, dict[str, Any]] = defaultdict(dict)
     for key, value in dataclasses.asdict(config).items():
         section = sections.get(key, "simulation_type")
-        if value is None or section == "extra":
+        if value is None or key == "extra":
             continue
         if key == "forces":
             buckets.update({name: serialise_safe(params) for name, params in value.items()})
@@ -153,7 +120,7 @@ def config_from_flat(flat: dict[str, Any]) -> SimulationConfig:
     if "grid_shape" in flat and not isinstance(flat["grid_shape"], tuple):
         flat["grid_shape"] = tuple(flat["grid_shape"])
 
-    retired = sorted(flat.keys() & _RETIRED_FIELDS)
+    retired = sorted(flat.keys() & (OLD_FLAT_KEYS | FORCE_SCHEMAS.keys()))
     if retired:
         msg = f"Old-layout field(s) {', '.join(retired)}: use the [multiphase], [wetting], ... sections and `forces`."
         raise ValueError(msg)

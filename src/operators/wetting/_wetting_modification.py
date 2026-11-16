@@ -20,7 +20,7 @@ worse still: gravity stratifies the liquid *along* the wall too, spanning the
 full bandwidth, so a *measured* global pair cannot separate interface from bulk
 either.
 
-Hence, the four clauses of :func:`wetting_regions`, each of which earns its place:
+Hence, the clauses of :func:`wetting_regions`, each of which earns its place:
 
 Measured phase references, shared by both contact lines
     ``hi``/``lo`` are measured over the *union* of the two anchor windows, so the
@@ -50,7 +50,18 @@ Measured phase references, shared by both contact lines
     long wall's far end cannot set the band.
 Window
     Hard-bounds the region at ``2 * R`` cells, so no failure mode can return the
-    whole wall.
+    whole wall. It is also where the references are measured, so it has to reach
+    bulk and is sized from the wall, not from the interface.
+Interface width
+    Bounds the region at ``_REGION_WIDTH_FACTOR`` measured interface widths either
+    side of the contact line, on a run whose init field gives one
+    (:func:`~src.config.wetting.wall_interface_width`). The window alone is too
+    wide a bound: on a 401-cell wall it is 50 cells, and the liquid tail ahead of a
+    Carnahan-Starling bubble sits just above ``rho_upper``. At a chemical step the
+    destination surface's fixed values lowered those cells into the band, and the
+    region went from 28 to 58 cells between two saves with the line still 19 cells
+    from the step (``.claude/261112_bubble_fix_analysis/README.md``, section 9).
+    The window keeps its size because the references need it.
 Contiguous run at the anchor
     Excludes disconnected in-band clusters elsewhere on the wall. In the run
     above a bulk cluster ``[0, 87]`` appeared while the real regions sat at
@@ -93,6 +104,12 @@ _BAND_FRAC = 0.05
 #: An anchor whose window spans less than this fraction of the global contrast is
 #: not on an interface — it is a crossing of stratified bulk. Its region is empty.
 _MIN_CONTRAST_FRAC = 0.5
+
+#: A region reaches at most this many measured interface widths either side of its
+#: contact line. A double-well droplet's region is ~1.5 widths on its longer side
+#: and a Carnahan-Starling bubble's ~1.0, so the bound acts only on a region that
+#: has left its interface.
+_REGION_WIDTH_FACTOR = 1.5
 
 #: Anchor window half-width: ``max(_MIN_WINDOW, n // _WINDOW_DIVISOR)`` cells.
 _MIN_WINDOW = 16
@@ -149,8 +166,13 @@ def _anchored_region(
     rho_lower: jnp.ndarray,
     rho_upper: jnp.ndarray,
     contrast_floor: ArrayLike,
+    interface_width: float | None,
 ) -> WettingRegion:
     """The in-band run of *row* containing *anchor*, bounded by the anchor window.
+
+    With an *interface_width* the run is also cut ``_REGION_WIDTH_FACTOR`` widths
+    from *anchor*. The cut is applied to the finished run, so it shortens a region
+    and never changes which run the anchor belongs to.
 
     *rho_lower*/*rho_upper* are the wall's shared band bounds; the window's own
     span is used only for the contrast floor, which asks whether *anchor* sits
@@ -170,6 +192,8 @@ def _anchored_region(
     centre = jnp.clip(jnp.round(anchor).astype(int), 0, n - 1)
     run_id = jnp.cumsum(~band)
     mask = band & band[centre] & (run_id == run_id[centre]) & (span >= contrast_floor)
+    if interface_width is not None:
+        mask = mask & (jnp.abs(indices - anchor) <= _REGION_WIDTH_FACTOR * interface_width)
 
     return WettingRegion(mask, anchor, rho_lower, rho_upper)
 
@@ -178,6 +202,7 @@ def wetting_regions(
     edge_slice: jnp.ndarray,
     rho_l: ArrayLike,
     rho_v: ArrayLike,
+    interface_width: float | None = None,
 ) -> tuple[WettingRegion, WettingRegion]:
     """Return ``(left, right)`` — the ghost-row cells the wetting BC modifies.
 
@@ -202,6 +227,10 @@ def wetting_regions(
         edge_slice: Ghost-row densities, shape ``(n,)``.
         rho_l: Liquid density.
         rho_v: Vapour density.
+        interface_width: The run's measured interface width in cells
+            (:func:`~src.config.wetting.wall_interface_width`), or ``None``.
+            With one, no region cell lies farther than ``_REGION_WIDTH_FACTOR``
+            widths from its contact line; without, the window is the only bound.
 
     Note:
         A row with fewer than two crossings collapses both anchors onto index 0
@@ -223,8 +252,8 @@ def wetting_regions(
     rho_lower = lo + _BAND_FRAC * span
     rho_upper = hi - _BAND_FRAC * span
 
-    left = _anchored_region(edge_slice, x_left, rho_lower, rho_upper, contrast_floor)
-    right = _anchored_region(edge_slice, x_right, rho_lower, rho_upper, contrast_floor)
+    left = _anchored_region(edge_slice, x_left, rho_lower, rho_upper, contrast_floor, interface_width)
+    right = _anchored_region(edge_slice, x_right, rho_lower, rho_upper, contrast_floor, interface_width)
 
     # Two contact lines close enough to share one in-band run would otherwise
     # both claim the overlap. Assigning each cell to its nearer anchor keeps the
@@ -268,6 +297,7 @@ def _apply_wetting_modification(
     d_rho_l: ArrayLike,
     d_rho_r: ArrayLike,
     step: ChemicalStepWall | None = None,
+    interface_width: float | None = None,
 ) -> jnp.ndarray:
     """Apply wetting density modification at the liquid-vapour interface.
 
@@ -286,11 +316,13 @@ def _apply_wetting_modification(
         step: The stepped wall, or ``None``. With one, band cells across the
             step from their contact line keep their surface's fixed values
             (:func:`_surface_params`).
+        interface_width: The run's measured interface width, bounding both
+            regions (:func:`wetting_regions`), or ``None``.
 
     Returns:
         Modified edge slice.
     """
-    left, right = wetting_regions(edge_slice, rho_l, rho_v)
+    left, right = wetting_regions(edge_slice, rho_l, rho_v, interface_width)
     if step is not None:
         phi_l, d_rho_l = _surface_params(
             left, phi_l, d_rho_l, step, pre_phi=step.pre_phi_left, pre_d_rho=step.pre_d_rho_left

@@ -159,6 +159,15 @@ def test_a_flat_old_field_is_rejected_rather_than_kept_in_extra() -> None:
         DictAdapter().load(flat)
 
 
+@pytest.mark.parametrize("name", ["sim_type", "bc_config", "kappa", "t_eos", "gravity_force"])
+def test_every_kind_of_old_flat_name_is_rejected(name: str) -> None:
+    flat = {"grid_shape": (8, 8), name: 1}
+    adapter = DictAdapter()
+
+    with pytest.raises(ValueError, match=f"Old-layout field.*{name}"):
+        adapter.load(flat)
+
+
 def test_two_level_sweep_expands() -> None:
     raw = {
         "grid_shape": (8, 8),

@@ -11,6 +11,7 @@ from src.config import SimulationConfig
 from src.config.boundary import Edge
 from src.config.boundary import pad_modes
 from src.config.wetting import ContactLine
+from src.config.wetting import wall_interface_width
 from src.operators.differential._pad_utils import _apply_stencil_padding
 from src.operators.wetting._apply_edge import _apply_wetting_edge
 from src.operators.wetting._contact_angle import compute_contact_angle
@@ -64,6 +65,27 @@ def _data(rho_2d: np.ndarray, **extra: float) -> dict[str, np.ndarray]:
 
 
 # --- wall band -------------------------------------------------------------
+
+
+def test_a_restart_draws_the_band_the_solver_bounds_by_its_interface_width(tmp_path):
+    """The overlay passes the run's measured width on, as the wetting addon does."""
+    rho = _droplet()
+    # The liquid tail of the right line held just inside the band, as at a chemical step.
+    (reference,) = wall_bands(rho, _config())
+    tail = slice(int(reference.right.anchor) + 1, _NX)
+    rho[tail, 0] = np.maximum(rho[tail, 0], reference.right.rho_lower + 0.01)
+    npz_path = tmp_path / "init_state.npz"
+    np.savez(npz_path, rho=_droplet()[:, :, None, None, None])
+    config = _config(init_type="init_from_file", init_dir=str(npz_path), initialisation={})
+    width = wall_interface_width(config)
+    assert width is not None
+
+    (unbounded,) = wall_bands(rho, _config())
+    (bounded,) = wall_bands(rho, config)
+
+    assert np.abs(unbounded.right.cells - unbounded.right.anchor).max() > 1.5 * width
+    assert bounded.right.cells.size > 0
+    assert np.abs(bounded.right.cells - bounded.right.anchor).max() <= 1.5 * width
 
 
 def test_band_cells_are_exactly_the_cells_the_applicator_changes():

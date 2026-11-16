@@ -33,6 +33,7 @@ from src.config.defaults import CHEMICAL_STEP
 from src.config.defaults import HYSTERESIS
 from src.config.defaults import NEUTRAL_WETTING
 from src.config.init_field import load_init_wetting
+from src.config.init_field import measure_init_interface_width
 from src.config.initialisation import DispersedPhase
 from src.config.initialisation import dispersed_phase
 from src.config.multiphase import multiphase_params
@@ -285,6 +286,21 @@ def wall_rho_mean(config: SimulationConfig) -> float | None:
     """
     references = phase_references(config)
     return None if references is None else 0.5 * (references[0] + references[1])
+
+
+def wall_interface_width(config: SimulationConfig) -> float | None:
+    """The interface width the wetting wall bounds its regions by, in cells, or ``None``.
+
+    Measured off the init field of an ``init_from_file`` run
+    (:func:`~src.config.init_field.measure_init_interface_width`), so every
+    restart and the second phase of ``--init-wetting`` have one. ``None`` for a
+    run that starts from an initialiser: it has no equilibrated interface to
+    measure, and the Carnahan-Starling ``interface_width`` is only an
+    initialisation hint. Such a run keeps the regions' window bound alone.
+    """
+    if config.multiphase is None or config.init_type != "init_from_file":
+        return None
+    return measure_init_interface_width(config)
 
 
 def wetting_scalars(config: SimulationConfig) -> dict[str, float] | None:

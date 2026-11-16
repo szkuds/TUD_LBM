@@ -1,7 +1,8 @@
 """Old-layout configs, upgraded on load.
 
-Removing this at the next version bump is deleting this file and its one call in
-:func:`src.config.sections.load_sections`. Nothing else imports it.
+Removing this at the next version bump is deleting this file, its one call in
+:func:`src.config.sections.load_sections` and the :data:`OLD_FLAT_KEYS` check in
+:func:`src.config.sections.config_from_flat`. Nothing else imports it.
 
 The old layout selected the phase with ``[simulation_type] type``, and a
 single-phase run ignored any ``[multiphase]`` section. It also let flat keys in
@@ -51,6 +52,8 @@ _SECTION_KEYS: dict[str, str] = {
 _MULTIPHASE_KEYS: frozenset[str] = frozenset(
     {*REQUIRED, *OPTIONAL, *(k for row in EOS_PARAMETERS.values() for k in row)}
 )
+#: Keys the old layout kept flat in ``[simulation_type]``; a flat config must not carry them.
+OLD_FLAT_KEYS: frozenset[str] = frozenset({*_TYPE_KEYS, *_SECTION_KEYS, *_MULTIPHASE_KEYS})
 _WALL_KEYS: dict[str, str] = {
     "phi_l": "phi_left",
     "phi_r": "phi_right",
@@ -64,7 +67,7 @@ _PRE_SIDE_KEY = "chemical_step_pre_side"
 
 def _is_old_layout(table: dict[str, Any], raw: dict[str, Any]) -> bool:
     return (
-        any(key in table for key in (*_TYPE_KEYS, *_SECTION_KEYS, *_MULTIPHASE_KEYS))
+        any(key in table for key in OLD_FLAT_KEYS)
         or any(key.endswith("_force") for key in table)
         or any(key in _WALL_KEYS for key in raw.get("wetting", {}))
     )

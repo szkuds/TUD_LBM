@@ -62,13 +62,14 @@ def _apply_wetting_edge(
     d_rho_l: jnp.ndarray,
     d_rho_r: jnp.ndarray,
     step: ChemicalStepWall | None = None,
+    interface_width: float | None = None,
 ) -> jnp.ndarray:
     """Apply wetting to a single edge of the padded array.
 
     Reconstructs the edge's ghost row from the interior, then applies the
     wetting modification to its interior portion (excluding padding corners).
     *step* splits the modification by surface when this edge carries the
-    chemical step.
+    chemical step; *interface_width* bounds the modified regions.
     """
     arr, ghost_idx, transposed = _oriented_ghost_row(grid_padded, edge, perp_start_periodic, perp_end_periodic)
 
@@ -81,6 +82,7 @@ def _apply_wetting_edge(
         d_rho_l,
         d_rho_r,
         step if step is not None and step.edge == edge else None,
+        interface_width,
     )
     arr = arr.at[1:-1, ghost_idx].set(modified)
 
@@ -94,6 +96,7 @@ def wetting_edge_regions(
     perp_end_periodic: bool,
     rho_l: float | jnp.ndarray,
     rho_v: float | jnp.ndarray,
+    interface_width: float | None = None,
 ) -> tuple[WettingRegion, WettingRegion]:
     """Return the ``(left, right)`` regions :func:`_apply_wetting_edge` modifies.
 
@@ -104,4 +107,4 @@ def wetting_edge_regions(
     x for bottom/top, y for left/right.
     """
     arr, ghost_idx, _ = _oriented_ghost_row(gp, edge, perp_start_periodic, perp_end_periodic)
-    return wetting_regions(arr[1:-1, ghost_idx], rho_l, rho_v)
+    return wetting_regions(arr[1:-1, ghost_idx], rho_l, rho_v, interface_width)

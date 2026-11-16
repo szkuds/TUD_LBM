@@ -136,8 +136,8 @@ class SimulationConfig:
     wetting: dict[str, Any] | None = array_field(default=None, section="wetting", nested_sweepable=True)
     hysteresis: dict[str, Any] | None = array_field(default=None, section="hysteresis", nested_sweepable=True)
     chemical_step: dict[str, Any] | None = array_field(default=None, section="chemical_step", nested_sweepable=True)
-    # Every [*_force] section, under the section's name.
-    forces: dict[str, dict[str, Any]] = array_field(default_factory=dict, section="forces", nested_sweepable=True)
+    # Every [*_force] section, under the section's name. No section metadata: there is no [forces] table.
+    forces: dict[str, dict[str, Any]] = array_field(default_factory=dict, nested_sweepable=True)
 
     # ── Initialisation ───────────────────────────────────────────
     init_type: str = "standard"
@@ -163,7 +163,8 @@ class SimulationConfig:
     output_dir: str | None = field(default=None, metadata={CONFIG_SECTION: "output"})
 
     # ── Extra / extensible ───────────────────────────────────────
-    extra: dict[str, Any] = field(default_factory=dict, metadata={CONFIG_SECTION: "extra"})
+    # Unknown [simulation_type] keys, saved back there: no section of its own.
+    extra: dict[str, Any] = field(default_factory=dict)
 
     # Validation
 
@@ -373,6 +374,11 @@ def get_array_eligible_fields() -> frozenset[str]:
 def get_nested_sweepable_fields() -> frozenset[str]:
     """Return field names whose dict sub-keys may carry list sweep values."""
     return frozenset(f.name for f in dataclasses.fields(SimulationConfig) if f.metadata.get(NESTED_SWEEPABLE, False))
+
+
+def get_whole_section_fields() -> tuple[str, ...]:
+    """Fields holding the config section of the same name whole, in declaration order."""
+    return tuple(f.name for f in dataclasses.fields(SimulationConfig) if f.metadata.get(CONFIG_SECTION) == f.name)
 
 
 def get_fields_for_section(section: str) -> frozenset[str]:

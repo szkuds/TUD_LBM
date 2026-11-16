@@ -44,6 +44,7 @@ from src.config.boundary import Edge
 from src.config.boundary import pad_modes
 from src.config.multiphase import phase_references
 from src.config.wetting import ContactLine
+from src.config.wetting import wall_interface_width
 from src.config.wetting import wall_rho_mean
 from src.simulation_io.analysis.droplet_metrics._snapshot import to_canonical_2d
 
@@ -132,10 +133,13 @@ def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
     from src.operators.wetting._apply_edge import wetting_edge_regions
     from src.operators.wetting._edge_config import _resolve_wetting_edges
 
+    interface_width = wall_interface_width(config)
     grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), pad_modes(config))
     bands: list[WallBand] = []
     for edge, perp_start_periodic, perp_end_periodic in _resolve_wetting_edges(config.boundary_conditions or {}):
-        regions = wetting_edge_regions(grid_padded, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v)
+        regions = wetting_edge_regions(
+            grid_padded, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v, interface_width
+        )
         sides = tuple(_side_band(side, region) for side, region in zip(ContactLine, regions, strict=True))
         bands.append(WallBand(edge, *sides))
     return bands
