@@ -1,21 +1,21 @@
 """Mirror-symmetry boundary condition — pure function.
 
-Specular reflection: each population entering through the face is the one that
+Specular reflection: each population entering through the edge is the one that
 left with its normal velocity component flipped. That population started the
-step one tangential velocity away, so it is rolled along the face. The normal
-momentum flux through the face is zero and the tangential momentum is kept,
+step one tangential velocity away, so it is rolled along the edge. The normal
+momentum flux through the edge is zero and the tangential momentum is kept,
 which is what a free-slip plane of symmetry means.
 
-The roll wraps along the face. On a face whose tangential axis is periodic
+The roll wraps along the edge. On an edge whose tangential axis is periodic
 that is exact; where it meets a wall, the corner cells take the populations
 wrapped from the far end, and the BC of the perpendicular edge, applied later,
 overwrites the ones it owns.
 
-Before 2026-11-03 the top and bottom faces of a 2D lattice took each incoming
+Before 2026-11-03 the top and bottom edges of a 2D lattice took each incoming
 diagonal from the mirror image in *both* axes, so they reversed the tangential
 velocity of the diagonals instead of keeping it: a uniform channel flow between
-two such faces fell from ``u = 0.05`` to ``0.006`` in 500 steps. The left and
-right faces mirrored correctly but did not roll the diagonals along the face.
+two such edges fell from ``u = 0.05`` to ``0.006`` in 500 steps. The left and
+right edges mirrored correctly but did not roll the diagonals along the edge.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def apply_symmetry(
         f_streamed: Post-streaming populations, shape ``(nx, ny, nz, q, 1)``.
         f_collision: Post-collision populations, same shape.
         lattice: :class:`~src.lattice.lattice.Lattice`.
-        edge: A domain face; ``"front"`` and ``"back"`` exist on a 3D lattice.
+        edge: A domain edge; ``"front"`` and ``"back"`` exist on a 3D lattice.
 
     Returns:
         Updated populations with symmetry applied on *edge*.

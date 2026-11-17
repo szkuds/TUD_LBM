@@ -1,6 +1,6 @@
 """The crossing pair of a wall row is the inclusion's, whichever side a stray patch is on.
 
-At a chemical step the destination surface condenses a one-cell patch of the
+At a chemical step the post-step region condenses a one-cell patch of the
 dispersed phase just ahead of the leading line. The first two crossings in
 ascending order dropped a patch at higher x but took one at lower x as the
 inclusion, so a bubble rising toward -x lost its leading line at the step.

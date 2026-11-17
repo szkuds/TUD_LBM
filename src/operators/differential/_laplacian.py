@@ -58,7 +58,7 @@ def build_laplacian(
 
 
 def lap_core(padded: jnp.ndarray, w: jnp.ndarray, c: jnp.ndarray) -> jnp.ndarray:
-    """Laplacian kernel on a field padded by one ghost layer on every face.
+    """Laplacian kernel on a field padded by one ghost layer on every edge.
 
     Args:
         padded: Shape ``(nx + 2, ny + 2)``, or ``(nx + 2, ny + 2, nz + 2)``.

@@ -56,7 +56,7 @@ def _apply_stencil_padding(
     grid: jnp.ndarray,
     pad_mode: tuple[str, ...],
 ) -> jnp.ndarray:
-    """Pad a field with one ghost cell per face.
+    """Pad a field with one ghost cell per edge.
 
     Args:
         grid: Shape ``(nx, ny)``, or ``(nx, ny, nz)`` with six modes.

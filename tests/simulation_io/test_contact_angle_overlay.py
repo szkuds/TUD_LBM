@@ -11,7 +11,7 @@ from src.config import SimulationConfig
 from src.config.boundary import Edge
 from src.config.boundary import pad_modes
 from src.config.wetting import ContactLine
-from src.config.wetting import wall_interface_width
+from src.config.wetting import wetting_interface_width
 from src.operators.differential._pad_utils import _apply_stencil_padding
 from src.operators.wetting._apply_edge import _apply_wetting_edge
 from src.operators.wetting._contact_angle import compute_contact_angle
@@ -20,8 +20,8 @@ from src.registry import get_operators
 from src.simulation_io.analysis.wetting_overlay import WALL_NORMAL
 from src.simulation_io.analysis.wetting_overlay import angle_glyph
 from src.simulation_io.analysis.wetting_overlay import contact_angles
+from src.simulation_io.analysis.wetting_overlay import edge_bands
 from src.simulation_io.analysis.wetting_overlay import to_physical
-from src.simulation_io.analysis.wetting_overlay import wall_bands
 from src.simulation_io.plotting import FigureBuilder
 from tests.support.config import merge_overrides
 
@@ -71,17 +71,17 @@ def test_a_restart_draws_the_band_the_solver_bounds_by_its_interface_width(tmp_p
     """The overlay passes the run's measured width on, as the wetting addon does."""
     rho = _droplet()
     # The liquid tail of the right line held just inside the band, as at a chemical step.
-    (reference,) = wall_bands(rho, _config())
+    (reference,) = edge_bands(rho, _config())
     tail = slice(int(reference.right.anchor) + 1, _NX)
     rho[tail, 0] = np.maximum(rho[tail, 0], reference.right.rho_lower + 0.01)
     npz_path = tmp_path / "init_state.npz"
     np.savez(npz_path, rho=_droplet()[:, :, None, None, None])
     config = _config(init_type="init_from_file", init_dir=str(npz_path), initialisation={})
-    width = wall_interface_width(config)
+    width = wetting_interface_width(config)
     assert width is not None
 
-    (unbounded,) = wall_bands(rho, _config())
-    (bounded,) = wall_bands(rho, config)
+    (unbounded,) = edge_bands(rho, _config())
+    (bounded,) = edge_bands(rho, config)
 
     assert np.abs(unbounded.right.cells - unbounded.right.anchor).max() > 1.5 * width
     assert bounded.right.cells.size > 0
@@ -91,7 +91,7 @@ def test_a_restart_draws_the_band_the_solver_bounds_by_its_interface_width(tmp_p
 def test_band_cells_are_exactly_the_cells_the_applicator_changes():
     rho = _droplet()
     config = _config()
-    (band,) = wall_bands(rho, config)
+    (band,) = edge_bands(rho, config)
 
     gp = _apply_stencil_padding(jnp.asarray(rho), pad_modes(config))
 
@@ -127,8 +127,8 @@ def test_band_cells_are_exactly_the_cells_the_applicator_changes():
 @pytest.mark.parametrize("edge", _EDGES)
 def test_band_is_the_same_on_every_wall(edge):
     shape = _shape_for(edge)
-    (reference,) = wall_bands(_droplet(), _config())
-    (band,) = wall_bands(_droplet(edge, shape), _config(edge, shape))
+    (reference,) = edge_bands(_droplet(), _config())
+    (band,) = edge_bands(_droplet(edge, shape), _config(edge, shape))
 
     assert band.edge == edge
     np.testing.assert_array_equal(band.left.cells, reference.left.cells)
@@ -138,8 +138,8 @@ def test_band_is_the_same_on_every_wall(edge):
 def test_no_band_without_densities_or_wetting_wall():
     rho = _droplet()
 
-    assert wall_bands(rho, _config(edge=None)) == []
-    assert wall_bands(rho, SimulationConfig(grid_shape=(_NX, _NY), boundary_conditions={"bottom": "wetting"})) == []
+    assert edge_bands(rho, _config(edge=None)) == []
+    assert edge_bands(rho, SimulationConfig(grid_shape=(_NX, _NY), boundary_conditions={"bottom": "wetting"})) == []
 
 
 # --- contact angles --------------------------------------------------------
@@ -336,7 +336,7 @@ def test_bulk_drift_below_the_prescribed_liquid_does_not_widen_the_region():
     """
     rho = _droplet()
     config = _config()
-    (reference,) = wall_bands(rho, config)
+    (reference,) = edge_bands(rho, config)
 
     # Liquid drawn down by more than the old band's headroom, and tilted along
     # the wall as an inclined domain tilts it.
@@ -345,7 +345,7 @@ def test_bulk_drift_below_the_prescribed_liquid_does_not_widen_the_region():
     drifted = np.where(rho > 0.5 * (_RHO_L + _RHO_V), rho - 2.0 * old_headroom * (1.0 + tilt), rho)
     assert drifted[:, 0].max() < 0.95 * _RHO_L + 0.05 * _RHO_V  # the old band would swallow the wall
 
-    (band,) = wall_bands(drifted, config)
+    (band,) = edge_bands(drifted, config)
     widened = band.left.cells.size + band.right.cells.size
     baseline = reference.left.cells.size + reference.right.cells.size
 

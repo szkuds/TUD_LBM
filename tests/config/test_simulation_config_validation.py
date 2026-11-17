@@ -9,7 +9,7 @@ from src.config.boundary import pad_modes
 from src.config.boundary import periodic_axes
 from src.config.obstacle import obstacle_mask
 from src.config.simulation_config import SimulationConfig
-from src.config.wetting import chemical_step_wall
+from src.config.wetting import chemical_step_regions
 from src.config.wetting import restored_wetting
 from src.config.wetting import wetting_scalars
 from src.registry import get_operator_names
@@ -155,8 +155,8 @@ _INVALID = [
     ),
     pytest.param(
         {"grid_shape": (40, 20, 1), "obstacle": {"center_x": 20, "center_y": 5, "radius": 5}},
-        "clearance from top/bottom",
-        id="obstacle_touching_top_bottom_wall",
+        "clearance from the top/bottom edges",
+        id="obstacle_touching_top_bottom_edge",
     ),
     pytest.param(
         {"grid_shape": (40, 20, 1), "obstacle": {"center_x": 2, "center_y": 10, "radius": 5}},
@@ -188,7 +188,7 @@ _INVALID = [
     ),
     pytest.param(
         {"grid_shape": (20, 20, 1), "boundary_conditions": {"front": "bounce-back"}},
-        r"boundary_conditions\['front'\] has no face on the D2Q9 lattice",
+        r"boundary_conditions\['front'\] is not an edge of the D2Q9 lattice",
         id="planar_lattice_rejects_a_wall_on_a_face_it_lacks",
     ),
     pytest.param(
@@ -453,10 +453,10 @@ class TestValidateBoundaryConditions:
 
 
 class TestWettingWallConfig:
-    """Wetting walls are accepted on any edge, and several at once.
+    """Wetting edges are accepted on any edge, and several at once.
 
-    Measurement orients from the first wetting wall (see
-    ``SimulationSetup.wetting_edge``); multiple wetting walls are permitted and
+    Measurement orients from the first wetting edge (see
+    ``SimulationSetup.wetting_edge``); multiple wetting edges are permitted and
     share one ``WettingState`` parameter pair.
     """
 
@@ -671,12 +671,12 @@ _STEP = {
 }
 
 
-class TestChemicalStepWall:
-    """The stepped wall the wetting applicator splits by surface."""
+class TestChemicalStepRegions:
+    """The stepped edge the wetting applicator splits by region."""
 
     def test_pre_surface_takes_the_wetting_config_and_post_its_pull_limit(self):
         cfg = _hysteresis_config({}, chemical_step=dict(_STEP))
-        wall = chemical_step_wall(cfg)
+        wall = chemical_step_regions(cfg)
         assert wall is not None
         assert (wall.edge, wall.step_x) == ("bottom", 4.0)  # 0.5 * nx=8
         assert (wall.pre_phi_left, wall.pre_d_rho_left) == (1.0, 0.0)  # neutral [wetting] defaults
@@ -685,31 +685,66 @@ class TestChemicalStepWall:
     def test_a_less_wetting_post_surface_pushes_instead(self):
         step = dict(_STEP, ca_advancing_post_step=130.0, ca_receding_post_step=110.0)
         cfg = _hysteresis_config({}, chemical_step=step)
-        wall = chemical_step_wall(cfg)
+        wall = chemical_step_regions(cfg)
         assert wall is not None
         assert (wall.post_phi, wall.post_d_rho) == (1.0, 1.5 / 4)
 
     def test_no_step_no_wall(self):
-        assert chemical_step_wall(_hysteresis_config({})) is None
+        assert chemical_step_regions(_hysteresis_config({})) is None
 
     def test_the_step_defaults_to_the_wetting_wall(self):
         cfg = _hysteresis_config({}, chemical_step=dict(_STEP), wall="top")
-        wall = chemical_step_wall(cfg)
+        wall = chemical_step_regions(cfg)
         assert wall is not None
         assert wall.edge == "top"
 
     def test_a_step_off_the_wetting_wall_raises(self):
         step = dict(_STEP, chemical_step_edge="bottom")
-        with pytest.raises(ValueError, match="chemical_step_edge must be the wetting wall 'top'"):
+        with pytest.raises(ValueError, match="chemical_step_edge must be the wetting edge 'top'"):
             _hysteresis_config({}, chemical_step=step, wall="top")
 
     def test_a_bubble_pulls_its_post_surface_with_d_rho(self):
         """The same dispersed-frame windows: post wets the vapour more, so the wall wets the liquid less."""
         bubble = {"centres": [[0.25, 1.0]], "radii": [0.2], "dispersed": "vapour"}
         cfg = _hysteresis_config({}, chemical_step=dict(_STEP), initialisation=bubble)
-        wall = chemical_step_wall(cfg)
+        wall = chemical_step_regions(cfg)
         assert wall is not None
         assert (wall.post_phi, wall.post_d_rho) == (1.0, 1.5 / 4)
+
+    def test_a_fixed_wetting_step_splits_without_hysteresis(self):
+        cfg = _fixed_step_config(dict(_STEP), wetting={"phi_left": 1.2, "phi_right": 1.2})
+        wall = chemical_step_regions(cfg)
+        assert cfg.hysteresis is None
+        assert wall is not None
+        assert wall.pre_phi_left == 1.2
+        assert wall.post_phi == 1.0 + 5 / 4
+
+    def test_a_step_without_a_wetting_section_raises(self):
+        step = dict(_STEP)
+        with pytest.raises(ValueError, match=r"\[chemical_step\] needs a wetting boundary condition"):
+            _fixed_step_config(step, wetting=None)
+
+    def test_a_step_without_its_location_raises(self):
+        step = {key: value for key, value in _STEP.items() if key != "chemical_step_location"}
+        with pytest.raises(ValueError, match="missing \\['chemical_step_location'\\]"):
+            _fixed_step_config(step, wetting={"phi_left": 1.0})
+
+    def test_a_step_without_its_contact_angles_raises(self):
+        step = {"chemical_step_location": 0.5, "ca_advancing_pre_step": 120.0}
+        with pytest.raises(ValueError, match="missing \\['ca_receding_pre_step'"):
+            _fixed_step_config(step, wetting={"phi_left": 1.0})
+
+
+def _fixed_step_config(chemical_step: dict[str, Any], *, wetting: dict[str, Any] | None) -> SimulationConfig:
+    """A droplet on a ``"wetting"`` bottom edge with a chemical step and no ``[hysteresis]``."""
+    return SimulationConfig(
+        **dict(_DW_BASE),
+        boundary_conditions={"bottom": "wetting"},
+        wetting=wetting,
+        chemical_step=chemical_step,
+        init_type="multiphase_bubbles",
+        initialisation={"centres": [[0.25, 0.0]], "radii": [0.2], "dispersed": "liquid"},
+    )
 
 
 class TestChemicalStepPreSide:
@@ -721,7 +756,7 @@ class TestChemicalStepPreSide:
         cfg = _hysteresis_config({}, chemical_step=dict(_STEP), initialisation=initialisation)
         assert cfg.chemical_step is not None
         assert cfg.chemical_step["chemical_step_pre_side"] == side
-        wall = chemical_step_wall(cfg)
+        wall = chemical_step_regions(cfg)
         assert wall is not None
         assert wall.pre_side == side
 
@@ -767,7 +802,7 @@ class TestChemicalStepPreSide:
         import numpy as np
 
         cfg = _hysteresis_config({}, chemical_step=dict(_STEP, chemical_step_pre_side=side))
-        wall = chemical_step_wall(cfg)
+        wall = chemical_step_regions(cfg)
         assert wall is not None
         assert wall.on_post(np.array([2.0, 3.0, 4.0, 6.0])).tolist() == expected
 

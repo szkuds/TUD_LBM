@@ -143,7 +143,7 @@ _MIN_CROSSINGS = 2
 _MIN_CROSSING_SLOPE = 1e-9
 
 
-def resolve_wall_edge(config: SimulationConfig) -> Edge:
+def resolve_wetting_edge(config: SimulationConfig) -> Edge:
     """The wall the solver measures contact angles at, else :attr:`Edge.BOTTOM`.
 
     The wall is :func:`~src.operators.wetting._edge_config.first_wetting_edge`,
@@ -163,7 +163,7 @@ def resolve_wall_edge(config: SimulationConfig) -> Edge:
 def _contact_line_length_from_rho(rho: np.ndarray, rho_mean: float, wall_edge: Edge = Edge.BOTTOM) -> float | None:
     """Return setup contact-line spacing from a rho field using wall-row transitions.
 
-    *wall_edge* names the wetting wall. The row is taken from the wall-aligned
+    *wall_edge* names the wetting edge. The row is taken from the wall-aligned
     canonical view for that edge, so a droplet or bubble on ``"top"``,
     ``"left"`` or ``"right"`` is measured at its own wall. Slicing ``y = 0``
     unconditionally sampled the far wall for those runs, found no crossings,
@@ -214,7 +214,7 @@ def _get_contact_line_length_from_file(config: SimulationConfig) -> float | None
     field = load_init_field(config)
     if field is None:
         return None
-    return _contact_line_length_from_rho(field.rho, field.rho_mean, resolve_wall_edge(config))
+    return _contact_line_length_from_rho(field.rho, field.rho_mean, resolve_wetting_edge(config))
 
 
 def _get_setup_droplet_area(config: SimulationConfig) -> float | None:

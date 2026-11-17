@@ -64,7 +64,7 @@ def build_gradient(
 
 
 def grad_components(padded: jnp.ndarray, w: jnp.ndarray, c: jnp.ndarray) -> list[jnp.ndarray]:
-    """Gradient kernel on a field padded by one ghost layer on every face.
+    """Gradient kernel on a field padded by one ghost layer on every edge.
 
     Each component sums only the directions with a non-zero velocity along it,
     in lattice order.

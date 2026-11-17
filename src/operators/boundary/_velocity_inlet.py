@@ -39,7 +39,7 @@ def apply_velocity_inlet(
         _f_collision: Post-collision populations (unused — inlet overwrites
             unconditionally rather than blending with streamed values).
         lattice: :class:`~src.lattice.lattice.Lattice`.
-        edge: The domain face; only ``"left"`` is handled, other edges are no-ops.
+        edge: The domain edge; only ``"left"`` is handled, other edges are no-ops.
         u0: Peak inflow velocity (lattice units).
 
     Returns:

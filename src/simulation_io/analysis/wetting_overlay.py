@@ -5,7 +5,7 @@ operators themselves rather than from a post-processing copy of them:
 
 Wall band
     The ghost-row cells the wetting BC actually modifies, from
-    :func:`~src.operators.wetting._apply_edge.wetting_edge_regions` run on the
+    :func:`~src.operators.wetting._apply_edge.wetting_edge_bands` run on the
     same stencil padding the wetting differential operators use, together with
     the ``rho_lower``/``rho_upper`` bounds they are clipped to. A second
     definition of the region here could silently disagree with the solver, which
@@ -44,15 +44,15 @@ from src.config.boundary import Edge
 from src.config.boundary import pad_modes
 from src.config.multiphase import phase_references
 from src.config.wetting import ContactLine
-from src.config.wetting import wall_interface_width
-from src.config.wetting import wall_rho_mean
+from src.config.wetting import wetting_interface_width
+from src.config.wetting import wetting_rho_mean
 from src.simulation_io.analysis.droplet_metrics._snapshot import to_canonical_2d
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from numpy.typing import ArrayLike
     from src.config import SimulationConfig
-    from src.operators.wetting._wetting_modification import WettingRegion
+    from src.operators.wetting._wetting_modification import WettingBand
 
 #: Canonical normal coordinate of the solid surface: half a cell below the wall row.
 WALL_NORMAL = -0.5
@@ -78,8 +78,8 @@ class SideBand:
 
 
 @dataclass(frozen=True)
-class WallBand:
-    """The ghost-row cells one wetting wall modifies, indexed along that wall."""
+class EdgeBands:
+    """The ghost-row cells one wetting edge modifies, indexed along that wall."""
 
     edge: Edge
     left: SideBand
@@ -118,10 +118,10 @@ def wetting_edge(config: SimulationConfig) -> Edge | None:
     return first_wetting_edge(config.boundary_conditions)
 
 
-def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
-    """The modified ghost-row cells of every wetting wall in *config*.
+def edge_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[EdgeBands]:
+    """The modified ghost-row cells of every wetting edge in *config*.
 
-    Empty when the config has no wetting wall or lacks ``rho_l``/``rho_v``.
+    Empty when the config has no wetting edge or lacks ``rho_l``/``rho_v``.
     """
     references = phase_references(config)
     if references is None:
@@ -130,23 +130,23 @@ def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
 
     import jax.numpy as jnp
     from src.operators.differential._pad_utils import _apply_stencil_padding
-    from src.operators.wetting._apply_edge import wetting_edge_regions
+    from src.operators.wetting._apply_edge import wetting_edge_bands
     from src.operators.wetting._edge_config import _resolve_wetting_edges
 
-    interface_width = wall_interface_width(config)
+    interface_width = wetting_interface_width(config)
     grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), pad_modes(config))
-    bands: list[WallBand] = []
+    bands: list[EdgeBands] = []
     for edge, perp_start_periodic, perp_end_periodic in _resolve_wetting_edges(config.boundary_conditions or {}):
-        regions = wetting_edge_regions(
+        regions = wetting_edge_bands(
             grid_padded, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v, interface_width
         )
         sides = tuple(_side_band(side, region) for side, region in zip(ContactLine, regions, strict=True))
-        bands.append(WallBand(edge, *sides))
+        bands.append(EdgeBands(edge, *sides))
     return bands
 
 
-def _side_band(side: ContactLine, region: WettingRegion) -> SideBand:
-    """One solver :class:`~src.operators.wetting._wetting_modification.WettingRegion` as plain numpy."""
+def _side_band(side: ContactLine, region: WettingBand) -> SideBand:
+    """One solver :class:`~src.operators.wetting._wetting_modification.WettingBand` as plain numpy."""
     return SideBand(
         side,
         np.flatnonzero(np.asarray(region.mask)),
@@ -166,15 +166,15 @@ def contact_angles(
     rho_2d: np.ndarray,
     config: SimulationConfig,
 ) -> ContactAngles | None:
-    """Contact angles at the measurement wall, preferring the snapshot's saved values.
+    """Contact angles at the measurement edge, preferring the snapshot's saved values.
 
-    Returns ``None`` when there is no wetting wall, no ``rho_mean``, or the rows
+    Returns ``None`` when there is no wetting edge, no ``rho_mean``, or the rows
     the measurement reads do not each cross ``rho_mean`` twice — a detached or
     absent inclusion, for which the solver's static-shape crossing search
     collapses to index 0 and reports a meaningless angle.
     """
     edge = wetting_edge(config)
-    rho_mean = wall_rho_mean(config)
+    rho_mean = wetting_rho_mean(config)
     if edge is None or rho_mean is None:
         return None
     canonical = to_canonical_2d(rho_2d, edge)
@@ -227,7 +227,7 @@ def to_physical(
     return (away, t) if edge.normal_axis == 0 else (t, away)
 
 
-def band_cell_segments(band: WallBand, side: ContactLine, shape: tuple[int, int]) -> list[np.ndarray]:
+def band_cell_segments(band: EdgeBands, side: ContactLine, shape: tuple[int, int]) -> list[np.ndarray]:
     """One ``(2, 2)`` segment per modified cell, lying on the solid surface of *band*'s wall."""
     segments = []
     for cell in band.side(side).cells:
@@ -236,7 +236,7 @@ def band_cell_segments(band: WallBand, side: ContactLine, shape: tuple[int, int]
     return segments
 
 
-def anchor_tick(band: WallBand, side: ContactLine, shape: tuple[int, int], height: float) -> np.ndarray | None:
+def anchor_tick(band: EdgeBands, side: ContactLine, shape: tuple[int, int], height: float) -> np.ndarray | None:
     """A ``(2, 2)`` segment normal to the wall at one side's contact-line anchor.
 
     ``None`` when that side modifies nothing, so an anchor the contrast floor

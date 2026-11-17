@@ -50,8 +50,8 @@ class WettingState(NamedTuple):
         ca_left: Current contact angle, left.
         ca_right: Current contact angle, right.
         cll_left: Contact-line location, left. A coordinate *tangential* to the
-            wetting wall: x for bottom/top walls, y for left/right walls.
-        cll_right: Contact-line location, right. Tangential to the wetting wall
+            wetting edge: x for bottom/top walls, y for left/right walls.
+        cll_right: Contact-line location, right. Tangential to the wetting edge
             (see ``cll_left``).
 
         latch_left: Regime the left line is latched in: ``0`` pinned, ``1``

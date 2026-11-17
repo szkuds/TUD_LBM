@@ -57,7 +57,7 @@ Kind                        Decorator                       Resolved by
 ``pressure``                ``@pressure_operator``          ``multiphase.eos`` (if it has one)
 ``surface_tension``         ``@surface_tension_operator``   ``multiphase.eos`` (if it has one)
 ``coexistence``             ``@coexistence_operator``       ``multiphase.eos`` (if it has one)
-``boundary_condition``      ``@boundary_condition``         ``config.boundary_conditions`` per face
+``boundary_condition``      ``@boundary_condition``         ``config.boundary_conditions`` per edge
 ``force``                   ``@force_model``                the keys of ``config.forces``
 ``stream``                  ``@stream_operator``            fixed (``"standard"``)
 ``initialise``              ``@initialise_operator``        ``config.init_type``
@@ -131,7 +131,7 @@ about where the pressure lives and mixing the pairs loses it or counts it
 twice.  :mod:`src.config.equilibrium` reads and checks the pairing.
 
 ``wb``
-    Well-balanced second-order Maxwell–Boltzmann equilibrium.  The rest
+    Well-balanced (WB-LBM) second-order Maxwell–Boltzmann equilibrium.  The rest
     population is recovered from mass conservation,
     ``f₀ = ρ − Σ_{i>0} feq_i``, which keeps a static interface at rest
     exactly.  It carries no pressure; a multiphase run supplies it as the
@@ -228,15 +228,15 @@ never configuration values.
 Boundary conditions — ``boundary_condition``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Configured per face in ``[boundary_conditions]`` and applied after
+Configured per edge in ``[boundary_conditions]`` and applied after
 streaming, in the order bottom, top, left, right, front, back (a 2D lattice
-has only the first four).  Faces you omit default to ``periodic``.  An
+has only the first four).  An edge you omit takes the default boundary condition, ``periodic``.  An
 obstacle's bounce-back, when there is one, runs first.  A condition's
-parameters go in the face's ``{edge}_{name}`` key (``left_velocity_inlet``),
+parameters go in the edge's ``{edge}_{name}`` key (``left_velocity_inlet``),
 completed from ``BOUNDARY_PARAMETERS`` in :mod:`src.config.defaults`; a key
-that is not the parameter section of its face's condition is rejected.  Every
-condition is written over the face's normal axis, so the same code serves the
-z faces of a 3D run.
+that is not the parameter section of its edge's condition is rejected.  Every
+condition is written over the edge's normal axis, so the same code serves the
+z edges of a 3D run.
 
 ``periodic``
     Wraps via ``jnp.roll``; carries pad-edge mode ``"wrap"`` for the
@@ -246,8 +246,8 @@ z faces of a 3D run.
     Solid wall — reverses populations against the wall.
 
 ``symmetry``
-    Specular (free-slip) mirror plane on any face, pad-edge mode ``"edge"``.
-    Each population entering through the face is the one leaving with the
+    Specular (free-slip) mirror plane on any edge, pad-edge mode ``"edge"``.
+    Each population entering through the edge is the one leaving with the
     normal component of its velocity flipped, taken from the neighbouring
     cell along its tangential components, so tangential momentum is kept.
     (The earlier 2D version paired the top and bottom diagonals the wrong way
@@ -266,7 +266,7 @@ z faces of a 3D run.
     ``bounce-back`` registered a second time under this name.  On the
     populations it is a solid wall; the name marks the wall the wetting addon
     acts on, through the density stencils rather than the populations.  The
-    first such face is the wall the contact angles are measured at.
+    first such edge is the wall the contact angles are measured at.
 
 Streaming — ``stream``
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -275,7 +275,7 @@ Streaming — ``stream``
     ``jnp.roll`` per velocity direction, followed by zeroing of the layers
     that wrapped across **non-periodic** axes — without this, mass leaks
     through bounce-back walls.  :func:`build_streaming_fn` binds the run's
-    periodic axes (an axis is periodic when both its faces are) once at setup
+    periodic axes (an axis is periodic when both its edges are) once at setup
     time, so the operator is ``stream(f, lattice)``.
 
 Forces — ``force``
@@ -426,7 +426,7 @@ trial steps.  It fills three slots:
   ``[chemical_step]`` selects the chemical-step variant.
 
 The wall separates the phases at one fixed density,
-:func:`~src.config.wetting.wall_rho_mean`: the midpoint of the run's phase
+:func:`~src.config.wetting.wetting_rho_mean`: the midpoint of the run's phase
 references, so the init field's own densities on an ``init_from_file`` run.
 The applicator's contact-line anchors and contrast gate, the measured angles
 and contact lines, the optimiser and the contact-angle overlay all use it.
@@ -446,13 +446,13 @@ Measuring it every step was tried and rejected: it changed angles by under
     rejected.
 
 ``update_wetting_state_chemical_step`` (``[hysteresis]`` + ``[chemical_step]``)
-    Same machinery, with each contact line's window taken from the surface it
+    Same machinery, with each contact line's window taken from the region it
     is on: the post-step window once the line is within ``edge_width``
     (default 1 cell) of the step or past it.  The step itself is a property
-    of the wall: a line's band cells across the step keep their own surface's
+    of the wetting edge: a line's band cells across the step keep their own region's
     wettability (pre-step at the ``[wetting]`` values, post-step at the clamp
-    limit toward the post surface).  A line receding onto the more wetting
-    surface is held at the step, pinned to its position, and the post surface
+    limit toward the post-step region).  A line receding onto the more wetting
+    region is held at the step, pinned to its position, and the post-step region
     starts at the bound: until the angle is within ``saturation_gap`` (1°) of
     it, the optimiser is skipped and the wall takes its clamp limit.
     Configured by ``[chemical_step]``.
@@ -483,7 +483,7 @@ Three-dimensional runs
 ~~~~~~~~~~~~~~~~~~~~~~
 
 ``lattice_type = "D3Q19"`` with ``nz > 1`` runs the bulk physics in 3D:
-streaming, every boundary condition on all six faces, the differential
+streaming, every boundary condition on all six edges, the differential
 stencils, the multiphase macroscopic operator, the well-balanced source term
 and ``multiphase_bubbles`` (three-coordinate ``centres``).  Verified against
 Poiseuille flow (0.13% from the parabola) and the Laplace law of a droplet
@@ -501,7 +501,7 @@ Obstacle — ``obstacle``
 
 The registered shapes only build the solid-cell mask.  The bounce-back on it
 is the first link of the boundary chain: :func:`~src.operators.boundary.build_bc`
-puts it ahead of the edge BCs, with the same ``(f_stream, f_col)`` shape.
+puts it ahead of the boundary conditions of the edges, with the same ``(f_stream, f_col)`` shape.
 
 Plotting and analysis
 ~~~~~~~~~~~~~~~~~~~~~

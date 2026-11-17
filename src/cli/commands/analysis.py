@@ -233,7 +233,7 @@ def _analyse_coexistence(config: SimulationConfig, out_dir: Path) -> None:
 
 
 def _analyse_length_scale(config: SimulationConfig, config_toml: str, out_dir: Path) -> None:
-    """Plot the region behind the Bo/Oh length scale and refresh the parameter overview."""
+    """Plot the inclusion area behind the Bo/Oh length scale and refresh the parameter overview."""
     from src.simulation_io.analysis.physical_parameters import write_length_scale_figure
     from src.simulation_io.analysis.physical_parameters import write_physical_parameters
 
@@ -243,7 +243,7 @@ def _analyse_length_scale(config: SimulationConfig, config_toml: str, out_dir: P
 
     figure_path = write_length_scale_figure(config, out_dir, run_dir=run_dir)
     if figure_path is None:
-        console.print("[yellow]No droplet region could be resolved; no figure written.[/yellow]")
+        console.print("[yellow]No inclusion area could be resolved; no figure written.[/yellow]")
     else:
         success("Length-scale diagnostic written")
         console.print(f"[bold green]Plot saved to:[/bold green] {figure_path}")
@@ -275,7 +275,7 @@ def _analyse_length_scale(config: SimulationConfig, config_toml: str, out_dir: P
     "--length-scale",
     "length_scale",
     is_flag=True,
-    help="Plot the droplet region behind the Bo/Oh length scale against the region measured from the "
+    help="Plot the inclusion area behind the Bo/Oh length scale against the area measured from the "
     "run's snapshots, and refresh physical_parameters.txt with the measured densities.",
 )
 @click.option(
@@ -306,7 +306,7 @@ def analyse(
         # Compare the configured densities with the EOS's own Maxwell pair
         tud-lbm analyse config.toml --coexistence
 
-        # Check the droplet region the Bond number is built from
+        # Check the inclusion area the Bond number is built from
         tud-lbm analyse run_dir/config.toml --length-scale
 
         # Write outputs somewhere other than the config's directory

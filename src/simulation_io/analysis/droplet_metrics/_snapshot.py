@@ -65,7 +65,7 @@ def to_canonical_2d(rho_2d: np.ndarray, wall_edge: Edge) -> np.ndarray:
     """Numpy twin of :func:`src.operators.wetting._canonical_view.to_canonical`.
 
     Maps ``rho_2d`` (shape ``(nx, ny)``) into the wall-aligned frame where the
-    wetting wall is at column 0 with liquid at increasing column index, so the
+    wetting edge is at column 0 with liquid at increasing column index, so the
     bottom-wall formulas below apply unchanged for all four edges. Both versions
     read the orientation off :class:`~src.config.boundary.Edge`, so they cannot
     disagree — the live simulation path uses the JAX one and this fallback runs

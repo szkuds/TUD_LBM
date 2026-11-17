@@ -27,7 +27,7 @@ def apply_periodic(
         f_streamed: Post-streaming populations.
         _f_collision: Post-collision populations (unused).
         _lattice: Lattice (unused).
-        _edge: The domain face (unused).
+        _edge: The domain edge (unused).
 
     Returns:
         ``f_streamed`` unchanged.

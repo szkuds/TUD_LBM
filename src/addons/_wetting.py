@@ -1,4 +1,4 @@
-"""Wetting addon — the wetting wall, contact-angle measurement and hysteresis.
+"""Wetting addon — the wetting edge, contact-angle measurement and hysteresis.
 
 The wall parameters always live in ``State.ext["wetting"]``
 (:class:`~src.operators.wetting._params.WettingState`), for a fixed-wetting run
@@ -20,10 +20,10 @@ import jax
 import jax.numpy as jnp
 from src.addons.hooks import Hooks
 from src.config.multiphase import phase_references
-from src.config.wetting import chemical_step_wall
+from src.config.wetting import chemical_step_regions
 from src.config.wetting import restored_wetting
-from src.config.wetting import wall_interface_width
-from src.config.wetting import wall_rho_mean
+from src.config.wetting import wetting_interface_width
+from src.config.wetting import wetting_rho_mean
 from src.config.wetting import wetting_scalars
 from src.operators.wetting._applicator import build_wetting_applicator
 from src.operators.wetting._contact_angle import compute_contact_angle
@@ -58,10 +58,10 @@ def wetting_ghost_fill(config: SimulationConfig) -> GhostFill[WallParams]:
     :class:`WettingParams`; both carry the four parameter names.
     """
     references = phase_references(config)
-    assert references is not None  # noqa: S101 - build_wetting_addon checks the phase first (_wall)
+    assert references is not None  # noqa: S101 - build_wetting_addon checks the phase first (_wetting_edge)
     rho_v, rho_l = references
     apply = build_wetting_applicator(
-        rho_l, rho_v, config.boundary_conditions, chemical_step_wall(config), wall_interface_width(config)
+        rho_l, rho_v, config.boundary_conditions, chemical_step_regions(config), wetting_interface_width(config)
     )
 
     def ghost_fill(padded: jnp.ndarray, wall: WallParams) -> jnp.ndarray:
@@ -70,7 +70,7 @@ def wetting_ghost_fill(config: SimulationConfig) -> GhostFill[WallParams]:
     return ghost_fill
 
 
-def _wall(config: SimulationConfig) -> tuple[float, Edge]:
+def _wetting_edge(config: SimulationConfig) -> tuple[float, Edge]:
     """``(rho_mean, edge)``: the phase threshold and the wall the angles are measured at.
 
     Raises:
@@ -79,7 +79,7 @@ def _wall(config: SimulationConfig) -> tuple[float, Edge]:
             a run has no multiphase stencils to put the wall on, or no wall to
             apply it to and measure at.
     """
-    rho_mean = wall_rho_mean(config)
+    rho_mean = wetting_rho_mean(config)
     if rho_mean is None:
         msg = (
             "Wetting configuration present without a [multiphase] section. "
@@ -99,7 +99,7 @@ def _density(f: jnp.ndarray) -> jnp.ndarray:
 
 
 def _measure(rho: jnp.ndarray, rho_mean: float, edge: Edge) -> dict[str, jnp.ndarray]:
-    """``ca_*`` and ``cll_*`` of *rho* at the measurement wall."""
+    """``ca_*`` and ``cll_*`` of *rho* at the measurement edge."""
     ca_left, ca_right = compute_contact_angle(rho, jnp.array(rho_mean), edge=edge)
     cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, jnp.array(rho_mean), edge=edge)
     return {"ca_left": ca_left, "ca_right": ca_right, "cll_left": cll_left, "cll_right": cll_right}
@@ -132,7 +132,7 @@ def build_measurement_hook(config: SimulationConfig) -> PostStepHook:
 
     Also the ``no_optimiser`` rung of ``tud-lbm benchmark``'s ablation ladder.
     """
-    rho_mean, edge = _wall(config)
+    rho_mean, edge = _wetting_edge(config)
 
     def post_step(setup: SimulationSetup, prev: State, new: State) -> State:  # noqa: ARG001 - PostStepHook shape
         wetting = new.ext[NAME]._replace(**_measure(_density(new.f), rho_mean, edge))
@@ -176,7 +176,7 @@ def build_wetting_addon(config: SimulationConfig) -> Hooks[WallParams] | None:
     """The wetting hooks, or ``None`` without a ``[wetting]`` / ``[hysteresis]`` section."""
     if wetting_scalars(config) is None:
         return None
-    rho_mean, edge = _wall(config)
+    rho_mean, edge = _wetting_edge(config)
     post_step = build_measurement_hook(config) if config.hysteresis is None else _optimiser(config, edge)
     return Hooks(
         ghost_fill=wetting_ghost_fill(config),

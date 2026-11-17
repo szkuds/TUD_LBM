@@ -8,11 +8,11 @@
 # On DelftBlue, both backends and every size in one command:
 #
 #   scripts/db_benchmark.sh --steps 200 --scales "1 2 4 8" \
-#       .claude/benchmarks/bench_kernel.toml
+#       examples/benchmarks/bench_kernel.toml
 #
 # Locally, one size at a time:
 #
-#   tud-lbm benchmark .claude/benchmarks/bench_kernel.toml \
+#   tud-lbm benchmark examples/benchmarks/bench_kernel.toml \
 #       --override grid_shape=[128,128]  --label kernel_128
 #
 # `nt` is irrelevant here — `--steps` sets the measured scan length.

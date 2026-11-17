@@ -242,7 +242,7 @@ class BoundaryCondition(Protocol):
             f_streamed: Post-streaming populations.
             f_collision: Post-collision populations (for symmetry BC).
             lattice: :class:`~src.lattice.lattice.Lattice`.
-            edge: The domain face.
+            edge: The domain edge.
 
         Returns:
             Populations with the boundary condition applied on *edge*.
@@ -432,7 +432,7 @@ class ExtDifferentialOperator(Protocol):
     captures the lattice, the pad modes and an optional *ghost fill*: the
     composed ``ghost_fill`` slot of the active addons, applied between
     padding and the stencil. The fill reads the addon substates from *ext*
-    (the wetting wall reads ``ext["wetting"]``); an operator built without a
+    (the wetting edge reads ``ext["wetting"]``); an operator built without a
     fill ignores *ext*.
 
     Signature::

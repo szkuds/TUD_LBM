@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 
 class Edge(StrEnum):
-    """A face of the domain, declared in the order the boundary conditions are applied.
+    """An edge of the domain, declared in the order the boundary conditions are applied.
 
     A member equals its string (``Edge.LEFT == "left"``), so it indexes the
     ``[boundary_conditions]`` table and builds its keys unchanged.
@@ -36,29 +36,29 @@ class Edge(StrEnum):
 
     @property
     def normal_axis(self) -> int:
-        """The spatial axis normal to this face: 0 (x), 1 (y) or 2 (z)."""
-        return _FACE[self][0]
+        """The spatial axis normal to this edge: 0 (x), 1 (y) or 2 (z)."""
+        return _EDGE[self][0]
 
     @property
     def at_far_end(self) -> bool:
-        """Whether this face is the last index of its normal axis (``top``, ``right``, ``front``)."""
-        return _FACE[self][1]
+        """Whether this edge is the last index of its normal axis (``top``, ``right``, ``front``)."""
+        return _EDGE[self][1]
 
     @property
     def cells(self) -> tuple[slice | int, ...]:
-        """The ``(x, y, z)`` index selecting the cells of this face."""
+        """The ``(x, y, z)`` index selecting the cells of this edge."""
         cells: list[slice | int] = [slice(None)] * 3
         cells[self.normal_axis] = -1 if self.at_far_end else 0
         return tuple(cells)
 
     @property
     def tangential_ends(self) -> tuple[Edge, Edge]:
-        """The two in-plane faces that bound this in-plane face, at its start and its end."""
+        """The two in-plane edges that bound this in-plane edge, at its start and its end."""
         return (Edge.BOTTOM, Edge.TOP) if self.normal_axis == 0 else (Edge.LEFT, Edge.RIGHT)
 
 
 #: Edge -> (normal axis, at the far end of it). ``front`` is ``z = nz - 1``.
-_FACE: dict[Edge, tuple[int, bool]] = {
+_EDGE: dict[Edge, tuple[int, bool]] = {
     Edge.BOTTOM: (1, False),
     Edge.TOP: (1, True),
     Edge.LEFT: (0, False),
@@ -69,7 +69,7 @@ _FACE: dict[Edge, tuple[int, bool]] = {
 
 
 def edges_of(dim: int) -> tuple[Edge, ...]:
-    """The faces of a *dim*-dimensional domain, in application order."""
+    """The edges of a *dim*-dimensional domain, in application order."""
     return tuple(edge for edge in Edge if edge.normal_axis < dim)
 
 
@@ -77,7 +77,7 @@ class BoundaryEdge(NamedTuple):
     """One edge's boundary condition, resolved from ``[boundary_conditions]``.
 
     Attributes:
-        edge: The face this boundary condition acts on.
+        edge: The edge this boundary condition acts on.
         name: Registered boundary-condition name, e.g. ``"bounce-back"``.
         params: Keyword arguments bound into the BC operator; empty for a BC
             that takes none.
@@ -115,7 +115,7 @@ def complete_boundary_conditions(section: dict[str, Any] | None, lattice_type: s
     """*section* naming every edge of the lattice, so the boundary builder only looks up and binds.
 
     A missing edge takes the default BC. A two-dimensional lattice has no
-    ``front``/``back`` face, so a periodic entry for one is dropped rather than
+    ``front``/``back`` edge, so a periodic entry for one is dropped rather than
     carried into the overview and the saved ``config.toml``; run directories
     written before this still load. Any other BC there is left for
     :func:`validate_boundary_conditions` to reject. An edge whose BC takes
@@ -143,7 +143,8 @@ def validate_boundary_conditions(config: SimulationConfig) -> None:
     for edge in Edge:
         if edge not in edges and edge in section:
             msg = (
-                f"boundary_conditions['{edge}'] has no face on the {config.lattice_type} lattice, got '{section[edge]}'"
+                f"boundary_conditions['{edge}'] is not an edge of the {config.lattice_type} lattice, "
+                f"got '{section[edge]}'"
             )
             raise ValueError(msg)
     for edge in edges:
@@ -166,7 +167,7 @@ def _section(config: SimulationConfig) -> dict[str, Any]:
 def periodic_axes(config: SimulationConfig) -> tuple[bool, bool, bool]:
     """Per-axis periodicity ``(x, y, z)``: an axis is periodic only if both its edges are.
 
-    A 2D lattice has no ``front``/``back`` faces, so nothing bounds its z axis.
+    A 2D lattice has no ``front``/``back`` edges, so nothing bounds its z axis.
     """
     section = _section(config)
     return (

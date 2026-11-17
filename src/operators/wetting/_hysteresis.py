@@ -50,8 +50,8 @@ import jax.numpy as jnp
 from src.config.wetting import D_RHO_SPAN_W
 from src.config.wetting import PHI_SPAN_W
 from src.config.wetting import ContactLine
-from src.config.wetting import chemical_step_wall
-from src.config.wetting import wall_rho_mean
+from src.config.wetting import chemical_step_regions
+from src.config.wetting import wetting_rho_mean
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
 from src.operators.wetting._interface_crossings import detect_bubble
@@ -186,11 +186,11 @@ class StepSide(NamedTuple):
     """Where one contact line stands relative to a chemical step.
 
     Attributes:
-        on_post: The line is on the post-step surface.
+        on_post: The line is on the post-step region.
         held: The line is Gibbs-pinned at the step (see
             :func:`_get_hysteresis_window_chemical_step`).
-        pre_phi: ``phi`` of the pre-step surface in this line's band.
-        pre_d_rho: ``d_rho`` of the pre-step surface in this line's band.
+        pre_phi: ``phi`` of the pre-step region in this line's band.
+        pre_d_rho: ``d_rho`` of the pre-step region in this line's band.
     """
 
     on_post: jnp.ndarray
@@ -213,19 +213,19 @@ def _step_saturation(
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """``(saturated, phi, d_rho)`` for one side at a chemical step.
 
-    A line on the post surface, or held at the step, whose angle is more than
+    A line on the post-step region, or held at the step, whose angle is more than
     *gap* from the bound it is heading for, skips the optimiser and takes the
-    wall's full authority toward that bound — the post surface "starts at the
+    wall's full authority toward that bound — the post-step region "starts at the
     bound" rather than being optimised up to it from wherever it was:
 
     * advancing above ``ca_adv``, or held at the step above the post receding
-      angle ``ca_rec`` — the angle must fall, so a more liquid-wetting wall;
+      angle ``ca_rec`` — the angle must fall, so a more liquid-wetting edge;
     * receding below ``ca_rec`` — the angle must rise, so a less wetting one.
 
     The knob is chosen from that direction (liquid-frame, hence the bubble flip)
     at its clamp limit. A held line standing on the pre-step side of the edge
-    instead takes the pre surface's configured values: its own band cells are
-    pre-step cells, and the pre surface must keep pushing the liquid away while
+    instead takes the pre-step region's configured values: its own band cells are
+    pre-step cells, and the pre-step region must keep pushing the liquid away while
     the post-step cells — fixed at their own limit by the applicator — pull.
     Within *gap* of the bound the optimiser takes over.
     """
@@ -477,34 +477,34 @@ def _get_hysteresis_window_chemical_step(
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Return ``(ca_advancing, ca_receding, held_at_step)`` for one contact line.
 
-    "Pre" and "post" are the inclusion's start and destination surfaces
-    (:meth:`~src.config.wetting.ChemicalStepWall.on_post`), so the rules hold for
-    either direction of travel. The window is the surface's own: the post-step
+    "Pre" and "post" are the inclusion's start and destination regions
+    (:meth:`~src.config.wetting.ChemicalStepRegions.on_post`), so the rules hold for
+    either direction of travel. The window is the region's own: the post-step
     window once the line is within ``edge_width`` of the step (on the start side)
     or past it, the pre-step window otherwise.
     It is stateless. The step itself is expressed through the wall: band cells
-    across the step keep their own surface's wettability
-    (:class:`~src.config.wetting.ChemicalStepWall`).
+    across the step keep their own region's wettability
+    (:class:`~src.config.wetting.ChemicalStepRegions`).
 
     ``held_at_step`` marks a line at the edge that is receding onto the more
-    wetting surface: its probes ``edge_width`` either side passes the step,
-    with the less wetting surface ahead of it (outward: ``-tangential`` for the
+    wetting region: its probes ``edge_width`` either side passes the step,
+    with the less wetting region ahead of it (outward: ``-tangential`` for the
     left line, ``+tangential`` for the right). The operator pins it to the step
     position and saturates it toward the post receding angle
-    (:func:`_step_saturation`). A line advancing onto the more wetting surface is
+    (:func:`_step_saturation`). A line advancing onto the more wetting region is
     never held; it spreads.
     """
     csc = setup.config.chemical_step
-    wall = chemical_step_wall(setup.config)
+    wall = chemical_step_regions(setup.config)
     assert csc is not None  # noqa: S101 - a chemical-step run has the section
-    # It also has wetting, so a stepped wall.
+    # It also has wetting, so a stepped edge.
     assert wall is not None  # noqa: S101
     delta = csc["edge_width"]
     ahead, behind = (cll - delta, cll + delta) if side == ContactLine.LEFT else (cll + delta, cll - delta)
     post = wall.on_post(cll + wall.travel * delta)
     ca_adv = jnp.where(post, csc["ca_advancing_post_step"], csc["ca_advancing_pre_step"])
     ca_rec = jnp.where(post, csc["ca_receding_post_step"], csc["ca_receding_pre_step"])
-    # Held: the surface behind the line (the one it would uncover) is post, the
+    # Held: the region behind the line (the one it would uncover) is post, the
     # one ahead is pre, and post wets more.
     post_wets_more = csc["ca_receding_post_step"] < csc["ca_advancing_pre_step"]
     held_at_step = wall.on_post(behind) & ~wall.on_post(ahead) & post_wets_more
@@ -558,7 +558,7 @@ def _update_wetting_state_impl(
     to the step itself. The anchors still decide which way a line is moving and
     are what the returned state carries.
 
-    ``step_sides`` (chemical-step runs only) lets a side on the post surface, or
+    ``step_sides`` (chemical-step runs only) lets a side on the post-step region, or
     held at the step, skip the optimiser while its angle is more than
     ``hysteresis["saturation_gap"]`` from its bound (:func:`_step_saturation`).
 
@@ -566,7 +566,7 @@ def _update_wetting_state_impl(
     ``rho_t_plus1`` (:func:`_measure`) at the wall *edge*. ``t`` is used only by
     the ``--debug-wetting`` trace.
     """
-    rho_mean, w = _wall_constants(setup)
+    rho_mean, w = _wetting_constants(setup)
     hc = setup.config.hysteresis
     if hc is None:
         msg = "[hysteresis] is required for hysteresis wetting update"
@@ -775,10 +775,10 @@ def wetting_params(wetting: WettingState) -> WettingParams:
     return WettingParams(**{name: getattr(wetting, name) for name in WettingParams._fields})
 
 
-def _wall_constants(setup: SimulationSetup) -> tuple[jnp.ndarray, jnp.ndarray]:
+def _wetting_constants(setup: SimulationSetup) -> tuple[jnp.ndarray, jnp.ndarray]:
     """``(rho_mean, interface_width)`` of a hysteresis run."""
     mp = setup.multiphase_params
-    rho_mean = wall_rho_mean(setup.config)
+    rho_mean = wetting_rho_mean(setup.config)
     assert mp is not None  # noqa: S101 - SimulationConfig rejects wetting on a single-phase run
     assert rho_mean is not None  # noqa: S101 - as above: two phases
     return jnp.array(rho_mean), jnp.array(float(mp.interface_width))
@@ -787,8 +787,8 @@ def _wall_constants(setup: SimulationSetup) -> tuple[jnp.ndarray, jnp.ndarray]:
 def _measure(
     rho: jnp.ndarray, setup: SimulationSetup, edge: Edge
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """``(ca_left, ca_right, cll_left, cll_right)`` of *rho* at the wetting wall *edge*."""
-    rho_mean, _w = _wall_constants(setup)
+    """``(ca_left, ca_right, cll_left, cll_right)`` of *rho* at the wetting edge *edge*."""
+    rho_mean, _w = _wetting_constants(setup)
     ca_left, ca_right = compute_contact_angle(rho, rho_mean, edge=edge)
     cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, rho_mean, edge=edge)
     return ca_left, ca_right, cll_left, cll_right
@@ -853,7 +853,7 @@ def update_wetting_state_chemical_step(
     """Hysteresis update where CA targets are determined per-side by chemical step position.
 
     Identical to :func:`update_wetting_state` except each side's
-    ``(ca_advancing, ca_receding)`` is read from the surfaces either side of
+    ``(ca_advancing, ca_receding)`` is read from the regions either side of
     that contact line (:func:`_get_hysteresis_window_chemical_step`), and a
     line held at the step is pinned to the step itself rather than to its
     anchor: the trailing line of a droplet pulled over the step stays on the
@@ -861,7 +861,7 @@ def update_wetting_state_chemical_step(
     receding angle.
     """
     measured = _measure(rho_t_plus1, setup, edge)
-    wall = chemical_step_wall(setup.config)
+    wall = chemical_step_regions(setup.config)
     assert wall is not None  # noqa: S101 - a chemical-step run has a wetting config and a step
     windows, pins, step_sides = [], [], []
     for i, line in enumerate(ContactLine):

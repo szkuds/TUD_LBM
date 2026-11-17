@@ -26,7 +26,7 @@ from src.simulation_io.analysis.physical_parameters.physical_parameters import _
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _resolve_gravity_value
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _row
 from src.simulation_io.analysis.physical_parameters.physical_parameters import _section
-from src.simulation_io.analysis.physical_parameters.physical_parameters import resolve_wall_edge
+from src.simulation_io.analysis.physical_parameters.physical_parameters import resolve_wetting_edge
 
 # ---------------------------------------------------------------------------
 # Primitive helpers
@@ -148,7 +148,7 @@ def test_contact_line_length_misses_when_told_the_wrong_wall():
     ],
 )
 def test_resolve_wall_edge(boundary_conditions, expected):
-    assert resolve_wall_edge(SimpleNamespace(boundary_conditions=boundary_conditions)) == expected  # ty: ignore[invalid-argument-type]
+    assert resolve_wetting_edge(SimpleNamespace(boundary_conditions=boundary_conditions)) == expected  # ty: ignore[invalid-argument-type]
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +354,15 @@ def test_build_overview_includes_critical_inclination_angle_for_chemical_step_co
         multiphase={"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.5, "interface_width": 2},
         forces={"gravity_masked_force": {"force_g": 1e-3}},
         grid_shape=(100, 100),
-        chemical_step={"ca_advancing_pre_step": 110.0, "ca_receding_pre_step": 80.0, "chemical_step_pre_side": "low"},
+        boundary_conditions={"bottom": "wetting"},
+        chemical_step={
+            "chemical_step_location": 0.5,
+            "ca_advancing_pre_step": 110.0,
+            "ca_receding_pre_step": 80.0,
+            "ca_advancing_post_step": 70.0,
+            "ca_receding_post_step": 50.0,
+            "chemical_step_pre_side": "low",
+        },
         initialisation={"radii": [0.1], "centres": [[0.5, 0.5]], "dispersed": "liquid"},
         hysteresis={"ca_advancing": 110, "ca_receding": 80},
         wetting={"phi_left": 1.0},

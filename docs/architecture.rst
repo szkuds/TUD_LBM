@@ -200,7 +200,7 @@ cannot exist as an object.
 
 A section is one field holding the section's table, as the TOML file has it.
 Everything derived from a section — the edges in application order, the pad
-modes, ``MultiphaseParams``, the phase references, the chemical-step wall —
+modes, ``MultiphaseParams``, the phase references, the chemical-step regions —
 is a function in that section's module of the config package, not a property
 of the config.
 

@@ -15,7 +15,7 @@
 [![cffconvert](https://github.com/szkuds/tud_lbm/actions/workflows/cffconvert.yml/badge.svg)](https://github.com/szkuds/tud_lbm/actions/workflows/cffconvert.yml)
 [![sonarcloud](https://github.com/szkuds/tud_lbm/actions/workflows/sonarcloud.yml/badge.svg)](https://github.com/szkuds/tud_lbm/actions/workflows/sonarcloud.yml)
 
-A JAX-accelerated lattice Boltzmann method framework developed at Delft University of Technology. TUD-LBM supports single-phase, multiphase, wetting, hysteresis, and chemical-step simulations through a configuration-driven workflow.
+A JAX-accelerated lattice Boltzmann method framework developed at Delft University of Technology. TUD-LBM supports single-phase and multiphase (well-balanced LBM, WB-LBM) simulations, wetting boundary conditions with or without contact angle hysteresis, and chemical steps, through a configuration-driven workflow. The terms are defined in the *Terminology* section of [`docs/quickstart.rst`](docs/quickstart.rst).
 
 ## Installation
 

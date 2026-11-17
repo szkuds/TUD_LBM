@@ -8,7 +8,7 @@ gradient "sees" the desired wetting boundary condition.
 window.** The predecessor selected ghost cells by the fixed band
 ``0.05*rho_l + 0.95*rho_v <= rho < 0.95*rho_l + 0.05*rho_v`` and split it at its
 index centroid. That leaves only ``0.05*(rho_l - rho_v)`` of headroom above the
-band, and on a gravitating run the liquid at the wetting wall equilibrates
+band, and on a gravitating run the liquid at the wetting edge equilibrates
 *below* the prescribed ``rho_l`` by more than that: a measured inclined bubble
 run (``force_g = 5e-06`` at 60°, ``rho_l = 12.18``) developed a hydrostatic drop
 of 0.76 across the domain against a headroom of 0.608, so bulk liquid entered the
@@ -20,7 +20,7 @@ worse still: gravity stratifies the liquid *along* the wall too, spanning the
 full bandwidth, so a *measured* global pair cannot separate interface from bulk
 either.
 
-Hence, the clauses of :func:`wetting_regions`, each of which earns its place:
+Hence, the clauses of :func:`wetting_bands`, each of which earns its place:
 
 Measured phase references, shared by both contact lines
     ``hi``/``lo`` are measured over the *union* of the two anchor windows, so the
@@ -53,12 +53,12 @@ Window
     whole wall. It is also where the references are measured, so it has to reach
     bulk and is sized from the wall, not from the interface.
 Interface width
-    Bounds the region at ``_REGION_WIDTH_FACTOR`` measured interface widths either
+    Bounds the region at ``_BAND_WIDTH_FACTOR`` measured interface widths either
     side of the contact line, on a run whose init field gives one
-    (:func:`~src.config.wetting.wall_interface_width`). The window alone is too
+    (:func:`~src.config.wetting.wetting_interface_width`). The window alone is too
     wide a bound: on a 401-cell wall it is 50 cells, and the liquid tail ahead of a
     Carnahan-Starling bubble sits just above ``rho_upper``. At a chemical step the
-    destination surface's fixed values lowered those cells into the band, and the
+    post-step region's fixed values lowered those cells into the band, and the
     region went from 28 to 58 cells between two saves with the line still 19 cells
     from the step (``.claude/261112_bubble_fix_analysis/README.md``, section 9).
     The window keeps its size because the references need it.
@@ -78,7 +78,7 @@ Contrast floor
     12.17.
 
 ``rho_mean`` and the contrast floor come from the run's phase references
-(:func:`~src.config.wetting.wall_rho_mean`): the init field's own densities on
+(:func:`~src.config.wetting.wetting_rho_mean`): the init field's own densities on
 an ``init_from_file`` run, else the configured ones. They are fixed for the run
 and not tracked: ``rho_mean`` only has to *separate* the phases, so it needs
 classifier-grade accuracy — the same argument
@@ -96,7 +96,7 @@ from src.operators.wetting._interface_crossings import interface_crossings
 
 if TYPE_CHECKING:
     from jax.typing import ArrayLike
-    from src.config.wetting import ChemicalStepWall
+    from src.config.wetting import ChemicalStepRegions
 
 #: Inset from each measured phase density, as a fraction of the measured contrast.
 _BAND_FRAC = 0.05
@@ -109,14 +109,14 @@ _MIN_CONTRAST_FRAC = 0.5
 #: contact line. A double-well droplet's region is ~1.5 widths on its longer side
 #: and a Carnahan-Starling bubble's ~1.0, so the bound acts only on a region that
 #: has left its interface.
-_REGION_WIDTH_FACTOR = 1.5
+_BAND_WIDTH_FACTOR = 1.5
 
 #: Anchor window half-width: ``max(_MIN_WINDOW, n // _WINDOW_DIVISOR)`` cells.
 _MIN_WINDOW = 16
 _WINDOW_DIVISOR = 8
 
 
-class WettingRegion(NamedTuple):
+class WettingBand(NamedTuple):
     """One contact line's ghost-row cells and the density bounds they are held to.
 
     Selection and clipping come from this single object so they can never be
@@ -160,17 +160,17 @@ def _window_span(row: jnp.ndarray, in_window: jnp.ndarray) -> tuple[jnp.ndarray,
     return lo, hi
 
 
-def _anchored_region(
+def _anchored_area(
     row: jnp.ndarray,
     anchor: jnp.ndarray,
     rho_lower: jnp.ndarray,
     rho_upper: jnp.ndarray,
     contrast_floor: ArrayLike,
     interface_width: float | None,
-) -> WettingRegion:
+) -> WettingBand:
     """The in-band run of *row* containing *anchor*, bounded by the anchor window.
 
-    With an *interface_width* the run is also cut ``_REGION_WIDTH_FACTOR`` widths
+    With an *interface_width* the run is also cut ``_BAND_WIDTH_FACTOR`` widths
     from *anchor*. The cut is applied to the finished run, so it shortens a region
     and never changes which run the anchor belongs to.
 
@@ -193,17 +193,17 @@ def _anchored_region(
     run_id = jnp.cumsum(~band)
     mask = band & band[centre] & (run_id == run_id[centre]) & (span >= contrast_floor)
     if interface_width is not None:
-        mask = mask & (jnp.abs(indices - anchor) <= _REGION_WIDTH_FACTOR * interface_width)
+        mask = mask & (jnp.abs(indices - anchor) <= _BAND_WIDTH_FACTOR * interface_width)
 
-    return WettingRegion(mask, anchor, rho_lower, rho_upper)
+    return WettingBand(mask, anchor, rho_lower, rho_upper)
 
 
-def wetting_regions(
+def wetting_bands(
     edge_slice: jnp.ndarray,
     rho_l: ArrayLike,
     rho_v: ArrayLike,
     interface_width: float | None = None,
-) -> tuple[WettingRegion, WettingRegion]:
+) -> tuple[WettingBand, WettingBand]:
     """Return ``(left, right)`` — the ghost-row cells the wetting BC modifies.
 
     This is the single definition of the modified region, shared by
@@ -228,8 +228,8 @@ def wetting_regions(
         rho_l: Liquid density.
         rho_v: Vapour density.
         interface_width: The run's measured interface width in cells
-            (:func:`~src.config.wetting.wall_interface_width`), or ``None``.
-            With one, no region cell lies farther than ``_REGION_WIDTH_FACTOR``
+            (:func:`~src.config.wetting.wetting_interface_width`), or ``None``.
+            With one, no region cell lies farther than ``_BAND_WIDTH_FACTOR``
             widths from its contact line; without, the window is the only bound.
 
     Note:
@@ -252,8 +252,8 @@ def wetting_regions(
     rho_lower = lo + _BAND_FRAC * span
     rho_upper = hi - _BAND_FRAC * span
 
-    left = _anchored_region(edge_slice, x_left, rho_lower, rho_upper, contrast_floor, interface_width)
-    right = _anchored_region(edge_slice, x_right, rho_lower, rho_upper, contrast_floor, interface_width)
+    left = _anchored_area(edge_slice, x_left, rho_lower, rho_upper, contrast_floor, interface_width)
+    right = _anchored_area(edge_slice, x_right, rho_lower, rho_upper, contrast_floor, interface_width)
 
     # Two contact lines close enough to share one in-band run would otherwise
     # both claim the overlap. Assigning each cell to its nearer anchor keeps the
@@ -265,21 +265,21 @@ def wetting_regions(
     )
 
 
-def _surface_params(
-    region: WettingRegion,
+def _region_params(
+    region: WettingBand,
     phi: ArrayLike,
     d_rho: ArrayLike,
-    step: ChemicalStepWall,
+    step: ChemicalStepRegions,
     *,
     pre_phi: float,
     pre_d_rho: float,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Per-cell ``(phi, d_rho)`` for one side's band on a stepped wall.
+    """Per-cell ``(phi, d_rho)`` for one side's band on a stepped edge.
 
     Cells on the contact line's own side of the step take the line's live
-    parameters; cells across the step keep their own surface's fixed values
-    (:class:`~src.config.wetting.ChemicalStepWall`), so a line can never
-    make the other surface wet like its own.
+    parameters; cells across the step keep their own region's fixed values
+    (:class:`~src.config.wetting.ChemicalStepRegions`), so a line can never
+    make the other region wet like its own.
     """
     post_cell = step.on_post(jnp.arange(region.mask.shape[0]))
     across = post_cell != step.on_post(region.anchor)
@@ -296,13 +296,13 @@ def _apply_wetting_modification(
     phi_r: ArrayLike,
     d_rho_l: ArrayLike,
     d_rho_r: ArrayLike,
-    step: ChemicalStepWall | None = None,
+    step: ChemicalStepRegions | None = None,
     interface_width: float | None = None,
 ) -> jnp.ndarray:
     """Apply wetting density modification at the liquid-vapour interface.
 
     Only modifies ghost cells inside one of the two contact-line regions of
-    :func:`wetting_regions`, each receiving its own phi/d_rho and both clipped to
+    :func:`wetting_bands`, each receiving its own phi/d_rho and both clipped to
     the wall's shared, measured density bounds.
 
     Args:
@@ -313,21 +313,21 @@ def _apply_wetting_modification(
         phi_r: Wetting potential for the right contact line.
         d_rho_l: Density offset for the left contact line.
         d_rho_r: Density offset for the right contact line.
-        step: The stepped wall, or ``None``. With one, band cells across the
-            step from their contact line keep their surface's fixed values
-            (:func:`_surface_params`).
+        step: The stepped edge, or ``None``. With one, band cells across the
+            step from their contact line keep their region's fixed values
+            (:func:`_region_params`).
         interface_width: The run's measured interface width, bounding both
-            regions (:func:`wetting_regions`), or ``None``.
+            regions (:func:`wetting_bands`), or ``None``.
 
     Returns:
         Modified edge slice.
     """
-    left, right = wetting_regions(edge_slice, rho_l, rho_v, interface_width)
+    left, right = wetting_bands(edge_slice, rho_l, rho_v, interface_width)
     if step is not None:
-        phi_l, d_rho_l = _surface_params(
+        phi_l, d_rho_l = _region_params(
             left, phi_l, d_rho_l, step, pre_phi=step.pre_phi_left, pre_d_rho=step.pre_d_rho_left
         )
-        phi_r, d_rho_r = _surface_params(
+        phi_r, d_rho_r = _region_params(
             right, phi_r, d_rho_r, step, pre_phi=step.pre_phi_right, pre_d_rho=step.pre_d_rho_right
         )
 

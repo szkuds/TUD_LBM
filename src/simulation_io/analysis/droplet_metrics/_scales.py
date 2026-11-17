@@ -81,14 +81,14 @@ def resolve_r_zero(config: SimulationConfig) -> RZero:
 
 
 def resolve_step_x(config: SimulationConfig) -> float | None:
-    """Chemical-step x-position in lattice units, or ``None`` when unset."""
+    """Chemical step location in lattice units, or ``None`` for a run without a chemical step.
+
+    The config requires ``chemical_step_location`` in every ``[chemical_step]``.
+    """
     chem = config.chemical_step
-    if not chem or not isinstance(chem, dict):
+    if not chem:
         return None
-    loc = chem.get("chemical_step_location")
-    if loc is None:
-        return None
-    return float(loc) * float(config.grid_shape[0])
+    return float(chem["chemical_step_location"]) * float(config.grid_shape[0])
 
 
 def inclination_angle_deg(config: SimulationConfig) -> float:
@@ -153,7 +153,7 @@ def resolve_scales(config: SimulationConfig) -> MetricScales | None:
     from src.simulation_io.analysis.physical_parameters.physical_parameters import (
         _resolve_length_for_dimensionless_numbers,
     )
-    from src.simulation_io.analysis.physical_parameters.physical_parameters import resolve_wall_edge
+    from src.simulation_io.analysis.physical_parameters.physical_parameters import resolve_wetting_edge
 
     params = multiphase_params(config)
     if params is None:
@@ -176,6 +176,6 @@ def resolve_scales(config: SimulationConfig) -> MetricScales | None:
         offset_x=step_x if step_x is not None else float(config.grid_shape[0] // 2),
         incl_deg=inclination_angle_deg(config),
         save_interval=max(config.save_interval, 1),
-        wall_edge=resolve_wall_edge(config),
+        wall_edge=resolve_wetting_edge(config),
         omega=_resolve_length_for_dimensionless_numbers(config)[0] ** 2,
     )

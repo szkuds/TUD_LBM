@@ -136,7 +136,7 @@ def prompt_overlays(plotting_ops: dict, config: SimulationConfig) -> list[str] |
     Each operator decides its own default for this run through
     ``overlay_prompt_default``: yes for an opt-out overlay, or ``None`` to skip
     the question when the overlay has nothing to show (``interface`` on a
-    single-phase run, ``contact_angle`` without a wetting wall). End-of-input
+    single-phase run, ``contact_angle`` without a wetting edge). End-of-input
     counts as the default. The questions come from
     the registry — one per operator with ``supports_overlay`` — so a new overlay
     needs no edit here.

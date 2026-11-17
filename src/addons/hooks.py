@@ -1,7 +1,7 @@
 """What an addon contributes to a run: three fixed, typed slots.
 
 An *addon* is behaviour that touches several parts of the simulation at once
-(the wetting wall, the electric potential). It cannot be a plain operator,
+(the wetting edge, the electric potential). It cannot be a plain operator,
 because no single slot of the step holds it. Instead it returns
 :class:`Hooks` filling some of three fixed slots, and
 :func:`~src.pipeline.setup.build_setup` merges every active addon's hooks

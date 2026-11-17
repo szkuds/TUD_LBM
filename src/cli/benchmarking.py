@@ -343,7 +343,7 @@ def _breakdown_variants(setup: SimulationSetup) -> list[tuple[str, SimulationSet
       optimiser — and with it its chained trial passes of the kernel — never
       enters the graph. Nothing else changes.
     * ``no_measurement`` — additionally drops that hook, and with it the per-step
-      contact-angle/contact-line measurement. The wetting wall itself survives:
+      contact-angle/contact-line measurement. The wetting edge itself survives:
       it is the addon's ``ghost_fill``, so this rung is not "wetting off".
 
     Rungs identical to the configured setup are omitted, so a run without

@@ -31,7 +31,6 @@ force_g = 5e-06
 inclination_angle_deg = 60
 
 [hysteresis]
-learning_rate = 0.05
 max_iterations = 10
 
 [initialisation]

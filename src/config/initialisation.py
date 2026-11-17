@@ -2,8 +2,8 @@
 
 A droplet (liquid dispersed in vapour) and a bubble (vapour dispersed in liquid)
 share every multiphase operator, but a few setup-time choices depend on which one
-the run is: the knob that makes a chemical step's destination surface wet the
-dispersed phase more (``config.wetting.chemical_step_wall``) is one.
+the run is: the knob that makes a chemical step's post-step region wet the
+dispersed phase more (``config.wetting.chemical_step_regions``) is one.
 :func:`dispersed_phase` is the single place that answers the question.
 """
 

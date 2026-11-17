@@ -27,7 +27,7 @@ import pytest
 from src.config.boundary import Edge
 from src.operators.wetting._wetting_modification import _apply_wetting_modification
 from src.operators.wetting._wetting_modification import anchor_window_half_width
-from src.operators.wetting._wetting_modification import wetting_regions
+from src.operators.wetting._wetting_modification import wetting_bands
 
 _RHO_L, _RHO_V = 12.18, 0.015
 _N = 200
@@ -48,7 +48,7 @@ def _wall_row(
     """A bubble footprint on a wall: vapour between the two contact lines.
 
     ``liquid_drop`` lowers the liquid everywhere and ``tilt`` adds a further
-    linear fall along the wall, the two ways gravity moves a wetting wall's
+    linear fall along the wall, the two ways gravity moves a wetting edge's
     liquid density away from the prescribed ``rho_l``.
 
     ``right_flank_drop`` lowers the liquid beyond the right contact line only,
@@ -68,7 +68,7 @@ def _extent(region) -> int:
 
 
 def test_regions_sit_on_the_two_contact_lines():
-    left, right = wetting_regions(_wall_row(), _RHO_L, _RHO_V)
+    left, right = wetting_bands(_wall_row(), _RHO_L, _RHO_V)
 
     assert float(left.anchor) == pytest.approx(_LEFT, abs=1.0)
     assert float(right.anchor) == pytest.approx(_RIGHT, abs=1.0)
@@ -88,13 +88,13 @@ def test_bulk_liquid_below_the_old_upper_bound_does_not_enter_the_region():
     """The regression: hydrostatic drop past the old headroom must not widen the region."""
     old_upper = 0.95 * _RHO_L + 0.05 * _RHO_V
     baseline = _wall_row()
-    reference = sum(_extent(r) for r in wetting_regions(baseline, _RHO_L, _RHO_V))
+    reference = sum(_extent(r) for r in wetting_bands(baseline, _RHO_L, _RHO_V))
 
     # Liquid drawn below the old threshold, and tilted as an inclined domain tilts it.
     drifted = _wall_row(liquid_drop=0.9, tilt=0.6)
     assert float(jnp.max(drifted)) < old_upper  # the old band would swallow the whole wall
 
-    left, right = wetting_regions(drifted, _RHO_L, _RHO_V)
+    left, right = wetting_bands(drifted, _RHO_L, _RHO_V)
     widened = _extent(left) + _extent(right)
 
     assert widened <= 2 * reference
@@ -105,7 +105,7 @@ def test_bulk_liquid_below_the_old_upper_bound_does_not_enter_the_region():
 
 def test_bounds_are_measured_not_taken_from_the_prescribed_densities():
     drifted = _wall_row(liquid_drop=0.9, tilt=0.6)
-    left, right = wetting_regions(drifted, _RHO_L, _RHO_V)
+    left, right = wetting_bands(drifted, _RHO_L, _RHO_V)
 
     # The bounds follow the liquid the wall actually holds, which the drop and
     # tilt have pulled below the prescribed pair.
@@ -123,7 +123,7 @@ def test_both_contact_lines_share_one_pair_of_bounds():
     (10.82 against 9.20) and walked the bubble 32 cells into the far wall.
     """
     crowded = _wall_row(right_flank_drop=0.8)
-    left, right = wetting_regions(crowded, _RHO_L, _RHO_V)
+    left, right = wetting_bands(crowded, _RHO_L, _RHO_V)
 
     half_width = anchor_window_half_width(_N)
     row = np.asarray(crowded)
@@ -144,7 +144,7 @@ def test_a_mirror_symmetric_row_is_modified_symmetrically():
     half = (_RIGHT - _LEFT) / 2.0
     centre = (_N - 1) / 2.0
     mirrored = _wall_row(left=centre - half, right=centre + half)
-    left, right = wetting_regions(mirrored, _RHO_L, _RHO_V)
+    left, right = wetting_bands(mirrored, _RHO_L, _RHO_V)
 
     np.testing.assert_array_equal(np.asarray(left.mask), np.asarray(right.mask)[::-1])
 
@@ -159,7 +159,7 @@ def test_a_mirror_symmetric_row_is_modified_symmetrically():
 def test_a_crowded_flank_does_not_widen_the_region_past_the_window():
     """Shared bounds let a depressed flank into the band; the window still caps it."""
     crowded = _wall_row(right_flank_drop=0.8)
-    left, right = wetting_regions(crowded, _RHO_L, _RHO_V)
+    left, right = wetting_bands(crowded, _RHO_L, _RHO_V)
 
     half_width = anchor_window_half_width(_N)
     assert _extent(left) + _extent(right) <= 2 * (2 * half_width + 1)
@@ -180,7 +180,7 @@ def test_a_disconnected_in_band_cluster_is_excluded():
     patch = slice(101, 112)
     row[patch] = 0.55 * (_RHO_L + _RHO_V)
 
-    left, right = wetting_regions(jnp.asarray(row), _RHO_L, _RHO_V)
+    left, right = wetting_bands(jnp.asarray(row), _RHO_L, _RHO_V)
     assert float(left.rho_lower) < row[patch].max() < float(left.rho_upper)  # in band
 
     cells = np.flatnonzero(np.asarray(left.mask | right.mask))
@@ -198,7 +198,7 @@ def test_a_disconnected_in_band_cluster_is_excluded():
 )
 def test_a_row_without_two_contact_lines_is_a_no_op(row):
     """No interface to anchor on: the BC leaves the row untouched rather than guessing."""
-    left, right = wetting_regions(row, _RHO_L, _RHO_V)
+    left, right = wetting_bands(row, _RHO_L, _RHO_V)
     assert _extent(left) == 0
     assert _extent(right) == 0
 
@@ -222,10 +222,10 @@ def test_each_side_moves_only_its_own_contact_line():
 
 
 def test_regions_are_jittable():
-    jitted = jax.jit(wetting_regions)
+    jitted = jax.jit(wetting_bands)
     left, right = jitted(_wall_row(), _RHO_L, _RHO_V)
 
-    eager_left, eager_right = wetting_regions(_wall_row(), _RHO_L, _RHO_V)
+    eager_left, eager_right = wetting_bands(_wall_row(), _RHO_L, _RHO_V)
     np.testing.assert_array_equal(np.asarray(left.mask), np.asarray(eager_left.mask))
     np.testing.assert_array_equal(np.asarray(right.mask), np.asarray(eager_right.mask))
 
@@ -267,7 +267,7 @@ def _row_with_liquid_tail_in_band() -> jnp.ndarray:
     at the left line no longer ends at the interface.
     """
     base = _wall_row()
-    left, _ = wetting_regions(base, _RHO_L, _RHO_V)
+    left, _ = wetting_bands(base, _RHO_L, _RHO_V)
     row = np.asarray(base).copy()
     tail = np.arange(int(_LEFT) - 60, int(_LEFT))
     row[tail] = np.minimum(row[tail], float(left.rho_upper) - 0.05)
@@ -277,7 +277,7 @@ def _row_with_liquid_tail_in_band() -> jnp.ndarray:
 def test_without_a_width_the_window_is_the_only_bound():
     row = _row_with_liquid_tail_in_band()
 
-    left, _ = wetting_regions(row, _RHO_L, _RHO_V)
+    left, _ = wetting_bands(row, _RHO_L, _RHO_V)
 
     assert _reach(left) > 0.9 * anchor_window_half_width(_N)
 
@@ -285,7 +285,7 @@ def test_without_a_width_the_window_is_the_only_bound():
 def test_a_width_cuts_a_region_that_left_its_interface():
     row = _row_with_liquid_tail_in_band()
 
-    left, right = wetting_regions(row, _RHO_L, _RHO_V, _INTERFACE_WIDTH)
+    left, right = wetting_bands(row, _RHO_L, _RHO_V, _INTERFACE_WIDTH)
 
     assert _extent(left) > 0
     assert _extent(right) > 0
@@ -296,8 +296,8 @@ def test_a_width_cuts_a_region_that_left_its_interface():
 def test_a_width_leaves_the_density_bounds_alone():
     row = _row_with_liquid_tail_in_band()
 
-    unbounded, _ = wetting_regions(row, _RHO_L, _RHO_V)
-    bounded, _ = wetting_regions(row, _RHO_L, _RHO_V, _INTERFACE_WIDTH)
+    unbounded, _ = wetting_bands(row, _RHO_L, _RHO_V)
+    bounded, _ = wetting_bands(row, _RHO_L, _RHO_V, _INTERFACE_WIDTH)
 
     assert float(bounded.rho_lower) == float(unbounded.rho_lower)
     assert float(bounded.rho_upper) == float(unbounded.rho_upper)
@@ -307,9 +307,7 @@ def test_a_width_leaves_the_density_bounds_alone():
 def test_a_width_wider_than_the_region_changes_nothing():
     row = _wall_row()
 
-    for plain, wide in zip(
-        wetting_regions(row, _RHO_L, _RHO_V), wetting_regions(row, _RHO_L, _RHO_V, 1e6), strict=True
-    ):
+    for plain, wide in zip(wetting_bands(row, _RHO_L, _RHO_V), wetting_bands(row, _RHO_L, _RHO_V, 1e6), strict=True):
         np.testing.assert_array_equal(np.asarray(wide.mask), np.asarray(plain.mask))
 
 
@@ -335,26 +333,26 @@ def test_bounded_regions_are_jittable_and_differentiable():
 
 
 # ---------------------------------------------------------------------------
-# Surface split on a stepped wall
+# Surface split on a stepped edge
 # ---------------------------------------------------------------------------
 
 
 def test_band_cells_across_the_step_keep_their_own_surface():
-    """A line's phi never reaches the pre surface, and the post surface always pulls."""
+    """A line's phi never reaches the pre-step region, and the post-step region always pulls."""
     import numpy as np
-    from src.config.wetting import ChemicalStepWall
+    from src.config.wetting import ChemicalStepRegions
     from src.config.wetting import TangentialSide
     from src.operators.wetting._wetting_modification import _apply_wetting_modification
-    from src.operators.wetting._wetting_modification import wetting_regions
+    from src.operators.wetting._wetting_modification import wetting_bands
 
     n, rho_l, rho_v = 64, 1.0, 0.001
     x = np.arange(n)
     # A droplet spanning [20, 44]: tanh walls at both ends, liquid inside.
     row = jnp.asarray(rho_v + (rho_l - rho_v) * 0.25 * (1 + np.tanh((x - 20) / 2)) * (1 - np.tanh((x - 44) / 2)))
-    left, _ = wetting_regions(row, rho_l, rho_v)
+    left, _ = wetting_bands(row, rho_l, rho_v)
     band = np.flatnonzero(np.asarray(left.mask))
     step_x = float(left.anchor) - 1.0  # the step cuts the left band just behind the line: it is on post
-    wall = ChemicalStepWall(
+    wall = ChemicalStepRegions(
         Edge.BOTTOM, step_x, 1.0, 1.0, 0.07, 0.07, post_phi=2.0, post_d_rho=0.0, pre_side=TangentialSide.LOW
     )
 

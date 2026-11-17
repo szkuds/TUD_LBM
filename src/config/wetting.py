@@ -4,20 +4,20 @@ The wall of a chemical-step run is static for the whole run, so it is built here
 and baked into the wetting applicator, not re-derived by the operators.
 
 The wetting modification acts on a band of ghost cells around each contact line.
-Near the step that band encounters two surfaces, and the cells on the far side of
+Near the step that band encounters two regions, and the cells on the far side of
 the step from the line are *not* the line's to tune: they are fixed at their own
 surface's wettability. Pre-step cells take the configured ``[wetting]`` values —
-the hydrophobic surface pushing the liquid away — and post-step cells take the
-clamp limit toward the post surface — pulling it in. Without that split one
-parameter covered both surfaces, the rear line's hydrophilic ``phi`` inflated the
+the hydrophobic region pushing the liquid away — and post-step cells take the
+clamp limit toward the post-step region — pulling it in. Without that split one
+parameter covered both regions, the rear line's hydrophilic ``phi`` inflated the
 pre-step cells too, and the step was no energy barrier: the line could be pulled
-back onto a surface that should repel it.
+back onto a region that should repel it.
 
-"Pre" and "post" are the inclusion's *start* and *destination* surfaces, for either
+"Pre" and "post" are the inclusion's *start* and *destination* regions, for either
 direction of travel: ``chemical_step_pre_side`` names the tangential side the
 inclusion starts on, derived from the ``[initialisation]`` centres when the section
 does not set it. Every "is this cell past the step" test goes through
-:meth:`ChemicalStepWall.on_post`, so a bubble rising toward ``-x`` gets the same
+:meth:`ChemicalStepRegions.on_post`, so a bubble rising toward ``-x`` gets the same
 step rules as a droplet sliding toward ``+x``.
 """
 
@@ -48,10 +48,19 @@ if TYPE_CHECKING:
 #: limits of the hysteresis optimiser, ``phi <= 1 + 5/W`` and ``d_rho <= 1.5/W``.
 PHI_SPAN_W: float = 5.0
 D_RHO_SPAN_W: float = 1.5
+#: The keys every ``[chemical_step]`` needs: the chemical step location and the
+#: contact angles of the pre-step and post-step regions.
+CHEMICAL_STEP_REQUIRED_KEYS: tuple[str, ...] = (
+    "chemical_step_location",
+    "ca_advancing_pre_step",
+    "ca_receding_pre_step",
+    "ca_advancing_post_step",
+    "ca_receding_post_step",
+)
 
 
 class ContactLine(StrEnum):
-    """One of the two contact lines on a wetting wall, in ascending tangential order.
+    """One of the two contact lines on a wetting edge, in ascending tangential order.
 
     ``LEFT`` has the lower tangential coordinate: on a bottom or top wall the
     smaller ``x``, on a left or right wall the smaller ``y``. The values are the
@@ -84,8 +93,8 @@ class TangentialSide(StrEnum):
 _HYSTERESIS_KEYS: frozenset[str] = frozenset({"ca_advancing", "ca_receding", "max_iterations_above", *HYSTERESIS})
 
 
-class ChemicalStepWall(NamedTuple):
-    """The stepped wall, as the wetting applicator needs it.
+class ChemicalStepRegions(NamedTuple):
+    """The stepped edge, as the wetting applicator needs it.
 
     Attributes:
         edge: The wall carrying the step (``chemical_step_edge``).
@@ -111,15 +120,15 @@ class ChemicalStepWall(NamedTuple):
 
     @property
     def travel(self) -> float:
-        """``+1`` when the destination surface is at higher ``x``, else ``-1``."""
+        """``+1`` when the post-step region is at higher ``x``, else ``-1``."""
         return 1.0 if self.pre_side == TangentialSide.LOW else -1.0
 
     @property
     def hold_x(self) -> float:
-        """The first position on the post surface: the threshold and a held line's pin.
+        """The first position on the post-step region: the threshold and a held line's pin.
 
         A ``LOW`` start uses ``step_x`` itself. A ``HIGH`` start uses its mirror
-        about the cell face between the two surfaces (``ceil(step_x) - 0.5``), so a
+        about the cell face between the two regions (``ceil(step_x) - 0.5``), so a
         run and its x-mirror classify every position alike, not just whole cells.
         """
         if self.pre_side == TangentialSide.LOW:
@@ -131,7 +140,7 @@ class ChemicalStepWall(NamedTuple):
     @overload
     def on_post(self, x: jax.Array) -> jax.Array: ...
     def on_post(self, x: np.ndarray | jax.Array) -> np.ndarray | jax.Array:
-        """Whether each tangential position *x* lies on the destination (post) surface."""
+        """Whether each tangential position *x* lies on the post-step (destination) region."""
         return x >= self.hold_x if self.pre_side == TangentialSide.LOW else x <= self.hold_x
 
 
@@ -153,7 +162,7 @@ def start_side(location: float, centres: object, nx: int) -> TangentialSide | No
     """The side of the step every initial centre lies on, or ``None`` if that is not one side.
 
     Centres are fractions of ``nx - 1`` (the initialiser's cell rule) and the step
-    sits at ``location * nx`` (``chemical_step_wall``). No centres, a centre on the
+    sits at ``location * nx`` (``chemical_step_regions``). No centres, a centre on the
     step, or centres on both sides leave the side to the configuration.
     """
     if not isinstance(centres, list | tuple) or not centres:
@@ -176,7 +185,7 @@ def complete_chemical_step(
     initialisation: dict[str, Any],
     nx: int,
 ) -> dict[str, Any] | None:
-    """*section* with its defaults: the step on the measurement wall, and the inclusion's start side.
+    """*section* with its defaults: the step on the measurement edge, and the inclusion's start side.
 
     ``chemical_step_edge`` defaults to the first ``"wetting"`` edge, and
     ``chemical_step_pre_side`` to the side of the step the ``[initialisation]``
@@ -230,7 +239,7 @@ def validate_hysteresis(config: SimulationConfig) -> None:
 def validate_chemical_step(config: SimulationConfig) -> None:
     """Reject a chemical step that is not on the wall the contact angles are measured at.
 
-    The wetting applicator splits a wall by surface only on ``chemical_step_edge``,
+    The wetting applicator splits an edge by region only on ``chemical_step_edge``,
     while the hysteresis reads its contact lines off the first ``"wetting"`` edge.
     A step configured on any other edge would be ignored without a word.
     """
@@ -238,10 +247,25 @@ def validate_chemical_step(config: SimulationConfig) -> None:
         return
     from src.operators.wetting._edge_config import first_wetting_edge
 
+    missing = [key for key in CHEMICAL_STEP_REQUIRED_KEYS if key not in config.chemical_step]
+    if missing:
+        msg = (
+            "[chemical_step] needs the chemical step location and the contact angles "
+            f"of both regions; missing {missing}"
+        )
+        raise ValueError(msg)
+    if config.wetting is None:
+        # complete_wetting fills a neutral [wetting] for a [hysteresis] run, so
+        # only a step with neither section reaches this: no region would be split.
+        msg = (
+            "[chemical_step] needs a wetting boundary condition: add a [wetting] section "
+            "(fixed contact angle) or a [hysteresis] section (contact angle hysteresis)"
+        )
+        raise ValueError(msg)
     wall = first_wetting_edge(config.boundary_conditions)
     edge = config.chemical_step["chemical_step_edge"]
     if wall is not None and edge != wall:
-        msg = f"chemical_step_edge must be the wetting wall '{wall}', got '{edge}'"
+        msg = f"chemical_step_edge must be the wetting edge '{wall}', got '{edge}'"
         raise ValueError(msg)
     side = config.chemical_step.get("chemical_step_pre_side")
     if side is None:
@@ -257,7 +281,7 @@ def validate_chemical_step(config: SimulationConfig) -> None:
 
 
 def _validate_dispersed_phase(config: SimulationConfig) -> None:
-    """A chemical step needs the dispersed phase: it picks the destination surface's knob."""
+    """A chemical step needs the dispersed phase: it picks the post-step region's knob."""
     value = config.initialisation.get("dispersed")
     if value is not None and value not in set(DispersedPhase):
         msg = f"[initialisation] dispersed must be one of {[p.value for p in DispersedPhase]}, got {value!r}"
@@ -270,13 +294,13 @@ def _validate_dispersed_phase(config: SimulationConfig) -> None:
         raise ValueError(msg)
 
 
-def has_wetting_wall(config: SimulationConfig) -> bool:
+def has_wetting_edge(config: SimulationConfig) -> bool:
     """A multiphase run with a ``[wetting]`` section (every hysteresis run has one)."""
     return config.multiphase is not None and config.wetting is not None
 
 
-def wall_rho_mean(config: SimulationConfig) -> float | None:
-    """The density the wetting wall separates the phases at, or ``None`` without two phases.
+def wetting_rho_mean(config: SimulationConfig) -> float | None:
+    """The density the wetting edge separates the phases at, or ``None`` without two phases.
 
     The midpoint of :func:`~src.config.multiphase.phase_references`: on an
     ``init_from_file`` run, the densities the init field actually sits at, not
@@ -288,8 +312,8 @@ def wall_rho_mean(config: SimulationConfig) -> float | None:
     return None if references is None else 0.5 * (references[0] + references[1])
 
 
-def wall_interface_width(config: SimulationConfig) -> float | None:
-    """The interface width the wetting wall bounds its regions by, in cells, or ``None``.
+def wetting_interface_width(config: SimulationConfig) -> float | None:
+    """The interface width the wetting edge bounds its regions by, in cells, or ``None``.
 
     Measured off the init field of an ``init_from_file`` run
     (:func:`~src.config.init_field.measure_init_interface_width`), so every
@@ -314,11 +338,11 @@ def wetting_scalars(config: SimulationConfig) -> dict[str, float] | None:
     }
 
 
-def chemical_step_wall(config: SimulationConfig) -> ChemicalStepWall | None:
-    """The stepped wall, or ``None`` without a chemical step or wetting.
+def chemical_step_regions(config: SimulationConfig) -> ChemicalStepRegions | None:
+    """The stepped edge, or ``None`` without a chemical step or wetting.
 
-    The post surface is pulled toward its own wettability. The windows are in the
-    dispersed frame, so a lower post advancing angle means the post surface wets
+    The post-step region is pulled toward its own wettability. The windows are in the
+    dispersed frame, so a lower post advancing angle means the post-step region wets
     the *dispersed* phase more. ``phi`` and ``d_rho`` are liquid-frame knobs: that
     is ``phi`` (more liquid-wetting) for a droplet and ``d_rho`` (less) for a
     bubble, each at its clamp limit.
@@ -333,7 +357,7 @@ def chemical_step_wall(config: SimulationConfig) -> ChemicalStepWall | None:
     width = float(params.interface_width)
     post_wets_dispersed_more = float(step["ca_advancing_post_step"]) < float(step["ca_advancing_pre_step"])
     post_wets_more = post_wets_dispersed_more == (phase == DispersedPhase.LIQUID)
-    return ChemicalStepWall(
+    return ChemicalStepRegions(
         edge=Edge(step["chemical_step_edge"]),
         step_x=float(step["chemical_step_location"]) * config.grid_shape[0],
         pre_phi_left=wall["phi_left"],

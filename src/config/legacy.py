@@ -19,7 +19,7 @@ Two later changes are upgraded here too, whatever the layout:
 * A run directory's own ``config.toml`` from before ``chemical_step_pre_side``
   existed labelled its windows by position ("post" at higher ``x``). When its
   inclusion starts on the high side, the pre and post windows are swapped and the
-  side is written out, so "pre" is the start surface as the current code reads it
+  side is written out, so "pre" is the pre-step region as the current code reads it
   and each window stays on the surface it was on. Only a saved config is relabelled:
   it always carries the key once written by the current code, while an input TOML
   without the key is simply a new config.

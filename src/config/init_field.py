@@ -159,9 +159,9 @@ def measure_interface_width(rho: np.ndarray) -> float | None:
     hint, a width of its own (18.7 for the T_r 0.5 fluid).
 
     The median, not the largest gradient: the steepest cells of a field are the
-    wall rows a wetting wall acts on (the same bubble reads 12.9 with them and
+    wall rows a wetting edge acts on (the same bubble reads 12.9 with them and
     16.0 without), while the median is the same to 2% on an equilibrated field,
-    at a chemical step and on the destination surface.
+    at a chemical step and on the post-step region.
     """
     field = np.squeeze(np.asarray(rho, dtype=float))
     if field.ndim != 2 or min(field.shape) < 2:  # noqa: PLR2004 - a 2D field of at least 2 x 2 cells

@@ -5,7 +5,7 @@ import math
 import warnings
 from pathlib import Path
 import matplotlib as mpl
-from src.config.wetting import has_wetting_wall
+from src.config.wetting import has_wetting_edge
 
 mpl.use("Agg")
 
@@ -150,7 +150,7 @@ class FigureBuilder:
 
         requested = fields or self.config.plot_fields
         if not requested:
-            if has_wetting_wall(self.config):
+            if has_wetting_edge(self.config):
                 # Wetting default: density field for droplet visibility + dual-axis Ca/θ vs position.
                 requested = ["density", "ca_theta_vs_x"]
             else:

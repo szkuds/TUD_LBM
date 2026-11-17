@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from src.config import SimulationConfig
 from src.simulation_io.analysis.physical_parameters import write_length_scale_figure
-from src.simulation_io.analysis.physical_parameters.length_scale_figure import _analytic_region
+from src.simulation_io.analysis.physical_parameters.length_scale_figure import _analytic_area
 from src.simulation_io.analysis.physical_parameters.length_scale_figure import _counted_panel
 from src.simulation_io.analysis.physical_parameters.length_scale_figure import _snapshot_panels
 from tests.support.config import merge_overrides
@@ -136,7 +136,7 @@ def test_snapshot_panels_are_empty_without_a_data_directory(tmp_path):
 
 def test_analytic_region_marks_the_wall_the_area_clips_against():
     """R = 0.4*20 = 8, centre 2 lu above the bottom wall -> that wall is nearest."""
-    region = _analytic_region(_mp_config())
+    region = _analytic_area(_mp_config())
 
     assert region is not None
     assert region.radius == pytest.approx(8.0)
@@ -145,4 +145,4 @@ def test_analytic_region_marks_the_wall_the_area_clips_against():
 
 
 def test_analytic_region_returns_none_without_init_geometry():
-    assert _analytic_region(_mp_config(initialisation={})) is None
+    assert _analytic_area(_mp_config(initialisation={})) is None

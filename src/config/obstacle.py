@@ -48,7 +48,8 @@ def validate_obstacle(config: SimulationConfig) -> None:
         raise ValueError(msg)
     if cy is None or not (radius + 1 <= cy <= ny - 1 - radius - 1):
         msg = (
-            f"obstacle must keep >=1 cell clearance from top/bottom walls, got center_y={cy}, radius={radius}, ny={ny}"
+            "obstacle must keep >=1 cell clearance from the top/bottom edges, "
+            f"got center_y={cy}, radius={radius}, ny={ny}"
         )
         raise ValueError(msg)
 

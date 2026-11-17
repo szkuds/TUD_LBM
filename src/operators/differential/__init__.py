@@ -6,7 +6,7 @@ Both operators are ``op(grid, ext)``, built with the lattice, the pad modes and
 an optional *ghost fill* already bound. The fill is the composed ``ghost_fill``
 slot of the active addons (:mod:`src.addons.hooks`): it rewrites the
 padded field's ghost layer from the addon substates in *ext* between padding
-and the stencil, which is how the wetting wall reaches the stencils. Without a
+and the stencil, which is how the wetting edge reaches the stencils. Without a
 fill the stencil is plain and ignores *ext*. The package knows no addon by
 name. The closures live in the implementation modules (_gradient.py,
 _laplacian.py); there is no ``differential`` registry kind, because nothing is

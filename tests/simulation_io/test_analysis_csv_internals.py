@@ -8,7 +8,7 @@ Exercises:
 - contact_angles_from_rho, contact_lines_from_rho: from synthetic rho fields
 - center_of_mass, avg_x_location: from synthetic rho fields
 - backward_diff: with interval>1 and interval=1
-- build_simulation_csv: skip without a wetting wall, skip when no data dir,
+- build_simulation_csv: skip without a wetting edge, skip when no data dir,
   and successful write when valid files exist
 - analyse_tree: no-run and single-run paths (mocked CSV write)
 - _clean_dir_label: digit prefix stripping

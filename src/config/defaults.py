@@ -41,7 +41,7 @@ HYSTERESIS: dict[str, Any] = {
     "loss_tol": 1e-4,
     "trial_steps": 2,
     # Chemical-step runs: degrees from its bound past which a line on (or held
-    # at) the post surface skips the optimiser and takes its knob's clamp limit.
+    # at) the post-step region skips the optimiser and takes its knob's clamp limit.
     "saturation_gap": 1.0,
     # A moving line stays moving while its angle is within ``latch_gap`` degrees of
     # its bound and it has passed its anchor within the last ``stall_steps`` steps.
@@ -55,7 +55,7 @@ HYSTERESIS: dict[str, Any] = {
 
 #: ``[chemical_step]``: distance (lattice units) either side of a contact line at
 #: which the surfaces are probed for its advancing and receding bounds.
-#: ``chemical_step_edge`` defaults to the measurement wall, so the wetting section fills it in.
+#: ``chemical_step_edge`` defaults to the measurement edge, so the wetting section fills it in.
 CHEMICAL_STEP: dict[str, Any] = {"edge_width": 1.0}
 
 #: Each ``[*_force]`` section's defaults, by force name.

@@ -40,7 +40,7 @@ def compute_contact_line_location(
             :func:`~src.operators.wetting._contact_angle.compute_contact_angle`.
         ca_right: Right contact angle in degrees (scalar), same convention.
         rho_mean: Mean density ``(rho_l + rho_v) / 2``.
-        edge: Wetting wall — ``"bottom"`` (default), ``"top"``, ``"left"``,
+        edge: Wetting edge — ``"bottom"`` (default), ``"top"``, ``"left"``,
             or ``"right"``. The returned coordinate is tangential to this
             wall (x for bottom/top, y for left/right).
 

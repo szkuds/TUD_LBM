@@ -861,7 +861,7 @@ class TestUpdateWettingStateBubble:
         ("topology", "ca", "expected"),
         [
             # Above the window the reported angle must come down: phi for a
-            # droplet, d_rho (a less liquid-wetting wall) for a bubble.
+            # droplet, d_rho (a less liquid-wetting edge) for a bubble.
             ("bubble", 130.0, "d_rho"),
             ("droplet", 130.0, "phi"),
             # Below the window it must rise, so the selection inverts.
@@ -990,7 +990,7 @@ class TestUpdateWettingStateBubble:
         np.testing.assert_allclose(float(new_wetting.d_rho_right), 0.0, atol=1e-6)
 
     def test_a_side_held_at_its_bound_passes_neutral_when_d_rho_reaches_its_floor(self, monkeypatch):
-        """The mirror fallback: the bound needs a more wetting wall than d_rho's floor."""
+        """The mirror fallback: the bound needs a more wetting edge than d_rho's floor."""
         import src.operators.wetting._hysteresis as hysteresis_module
 
         # Half a degree above the advancing bound of 120, with d_rho engaged: the

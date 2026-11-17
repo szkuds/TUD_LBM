@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from src.config import SimulationConfig
 from src.config.init_field import measure_interface_width
-from src.config.wetting import wall_interface_width
+from src.config.wetting import wetting_interface_width
 
 NX, NY = 80, 60
 RHO_L, RHO_V = 1.0, 0.01
@@ -35,7 +35,7 @@ def test_the_five_dimensional_snapshot_layout_is_measured_alike():
 
 
 def test_a_steepened_wall_row_does_not_move_the_width():
-    """A wetting wall steepens the rows it acts on; the width is the bulk interface's."""
+    """A wetting edge steepens the rows it acts on; the width is the bulk interface's."""
     rho = _cap(8.0)
     steepened = rho.copy()
     steepened[:, :2] = np.where(rho[:, :2] > 0.5 * (RHO_L + RHO_V), RHO_L, RHO_V)
@@ -62,12 +62,12 @@ def test_a_restart_bounds_its_wall_by_the_init_field_width(tmp_path):
         initialisation={},
     )
 
-    assert wall_interface_width(config) == pytest.approx(9.0, rel=0.05)
+    assert wetting_interface_width(config) == pytest.approx(9.0, rel=0.05)
 
 
 def test_a_fresh_run_has_no_measured_width():
-    assert wall_interface_width(SimulationConfig(multiphase=MULTIPHASE, grid_shape=(NX, NY))) is None
+    assert wetting_interface_width(SimulationConfig(multiphase=MULTIPHASE, grid_shape=(NX, NY))) is None
 
 
 def test_a_single_phase_run_has_no_width():
-    assert wall_interface_width(SimulationConfig(grid_shape=(NX, NY))) is None
+    assert wetting_interface_width(SimulationConfig(grid_shape=(NX, NY))) is None

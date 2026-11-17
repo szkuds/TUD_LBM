@@ -14,14 +14,14 @@ from src.operators.wetting._edge_config import _resolve_wetting_edges
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from src.config.wetting import ChemicalStepWall
+    from src.config.wetting import ChemicalStepRegions
 
 
 def build_wetting_applicator(
     rho_l: float,
     rho_v: float,
     boundary_conditions: dict[str, Any] | None = None,
-    step: ChemicalStepWall | None = None,
+    step: ChemicalStepRegions | None = None,
     interface_width: float | None = None,
 ) -> Callable[..., jnp.ndarray]:
     """Build a wetting ghost-cell applicator with baked-in static parameters.
@@ -32,10 +32,10 @@ def build_wetting_applicator(
         boundary_conditions: Boundary-condition config dict, e.g.
             ``{"bottom": "wetting", "top": "bounce-back", ...}``.
             ``None`` defaults to bottom-only wetting.
-        step: The chemical-step wall (``src.config.wetting.chemical_step_wall``),
-            or ``None``. Splits the modification on its edge by surface.
+        step: The chemical-step wall (``src.config.wetting.chemical_step_regions``),
+            or ``None``. Splits the modification on its edge by region.
         interface_width: The run's measured interface width in cells
-            (``src.config.wetting.wall_interface_width``), or ``None``. Bounds
+            (``src.config.wetting.wetting_interface_width``), or ``None``. Bounds
             the modified region around each contact line.
 
     Returns:

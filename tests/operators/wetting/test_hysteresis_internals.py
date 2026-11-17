@@ -257,7 +257,7 @@ def test_phi_is_active_pinned_is_topology_independent(forward_drift):
         (1.0, 0.2, 60.0, False, False),
         (1.0, 0.2, 60.0, True, False),
         # A neutral wall takes the side of 90 deg its bound lies on, through the liquid:
-        # a droplet at 120 needs a less wetting wall, a bubble at 120 (liquid 60) a more wetting one.
+        # a droplet at 120 needs a less wetting edge, a bubble at 120 (liquid 60) a more wetting one.
         (1.0, 0.0, 120.0, False, False),
         (1.0, 0.0, 120.0, True, True),
         (1.0, 0.0, 60.0, False, True),
@@ -382,7 +382,7 @@ def test_plain_hysteresis_never_saturates(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# _step_saturation — the post surface starts at the bound
+# _step_saturation — the post-step region starts at the bound
 # ---------------------------------------------------------------------------
 
 _W5 = jnp.array(5.0)
@@ -407,13 +407,13 @@ def _saturation(*, on_post, held, ca, moving, advancing, is_bubble=False, adv=50
 @pytest.mark.parametrize(
     ("kwargs", "expected"),
     [
-        # Front on the post surface far above its bound: full phi.
+        # Front on the post-step region far above its bound: full phi.
         ({"on_post": True, "held": False, "ca": 60.0, "moving": True, "advancing": True}, (True, 2.0, 0.0)),
         # Within one degree: back to the optimiser.
         ({"on_post": True, "held": False, "ca": 50.8, "moving": True, "advancing": True}, False),
-        # Still on the pre surface: not saturated.
+        # Still on the pre-step region: not saturated.
         ({"on_post": False, "held": False, "ca": 60.0, "moving": True, "advancing": True}, False),
-        # Rear held on the pre side keeps the pre surface pushing (its band cells are pre-step cells).
+        # Rear held on the pre side keeps the pre-step region pushing (its band cells are pre-step cells).
         (
             {"on_post": False, "held": True, "ca": 99.0, "moving": False, "advancing": False, "adv": 120.0},
             (True, _PRE_PHI, _PRE_D_RHO),
@@ -428,7 +428,7 @@ def _saturation(*, on_post, held, ca, moving, advancing, is_bubble=False, adv=50
             {"on_post": True, "held": True, "ca": 30.5, "moving": False, "advancing": False, "adv": 120.0},
             False,
         ),
-        # Receding below its bound on the post surface: full d_rho.
+        # Receding below its bound on the post-step region: full d_rho.
         ({"on_post": True, "held": False, "ca": 20.0, "moving": True, "advancing": False}, (True, 1.0, 0.3)),
         # A bubble flips the knob.
         (

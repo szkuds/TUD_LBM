@@ -32,10 +32,10 @@ Field                Shape                     Meaning
 ``opp_indices``      ``(q,)``                  index of the opposite direction
 ===================  ========================  =====================================
 
-The populations pointing into the domain at a face are read off ``c``:
+The populations pointing into the domain at an edge are read off ``c``:
 ``incoming_directions(lattice, edge)`` returns the ``q`` indices whose
-component along the face's normal axis points inward.  The boundary
-conditions use it; there is no stored index set per face.
+component along the edge's normal axis points inward.  The boundary
+conditions use it; there is no stored index set per edge.
 
 The 5-D array convention
 ------------------------

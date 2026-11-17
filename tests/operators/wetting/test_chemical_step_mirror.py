@@ -1,14 +1,14 @@
 """A chemical-step run and its x-mirror evolve as mirror images.
 
-"Pre" and "post" are the inclusion's start and destination surfaces, so a droplet
+"Pre" and "post" are the inclusion's start and destination regions, so a droplet
 sliding toward -x from the high side of a step is the mirror image of one sliding
 toward +x from the low side: step, centre and gravity mirrored, and the start side
 derived as ``high``. Every rule that once assumed travel toward +x (the window, the
 wall split, saturation, the crossing pair) is exercised here, with the leading line
-crossing onto the post surface.
+crossing onto the post-step region.
 
 The image is exact while the lines are pinned or far from a bound (150 steps: the
-leading line is on the post surface by then). A line held at its bound is iterated
+leading line is on the post-step region by then). A line held at its bound is iterated
 only when its loss is above ``loss_tol``, and that on/off choice turns the ~1e-9
 difference between optimising the left line first and the right line first into a
 bounded jitter of the wall parameters. After 2000 steps the two runs agree to 2e-3
@@ -80,7 +80,7 @@ def test_a_mirrored_run_is_the_mirror_image():
     rho, wet = _final(low, _EXACT_STEPS)
     rho_m, wet_m = _final(high, _EXACT_STEPS)
 
-    assert float(wet.cll_right) > _NX / 2  # the leading line is on the post surface
+    assert float(wet.cll_right) > _NX / 2  # the leading line is on the post-step region
     np.testing.assert_allclose(rho_m[::-1], rho, atol=1e-8)
     np.testing.assert_allclose(_mirrored(wet_m, ("ca", "phi", "d_rho")), _sides(wet, ("ca", "phi", "d_rho")), atol=1e-6)
     np.testing.assert_allclose(_mirrored_lines(wet_m), _sides(wet, ("cll",)), atol=1e-6)

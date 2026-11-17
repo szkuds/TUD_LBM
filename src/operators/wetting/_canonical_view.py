@@ -7,7 +7,7 @@ when the outward wall normal points in ``−y``.
 
 Rather than re-parameterise axes, offsets, and signs at every measurement
 site, :func:`to_canonical` maps the field into a single **canonical frame**
-where the wetting wall is always at column ``0`` with liquid at increasing
+where the wetting edge is always at column ``0`` with liquid at increasing
 column index — geometrically identical to a sessile drop on the bottom. Every
 downstream formula then applies unchanged for all four edges.
 

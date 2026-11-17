@@ -7,7 +7,7 @@ unrolled at JAX trace time (``q`` is a compile-time constant).
 On non-periodic axes the wrap-around layer produced by ``jnp.roll`` is
 zeroed after each roll, so populations that leave one wall do not re-enter
 at the opposite wall before the boundary-condition operator runs. Without
-this, wrap-around populations at bounce-back / wetting walls leak mass.
+this, wrap-around populations at bounce-back / wetting edges leak mass.
 """
 
 from __future__ import annotations

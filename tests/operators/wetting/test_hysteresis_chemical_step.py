@@ -1,8 +1,8 @@
 """Tests for the chemical-step hysteresis window.
 
-- _get_hysteresis_window_chemical_step: the surface's own window — post once a
+- _get_hysteresis_window_chemical_step: the region's own window — post once a
   line is within ``edge_width`` of the step or past it — and the held-at-step
-  flag for a line receding onto the more wetting surface
+  flag for a line receding onto the more wetting region
 - update_wetting_state_chemical_step: its guard, the logged failure (a receding
   line just past the step stays pinned) and the pin target of a held line
 """
@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import jax.numpy as jnp
 import pytest
 from src.config.boundary import Edge
-from src.config.wetting import ChemicalStepWall
+from src.config.wetting import ChemicalStepRegions
 from src.config.wetting import ContactLine
 from src.config.wetting import TangentialSide
 from src.operators.wetting import _hysteresis as hyst
@@ -23,14 +23,14 @@ from src.operators.wetting._hysteresis import update_wetting_state_chemical_step
 @pytest.fixture(autouse=True)
 def _stepped_wall_from_the_stub(monkeypatch: pytest.MonkeyPatch) -> None:
     """The stub carries its wall directly; it has no sections to resolve one from."""
-    monkeypatch.setattr(hyst, "chemical_step_wall", lambda config: config.chemical_step_wall)
+    monkeypatch.setattr(hyst, "chemical_step_regions", lambda config: config.chemical_step_regions)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-# The failing run's windows: a less wetting pre-step surface and a more wetting
+# The failing run's windows: a less wetting pre-step region and a more wetting
 # post-step one.
 _CHEM_CFG = {
     "chemical_step_location": 0.5,  # step_x = 0.5 * 100 = 50
@@ -44,8 +44,8 @@ _PRE = (120.0, 100.0)
 _POST = (50.0, 30.0)
 
 
-def _wall(nx: int = 100, pre_side: TangentialSide = TangentialSide.LOW) -> ChemicalStepWall:
-    return ChemicalStepWall(
+def _step_regions(nx: int = 100, pre_side: TangentialSide = TangentialSide.LOW) -> ChemicalStepRegions:
+    return ChemicalStepRegions(
         edge=Edge.BOTTOM,
         step_x=0.5 * nx,
         pre_phi_left=1.0,
@@ -62,7 +62,7 @@ def _make_setup(nx: int = 100, pre_side: TangentialSide = TangentialSide.LOW) ->
     config = SimpleNamespace(
         chemical_step=_CHEM_CFG,
         grid_shape=(nx, 50, 1),
-        chemical_step_wall=_wall(nx, pre_side),
+        chemical_step_regions=_step_regions(nx, pre_side),
     )
     return SimpleNamespace(config=config)
 
@@ -98,7 +98,7 @@ class TestGetHysteresisWindowChemicalStep:
     @pytest.mark.parametrize(
         ("cll", "side", "held"),
         [
-            (49.5, ContactLine.LEFT, True),  # receding onto the wetting surface: held at the step
+            (49.5, ContactLine.LEFT, True),  # receding onto the wetting region: held at the step
             (50.5, ContactLine.LEFT, True),
             (49.5, ContactLine.RIGHT, False),  # advancing onto it: free to spread
             (20.0, ContactLine.LEFT, False),
@@ -117,7 +117,7 @@ class TestGetHysteresisWindowChemicalStep:
         ("cll", "side"), [(51.0, ContactLine.LEFT), (50.5, ContactLine.RIGHT), (20.0, ContactLine.RIGHT)]
     )
     def test_a_high_start_mirrors_the_window(self, cll, side):
-        """Starting at high x, the post surface is below the step and the edge band is on the high side."""
+        """Starting at high x, the post-step region is below the step and the edge band is on the high side."""
         low, high = _make_setup(), _make_setup(pre_side=TangentialSide.HIGH)
         assert _window(high, 99.0 - cll, side) == _window(low, cll, side.other)
 
@@ -131,7 +131,7 @@ class TestGetHysteresisWindowChemicalStep:
         [
             (49.5, ContactLine.RIGHT, True),  # the trailing line of a bubble rising toward -x
             (48.5, ContactLine.RIGHT, True),
-            (49.5, ContactLine.LEFT, False),  # the leading line spreads onto the post surface
+            (49.5, ContactLine.LEFT, False),  # the leading line spreads onto the post-step region
             (80.0, ContactLine.RIGHT, False),
             (20.0, ContactLine.RIGHT, False),
         ],
@@ -168,7 +168,7 @@ def test_receding_line_just_past_the_step_stays_pinned(monkeypatch):
             init_type="multiphase_bubbles",
             multiphase={"eos": "double-well", "kappa": 0.01, "rho_l": 1.0, "rho_v": 0.001, "interface_width": 5},
             grid_shape=(100, 50, 1),
-            chemical_step_wall=_wall(),
+            chemical_step_regions=_step_regions(),
             hysteresis={
                 "learning_rate": 0.01,
                 "learning_rate_above": 0.01,

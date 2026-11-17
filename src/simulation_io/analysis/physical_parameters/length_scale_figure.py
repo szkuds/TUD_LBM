@@ -1,14 +1,14 @@
-"""Diagnostic figure for the region behind the Bo/Oh length scale.
+"""Diagnostic figure for the inclusion area behind the Bo/Oh length scale.
 
 ``L_eff = sqrt(A)`` and ``Bo ∝ L^2 ∝ A``, so an area error passes straight
 into every dimensionless number. The area itself is never shown anywhere, which
-makes an overestimate invisible: the counted region is thresholded at
+makes an overestimate invisible: the counted area is thresholded at
 ``rho_mean`` on the *setup* field, while the droplet the run actually evolves
 may be a different size.
 
-This module renders them side by side -- the region as counted, and the region
+This module renders them side by side -- the area as counted, and the area
 present in the run's first and last snapshot -- each with its own measured
-``rho_mean``, area, ``L_eff`` and ``Bo``. Whether the counted region is too big,
+``rho_mean``, area, ``L_eff`` and ``Bo``. Whether the counted area is too big,
 and by how much, is then something you can see rather than infer.
 
 The panels are the registered ``density`` plotting operator called directly, so
@@ -53,7 +53,7 @@ _MASK_COLOR = "crimson"
 _CENTRE_COORDS = 2
 
 
-class _AnalyticRegion(NamedTuple):
+class _AnalyticArea(NamedTuple):
     """The circle-clipped-by-a-wall that ``_get_setup_droplet_area`` integrates."""
 
     centre_x: float
@@ -64,13 +64,13 @@ class _AnalyticRegion(NamedTuple):
 
 
 class _Panel(NamedTuple):
-    """One column of the figure: a field, the region counted on it, and its numbers."""
+    """One column of the figure: a field, the area counted on it, and its numbers."""
 
     title: str
     timestep: int
     rho: np.ndarray | None  # 5-D field for the density operator; None when analytic
-    mask: np.ndarray | None  # (nx, ny) boolean region
-    analytic: _AnalyticRegion | None
+    mask: np.ndarray | None  # (nx, ny) boolean area mask
+    analytic: _AnalyticArea | None
     area: float | None
     rho_mean: float | None
     drho: float | None
@@ -137,7 +137,7 @@ def write_length_scale_figure(
 
 
 def _counted_panel(config: SimulationConfig) -> _Panel | None:
-    """The region ``_get_droplet_area`` actually counts, however it resolves it."""
+    """The area ``_get_droplet_area`` actually counts, however it resolves it."""
     resolved = _get_droplet_area(config)
     area = None if resolved is None else resolved[0]
     buoyancy = _resolve_buoyancy_delta_rho(config)
@@ -156,15 +156,15 @@ def _counted_panel(config: SimulationConfig) -> _Panel | None:
             drho=drho,
         )
 
-    region = _analytic_region(config)
-    if region is None and area is None:
+    analytic = _analytic_area(config)
+    if analytic is None and area is None:
         return None
     return _Panel(
         title="as counted  (init geometry, analytic)",
         timestep=0,
         rho=None,
         mask=None,
-        analytic=region,
+        analytic=analytic,
         area=area,
         rho_mean=None,
         drho=drho,
@@ -212,7 +212,7 @@ def _snapshot_panel(path: Path) -> _Panel | None:
     )
 
 
-def _analytic_region(config: SimulationConfig) -> _AnalyticRegion | None:
+def _analytic_area(config: SimulationConfig) -> _AnalyticArea | None:
     """Rebuild the circle and clipping wall that the analytic area integrates.
 
     Mirrors ``_get_setup_droplet_area`` (radius scaled by ``min(nx, ny)``, the
@@ -244,7 +244,7 @@ def _analytic_region(config: SimulationConfig) -> _AnalyticRegion | None:
         ((1.0 - fy) * ny, "y", ny - 1.0),
     )
     _distance, axis, position = min(walls, key=lambda wall: wall[0])
-    return _AnalyticRegion(
+    return _AnalyticArea(
         centre_x=float(round(fx * (nx - 1))),
         centre_y=float(round(fy * (ny - 1))),
         radius=radius,
@@ -285,7 +285,7 @@ def _overlay_mask(ax: matplotlib.axes.Axes, mask: np.ndarray) -> None:
 
 def _draw_analytic(
     ax: matplotlib.axes.Axes,
-    region: _AnalyticRegion | None,
+    analytic: _AnalyticArea | None,
     config: SimulationConfig,
 ) -> None:
     """Draw the analytic circle and its clipping wall on an empty domain.
@@ -301,24 +301,24 @@ def _draw_analytic(
     ax.set_aspect("equal")
     ax.set_ylabel("y")
 
-    if region is None:
+    if analytic is None:
         ax.text(0.5, 0.5, "no init geometry", transform=ax.transAxes, ha="center", va="center")
         return
 
     ax.add_patch(
         Circle(
-            (region.centre_x, region.centre_y),
-            region.radius,
+            (analytic.centre_x, analytic.centre_y),
+            analytic.radius,
             facecolor=_MASK_COLOR,
             alpha=_MASK_ALPHA,
             edgecolor=_MASK_COLOR,
             linewidth=1.2,
         )
     )
-    if region.wall_axis == "y":
-        ax.axhline(region.wall_position, color="black", linewidth=1.5, label="clipping wall")
+    if analytic.wall_axis == "y":
+        ax.axhline(analytic.wall_position, color="black", linewidth=1.5, label="clipping wall")
     else:
-        ax.axvline(region.wall_position, color="black", linewidth=1.5, label="clipping wall")
+        ax.axvline(analytic.wall_position, color="black", linewidth=1.5, label="clipping wall")
     ax.legend(loc="upper right", fontsize=8)
 
 

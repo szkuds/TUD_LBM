@@ -177,7 +177,7 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
     table.add_row("Save Interval", str(config.save_interval))
     if config.boundary_conditions:
         table.add_row(
-            "Boundary Conditions", ", ".join(f"{face}={bc}" for face, bc in config.boundary_conditions.items())
+            "Boundary Conditions", ", ".join(f"{edge}={bc}" for edge, bc in config.boundary_conditions.items())
         )
     table.add_row("Results Directory", config.results_dir)
     if config.save_fields:

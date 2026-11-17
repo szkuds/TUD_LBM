@@ -1,22 +1,23 @@
 # Case B — the real research workload.
 #
-# multiphase_hysteresis: every timestep runs the Adam/AD optimiser, whose
+# Multiphase with [hysteresis]: every timestep runs the Adam/AD optimiser, whose
 # objective differentiates through `trial_steps` chained full-grid multiphase
 # pipeline passes. Expect this to cost one to two orders of magnitude more per
 # step than Case A on the same grid.
 #
-#   scripts/db_benchmark.sh --steps 20 .claude/benchmarks/bench_hysteresis.toml
+#   scripts/db_benchmark.sh --steps 20 examples/benchmarks/bench_hysteresis.toml
 #
 # on DelftBlue (both backends, 256x64 / 512x128 / 1024x256), or locally:
 #
-#   tud-lbm benchmark .claude/benchmarks/bench_hysteresis.toml --breakdown \
+#   tud-lbm benchmark examples/benchmarks/bench_hysteresis.toml --breakdown \
 #       --override grid_shape=[256,64] --label hyst_256
 #   ... 512x128, 1024x256 (the largest may OOM under fp64 reverse-mode AD;
 #       record that as a result, not a failure)
 #
 # `loss_tol = 0.0` is the load-bearing line. The optimiser's while_loop exits on
-# `loss <= loss_tol` (hysteresis.py cond_fn), so with the 1e-4 default the trip
-# count — and therefore the work per step — depends on the physics state. Two
+# `loss <= loss_tol` (cond_fn in src/operators/wetting/_hysteresis.py), so with
+# the 1e-4 default the trip count — and therefore the work per step — depends
+# on the physics state. Two
 # backends starting from different states would then do different amounts of
 # work and the comparison would be meaningless. Pinning it to 0.0 forces exactly
 # `max_iterations` every time: fixed work, clean comparison.

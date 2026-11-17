@@ -9,13 +9,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from src.operators.wetting._ghost_reconstruction import _reconstruct_ghost_row
 from src.operators.wetting._wetting_modification import _apply_wetting_modification
-from src.operators.wetting._wetting_modification import wetting_regions
+from src.operators.wetting._wetting_modification import wetting_bands
 
 if TYPE_CHECKING:
     import jax.numpy as jnp
     from src.config.boundary import Edge
-    from src.config.wetting import ChemicalStepWall
-    from src.operators.wetting._wetting_modification import WettingRegion
+    from src.config.wetting import ChemicalStepRegions
+    from src.operators.wetting._wetting_modification import WettingBand
 
 
 def _oriented_ghost_row(
@@ -61,14 +61,14 @@ def _apply_wetting_edge(
     phi_r: jnp.ndarray,
     d_rho_l: jnp.ndarray,
     d_rho_r: jnp.ndarray,
-    step: ChemicalStepWall | None = None,
+    step: ChemicalStepRegions | None = None,
     interface_width: float | None = None,
 ) -> jnp.ndarray:
     """Apply wetting to a single edge of the padded array.
 
     Reconstructs the edge's ghost row from the interior, then applies the
     wetting modification to its interior portion (excluding padding corners).
-    *step* splits the modification by surface when this edge carries the
+    *step* splits the modification by region when this edge carries the
     chemical step; *interface_width* bounds the modified regions.
     """
     arr, ghost_idx, transposed = _oriented_ghost_row(grid_padded, edge, perp_start_periodic, perp_end_periodic)
@@ -89,7 +89,7 @@ def _apply_wetting_edge(
     return arr.T if transposed else arr
 
 
-def wetting_edge_regions(
+def wetting_edge_bands(
     gp: jnp.ndarray,
     edge: Edge,
     perp_start_periodic: bool,
@@ -97,7 +97,7 @@ def wetting_edge_regions(
     rho_l: float | jnp.ndarray,
     rho_v: float | jnp.ndarray,
     interface_width: float | None = None,
-) -> tuple[WettingRegion, WettingRegion]:
+) -> tuple[WettingBand, WettingBand]:
     """Return the ``(left, right)`` regions :func:`_apply_wetting_edge` modifies.
 
     Runs the same orientation and ghost-row reconstruction as the applicator,
@@ -107,4 +107,4 @@ def wetting_edge_regions(
     x for bottom/top, y for left/right.
     """
     arr, ghost_idx, _ = _oriented_ghost_row(gp, edge, perp_start_periodic, perp_end_periodic)
-    return wetting_regions(arr[1:-1, ghost_idx], rho_l, rho_v, interface_width)
+    return wetting_bands(arr[1:-1, ghost_idx], rho_l, rho_v, interface_width)

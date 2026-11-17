@@ -36,7 +36,7 @@ def apply_bounce_back(
         f_streamed: Post-streaming populations, shape ``(nx, ny, nz, q, d)``.
         f_collision: Post-collision populations (before streaming), same shape.
         lattice: :class:`~setup.lattice.Lattice`.
-        edge: The domain face.
+        edge: The domain edge.
 
     Returns:
         Updated populations with bounce-back applied on *edge*.
@@ -49,7 +49,7 @@ def apply_bounce_back(
     return f_streamed
 
 
-# A wetting wall is a bounce-back wall for the populations; the wetting itself is
+# A wetting edge is a bounce-back wall for the populations; the wetting itself is
 # applied in the density stencils, not here. An alias is a second registration,
 # not a remap inside the builder.
 boundary_condition(name="wetting", pad_edge_mode="edge")(apply_bounce_back)

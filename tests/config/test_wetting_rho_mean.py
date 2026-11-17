@@ -1,10 +1,10 @@
-"""The wetting wall separates the phases at the run's own phase densities."""
+"""The wetting edge separates the phases at the run's own phase densities."""
 
 from __future__ import annotations
 import numpy as np
 import pytest
 from src.config import SimulationConfig
-from src.config.wetting import wall_rho_mean
+from src.config.wetting import wetting_rho_mean
 
 NX, NY = 16, 8
 MULTIPHASE = {"eos": "double-well", "kappa": 0.02, "rho_l": 1.0, "rho_v": 0.001, "interface_width": 2}
@@ -25,14 +25,14 @@ def test_a_restart_separates_the_phases_at_its_init_field_densities(tmp_path):
         initialisation={},
     )
 
-    assert wall_rho_mean(config) == pytest.approx(0.5 * (rho_lo + rho_hi))
+    assert wetting_rho_mean(config) == pytest.approx(0.5 * (rho_lo + rho_hi))
 
 
 def test_a_fresh_run_separates_the_phases_at_the_configured_densities():
     config = SimulationConfig(multiphase=MULTIPHASE, grid_shape=(NX, NY))
 
-    assert wall_rho_mean(config) == pytest.approx(0.5005)
+    assert wetting_rho_mean(config) == pytest.approx(0.5005)
 
 
 def test_a_single_phase_run_has_no_threshold():
-    assert wall_rho_mean(SimulationConfig(grid_shape=(NX, NY))) is None
+    assert wetting_rho_mean(SimulationConfig(grid_shape=(NX, NY))) is None

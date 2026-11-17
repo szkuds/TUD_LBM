@@ -10,7 +10,7 @@ from src.config.run_config import ANALYSIS_DIRNAME
 from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import SETUP_FIGURE_FILENAME
 from src.config.run_config import SIMULATION_CSV_FILENAME
-from src.config.wetting import chemical_step_wall
+from src.config.wetting import chemical_step_regions
 from src.simulation_io.plotting import setup_figure
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 from src.simulation_io.plotting.setup_figure import edge_labels
@@ -209,7 +209,7 @@ def test_wall_is_split_into_two_surfaces_at_the_step(tmp_path, monkeypatch):
     patches = {patch.get_gid(): patch for patch in fig.axes[0].patches}
 
     assert set(patches) == {"pre", "post"}
-    wall = chemical_step_wall(config)
+    wall = chemical_step_regions(config)
     assert wall is not None
     step_x = wall.step_x
     assert patches["pre"].get_xy()[:, 0].max() == pytest.approx(step_x)

@@ -15,7 +15,7 @@ interface_width = 5
 eos = "double-well"
 
 [initialisation]
-# Single bubble centred in the domain, radius = 0.2 * min(nx, ny)
+# Single bubble centred in the domain, radius = 0.3 * min(nx, ny)
 centres = [[0.5, 0.5]]
 radii   = [0.3]
 
@@ -34,14 +34,13 @@ radii   = [0.3]
 #[hysteresis]
 #ca_advancing    = 90.0
 #ca_receding     = 80.0
-#learning_rate   = 0.05
 #max_iterations  = 10
 
 # ─── Forces (each force is its own section, named by physics) ───────
 #
-# Any section whose name ends in "_force" is automatically discovered,
-# constructed via the operator registry, and summed into the total
-# external force. No [[force]] array-of-tables, no "type" key needed.
+# Each [<name>_force] section with a schema in src/config/forces.py is
+# loaded into config.forces, built through the operator registry, and
+# summed into the total external force. At most one gravity force.
 
 [gravity_force]
 force_g = 0
@@ -50,8 +49,12 @@ inclination_angle_deg = 90
 # To add a second force, just add another section:
 #
 # [electric_force]
-# voltage_top    = 1.0
-# voltage_bottom = 0.0
+# permittivity_liquid = 1.0
+# permittivity_vapour = 1.0
+# conductivity_liquid = 1.0
+# conductivity_vapour = 1.0
+# voltage_top         = 1.0
+# voltage_bottom      = 0.0
 
 # ─── Output / IO ────────────────────────────────────────────────────
 [output]

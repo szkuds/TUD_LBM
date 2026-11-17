@@ -32,7 +32,7 @@ from src.simulation_io.analysis.wetting_overlay import anchor_tick
 from src.simulation_io.analysis.wetting_overlay import angle_glyph
 from src.simulation_io.analysis.wetting_overlay import band_cell_segments
 from src.simulation_io.analysis.wetting_overlay import contact_angles
-from src.simulation_io.analysis.wetting_overlay import wall_bands
+from src.simulation_io.analysis.wetting_overlay import edge_bands
 from src.simulation_io.analysis.wetting_overlay import wetting_edge
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     import matplotlib.axes
     import numpy as np
     from src.config import SimulationConfig
-    from src.simulation_io.analysis.wetting_overlay import WallBand
+    from src.simulation_io.analysis.wetting_overlay import EdgeBands
 
 #: Anchor-tick height, in cells normal to the wall.
 _ANCHOR_TICK_HEIGHT = 2.0
@@ -58,11 +58,11 @@ class ContactAnglePlotOperator(PlotOperator):
 
     @classmethod
     def overlay_prompt_default(cls, config: SimulationConfig) -> bool | None:
-        """Offer the overlay, defaulting to yes, only for a run with a wetting wall."""
+        """Offer the overlay, defaulting to yes, only for a run with a wetting edge."""
         return True if wetting_edge(config) is not None else None
 
     def is_available(self, data: dict[str, np.ndarray]) -> bool:
-        """Needs a density field and a wetting wall."""
+        """Needs a density field and a wetting edge."""
         return "rho" in data and wetting_edge(self.config) is not None
 
     def __call__(
@@ -90,16 +90,16 @@ class ContactAnglePlotOperator(PlotOperator):
         rho_2d = extract_rho_2d(data["rho"])
         shape = (int(rho_2d.shape[0]), int(rho_2d.shape[1]))
 
-        bands = wall_bands(rho_2d, self.config)
+        bands = edge_bands(rho_2d, self.config)
         self._draw_band_contours(ax, rho_2d, bands)
-        self._draw_wall_cells(ax, shape, bands)
+        self._draw_band_cells(ax, shape, bands)
         self._draw_angles(ax, data, rho_2d, shape)
 
     def _draw_band_contours(
         self,
         ax: matplotlib.axes.Axes,
         rho_2d: np.ndarray,
-        bands: list[WallBand],
+        bands: list[EdgeBands],
     ) -> None:
         """Contour the density bounds each contact line's cells are clipped to.
 
@@ -123,7 +123,7 @@ class ContactAnglePlotOperator(PlotOperator):
                         )
                     )
 
-    def _draw_wall_cells(self, ax: matplotlib.axes.Axes, shape: tuple[int, int], bands: list[WallBand]) -> None:
+    def _draw_band_cells(self, ax: matplotlib.axes.Axes, shape: tuple[int, int], bands: list[EdgeBands]) -> None:
         for band in bands:
             for side in ContactLine:
                 segments = band_cell_segments(band, side, shape)

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
 from src.config.run_config import SIMULATION_CSV_FILENAME
-from src.config.wetting import has_wetting_wall
+from src.config.wetting import has_wetting_edge
 from src.protocols import AnalysisPlot
 from src.registry import analysis_operator
 from src.simulation_io.analysis.droplet_metrics import droplet_series_for_run
@@ -40,7 +40,7 @@ def _warn_r_zero_fallback(config: SimulationConfig, scales: MetricScales) -> Non
 def build_simulation_csv(run_dir: str | Path, config: SimulationConfig) -> Path | None:
     """Compute per-timestep metrics and write ``simulation_data.csv``.
 
-    Skips silently (returns ``None``) when *config* has no wetting wall, the supported
+    Skips silently (returns ``None``) when *config* has no wetting edge, the supported
     wetting variant, or when the run has no usable snapshots.
 
     Args:
@@ -56,7 +56,7 @@ def build_simulation_csv(run_dir: str | Path, config: SimulationConfig) -> Path 
         print("pandas is required for CSV export. Install with: pip install pandas")
         return None
 
-    if not has_wetting_wall(config):
+    if not has_wetting_edge(config):
         return None
 
     run_dir = Path(run_dir)

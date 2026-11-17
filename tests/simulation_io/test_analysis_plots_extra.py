@@ -136,6 +136,14 @@ def test_extract_u_mag_2d_covers_supported_shapes():
     assert np.allclose(_extract_u_mag_2d(u3), 17.0)
 
 
+_STEP_ANGLES = {
+    "ca_advancing_pre_step": 120.0,
+    "ca_receding_pre_step": 100.0,
+    "ca_advancing_post_step": 70.0,
+    "ca_receding_post_step": 50.0,
+}
+
+
 def test_empty_message_and_config_resolvers_cover_branches():
     msg = _empty_data_message(("rho", "u"))
     assert "No data" in msg
@@ -147,18 +155,14 @@ def test_empty_message_and_config_resolvers_cover_branches():
         tau=0.9,
         nt=2,
         initialisation={"radii": [0.5], "dispersed": "liquid"},
-        chemical_step={"chemical_step_location": 0.25, "chemical_step_pre_side": "low"},
+        boundary_conditions={"bottom": "wetting"},
+        wetting={"phi_left": 1.0},
+        chemical_step={**_STEP_ANGLES, "chemical_step_location": 0.25, "chemical_step_pre_side": "low"},
     )
     assert analytical_sigma_lg(cfg) is not None
     assert resolve_step_x(cfg) == 5.0
 
-    cfg_no_step = SimulationConfig(
-        grid_shape=(8, 8, 1),
-        tau=0.8,
-        nt=2,
-        chemical_step={"chemical_step_pre_side": "low"},
-        initialisation={"dispersed": "liquid"},
-    )
+    cfg_no_step = SimulationConfig(grid_shape=(8, 8, 1), tau=0.8, nt=2)
     assert resolve_step_x(cfg_no_step) is None
 
 

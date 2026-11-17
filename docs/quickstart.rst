@@ -40,7 +40,7 @@ example configurations::
 
     uv run tud-lbm run examples/config_simple.toml
 
-That runs a 100×100 single-phase D2Q9 domain for 1000 steps, saving a
+That runs a 100×100 single-phase D2Q9 domain for 101 steps, saving a
 snapshot every 100, and writes everything to a timestamped run directory.
 Before committing to a long run, inspect what the configuration resolves to::
 
@@ -75,7 +75,7 @@ in, final state out:
     print(observe(setup, final_state).rho.shape)   # (64, 64, 1, 1, 1)
 
 A bare :class:`~src.config.simulation_config.SimulationConfig` defaults to a
-D2Q9 lattice, BGK collision, periodic boundaries on all four edges, and
+D2Q9 lattice, BGK collision, the default periodic boundary condition on all four edges, and
 rest-equilibrium initialisation.  The state carries only the populations
 ``f``, the time ``t`` and the addon substates; :func:`~src.pipeline.step.observe`
 derives density, velocity, forces and pressure from it.
@@ -129,7 +129,7 @@ TOML files are organised into sections that the adapter flattens onto
     interface_width = 5
     eos = "double-well"
 
-    [boundary_conditions]        # per face; omitted faces default to periodic
+    [boundary_conditions]        # per edge; an omitted edge is periodic (the default)
     left = "periodic"
     right = "periodic"
     top = "periodic"
@@ -158,31 +158,76 @@ and they combine:
 
 .. list-table::
    :header-rows: 1
-   :widths: 40 60
+   :widths: 30 70
 
    * - Section
      - Adds
    * - (none)
-     - single-phase BGK/MRT collide–stream–boundary loop
+     - single-phase BGK/MRT collide–stream loop with boundary conditions
    * - ``[multiphase]``
-     - chemical potential and interparticle force from the EOS
-   * - ``[wetting]`` + a ``"wetting"`` face
-     - a fixed contact-angle wall
+     - chemical-potential multiphase simulation with the well-balanced LBM (WB-LBM) and a specified EOS. Set by ``eos``, ``kappa``, ``rho_l``, ``rho_v``, ``interface_width``.
+   * - ``[boundary_conditions]``
+     - a boundary condition per edge; the default boundary condition is periodic. Set by e.g. ``bottom = "bounce-back"``.
+   * - ``[obstacle]``
+     - a circular obstacle with a bounce-back boundary condition. Set by ``center_x``, ``center_y``, ``radius``.
+   * - ``[wetting]`` + a ``"wetting"`` edge
+     - wetting boundary condition with a fixed contact angle at that edge. Set by ``phi_left``, ``phi_right``, ``d_rho_left``, ``d_rho_right``.
    * - ``[hysteresis]``
-     - per-step optimisation of the wall against an advancing/receding
-       contact-angle window
+     - wetting boundary condition with contact angle hysteresis on that edge. Set by ``ca_advancing``, ``ca_receding``.
    * - ``[chemical_step]``
-     - per-side angle targets from the surface each contact line is on
+     - an edge with two regions, each with its own wetting boundary condition, with or without contact angle hysteresis. Set by ``ca_advancing_pre_step``, ``ca_receding_pre_step``, ``ca_advancing_post_step``, ``ca_receding_post_step``; ``chemical_step_location`` separates the regions.
    * - ``[<name>_force]``
-     - that body force (one gravity force at most)
+     - a body force (``gravity_force``, ``gravity_masked_force``, ``electric_force``; at most one gravity force). Set by e.g. ``force_g``, ``inclination_angle_deg``.
+
+Without ``[hysteresis]``, the pre-step region of a chemical step follows the ``[wetting]`` values and the post-step region takes the clamp limit toward the post-step contact angles. Every wetting section needs ``[multiphase]`` and a ``"wetting"`` edge.
 
 ``[multiphase]`` needs ``eos``, ``kappa``, ``rho_l``, ``rho_v`` and
 ``interface_width``; ``eos = "carnahan-starling"`` additionally needs
 ``a_eos``, ``b_eos``, ``r_eos`` and ``t_eos``, and may omit ``rho_l``/``rho_v``:
 they are then the Maxwell coexistence pair of those four (omit them to sweep
-``t_eos``).  The wetting sections need
-``[multiphase]`` and a ``"wetting"`` face.  A 3D run (``lattice_type =
+``t_eos``).  A 3D run (``lattice_type =
 "D3Q19"``) supports the bulk physics only: see :doc:`operators`.
+
+.. _terminology:
+
+Terminology
+~~~~~~~~~~~
+
+The documentation, the CLI and the error messages use one term for one thing:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Term
+     - Meaning
+   * - edge
+     - A side of the domain: ``bottom``, ``top``, ``left``, ``right``, and
+       ``front``/``back`` on a 3D lattice.
+   * - boundary condition
+     - What an edge has (``periodic``, ``bounce-back``, ``wetting``, ...).
+       The default boundary condition is ``periodic``.
+   * - wetting boundary condition
+     - A ``"wetting"`` edge with ``[wetting]``: a fixed contact angle.
+   * - contact angle hysteresis
+     - ``[hysteresis]``: the wetting boundary condition holds the contact angle
+       between the receding contact angle (``ca_receding``) and the advancing
+       contact angle (``ca_advancing``).
+   * - chemical step, chemical step location
+     - ``[chemical_step]``: the wetting edge is split at
+       ``chemical_step_location`` into two regions.
+   * - pre-step region, post-step region
+     - The two regions of a chemical step. The inclusion starts on the
+       pre-step region and moves toward the post-step region.
+   * - wetting band
+     - The ghost cells round a contact line that the wetting boundary
+       condition modifies.
+   * - inclusion
+     - The dispersed droplet or bubble.
+   * - body force
+     - A force from a ``[<name>_force]`` section.
+   * - WB-LBM
+     - The well-balanced lattice Boltzmann method that the multiphase model uses.
 
 What a run produces
 -------------------

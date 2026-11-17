@@ -19,7 +19,7 @@ reverse. The sign of the leftmost crossing therefore identifies the topology,
 and that is what ``is_bubble`` reports.
 
 **The pair is the inclusion's, not the first two.** A row can cross more than
-twice: at a chemical step the destination surface's pull condenses a one-cell
+twice: at a chemical step the post-step region's pull condenses a one-cell
 patch of the dispersed phase on the wall just ahead of the leading line. Taking
 the first two crossings in ascending order dropped such a patch when it lay at
 higher ``x`` (a droplet sliding toward ``+x``) but took it *as* the inclusion when
@@ -107,12 +107,12 @@ def detect_bubble(
     *,
     edge: Edge = Edge.BOTTOM,
 ) -> jnp.ndarray:
-    """Return True when the phase dispersed at the wetting wall is vapour.
+    """Return True when the phase dispersed at the wetting edge is vapour.
 
     Args:
         rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
         rho_mean: Threshold density ``(rho_l + rho_v) / 2``.
-        edge: Wetting wall — ``"bottom"`` (default), ``"top"``, ``"left"``,
+        edge: Wetting edge — ``"bottom"`` (default), ``"top"``, ``"left"``,
             or ``"right"``.
 
     Returns:
