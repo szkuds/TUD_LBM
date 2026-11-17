@@ -18,21 +18,17 @@ from src.cli.config_loading import _find_latest_snapshot
 from src.cli.config_loading import _validate_cli_args
 from src.cli.display import _display_config_summary
 from src.cli.display import _display_full_overview
-from src.cli.display import _display_sweep_summary
 from src.cli.display import _print_dry_run_message
 from src.cli.execution import RunFlags
-from src.cli.execution import _check_sweep_errors
 from src.cli.execution import _run_impl
 from src.cli.wetting_init import _WETTING_INIT_NT
 from src.cli.wetting_init import _build_wetting_gravity_raw
 from src.cli.wetting_init import _build_wetting_init_raw
 from src.cli.wetting_init import _prompt_wetting_params
 from src.config import SimulationConfig
-from src.config.array_expansion import ArrayParameterSet
 from src.config.config_overview import DEBUG_STABILITY_INTERVAL
 from src.config.config_overview import DEBUG_WETTING_INTERVAL
 from src.config.defaults import NEUTRAL_WETTING
-from src.pipeline.parallel_runner import SimulationResult
 
 try:
     from src.cli.overrides import _apply_overrides
@@ -44,18 +40,15 @@ except ImportError:
 
 from unittest.mock import patch as _patch
 from src.cli._console import banner
-from src.cli.config_loading import _expand_raw_config
-from src.cli.config_loading import _expand_single_phase
+from src.cli.config_loading import _build_config
 from src.cli.config_loading import _load_config_interactive
 from src.cli.config_loading import _load_raw_config
 from src.cli.display import _build_standard_table
 from src.cli.display import _build_visual_table
 from src.cli.display import _display_summary
 from src.cli.display import _operator_description
-from src.cli.execution import _confirm_run
 from src.cli.execution import _execute_run
 from src.cli.execution import _run_compare_single
-from src.cli.execution import _run_compare_sweep
 from src.cli.execution import _run_with_optional_overrides
 from src.cli.field_select import _parse_field_tokens
 from src.cli.field_select import _resolve_token
@@ -466,52 +459,9 @@ class TestDisplayFullOverview:
         assert "PHYSICAL PARAMETER OVERVIEW" in capsys.readouterr().out
 
 
-def test_display_sweep_summary(capsys):
-    metadata = ArrayParameterSet(
-        field_names=["tau"],
-        array_values={"tau": (0.6, 0.7)},
-        total_combinations=2,
-    )
-    _display_sweep_summary(metadata)
-    out = capsys.readouterr().out
-    assert "tau" in out
-
-
-def test_print_dry_run_message_non_sweep(capsys):
-    _print_dry_run_message(None)
+def test_print_dry_run_message(capsys):
+    _print_dry_run_message()
     assert "Dry run" in capsys.readouterr().out
-
-
-def test_print_dry_run_message_sweep(capsys):
-    metadata = ArrayParameterSet(
-        field_names=["tau"],
-        array_values={"tau": (0.6, 0.7)},
-        total_combinations=2,
-    )
-    _print_dry_run_message(metadata)
-    assert "Dry run" in capsys.readouterr().out
-
-
-class TestCheckSweepErrors:
-    """Tests for _check_sweep_errors failure detection."""
-
-    def test_no_failures(self):
-        _check_sweep_errors([SimpleNamespace(status="success")])
-
-    def test_one_failure_raises(self):
-        results = [
-            SimpleNamespace(status="success"),
-            SimpleNamespace(status="failed"),
-        ]
-
-        with pytest.raises(RuntimeError, match="failed simulation"):
-            _check_sweep_errors(results)
-
-    def test_multiple_failures_mention_count(self):
-        results = [SimpleNamespace(status="failed")] * 3
-
-        with pytest.raises(RuntimeError, match="3 failed"):
-            _check_sweep_errors(results)
 
 
 class TestRunImplFlags:
@@ -521,27 +471,24 @@ class TestRunImplFlags:
         result = _run_impl(
             config_path=None,
             overrides=(),
-            max_workers=None,
             init_dir=None,
             flags=RunFlags(no_prompt=True, list_operators=True),
         )
         assert result is False
 
     def _single_config(self):
-        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        return [cfg], cfg, None, None
+        return SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
 
     def test_dry_run_returns_false(self, tmp_path):
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         with (
             patch("src.cli.execution._load_raw_config", return_value={}),
-            patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
+            patch("src.cli.execution._build_config", return_value=self._single_config()),
         ):
             result = _run_impl(
                 config_path=str(cfg_toml),
                 overrides=(),
-                max_workers=None,
                 init_dir=None,
                 flags=RunFlags(no_prompt=True, dry_run=True),
             )
@@ -552,41 +499,15 @@ class TestRunImplFlags:
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         with (
             patch("src.cli.execution._load_raw_config", return_value={}),
-            patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
+            patch("src.cli.execution._build_config", return_value=self._single_config()),
         ):
             _run_impl(
                 config_path=str(cfg_toml),
                 overrides=(),
-                max_workers=None,
                 init_dir=None,
                 flags=RunFlags(no_prompt=True, dry_run=True, overview=True),
             )
         assert "PHYSICAL PARAMETER OVERVIEW" in capsys.readouterr().out
-
-    def test_sweep_dry_run_returns_false(self, tmp_path):
-        cfg_toml = tmp_path / "config.toml"
-        cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
-        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        sweep = ArrayParameterSet(
-            field_names=["tau"],
-            array_values={"tau": (0.6, 0.7)},
-            total_combinations=2,
-        )
-        with (
-            patch("src.cli.execution._load_raw_config", return_value={}),
-            patch(
-                "src.cli.execution._expand_raw_config",
-                return_value=([cfg, cfg], None, sweep, [{"tau": 0.6}, {"tau": 0.7}]),
-            ),
-        ):
-            result = _run_impl(
-                config_path=str(cfg_toml),
-                overrides=(),
-                max_workers=None,
-                init_dir=None,
-                flags=RunFlags(no_prompt=True, dry_run=True, overview=True),
-            )
-        assert result is False
 
     def test_no_config_path_calls_interactive(self, monkeypatch):
         called = {"n": 0}
@@ -594,13 +515,12 @@ class TestRunImplFlags:
 
         def _fake():
             called["n"] += 1
-            return [cfg], cfg, None, None
+            return cfg
 
         monkeypatch.setattr("src.cli.execution._load_config_interactive", _fake)
         result = _run_impl(
             config_path=None,
             overrides=(),
-            max_workers=None,
             init_dir=None,
             flags=RunFlags(no_prompt=True, dry_run=True),
         )
@@ -628,12 +548,11 @@ class TestRunImplFlags:
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\nnx=8\nny=8\nnz=1\n", encoding="utf-8")
         with (
             patch("src.cli.execution._load_raw_config", return_value={}),
-            patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
+            patch("src.cli.execution._build_config", return_value=self._single_config()),
         ):
             _run_impl(
                 config_path=str(cfg_toml),
                 overrides=(),
-                max_workers=None,
                 init_dir=None,
                 flags=flags,
             )
@@ -1280,14 +1199,6 @@ def test_load_raw_config_continue_injects_latest_snapshot(tmp_path, monkeypatch)
     assert raw["init_type"] == "init_from_file"
 
 
-def test_check_sweep_errors_raises_on_failed_results():
-    ok = SimpleNamespace(status="success")
-    bad = SimpleNamespace(status="failed")
-
-    with pytest.raises(RuntimeError, match="failed simulation"):
-        _check_sweep_errors([ok, bad])
-
-
 def test_validate_run_dir_has_config_success(tmp_path):
     from src.cli.config_loading import _validate_run_dir_has_config
 
@@ -1327,7 +1238,7 @@ def test_cli_single_config_uses_single_run(monkeypatch, tmp_path):
     config = _make_config(str(tmp_path))
 
     monkeypatch.setattr("src.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
-    monkeypatch.setattr("src.config.array_expansion.expand_config", lambda raw: ([config], None))
+    monkeypatch.setattr("src.cli.execution._build_config", lambda raw: config)
 
     called = {"single": False}
 
@@ -1353,96 +1264,6 @@ def test_cli_list_operators_includes_plotting_and_analysis():
     assert "density" in result.output
     assert "max_velocity" in result.output
     assert "simulation_csv" in result.output
-
-
-def test_cli_array_config_uses_parallel_sweep(monkeypatch, tmp_path):
-    cfg_path = tmp_path / "config.toml"
-    cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
-
-    config_a = _make_config(str(tmp_path), tau=0.6)
-    config_b = _make_config(str(tmp_path), tau=0.8)
-
-    metadata = ArrayParameterSet(
-        field_names=frozenset({"tau"}),
-        array_values={"tau": (0.6, 0.8)},
-        total_combinations=2,
-    )
-
-    monkeypatch.setattr("src.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
-    monkeypatch.setattr(
-        "src.config.array_expansion.expand_config",
-        lambda raw: ([config_a, config_b], metadata),
-    )
-    monkeypatch.setattr(
-        "src.config.array_expansion.enumerate_configs",
-        lambda raw: iter(
-            [
-                (0, {"tau": 0.6}, config_a),
-                (1, {"tau": 0.8}, config_b),
-            ],
-        ),
-    )
-
-    captured = {"called": False, "params": None}
-
-    def _fake_parallel_sweep(configs, parameters_list, **kwargs):
-        captured["called"] = True
-        captured["params"] = parameters_list
-        assert len(configs) == 2
-        return [
-            SimulationResult(index=0, config=config_a, status="success"),
-            SimulationResult(index=1, config=config_b, status="success"),
-        ]
-
-    monkeypatch.setattr("src.cli.execution._run_parallel_sweep", _fake_parallel_sweep)
-
-    result = CliRunner().invoke(run, [str(cfg_path), "--no-prompt"])
-
-    assert result.exit_code == 0
-    assert captured["called"] is True
-    assert captured["params"] == [{"tau": 0.6}, {"tau": 0.8}]
-
-
-def test_cli_array_config_dry_run_skips_parallel_execution(monkeypatch, tmp_path):
-    cfg_path = tmp_path / "config.toml"
-    cfg_path.write_text("[simulation_type]\ntype = 'single_phase'\n", encoding="utf-8")
-
-    config_a = _make_config(str(tmp_path), tau=0.6)
-    config_b = _make_config(str(tmp_path), tau=0.8)
-
-    metadata = ArrayParameterSet(
-        field_names=frozenset({"tau"}),
-        array_values={"tau": (0.6, 0.8)},
-        total_combinations=2,
-    )
-
-    monkeypatch.setattr("src.config.adapter_toml.TomlAdapter.load_raw", lambda self, path: {"stub": "raw"})
-    monkeypatch.setattr(
-        "src.config.array_expansion.expand_config",
-        lambda raw: ([config_a, config_b], metadata),
-    )
-    monkeypatch.setattr(
-        "src.config.array_expansion.enumerate_configs",
-        lambda raw: iter(
-            [
-                (0, {"tau": 0.6}, config_a),
-                (1, {"tau": 0.8}, config_b),
-            ],
-        ),
-    )
-
-    called = {"parallel": False}
-
-    def _fake_parallel_sweep(configs, parameters_list, **kwargs):
-        called["parallel"] = True
-        return []
-
-    monkeypatch.setattr("src.cli.execution._run_parallel_sweep", _fake_parallel_sweep)
-
-    result = CliRunner().invoke(run, [str(cfg_path), "--no-prompt", "--dry-run"])
-
-    assert result.exit_code == 0
-    assert called["parallel"] is False
 
 
 # =========================================================================
@@ -1688,38 +1509,21 @@ class TestLoadRawConfig:
 
 
 # =========================================================================
-# _expand_raw_config
+# _build_config
 # =========================================================================
 
 
-class TestExpandRawConfig:
-    """Tests for _expand_raw_config single vs sweep expansion."""
+class TestBuildConfig:
+    """``_build_config`` builds one config; a list where a sweep axis was is an error."""
 
-    def _cfg(self):
-        return SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
+    def test_builds_the_config(self):
+        config = _build_config({"grid_shape": (8, 8), "tau": 0.8, "nt": 10})
+        assert config.tau == pytest.approx(0.8)
 
-    def test_single_config_returns_config_not_none(self):
-        cfg = self._cfg()
-        with _patch("src.config.array_expansion.expand_config", return_value=([cfg], None)):
-            _configs, config, sweep, params = _expand_raw_config({})
-        assert config == cfg
-        assert sweep is None
-        assert params is None
-
-    def test_sweep_returns_none_config(self):
-        cfg = self._cfg()
-        metadata = ArrayParameterSet(field_names=["tau"], array_values={"tau": (0.6, 0.8)}, total_combinations=2)
-        with (
-            _patch("src.config.array_expansion.expand_config", return_value=([cfg, cfg], metadata)),
-            _patch(
-                "src.config.array_expansion.enumerate_configs",
-                return_value=iter([(0, {"tau": 0.6}, cfg), (1, {"tau": 0.8}, cfg)]),
-            ),
-        ):
-            _configs, config, sweep, params = _expand_raw_config({})
-        assert config is None
-        assert sweep is metadata
-        assert params == [{"tau": 0.6}, {"tau": 0.8}]
+    def test_list_value_points_at_sweep_stage(self):
+        raw = {"grid_shape": (8, 8), "tau": [0.6, 0.8]}
+        with pytest.raises(ValueError, match="tud-lbm sweep stage"):
+            _build_config(raw)
 
 
 # =========================================================================
@@ -1733,13 +1537,11 @@ class TestLoadConfigInteractive:
     def test_returns_config_with_prompted_values(self):
         answers = iter(["50", "60", "0.7", "2000", "200"])
         with _patch("rich.prompt.Prompt.ask", side_effect=lambda *a, **kw: next(answers)):
-            _configs, config, sweep, params = _load_config_interactive()
+            config = _load_config_interactive()
         assert config.grid_shape[:2] == (50, 60)
         assert config.tau == pytest.approx(0.7)
         assert config.nt == 2000
         assert config.save_interval == 200
-        assert sweep is None
-        assert params is None
 
 
 # =========================================================================
@@ -1748,68 +1550,20 @@ class TestLoadConfigInteractive:
 
 
 class TestDisplaySummary:
-    """Tests for _display_summary single-run and sweep branches."""
+    """Tests for _display_summary and its overview flag."""
 
     def _cfg(self):
         return SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
 
     def test_single_run_prints_config(self, capsys):
         cfg = self._cfg()
-        _display_summary(cfg, None, [cfg], overview=False)
+        _display_summary(cfg, overview=False)
         assert "Relaxation" in capsys.readouterr().out
-
-    def test_sweep_prints_sweep_summary(self, capsys):
-        cfg = self._cfg()
-        meta = ArrayParameterSet(field_names=["tau"], array_values={"tau": (0.6, 0.8)}, total_combinations=2)
-        _display_summary(None, meta, [cfg, cfg], overview=False)
-        out = capsys.readouterr().out
-        assert "tau" in out
 
     def test_overview_flag_prints_overview(self, capsys):
         cfg = self._cfg()
-        _display_summary(cfg, None, [cfg], overview=True)
+        _display_summary(cfg, overview=True)
         assert "PHYSICAL PARAMETER OVERVIEW" in capsys.readouterr().out
-
-    def test_sweep_overview_prints_first_config_overview(self, capsys):
-        cfg = self._cfg()
-        meta = ArrayParameterSet(field_names=["tau"], array_values={"tau": (0.6, 0.8)}, total_combinations=2)
-        _display_summary(None, meta, [cfg, cfg], overview=True)
-        assert "PHYSICAL PARAMETER OVERVIEW" in capsys.readouterr().out
-
-
-# =========================================================================
-# _confirm_run
-# =========================================================================
-
-
-class TestConfirmRun:
-    """Tests for _confirm_run y/n/o prompt choices."""
-
-    def _cfg(self):
-        return SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-
-    def test_y_returns_yes(self):
-        with _patch("rich.prompt.Prompt.ask", return_value="y"):
-            result = _confirm_run(None, [self._cfg()])
-        assert result == "yes"
-
-    def test_n_returns_no(self):
-        with _patch("rich.prompt.Prompt.ask", return_value="n"):
-            result = _confirm_run(None, [self._cfg()])
-        assert result == "no"
-
-    def test_o_returns_override(self):
-        with _patch("rich.prompt.Prompt.ask", return_value="o"):
-            result = _confirm_run(None, [self._cfg()])
-        assert result == "override"
-
-    def test_sweep_prompt_includes_count(self):
-        meta = ArrayParameterSet(field_names=["tau"], array_values={"tau": (0.6, 0.8)}, total_combinations=2)
-        cfgs = [self._cfg(), self._cfg()]
-        with _patch("rich.prompt.Prompt.ask", return_value="y") as mock_ask:
-            _confirm_run(meta, cfgs)
-        prompt_text = mock_ask.call_args[0][0]
-        assert "2" in prompt_text
 
 
 # =========================================================================
@@ -1934,29 +1688,18 @@ class TestRunWithOptionalOverrides:
 
     @staticmethod
     def _run(cfg, *, no_prompt):
-        return _run_with_optional_overrides(
-            raw_config={},
-            configs=[cfg],
-            config=cfg,
-            sweep_metadata=None,
-            parameters_list=None,
-            no_prompt=no_prompt,
-            overview=False,
-        )
+        return _run_with_optional_overrides(raw_config={}, config=cfg, no_prompt=no_prompt, overview=False)
 
     def test_no_prompt_returns_immediately(self):
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        assert self._run(cfg, no_prompt=True)[1] == cfg
+        assert self._run(cfg, no_prompt=True) == cfg
 
-    @pytest.mark.parametrize(("answer", "expected_configs"), [("y", "same"), ("n", "none")])
-    def test_answer_confirms_or_cancels(self, answer, expected_configs):
+    @pytest.mark.parametrize(("answer", "confirmed"), [("y", True), ("n", False)])
+    def test_answer_confirms_or_cancels(self, answer, confirmed):
         cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
         with _patch("rich.prompt.Prompt.ask", return_value=answer):
-            configs, config, _sweep, _params = self._run(cfg, no_prompt=False)
-        if expected_configs == "same":
-            assert configs == [cfg]
-        else:
-            assert (configs, config) == ([], None)
+            result = self._run(cfg, no_prompt=False)
+        assert result == (cfg if confirmed else None)
 
 
 # =========================================================================
@@ -1965,7 +1708,7 @@ class TestRunWithOptionalOverrides:
 
 
 class TestExecuteRun:
-    """Tests for _execute_run single-run and sweep dispatch."""
+    """Tests for _execute_run and its --compare step."""
 
     def _cfg(self, results_dir):
         return SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10, results_dir=str(results_dir))
@@ -1979,20 +1722,7 @@ class TestExecuteRun:
             return str(tmp_path / "run" / "data")
 
         with _patch("src.cli.execution._run_simulation", _fake_run):
-            _execute_run([cfg], cfg, None, None, None, False)
-        assert called["n"] == 1
-
-    def test_sweep_calls_parallel_sweep(self, tmp_path):
-        cfg = self._cfg(tmp_path)
-        meta = ArrayParameterSet(field_names=["tau"], array_values={"tau": (0.6, 0.8)}, total_combinations=2)
-        called = {"n": 0}
-
-        def _fake_parallel(cfgs, params, **kw):
-            called["n"] += 1
-            return [SimpleNamespace(status="success"), SimpleNamespace(status="success")]
-
-        with _patch("src.cli.execution._run_parallel_sweep", _fake_parallel):
-            _execute_run([cfg, cfg], None, meta, [{"tau": 0.6}, {"tau": 0.8}], None, False)
+            _execute_run(cfg)
         assert called["n"] == 1
 
     def test_single_run_with_compare_calls_compare(self, tmp_path):
@@ -2011,12 +1741,12 @@ class TestExecuteRun:
             _patch("src.cli.execution._run_simulation", _fake_run),
             _patch("src.cli.execution._run_compare_single", _fake_compare),
         ):
-            _execute_run([cfg], cfg, None, None, None, False, run_compare=True)
+            _execute_run(cfg, run_compare=True)
         assert compare_called["n"] == 1
 
 
 # =========================================================================
-# _run_compare_single / _run_compare_sweep
+# _run_compare_single
 # =========================================================================
 
 
@@ -2043,41 +1773,9 @@ class TestRunCompareSingle:
         mock_cmp.assert_called_once_with(tmp_path)
 
 
-class TestRunCompareSweep:
-    """Tests for _run_compare_sweep sweep-level comparison."""
-
-    def test_no_ok_runs_prints_warning(self, tmp_path, capsys):
-        with _patch("src.cli.analysis_routing.analyse_tree", return_value=(2, 0)):
-            _run_compare_sweep(tmp_path)
-        assert "no runs" in capsys.readouterr().out.lower()
-
-    def test_ok_runs_prints_success(self, tmp_path, capsys):
-        with _patch("src.cli.analysis_routing.analyse_tree", return_value=(2, 2)):
-            _run_compare_sweep(tmp_path)
-        assert "Comparison plots" in capsys.readouterr().out
-
-
-# =========================================================================
-# _expand_single_phase
-# =========================================================================
-
-
-class TestExpandSinglePhase:
-    """Tests for _expand_single_phase sweep-rejection guard."""
-
-    def test_single_config_returned(self):
-        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        with _patch("src.config.array_expansion.expand_config", return_value=([cfg], None)):
-            result = _expand_single_phase({}, "Phase 1")
-        assert result == cfg
-
-    def test_sweep_raises_usage_error(self):
-        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        with (
-            _patch("src.config.array_expansion.expand_config", return_value=([cfg, cfg], object())),
-            pytest.raises(click.UsageError, match="does not support parameter sweeps"),
-        ):
-            _expand_single_phase({}, "Phase 1")
+def _phase_of(raw):
+    """The wetting-init phase a raw dict belongs to: Phase 2 restarts from Phase 1's snapshot."""
+    return "Phase 2" if raw.get("init_type") == "init_from_file" else "Phase 1"
 
 
 # =========================================================================
@@ -2098,7 +1796,7 @@ class TestRunTwoPhaseWettingInit:
         wetting_params = dict(NEUTRAL_WETTING)
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.wetting_init._build_config", return_value=cfg),
             _patch("src.cli.wetting_init._prompt_wetting_params", return_value=wetting_params),
             _patch("rich.prompt.Prompt.ask", return_value="n"),
         ):
@@ -2130,7 +1828,7 @@ class TestRunTwoPhaseWettingInit:
 
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.wetting_init._build_config", return_value=cfg),
             _patch("src.cli.execution._run_simulation", _fake_run),
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False)
@@ -2143,7 +1841,7 @@ class TestRunTwoPhaseWettingInit:
         data_dir = self._data_dir_with_snapshots(tmp_path)
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.wetting_init._build_config", return_value=cfg),
             _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=True)
@@ -2163,7 +1861,7 @@ class TestRunTwoPhaseWettingInit:
 
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.wetting_init._build_config", return_value=cfg),
             _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
             _patch("src.cli.wetting_init._build_wetting_gravity_raw", _record),
         ):
@@ -2177,7 +1875,7 @@ class TestRunTwoPhaseWettingInit:
         data_dir = self._data_dir_with_snapshots(tmp_path)
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.wetting_init._build_config", return_value=cfg),
             _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False)
@@ -2190,13 +1888,14 @@ class TestRunTwoPhaseWettingInit:
         data_dir = self._data_dir_with_snapshots(tmp_path)
         seen = []
 
-        def _expand(raw, phase_name):
+        def _expand(raw):
+            phase_name = _phase_of(raw)
             seen.append((phase_name, raw.get("nt")))
             return cfg
 
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("src.cli.wetting_init._expand_single_phase", _expand),
+            _patch("src.cli.wetting_init._build_config", _expand),
             _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False, init_nt=20_000)
@@ -2210,13 +1909,14 @@ class TestRunTwoPhaseWettingInit:
         data_dir = self._data_dir_with_snapshots(tmp_path)
         seen = {}
 
-        def _expand(raw, phase_name):
+        def _expand(raw):
+            phase_name = _phase_of(raw)
             seen[phase_name] = dict(raw)
             return cfg
 
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("src.cli.wetting_init._expand_single_phase", _expand),
+            _patch("src.cli.wetting_init._build_config", _expand),
             _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False, **kwargs)
@@ -2246,13 +1946,14 @@ class TestRunTwoPhaseWettingInit:
         data_dir = self._data_dir_with_snapshots(tmp_path)
         seen = {}
 
-        def _expand(raw, phase_name):
+        def _expand(raw):
+            phase_name = _phase_of(raw)
             seen[phase_name] = dict(raw)
             return cfg
 
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("src.cli.wetting_init._expand_single_phase", _expand),
+            _patch("src.cli.wetting_init._build_config", _expand),
             _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
         ):
             _run_two_phase_wetting_init(str(cfg_toml), ("tau=0.61",), no_prompt=True, overview=False)
@@ -2267,13 +1968,14 @@ class TestRunTwoPhaseWettingInit:
         data_dir = self._data_dir_with_snapshots(tmp_path)
         seen = []
 
-        def _expand(raw, phase_name):
+        def _expand(raw):
+            phase_name = _phase_of(raw)
             seen.append((phase_name, raw.get("tau")))
             return cfg
 
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("src.cli.wetting_init._expand_single_phase", _expand),
+            _patch("src.cli.wetting_init._build_config", _expand),
             _patch("src.cli.wetting_init._prompt_wetting_params", return_value=dict(NEUTRAL_WETTING)),
             _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
             # Phase 1: override to tau=0.55 then start; Phase 2: start.
@@ -2297,7 +1999,7 @@ class TestRunTwoPhaseWettingInit:
 
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.wetting_init._build_config", return_value=cfg),
             _patch("src.cli.execution._run_simulation", run_calls.append),
         ):
             _run_two_phase_wetting_init(str(cfg_toml), (), no_prompt=True, overview=False, dry_run=True)
@@ -2316,7 +2018,7 @@ class TestRunTwoPhaseWettingInit:
         data_dir.mkdir(parents=True)
         with (
             _patch("src.config.adapter_toml.TomlAdapter.load_raw", return_value=self._base_raw()),
-            _patch("src.cli.wetting_init._expand_single_phase", return_value=cfg),
+            _patch("src.cli.wetting_init._build_config", return_value=cfg),
             _patch("src.cli.execution._run_simulation", return_value=str(data_dir)),
             pytest.raises(FileNotFoundError, match="No saved snapshots"),
         ):
@@ -2332,14 +2034,12 @@ class TestRunImplAdditional:
     """Tests for _run_impl branches not covered by TestRunImplFlags."""
 
     def _single_config(self):
-        cfg = SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
-        return [cfg], cfg, None, None
+        return SimulationConfig(grid_shape=(8, 8), tau=0.8, nt=10)
 
     def test_list_analysis_returns_false(self):
         result = _run_impl(
             config_path=None,
             overrides=(),
-            max_workers=None,
             init_dir=None,
             flags=RunFlags(no_prompt=True, list_analysis=True),
         )
@@ -2360,14 +2060,13 @@ class TestRunImplAdditional:
 
         with (
             _patch("src.cli.execution._load_raw_config", return_value={}),
-            _patch("src.cli.execution._expand_raw_config", return_value=self._single_config()),
+            _patch("src.cli.execution._build_config", return_value=self._single_config()),
             _patch("src.cli.execution._run_simulation", _fake_run),
             _patch("src.cli.execution._run_compare_single", _fake_compare),
         ):
             result = _run_impl(
                 config_path=str(cfg_toml),
                 overrides=(),
-                max_workers=None,
                 init_dir=None,
                 flags=RunFlags(no_prompt=True, run_compare=True),
             )
@@ -2388,7 +2087,6 @@ class TestRunImplAdditional:
             result = _run_impl(
                 config_path=str(cfg_toml),
                 overrides=(),
-                max_workers=None,
                 init_dir=None,
                 flags=RunFlags(no_prompt=True, init_wetting=1234),
             )
@@ -2642,13 +2340,13 @@ class TestAnalyseCommand:
         result = CliRunner().invoke(cli, ["analyse", "/nonexistent/config.toml", "--surface-tension"])
         assert result.exit_code == 2
 
-    def test_sweep_config_rejected(self, tmp_path):
+    def test_list_value_points_at_sweep_stage(self, tmp_path):
         cfg_toml = self._write_multiphase_toml(tmp_path)
         content = (tmp_path / "config.toml").read_text(encoding="utf-8")
         (tmp_path / "config.toml").write_text(content.replace("tau = 0.99", "tau = [0.6, 0.99]"), encoding="utf-8")
         result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
-        assert result.exit_code == 2
-        assert "parameter sweeps" in result.output
+        assert result.exit_code == 1
+        assert "a list is not a value" in result.output
 
     def test_single_phase_config_errors(self, tmp_path):
         cfg_toml = tmp_path / "config.toml"

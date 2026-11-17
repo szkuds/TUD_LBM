@@ -9,7 +9,7 @@ import numpy as np
 from rich.panel import Panel
 from rich.prompt import Prompt
 from src.cli._console import console
-from src.cli.config_loading import _expand_single_phase
+from src.cli.config_loading import _build_config
 from src.cli.config_loading import _latest_snapshot_in
 from src.cli.display import _display_config_summary
 from src.cli.display import _display_full_overview
@@ -178,7 +178,7 @@ def _present_phase(
     overview: bool,
     confirm: bool,
 ) -> SimulationConfig | None:
-    """Expand and display one phase, then confirm it or override it in place.
+    """Build and display one phase, then confirm it or override it in place.
 
     *raw* is that phase's own raw dict, so an override typed at the prompt is
     scoped to this phase alone — the interactive counterpart of
@@ -187,7 +187,7 @@ def _present_phase(
     """
 
     def rebuild(candidate: dict[str, Any]) -> SimulationConfig:
-        config = _expand_single_phase(candidate, phase_name)
+        config = _build_config(candidate)
         _display_config_summary(config)
         if overview:
             _display_full_overview(config)
@@ -283,7 +283,7 @@ def _run_two_phase_wetting_init(
         return
 
     if dry_run:
-        _print_dry_run_message(None)
+        _print_dry_run_message()
         return
 
     _run_simulation(gravity_config)

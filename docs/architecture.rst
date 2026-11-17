@@ -82,7 +82,7 @@ Where the boundaries fall
 
 The core never learns where its configuration came from or where its results
 go.  That is what lets the same three calls back the CLI, a Jupyter session,
-and a parallel sweep worker without changing.
+and a staged sweep without changing.
 
 The execution pipeline
 ----------------------
@@ -214,11 +214,11 @@ What it deliberately is **not** is a container of live objects:
             self.collision_fn = load_collision_operator(...)
 
 Keeping resolved callables out of the config is what makes it serialisable,
-hashable across processes for sweeps, and safe to write back out as the
+hashable, and safe to write back out as the
 ``config.toml`` in a run directory.
 
 See :doc:`adapters` for the section mapping, the defaults applied on
-construction, and parameter-sweep expansion.
+construction, and parameter-sweep staging.
 
 State management
 ----------------

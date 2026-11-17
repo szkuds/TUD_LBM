@@ -1,4 +1,4 @@
-"""Tests for operators/differential — compute_gradient, compute_laplacian, build_differential.
+"""Tests for operators/differential — build_differential.
 
 Verifies:
 - Shape correctness on small grids
@@ -44,6 +44,20 @@ def _wetting(phi_l, phi_r, d_rho_l, d_rho_r):
     )
 
 
+def _gradient(grid, lattice, pad_mode):
+    """The plain gradient stencil over *pad_mode*."""
+    from src.operators.differential import build_differential
+
+    return build_differential(lattice, tuple(pad_mode))[0](grid, {})
+
+
+def _laplacian(grid, lattice, pad_mode):
+    """The plain Laplacian stencil over *pad_mode*."""
+    from src.operators.differential import build_differential
+
+    return build_differential(lattice, tuple(pad_mode))[1](grid, {})
+
+
 def _droplet_on_bottom_wall():
     """Liquid in the centre, vapour at the sides, interface meeting the bottom row."""
     xs = jnp.linspace(-1, 1, NX)
@@ -82,23 +96,19 @@ def linear_x_field():
 
 
 # =====================================================================
-# compute_gradient
+# gradient
 # =====================================================================
 
 
-class TestComputeGradient:
-    """``compute_gradient`` output shape and basic maths."""
+class TestGradient:
+    """The plain gradient: output shape and basic maths."""
 
     def test_output_shape(self, lattice, const_field, periodic_pad):
-        from src.operators.differential._gradient import compute_gradient
-
-        out = compute_gradient(const_field, lattice.w, lattice.c, periodic_pad)
+        out = _gradient(const_field, lattice, periodic_pad)
         assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_constant_field_zero_gradient(self, lattice, const_field, periodic_pad):
-        from src.operators.differential._gradient import compute_gradient
-
-        out = compute_gradient(const_field, lattice.w, lattice.c, periodic_pad)
+        out = _gradient(const_field, lattice, periodic_pad)
         np.testing.assert_allclose(np.array(out), 0.0, atol=1e-5)
 
     def test_x_gradient_nonzero_for_x_varying_field(
@@ -107,85 +117,67 @@ class TestComputeGradient:
         linear_x_field,
         periodic_pad,
     ):
-        from src.operators.differential._gradient import compute_gradient
-
-        out = compute_gradient(linear_x_field, lattice.w, lattice.c, periodic_pad)
+        out = _gradient(linear_x_field, lattice, periodic_pad)
         # gx should be nonzero almost everywhere (periodic wrap creates edge artefacts)
         gx = np.array(out[:, :, 0, 0])
         # Interior columns should have positive gx
         assert float(np.mean(np.abs(gx[1:-1, :]))) > 0.1
 
     def test_jittable(self, lattice, const_field, periodic_pad):
-        from src.operators.differential._gradient import compute_gradient
+        from src.operators.differential import build_differential
 
-        jitted = jax.jit(compute_gradient, static_argnames=("pad_mode",))
-        out = jitted(const_field, lattice.w, lattice.c, pad_mode=tuple(periodic_pad))
+        gradient, _ = build_differential(lattice, tuple(periodic_pad))
+        out = jax.jit(gradient)(const_field, {})
         assert out.shape == (NX, NY, NZ, 1, 2)
 
-    def test_builder_matches_raw_stencil_and_ignores_ext(self, lattice, linear_x_field):
-        """Without a ghost fill, ``build_differential``'s gradient is the plain stencil; *ext* is unread."""
+    def test_ignores_ext_without_a_ghost_fill(self, lattice, linear_x_field):
+        """Without a ghost fill, ``build_differential``'s gradient does not read *ext*."""
         from src.operators.differential import build_differential
-        from src.operators.differential._gradient import compute_gradient
 
         op, _ = build_differential(lattice, ("wrap", "wrap", "wrap", "wrap"))
-        expected = compute_gradient(linear_x_field, lattice.w, lattice.c, ("wrap", "wrap", "wrap", "wrap"))
-        np.testing.assert_array_equal(np.asarray(op(linear_x_field, {})), np.asarray(expected))
+        expected = op(linear_x_field, {})
         wall = {"wetting": _wetting(1.3, 1.3, D_RHO, D_RHO)}
         np.testing.assert_array_equal(np.asarray(op(linear_x_field, wall)), np.asarray(expected))
 
 
 # =====================================================================
-# compute_laplacian
+# Laplacian
 # =====================================================================
 
 
-class TestComputeLaplacian:
-    """``compute_laplacian`` output shape and basic maths."""
+class TestLaplacian:
+    """The plain Laplacian: output shape and basic maths."""
 
     def test_output_shape(self, lattice, const_field, periodic_pad):
-        from src.operators.differential._laplacian import compute_laplacian
-
-        out = compute_laplacian(const_field, lattice.w, periodic_pad)
+        out = _laplacian(const_field, lattice, periodic_pad)
         assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_constant_field_zero_laplacian(self, lattice, const_field, periodic_pad):
-        from src.operators.differential._laplacian import compute_laplacian
-
-        out = compute_laplacian(const_field, lattice.w, periodic_pad)
+        out = _laplacian(const_field, lattice, periodic_pad)
         np.testing.assert_allclose(np.array(out), 0.0, atol=1e-5)
-
-    def test_2d_input_accepted(self, lattice, periodic_pad):
-        from src.operators.differential._laplacian import compute_laplacian
-
-        out = compute_laplacian(jnp.ones((NX, NY, NZ, 1, 1)), lattice.w, periodic_pad)
-        assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_quadratic_field_nonzero_laplacian(self, lattice, periodic_pad):
         """f(i,j) = i² — Laplacian should be ~2 in the interior."""
-        from src.operators.differential._laplacian import compute_laplacian
-
         xs = jnp.arange(NX, dtype=jnp.float64)
         field = (xs**2)[:, None, None, None, None] * jnp.ones((NX, NY, NZ, 1, 1))
-        out = compute_laplacian(field, lattice.w, periodic_pad)
+        out = _laplacian(field, lattice, periodic_pad)
         # Interior (avoid periodic wrap artefacts at boundaries)
         lap_interior = np.array(out[2:-2, 2:-2, 0, 0])
         assert float(np.mean(np.abs(lap_interior))) > 0.5
 
     def test_jittable(self, lattice, const_field, periodic_pad):
-        from src.operators.differential._laplacian import compute_laplacian
+        from src.operators.differential import build_differential
 
-        jitted = jax.jit(compute_laplacian, static_argnames=("pad_mode",))
-        out = jitted(const_field, lattice.w, pad_mode=tuple(periodic_pad))
+        _, laplacian = build_differential(lattice, tuple(periodic_pad))
+        out = jax.jit(laplacian)(const_field, {})
         assert out.shape == (NX, NY, NZ, 1, 1)
 
-    def test_builder_matches_raw_stencil_and_ignores_ext(self, lattice, linear_x_field):
-        """Without a ghost fill, ``build_differential``'s Laplacian is the plain stencil; *ext* is unread."""
+    def test_ignores_ext_without_a_ghost_fill(self, lattice, linear_x_field):
+        """Without a ghost fill, ``build_differential``'s Laplacian does not read *ext*."""
         from src.operators.differential import build_differential
-        from src.operators.differential._laplacian import compute_laplacian
 
         _, op = build_differential(lattice, ("wrap", "wrap", "wrap", "wrap"))
-        expected = compute_laplacian(linear_x_field, lattice.w, ("wrap", "wrap", "wrap", "wrap"))
-        np.testing.assert_array_equal(np.asarray(op(linear_x_field, {})), np.asarray(expected))
+        expected = op(linear_x_field, {})
         wall = {"wetting": _wetting(1.3, 1.3, D_RHO, D_RHO)}
         np.testing.assert_array_equal(np.asarray(op(linear_x_field, wall)), np.asarray(expected))
 
@@ -220,10 +212,9 @@ class TestGhostFill:
     def test_differs_from_plain_gradient_on_nonuniform_field(self, lattice):
         """The wall changes the gradient where a droplet interface meets it."""
         from src.operators.differential import build_differential
-        from src.operators.differential._gradient import compute_gradient
 
         rho = _droplet_on_bottom_wall()
-        plain = compute_gradient(rho, lattice.w, lattice.c, _WETTING_PAD)
+        plain = _gradient(rho, lattice, _WETTING_PAD)
         gradient, _ = build_differential(lattice, _WETTING_PAD, self._wall_fill(_WETTING_BC))
 
         assert not jnp.allclose(plain, gradient(rho, {"wetting": _wetting(PHI, PHI, D_RHO, D_RHO)}), atol=1e-9)

@@ -17,10 +17,17 @@ periodic axis (``tests/pipeline/test_translation_invariance.py``).
 """
 
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import jax.numpy as jnp
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    import numpy as np
 
 #: Pad modes of a planar field; a 3D one has two more.
 _PLANAR_MODES = 4
+#: Spatial dimension of a planar lattice.
+_PLANAR_DIM = 2
 
 
 def _pad_axis(grid: jnp.ndarray, axis: int, mode_start: str, mode_end: str) -> jnp.ndarray:
@@ -67,23 +74,11 @@ def _apply_stencil_padding(
     return _pad_axis(padded, 0, pad_mode[3], pad_mode[2])
 
 
-def to_3d(grid: jnp.ndarray) -> jnp.ndarray:
-    """Squeeze ``(nx, ny, nz, 1, 1)`` → ``(nx, ny, nz)``."""
-    return grid[:, :, :, 0, 0]
+def spatial(grid: jnp.ndarray, dim: int) -> jnp.ndarray:
+    """Squeeze ``(nx, ny, nz, 1, 1)`` to the lattice's spatial axes: ``(nx, ny)`` or ``(nx, ny, nz)``."""
+    return grid[:, :, 0, 0, 0] if dim == _PLANAR_DIM else grid[:, :, :, 0, 0]
 
 
-def neighbour(padded: jnp.ndarray, direction: tuple[int, ...]) -> jnp.ndarray:
-    """The values one *direction* away from each interior cell of a padded 3D field."""
-    return padded[tuple(slice(1 + step, step - 1 if step < 1 else None) for step in direction)]
-
-
-def to_2d(grid: jnp.ndarray) -> jnp.ndarray:
-    """Squeeze ``(nx, ny, nz, 1, 1)`` → ``(nx, ny)``; no-op if already 2-D."""
-    _grid_ndim_5d = 5
-    if grid.ndim != _grid_ndim_5d:
-        msg = f"Expected 5-D grid, got shape {grid.shape}"
-        raise ValueError(msg)
-    if grid.shape[2] != 1:
-        msg = f"Expected singleton nz dimension, got shape {grid.shape}"
-        raise ValueError(msg)
-    return grid[:, :, 0, 0, 0]
+def neighbour(padded: jnp.ndarray, direction: Sequence[int] | np.ndarray) -> jnp.ndarray:
+    """The values one *direction* away from each interior cell of a padded 2D or 3D field."""
+    return padded[tuple(slice(1 + int(step), int(step) - 1 if step < 1 else None) for step in direction)]

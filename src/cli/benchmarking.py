@@ -384,22 +384,10 @@ def _breakdown_variants(setup: SimulationSetup) -> list[tuple[str, SimulationSet
 
 
 def _load_benchmark_config(config_path: str, overrides: tuple[str, ...]) -> SimulationConfig:
-    """Load and expand *config_path*, rejecting sweeps.
-
-    A sweep expands to several configs with different work per step, which the
-    single-number output of this command cannot represent honestly.
-
-    Raises:
-        click.UsageError: If the config expands to more than one simulation.
-    """
+    """Load *config_path* with *overrides* applied."""
     from src.cli.config_loading import _load_single_config
 
-    return _load_single_config(
-        config_path,
-        overrides,
-        command="benchmark",
-        hint="benchmark one grid at a time",
-    )
+    return _load_single_config(config_path, overrides)
 
 
 def _resolve_json_path(config: SimulationConfig, json_path: str | None, label: str, backend: str) -> Path:

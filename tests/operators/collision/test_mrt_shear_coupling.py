@@ -92,20 +92,6 @@ def test_bgk_is_untouched():
     assert config.k_diag is None
 
 
-def test_sweeps_couple_each_expanded_config():
-    """``tau`` is sweep-eligible, so the coupling must follow each expanded value."""
-    from src.config.array_expansion import expand_config
-
-    configs, _ = expand_config(
-        {"grid_shape": (16, 16), "tau": [0.8, 1.2], "collision_scheme": "mrt", "k_diag": _DECOUPLED}
-    )
-
-    assert len(configs) == 2
-    for config in configs:
-        assert config.k_diag is not None
-        assert config.k_diag[SHEAR_MOMENTS[0]] == pytest.approx(1.0 / config.tau)
-
-
 def test_only_the_shear_moments_relax_and_they_relax_at_one_over_tau():
     """Measures, in moment space, which index ``tau`` actually drives.
 

@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
 from src.config._checks import registered_names
+from src.config._checks import reject_sweep_lists
 from src.config._checks import validate_nonnegative
 from src.config.boundary import complete_boundary_conditions
 from src.config.boundary import lattice_dim
@@ -42,45 +43,8 @@ from src.config.wetting import validate_hysteresis
 from src.config.wetting import validate_wetting
 
 CONFIG_SECTION: str = "config_section"
-ARRAY_ELIGIBLE: str = "array_eligible"
-NESTED_SWEEPABLE: str = "nested_sweepable"
 MIN_GRID_DIMENSIONS: int = 2
 MIN_TAU_VALUE: float = 0.5
-
-
-def array_field(
-    *,
-    default: object = dataclasses.MISSING,
-    default_factory: object = dataclasses.MISSING,
-    section: str | None = None,
-    nested_sweepable: bool = False,
-    **kwargs: object,
-) -> Any:  # noqa: ANN401
-    """Field factory for array-eligible SimulationConfig fields.
-
-    Args:
-        default: Default value for the field.
-        default_factory: Default factory function for the field.
-        section: Config section name for serialisation routing.
-        nested_sweepable: If ``True``, sub-keys inside this dict field
-            will also be inspected for list values during Cartesian-product
-            expansion (e.g. ``forces``, ``wetting``).
-        **kwargs: Additional keyword arguments passed to the field factory.
-
-    Returns:
-        A dataclass field with array-eligible metadata.
-    """
-    metadata: dict[str, Any] = {}
-    metadata[ARRAY_ELIGIBLE] = True
-    if nested_sweepable:
-        metadata[NESTED_SWEEPABLE] = True
-    if section is not None:
-        metadata[CONFIG_SECTION] = section
-    if default is not dataclasses.MISSING:
-        return field(default=default, metadata=metadata, **kwargs)  # ty: ignore[no-matching-overload]
-    if default_factory is not dataclasses.MISSING:
-        return field(default_factory=default_factory, metadata=metadata, **kwargs)  # ty: ignore[no-matching-overload]
-    return field(metadata=metadata, **kwargs)  # ty: ignore[no-matching-overload]
 
 
 def _normalise_sequence(value: object) -> tuple[Any, ...]:
@@ -109,14 +73,14 @@ class SimulationConfig:
 
     # ── Lattice & grid ───────────────────────────────────────────
     lattice_type: str = "D2Q9"
-    grid_shape: tuple[int, ...] = array_field(default=(64, 64))
+    grid_shape: tuple[int, ...] = (64, 64)
 
     # ── Time stepping ────────────────────────────────────────────
-    nt: int = array_field(default=1000)
-    tau: float = array_field(default=1.0)
+    nt: int = 1000
+    tau: float = 1.0
 
     # ── Collision ────────────────────────────────────────────────
-    collision_scheme: str = array_field(default="bgk")
+    collision_scheme: str = "bgk"
     k_diag: tuple[float, ...] | None = field(default=None)
 
     # ── Equilibrium (its source term is the pair it registered) ──
@@ -132,12 +96,12 @@ class SimulationConfig:
         metadata={CONFIG_SECTION: "obstacle"},
     )
     # Its presence is what makes a run multiphase.
-    multiphase: dict[str, Any] | None = array_field(default=None, section="multiphase", nested_sweepable=True)
-    wetting: dict[str, Any] | None = array_field(default=None, section="wetting", nested_sweepable=True)
-    hysteresis: dict[str, Any] | None = array_field(default=None, section="hysteresis", nested_sweepable=True)
-    chemical_step: dict[str, Any] | None = array_field(default=None, section="chemical_step", nested_sweepable=True)
+    multiphase: dict[str, Any] | None = field(default=None, metadata={CONFIG_SECTION: "multiphase"})
+    wetting: dict[str, Any] | None = field(default=None, metadata={CONFIG_SECTION: "wetting"})
+    hysteresis: dict[str, Any] | None = field(default=None, metadata={CONFIG_SECTION: "hysteresis"})
+    chemical_step: dict[str, Any] | None = field(default=None, metadata={CONFIG_SECTION: "chemical_step"})
     # Every [*_force] section, under the section's name. No section metadata: there is no [forces] table.
-    forces: dict[str, dict[str, Any]] = array_field(default_factory=dict, nested_sweepable=True)
+    forces: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # ── Initialisation ───────────────────────────────────────────
     init_type: str = "standard"
@@ -170,6 +134,7 @@ class SimulationConfig:
 
     def __post_init__(self) -> None:
         """Validate and normalise configuration after initialisation."""
+        reject_sweep_lists({f.name: getattr(self, f.name) for f in dataclasses.fields(self)})
         self._normalise()
         self._apply_defaults()
         self._make_grid_shape_3d()
@@ -364,16 +329,6 @@ class SimulationConfig:
             f"  init_type={self.init_type!r},\n"
             f")"
         )
-
-
-def get_array_eligible_fields() -> frozenset[str]:
-    """Get names of fields eligible for array expansion in configuration sweeps."""
-    return frozenset(f.name for f in dataclasses.fields(SimulationConfig) if f.metadata.get(ARRAY_ELIGIBLE, False))
-
-
-def get_nested_sweepable_fields() -> frozenset[str]:
-    """Return field names whose dict sub-keys may carry list sweep values."""
-    return frozenset(f.name for f in dataclasses.fields(SimulationConfig) if f.metadata.get(NESTED_SWEEPABLE, False))
 
 
 def get_whole_section_fields() -> tuple[str, ...]:

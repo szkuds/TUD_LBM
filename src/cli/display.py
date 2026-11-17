@@ -10,7 +10,6 @@ from src.config.multiphase import multiphase_params
 if TYPE_CHECKING:
     from src.cli.field_select import OperatorChoice
     from src.config import SimulationConfig
-    from src.config.array_expansion import ArrayParameterSet
 
 BOLD_CYAN = "bold cyan"
 
@@ -217,49 +216,12 @@ def _display_full_overview(config: SimulationConfig | None) -> None:
     console.print()
 
 
-def _display_sweep_summary(metadata: ArrayParameterSet) -> None:
-    """Display detected parameter-sweep axes and total combinations."""
-    console.print()
-    table = Table(
-        title="Parameter Sweep",
-        show_header=True,
-        header_style="bold magenta",
-    )
-    table.add_column("Field", style="cyan", no_wrap=True)
-    table.add_column("Values", style="green")
-
-    for field_name in sorted(metadata.field_names):
-        values = metadata.array_values.get(field_name, ())
-        values_str = ", ".join(str(v) for v in values)
-        table.add_row(field_name, values_str)
-
-    console.print(table)
-    console.print(f"[bold blue]Total combinations:[/bold blue] {metadata.total_combinations}")
-    console.print()
+def _display_summary(config: SimulationConfig | None, *, overview: bool) -> None:
+    """Display the config summary, and the full overview when asked."""
+    _display_config_summary(config)
+    if overview:
+        _display_full_overview(config)
 
 
-def _display_summary(
-    config: SimulationConfig | None,
-    sweep_metadata: ArrayParameterSet | None,
-    configs: list[SimulationConfig],
-    *,
-    overview: bool,
-) -> None:
-    """Display either a single-run config summary or a sweep summary."""
-    if sweep_metadata is None:
-        _display_config_summary(config)
-        if overview:
-            _display_full_overview(config)
-    else:
-        _display_sweep_summary(sweep_metadata)
-        console.print("[dim]Preview of the first expanded configuration:[/dim]")
-        _display_config_summary(configs[0])
-        if overview:
-            _display_full_overview(configs[0])
-
-
-def _print_dry_run_message(sweep_metadata: ArrayParameterSet | None) -> None:
-    if sweep_metadata is None:
-        console.print("[yellow]Dry run mode - simulation not started[/yellow]")
-    else:
-        console.print("[yellow]Dry run mode - parameter sweep not started[/yellow]")
+def _print_dry_run_message() -> None:
+    console.print("[yellow]Dry run mode - simulation not started[/yellow]")

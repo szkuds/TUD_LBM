@@ -173,9 +173,6 @@ pydocstyle.convention = "google"
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "typing.cast".msg = "Fix the type at its source: a protocol-annotated factory, narrowing, or explicit parameters."
 
-[tool.ruff.lint.flake8-bugbear]
-extend-immutable-calls = ["array_field"]
-
 [tool.ruff.lint.per-file-ignores]
 # `RUF069`: exact-equality asserts on exactly-representable values (`== 1.0`,
 # `== 3.0`) are deliberate in tests, and SonarCloud does not flag them either.

@@ -125,11 +125,16 @@ def test_stage_skips_a_calibrated_fluid_and_a_closed_form_eos(runner: CliRunner,
     assert not st.SURFACE_TENSION_ROOT.exists()
 
 
-def test_stage_covers_every_fluid_of_a_parameter_sweep(runner: CliRunner, tmp_path: Path):
+def test_stage_covers_every_fluid_of_a_staged_parameter_sweep(runner: CliRunner, tmp_path: Path):
     path = _write_config(tmp_path / "sweep.toml", _config())
-    path.write_text(path.read_text(encoding="utf-8").replace("kappa = 0.01", "kappa = [0.01, 0.02]"), encoding="utf-8")
+    staged_dir = tmp_path / "staged"
+    staging = runner.invoke(
+        cli, ["sweep", "stage", str(path), "--set", "multiphase.kappa=[0.01, 0.02]", "--out", str(staged_dir)]
+    )
+    assert staging.exit_code == 0, staging.output
+    staged = sorted(str(p) for p in staged_dir.glob("*.toml"))
 
-    result = runner.invoke(cli, ["calibration", "stage", str(path)])
+    result = runner.invoke(cli, ["calibration", "stage", *staged])
 
     assert result.exit_code == 0, result.output
     assert sorted(p.name for p in st.SURFACE_TENSION_ROOT.iterdir()) == [_FLUID, "cs_kappa0.02_rho0.4_0.02"]

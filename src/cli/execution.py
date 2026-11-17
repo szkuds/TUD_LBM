@@ -1,15 +1,14 @@
-"""Running simulations and sweeps on behalf of the ``run`` command."""
+"""Running a simulation on behalf of the ``run`` command."""
 
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import TypeAlias
 import src.config.config_overview as _flags
 from src.cli._console import console
 from src.cli._console import success
-from src.cli.config_loading import _expand_raw_config
+from src.cli.config_loading import _build_config
 from src.cli.config_loading import _load_config_interactive
 from src.cli.config_loading import _load_raw_config
 from src.cli.config_loading import _validate_cli_args
@@ -17,20 +16,12 @@ from src.cli.display import _display_analysis_operators
 from src.cli.display import _display_simulation_operators
 from src.cli.display import _display_summary
 from src.cli.display import _print_dry_run_message
-from src.cli.overrides import _ask_confirm
 from src.cli.overrides import confirm_or_override
 from src.cli.wetting_init import _run_two_phase_wetting_init
 from src.config.run_config import COMPARISON_DIRNAME
 
 if TYPE_CHECKING:
     from src.config import SimulationConfig
-    from src.config.array_expansion import ArrayParameterSet
-
-#: What ``_expand_raw_config`` yields: (configs, config, sweep_metadata, parameters_list).
-#: Named so the confirm/override loop can carry the whole tuple as one value.
-_ExpandedRun: TypeAlias = (
-    "tuple[list[SimulationConfig], SimulationConfig | None, ArrayParameterSet | None, list[dict[str, Any]] | None]"
-)
 
 
 def _run_simulation(config: SimulationConfig) -> str:
@@ -97,91 +88,11 @@ def _run_simulation(config: SimulationConfig) -> str:
     return io.data_dir
 
 
-def _run_parallel_sweep(
-    configs: list[SimulationConfig],
-    parameters_list: list[dict[str, Any]],
-    *,
-    max_workers: int | None,
-    continue_on_error: bool,
-) -> list[Any]:
-    """Run a parameter sweep in parallel and save a manifest."""
-    from src.pipeline.parallel_runner import run_parallel_simulations
-    from src.pipeline.parallel_runner import save_sweep_log
-
-    console.print("[bold green]Starting parallel parameter sweep...[/bold green]")
-    console.print(f"[dim]Simulations: {len(configs)}[/dim]")
-    console.print(f"[dim]Max workers: {max_workers if max_workers is not None else 'auto'}[/dim]")
-    console.print()
-
-    results = run_parallel_simulations(
-        configs,
-        max_workers=max_workers,
-        parameters_list=parameters_list,
-        verbose=True,
-        continue_on_error=continue_on_error,
-    )
-
-    manifest_dir = Path(configs[0].results_dir).expanduser() / "sweep_manifest"
-    save_sweep_log(results, manifest_dir)
-
-    successful = sum(1 for result in results if result.status == "success")
-    failed = sum(1 for result in results if result.status == "failed")
-
-    console.print()
-    console.print("[bold green]Parallel sweep completed.[/bold green]")
-    console.print(f"  Successful runs : {successful}")
-    console.print(f"  Failed runs     : {failed}")
-    console.print(f"  Manifest folder : {manifest_dir}")
-
-    return results
-
-
-def _confirm_prompt_text(sweep_metadata: ArrayParameterSet | None, configs: list[SimulationConfig]) -> str:
-    """The question asked before starting a single run or a sweep."""
-    if sweep_metadata is None:
-        return "[bold]Start simulation?[/bold]"
-    return f"[bold]Start parameter sweep ({len(configs)} simulations)?[/bold]"
-
-
-def _confirm_run(sweep_metadata: ArrayParameterSet | None, configs: list[SimulationConfig]) -> str:
-    """Return 'yes', 'no', or 'override'."""
-    return _ask_confirm(_confirm_prompt_text(sweep_metadata, configs))
-
-
-def _check_sweep_errors(results: list[Any]) -> None:
-    """TRY301: raise lives here, outside the try-block in run()."""
-    failed = sum(1 for result in results if result.status == "failed")
-    if failed > 0:
-        msg = f"Parameter sweep completed with {failed} failed simulation(s)."
-        raise RuntimeError(msg)
-
-
-def _execute_run(
-    configs: list[SimulationConfig],
-    config: SimulationConfig | None,
-    sweep_metadata: ArrayParameterSet | None,
-    parameters_list: list[dict[str, Any]] | None,
-    max_workers: int | None,
-    fail_fast: bool,
-    run_compare: bool = False,
-) -> None:
-    """Dispatch to single-run or parallel-sweep execution."""
-    if sweep_metadata is None:
-        if config is not None:
-            # Single-run path: _run_simulation returns the data directory (string)
-            data_dir = _run_simulation(config)
-            if run_compare:
-                _run_compare_single(Path(data_dir).parent, config)
-    else:
-        results = _run_parallel_sweep(
-            configs,
-            parameters_list or [],
-            max_workers=max_workers,
-            continue_on_error=not fail_fast,
-        )
-        _check_sweep_errors(results)
-        if run_compare:
-            _run_compare_sweep(Path(configs[0].results_dir).expanduser())
+def _execute_run(config: SimulationConfig, *, run_compare: bool = False) -> None:
+    """Run *config*, then build its CSV and comparison plots when asked."""
+    data_dir = _run_simulation(config)
+    if run_compare:
+        _run_compare_single(Path(data_dir).parent, config)
 
 
 def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
@@ -203,45 +114,30 @@ def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
     console.print(f"[bold green]Comparison plots saved to:[/bold green] {run_dir / COMPARISON_DIRNAME}")
 
 
-def _run_compare_sweep(results_dir: Path) -> None:
-    """Build CSVs and comparison plots across all runs in a sweep directory."""
-    from src.cli.analysis_routing import analyse_tree
-
-    console.print("[dim]Running comparison analysis...[/dim]")
-    _n_runs, n_ok = analyse_tree(results_dir)
-    if n_ok == 0:
-        console.print("[yellow]--compare: no runs produced CSV data.[/yellow]")
-        return
-    console.print(f"[bold green]Comparison plots saved to:[/bold green] {results_dir / COMPARISON_DIRNAME}")
-
-
 def _run_with_optional_overrides(
     *,
     raw_config: dict[str, Any] | None,
-    configs: list[SimulationConfig],
-    config: SimulationConfig | None,
-    sweep_metadata: ArrayParameterSet | None,
-    parameters_list: list[dict[str, Any]] | None,
+    config: SimulationConfig,
     no_prompt: bool,
     overview: bool,
-) -> tuple[list[SimulationConfig], SimulationConfig | None, ArrayParameterSet | None, list[dict[str, Any]] | None]:
+) -> SimulationConfig | None:
+    """Confirm *config*, or rebuild it after an inline override; ``None`` when cancelled."""
     if no_prompt:
-        return configs, config, sweep_metadata, parameters_list
+        return config
 
-    def rebuild(raw: dict[str, Any]) -> _ExpandedRun:
-        expanded = _expand_raw_config(raw)
-        _display_summary(expanded[1], expanded[2], expanded[0], overview=overview)
-        return expanded
+    def rebuild(raw: dict[str, Any]) -> SimulationConfig:
+        rebuilt = _build_config(raw)
+        _display_summary(rebuilt, overview=overview)
+        return rebuilt
 
     confirmed = confirm_or_override(
         raw_config,
-        (configs, config, sweep_metadata, parameters_list),
-        prompt=lambda expanded: _confirm_prompt_text(expanded[2], expanded[0]),
+        config,
+        prompt=lambda _: "[bold]Start simulation?[/bold]",
         rebuild=rebuild,
     )
     if confirmed is None:
         console.print("[yellow]Simulation cancelled.[/yellow]")
-        return [], None, None, None
     return confirmed
 
 
@@ -279,7 +175,6 @@ class RunFlags:
     dry_run: bool = False
     list_operators: bool = False
     list_analysis: bool = False
-    fail_fast: bool = False
     overview: bool = False
     debug_wetting: int | None = None
     debug_stability: int | None = None
@@ -293,7 +188,6 @@ class RunFlags:
 def _run_impl(
     config_path: str | None,
     overrides: tuple[str, ...],
-    max_workers: int | None,
     init_dir: str | None,
     flags: RunFlags,
 ) -> bool:
@@ -337,27 +231,24 @@ def _run_impl(
 
     if config_path:
         raw_config = _load_raw_config(config_path, overrides, init_dir=init_dir, continue_run=flags.continue_run)
-        configs, config, sweep_metadata, parameters_list = _expand_raw_config(raw_config)
+        config = _build_config(raw_config)
     else:
         raw_config = None
-        configs, config, sweep_metadata, parameters_list = _load_config_interactive()
+        config = _load_config_interactive()
 
-    _display_summary(config, sweep_metadata, configs, overview=flags.overview)
+    _display_summary(config, overview=flags.overview)
     if flags.dry_run:
-        _print_dry_run_message(sweep_metadata)
+        _print_dry_run_message()
         return False
 
-    configs, config, sweep_metadata, parameters_list = _run_with_optional_overrides(
+    confirmed = _run_with_optional_overrides(
         raw_config=raw_config,
-        configs=configs,
         config=config,
-        sweep_metadata=sweep_metadata,
-        parameters_list=parameters_list,
         no_prompt=flags.no_prompt,
         overview=flags.overview,
     )
-    if not configs:
+    if confirmed is None:
         return False
 
-    _execute_run(configs, config, sweep_metadata, parameters_list, max_workers, flags.fail_fast, flags.run_compare)
+    _execute_run(confirmed, run_compare=flags.run_compare)
     return True

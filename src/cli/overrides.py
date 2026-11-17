@@ -14,8 +14,8 @@ from src.cli._console import console
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-#: The value a confirm/override loop is deciding about — the expanded config (or
-#: tuple of configs) built from the raw dict the override is applied to.
+#: The value a confirm/override loop is deciding about — the config built from
+#: the raw dict the override is applied to.
 _T = TypeVar("_T")
 
 #: TOML sections merged straight into the top level by
@@ -160,7 +160,7 @@ def _reject_unknown_field(path: str, head: str) -> None:
 
     Caught here because neither layer below reports it usefully: the adapter
     sweeps an unknown key into ``config.extra`` and says nothing, while
-    ``expand_config`` calls ``SimulationConfig(**raw)`` and surfaces a bare
+    ``SimulationConfig(**raw)`` surfaces a bare
     ``unexpected keyword argument``. Both leave the operator guessing at a
     typo, so the suggestion is made where the typo was actually typed.
     """
@@ -222,7 +222,7 @@ def _apply_overrides(raw_config: dict[str, Any], overrides: tuple[str, ...]) -> 
     """Parse and apply all --override expressions in order.
 
     Each override is parsed, type-checked, and applied to raw_config before
-    config expansion. This allows CLI users to override or create config
+    the config is built. This allows CLI users to override or create config
     fields without editing the file.
 
     Overrides are applied in the order provided, so later values override
@@ -275,9 +275,9 @@ def confirm_or_override(
 
     Loops until the operator answers yes or no, so a mistyped parameter is
     corrected in place rather than by cancelling and re-invoking the command.
-    *rebuild* re-expands the mutated raw dict **and displays the new summary** —
+    *rebuild* rebuilds the mutated raw dict **and displays the new summary** —
     each caller shows its own — and *prompt* is re-evaluated each round because
-    an override can change what is being confirmed (a scalar becoming a sweep).
+    an override can change what is being confirmed.
 
     The override is applied to a copy and only committed into *raw_config* once
     *rebuild* succeeds: a rejected expression must not leave the raw dict in a

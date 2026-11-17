@@ -8,7 +8,6 @@ import pytest
 from src.config import DictAdapter
 from src.config import SimulationConfig
 from src.config import TomlAdapter
-from src.config.array_expansion import expand_config
 from src.config.legacy import upgrade
 from src.config.run_config import CONFIG_FILENAME
 from src.config.sections import build_sections
@@ -166,20 +165,6 @@ def test_every_kind_of_old_flat_name_is_rejected(name: str) -> None:
 
     with pytest.raises(ValueError, match=f"Old-layout field.*{name}"):
         adapter.load(flat)
-
-
-def test_two_level_sweep_expands() -> None:
-    raw = {
-        "grid_shape": (8, 8),
-        "forces": {"gravity_force": {"force_g": [1e-6, 2e-6], "inclination_angle_deg": 30.0}},
-    }
-
-    configs, metadata = expand_config(raw)
-
-    assert [c.forces["gravity_force"]["force_g"] for c in configs] == [1e-6, 2e-6]
-    assert all(c.forces["gravity_force"]["inclination_angle_deg"] == 30.0 for c in configs)
-    assert metadata is not None
-    assert metadata.field_names == frozenset({"forces.gravity_force.force_g"})
 
 
 def test_force_defaults_come_from_one_table() -> None:

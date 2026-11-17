@@ -79,10 +79,10 @@ tud-lbm run
 
 ### Parameter sweeps and post-processing
 
-List-valued sweepable fields in a TOML configuration expand into a parameter sweep. Use `--max-workers` to control parallel execution and `--compare` to create cross-run comparison plots.
+A run is one config. A parameter sweep is staged as one completed TOML per combination; run each file with `tud-lbm run`, or pass the directory to `scripts/db_pipeline.sh`.
 
 ```console
-tud-lbm run examples/config_parallel.toml --max-workers 4 --compare
+tud-lbm sweep stage examples/config_simple.toml --set 'tau=[0.6, 0.7, 0.8]' --out configs/var_tau/
 ```
 
 Saved runs can be plotted or animated, and a directory of runs can be analysed:
@@ -93,7 +93,7 @@ tud-lbm animate /path/to/run-directory
 tud-lbm compare /path/to/sweep-results --no-prompt
 ```
 
-See the [examples](examples/) for single-phase, multiphase, parallel, and von Karman configurations.
+See the [examples](examples/) for single-phase, multiphase, and von Karman configurations.
 
 ## Reporting bugs and vulnerabilities
 

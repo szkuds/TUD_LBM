@@ -8,25 +8,20 @@ The gradient formula follows the standard LBM moment approach:
 
     \\partial_\\alpha f = 3 \\sum_i w_i c_{i\\alpha} f(\\mathbf{x} + \\mathbf{c}_i)
 
-where the off-centre neighbours are obtained by slicing the padded array.
-
-Design
-~~~~~~
-*pad_mode* is a tuple of four ``jnp.pad`` mode strings:
-``(top, bottom, right, left)``, i.e. ``(y_end, y_start, x_end, x_start)``.  Because it
-is a plain Python tuple of strings it must be treated as a *static* argument
-when JIT-compiling — use ``jax.jit(fn, static_argnames=("pad_mode",))`` or
-close over it to get a jittable closure.
+where the off-centre neighbours are obtained by slicing the padded array. The
+factor 3 holds for any lattice with ``sum_i w_i c_i c_i = I / 3``, so one kernel
+serves D2Q9 and D3Q19: the sum runs over the rows of ``lattice.c``.
 """
 
 from __future__ import annotations
+import functools
+import operator
 from typing import TYPE_CHECKING
 import jax.numpy as jnp
 import numpy as np
 from src.operators.differential._pad_utils import _apply_stencil_padding
 from src.operators.differential._pad_utils import neighbour
-from src.operators.differential._pad_utils import to_2d
-from src.operators.differential._pad_utils import to_3d
+from src.operators.differential._pad_utils import spatial
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -34,36 +29,6 @@ if TYPE_CHECKING:
     from typing import Any
     from src.protocols import ExtDifferentialOperator
     from src.protocols import ExtGhostFill
-
-SPATIAL_3D = 3
-
-
-def compute_gradient(
-    grid: jnp.ndarray,
-    w: jnp.ndarray,
-    c: jnp.ndarray,
-    pad_mode: Sequence[str],
-) -> jnp.ndarray:
-    """LBM-stencil gradient of a scalar field.
-
-    ``pad_mode`` must be a compile-time constant (Python list/tuple of
-    strings).  To JIT-compile calls to this function, use::
-
-        jax.jit(compute_gradient, static_argnames=("pad_mode",))
-
-    or close over *pad_mode* in a wrapper.
-
-    Args:
-        grid: Scalar field, shape ``(nx, ny, nz, 1, 1)`` or ``(nx, ny)``.
-        w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
-        c: Lattice velocity vectors, shape ``(1, 1, 1, q, 2)``.
-        pad_mode: Four padding modes ``(top, bottom, right, left)``.
-
-    Returns:
-        Gradient field, shape ``(nx, ny, nz, 1, 2)``.
-    """
-    grid_padded = _apply_stencil_padding(to_2d(grid), tuple(pad_mode))
-    return grad_core_2d(grid_padded, w, c)
 
 
 def build_gradient(
@@ -73,8 +38,8 @@ def build_gradient(
 
     Args:
         w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
-        c: Lattice velocity vectors, shape ``(1, 1, 1, q, 2)``.
-        pad_mode: Four padding modes ``(top, bottom, right, left)``.
+        c: Lattice velocity vectors, shape ``(1, 1, 1, q, d)``.
+        pad_mode: Padding modes ``(top, bottom, right, left)``, then ``(front, back)`` in 3D.
         ghost_fill: Rewrites the padded field's ghost layer from ``ext`` before
             the stencil, or ``None`` for the plain stencil.
 
@@ -82,93 +47,44 @@ def build_gradient(
         ``grad(grid, ext) → (nx, ny, nz, 1, d)``. Without a fill, *ext* is ignored.
     """
     _pad_mode = tuple(pad_mode)
-    three_dimensional = c.shape[-1] == SPATIAL_3D
-    squeeze = to_3d if three_dimensional else to_2d
-    core = grad_core_3d if three_dimensional else grad_core_2d
+    dim = c.shape[-1]
 
     def gradient(grid: jnp.ndarray, ext: Mapping[str, Any]) -> jnp.ndarray:
-        padded = _apply_stencil_padding(squeeze(grid), _pad_mode)
+        padded = _apply_stencil_padding(spatial(grid, dim), _pad_mode)
         if ghost_fill is not None:
             padded = ghost_fill(padded, ext)
-        return core(padded, w, c)
+        # Written component by component into zeros, not stacked: under jit, XLA
+        # fuses a stack differently and moves the 2D gradient by one ulp.
+        out = jnp.zeros((*grid.shape[:3], 1, dim), dtype=padded.dtype)
+        for axis, component in enumerate(grad_components(padded, w, c)):
+            out = out.at[..., 0, axis].set(component.reshape(grid.shape[:3]))
+        return out
 
     return gradient
 
 
-def grad_core_3d(padded: jnp.ndarray, w: jnp.ndarray, c: jnp.ndarray) -> jnp.ndarray:
-    """Gradient kernel on an already-padded ``(nx+2, ny+2, nz+2)`` array.
+def grad_components(padded: jnp.ndarray, w: jnp.ndarray, c: jnp.ndarray) -> list[jnp.ndarray]:
+    """Gradient kernel on a field padded by one ghost layer on every face.
 
-    ``3 * sum_i w_i c_i f(x + c_i)``: the factor holds for any lattice with
-    ``sum_i w_i c_i c_i = I / 3``, D3Q19 among them.
+    Each component sums only the directions with a non-zero velocity along it,
+    in lattice order.
 
     Args:
-        padded: Shape ``(nx + 2, ny + 2, nz + 2)``.
+        padded: Shape ``(nx + 2, ny + 2)``, or ``(nx + 2, ny + 2, nz + 2)``.
         w: Lattice weights, shape ``(1, 1, 1, q, 1)``.
-        c: Lattice velocity vectors, shape ``(1, 1, 1, q, 3)``.
+        c: Lattice velocity vectors, shape ``(1, 1, 1, q, d)``, ``d == padded.ndim``.
 
     Returns:
-        Gradient field, shape ``(nx, ny, nz, 1, 3)``.
+        The ``d`` gradient components, each of shape ``(nx, ny[, nz])``.
     """
     weights = np.asarray(w)[0, 0, 0, :, 0]
     directions = np.asarray(c)[0, 0, 0]
-    total = jnp.zeros((*(n - 2 for n in padded.shape), 1, SPATIAL_3D), dtype=padded.dtype)
-    for weight, direction in zip(weights[1:], directions[1:], strict=True):
-        stencil = float(weight) * neighbour(padded, tuple(int(step) for step in direction))
-        total = total + 3.0 * stencil[..., None, None] * jnp.asarray(direction, dtype=padded.dtype)
-    return total
-
-
-def grad_core_2d(
-    padded: jnp.ndarray,
-    w: jnp.ndarray,
-    c: jnp.ndarray,
-) -> jnp.ndarray:
-    """Gradient kernel on an already-padded ``(nx+2, ny+2)`` array.
-
-    Args:
-        padded: Shape ``(nx + 2, ny + 2)``.
-        w: Lattice weights, shape ``(q,)``.
-        c: Lattice velocity vectors, shape ``(2, q)``.
-
-    Returns:
-        Gradient field, shape ``(nx, ny, 1, 1, 2)``.
-    """
-    # Neighbour slices (D2Q9 directions 1-8; direction 0 cancels out)
-    ip1_j0 = padded[2:, 1:-1]  # (i+1, j)
-    im1_j0 = padded[:-2, 1:-1]  # (i-1, j)
-    i0_jp1 = padded[1:-1, 2:]  # (i, j+1)
-    i0_jm1 = padded[1:-1, :-2]  # (i, j-1)
-    ip1_jp1 = padded[2:, 2:]  # (i+1, j+1)
-    im1_jp1 = padded[:-2, 2:]  # (i-1, j+1)
-    im1_jm1 = padded[:-2, :-2]  # (i-1, j-1)
-    ip1_jm1 = padded[2:, :-2]  # (i+1, j-1)
-
-    w_flat = w[0, 0, 0, :, 0]
-    c_flat = c[0, 0, 0, :, :]
-
-    # x-component: sum over directions with non-zero cx
-    gx = 3.0 * (
-        w_flat[1] * c_flat[1, 0] * ip1_j0
-        + w_flat[3] * c_flat[3, 0] * im1_j0
-        + w_flat[5] * c_flat[5, 0] * ip1_jp1
-        + w_flat[6] * c_flat[6, 0] * im1_jp1
-        + w_flat[7] * c_flat[7, 0] * im1_jm1
-        + w_flat[8] * c_flat[8, 0] * ip1_jm1
-    )
-
-    # y-component: sum over directions with non-zero cy
-    gy = 3.0 * (
-        w_flat[2] * c_flat[2, 1] * i0_jp1
-        + w_flat[4] * c_flat[4, 1] * i0_jm1
-        + w_flat[5] * c_flat[5, 1] * ip1_jp1
-        + w_flat[6] * c_flat[6, 1] * im1_jp1
-        + w_flat[7] * c_flat[7, 1] * im1_jm1
-        + w_flat[8] * c_flat[8, 1] * ip1_jm1
-    )
-
-    nx = padded.shape[0] - 2
-    ny = padded.shape[1] - 2
-    nz = 1  # Pseudo-3D: stencil operates on nz=1, output preserves it
-    out = jnp.zeros((nx, ny, nz, 1, 2))
-    out = out.at[:, :, 0, 0, 0].set(gx)
-    return out.at[:, :, 0, 0, 1].set(gy)
+    components = []
+    for axis in range(directions.shape[1]):
+        terms = [
+            float(weight * direction[axis]) * neighbour(padded, direction)
+            for weight, direction in zip(weights, directions, strict=True)
+            if direction[axis] != 0
+        ]
+        components.append(3.0 * functools.reduce(operator.add, terms))
+    return components

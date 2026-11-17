@@ -172,42 +172,25 @@ old layout.
 Parameter sweeps
 ----------------
 
-Fields declared with ``array_field()`` are sweep-eligible: giving one a list
-value expands the configuration into the Cartesian product of all such
-lists.
+A configuration is always one run.  A sweep is staged as files by
+``tud-lbm sweep stage`` (``src/cli/sweep_staging.py``): for each combination of
+the ``--set`` axes it applies the values to the flat raw dict with the
+``--override`` path rules, builds the :class:`SimulationConfig`, and writes it
+with :meth:`TomlAdapter.save`, the writer of a run directory's own
+``config.toml``.  So every staged file is validated and shows the defaults and
+derived values (Maxwell ``rho_l``/``rho_v``, MRT shear rates) of its own
+combination.
 
-.. code-block:: python
+.. code-block:: console
 
-    from src.config.array_expansion import expand_config
+    tud-lbm sweep stage cfg.toml --set 'tau=[0.6, 0.7]' \
+        --set 'hysteresis.ca_advancing=[110.0, 120.0]' \
+        --set 'gravity_masked_force.force_g=[1e-6, 2e-6]'      # 2 × 2 × 2 = 8 files
 
-    configs, params = expand_config(raw_dict)
-    len(configs)          # one per combination
-    params.field_names    # frozenset of the fields that were swept
-
-``expand_config`` takes the *raw dict* — the output of ``load_raw()``, before
-``SimulationConfig`` instantiation — and returns
-``(list[SimulationConfig], ArrayParameterSet | None)``.  The metadata is
-``None`` when no arrays were found.  Pass ``allow_arrays=False`` to make list
-values an error instead, which is what single-run code paths do.
-
-Expansion applies at three levels: top-level sweep-eligible fields;
-sub-keys inside the *nested sweepable* sections ``multiphase``, ``wetting``,
-``hysteresis`` and ``chemical_step``; and, one level deeper, the keys of
-each force under ``forces``.  That is what makes this work:
-
-.. code-block:: toml
-
-    [simulation_type]
-    tau = [0.6, 0.7]
-
-    [hysteresis]
-    ca_advancing = [110.0, 120.0]
-
-    [gravity_masked_force]
-    force_g = [1e-6, 2e-6]           # 2 × 2 × 2 = 8 runs
-
-On the command line the same sweep is
-``--override forces.gravity_masked_force.force_g=[1e-6,2e-6]``.
+A list where a sweep used to read its axis — ``tau``, ``nt``,
+``collision_scheme``, a list of ``grid_shape``\ s, any key of ``[multiphase]``,
+``[wetting]``, ``[hysteresis]``, ``[chemical_step]`` or a ``[*_force]`` table —
+raises ``ValueError`` and names the command.
 
 Simulation output
 -----------------

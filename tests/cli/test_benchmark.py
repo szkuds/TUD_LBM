@@ -219,11 +219,9 @@ def test_benchmark_applies_overrides(tmp_path):
 
 def test_benchmark_rejects_sweeps(tmp_path):
     """A sweep does different work per config; one number cannot describe it."""
-    import click
-
     config_path = _write_config(tmp_path, _KERNEL)
 
-    with pytest.raises(click.UsageError, match="does not support parameter sweeps"):
+    with pytest.raises(ValueError, match="a list is not a value"):
         run_benchmark(str(config_path), ("tau=[0.7,0.8]",), steps=2, warmup=0, repeats=1)
 
 

@@ -20,6 +20,7 @@ _SEAM = {
     "regime-map": "src.simulation_io.plotting.regime_map_plot.build_regime_map",
     "analyse": "src.cli.commands.analysis._load_single_config",
     "calibration": "src.cli.commands.calibration._load_raw_config",
+    "sweep": "src.cli.commands.sweep._load_raw_config",
 }
 
 _EXIT_INTERRUPTED = 130
@@ -33,6 +34,7 @@ _FILE_ARGS: dict[str, tuple[str, list[str], list[str]]] = {
     "benchmark": ("config.toml", [], []),
     "calibration": ("config.toml", ["stage"], []),
     "analyse": ("config.toml", [], ["--surface-tension"]),
+    "sweep": ("config.toml", ["stage"], ["--set", "tau=[0.8]"]),
 }
 
 

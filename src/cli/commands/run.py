@@ -41,17 +41,6 @@ from src.config.config_overview import DEBUG_WETTING_INTERVAL
     help="List analysis operators (plotting, comparison) with CLI usage context and exit.",
 )
 @click.option(
-    "--max-workers",
-    type=click.IntRange(min=1),
-    default=None,
-    help="Number of worker processes for parameter sweeps (default: auto)",
-)
-@click.option(
-    "--fail-fast",
-    is_flag=True,
-    help="Stop a parameter sweep on first failed simulation",
-)
-@click.option(
     "--override",
     "overrides",
     multiple=True,
@@ -94,8 +83,7 @@ from src.config.config_overview import DEBUG_WETTING_INTERVAL
     help_text=(
         "Enable stability diagnostics: max|u|/max|grad mu|/rho-range/checkerboard logging to "
         "stability_log.csv every INTERVAL timesteps plus a NaN guard that aborts the run. Sets "
-        "DEBUG_FLAG_STABILITY and DEBUG_STABILITY_INTERVAL in config_overview; not propagated "
-        "to sweep workers."
+        "DEBUG_FLAG_STABILITY and DEBUG_STABILITY_INTERVAL in config_overview."
     ),
 )
 @optional_int_option(
@@ -128,7 +116,7 @@ from src.config.config_overview import DEBUG_WETTING_INTERVAL
     "--compare",
     "run_compare",
     is_flag=True,
-    help="Generate comparison plots after a parameter sweep completes.",
+    help="Build the CSV and comparison plots after the run completes.",
 )
 @cli_command(title="Lattice Boltzmann Method Solver", interrupt_message="Simulation interrupted by user.")
 def run(
@@ -138,8 +126,6 @@ def run(
     dry_run: bool,
     list_operators: bool,
     list_analysis: bool,
-    max_workers: int | None,
-    fail_fast: bool,
     overrides: tuple[str, ...],
     override_phase1: tuple[str, ...],
     override_phase2: tuple[str, ...],
@@ -156,17 +142,13 @@ def run(
     CONFIG_PATH is an optional path to a configuration file (.toml).
     If omitted, an interactive prompt collects parameters.
 
-    Configuration files can include array parameters (list values) to
-    automatically expand into parallel parameter sweeps. The --override
-    flag allows replacing or creating config values from the command line
-    before expansion.
+    The --override flag replaces or creates config values from the command
+    line. A run is one config: stage a parameter sweep with
+    `tud-lbm sweep stage`, which writes one TOML per combination.
 
     Examples:
         # Single simulation
         tud-lbm run example_for_test/config_simple.toml
-
-        # Parameter sweep (if config has array fields)
-        tud-lbm run example_for_test/config_parallel.toml
 
         # Override scalar field
         tud-lbm run config.toml --override tau=0.7
@@ -180,14 +162,8 @@ def run(
         # Multiple overrides (applied in order)
         tud-lbm run config.toml --override tau=0.7 --override nt=500
 
-        # Override array field to trigger sweep
-        tud-lbm run config.toml --override 'tau=[0.6, 0.7, 0.8]' --max-workers 4
-
         # Dry run with preview (no execution)
         tud-lbm run config.toml --dry-run
-
-        # Stop sweep on first failure
-        tud-lbm run config.toml --fail-fast
 
         # Interactive mode
         tud-lbm run
@@ -235,7 +211,6 @@ def run(
         dry_run=dry_run,
         list_operators=list_operators,
         list_analysis=list_analysis,
-        fail_fast=fail_fast,
         overview=overview,
         debug_wetting=debug_wetting,
         debug_stability=debug_stability,
@@ -246,5 +221,5 @@ def run(
         continue_run=continue_run,
     )
 
-    if _run_impl(config_path, overrides, max_workers, init_dir, flags):
+    if _run_impl(config_path, overrides, init_dir, flags):
         success("Simulation, saving and plotting complete!")

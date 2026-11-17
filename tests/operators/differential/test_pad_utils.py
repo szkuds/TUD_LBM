@@ -23,8 +23,7 @@ import pytest
 from src.config import SimulationConfig
 from src.config.boundary import pad_modes
 from src.lattice.lattice import build_lattice
-from src.operators.differential._gradient import compute_gradient
-from src.operators.differential._laplacian import compute_laplacian
+from src.operators.differential import build_differential
 from src.operators.differential._pad_utils import _apply_stencil_padding
 
 _NX, _NY = 13, 11
@@ -93,10 +92,10 @@ def test_gradient_commutes_with_a_roll_along_a_periodic_axis(field, lattice, pad
     """
     shift = 5
     grid = _as_5d(field)
-    direct = compute_gradient(_as_5d(jnp.roll(field, shift, axis=0)), lattice.w, lattice.c, pad_mode)
+    direct = build_differential(lattice, pad_mode)[0](_as_5d(jnp.roll(field, shift, axis=0)), {})
 
     np.testing.assert_array_equal(
-        np.asarray(jnp.roll(compute_gradient(grid, lattice.w, lattice.c, pad_mode), shift, axis=0)),
+        np.asarray(jnp.roll(build_differential(lattice, pad_mode)[0](grid, {}), shift, axis=0)),
         np.asarray(direct),
     )
 
@@ -105,10 +104,10 @@ def test_gradient_commutes_with_a_roll_along_a_periodic_axis(field, lattice, pad
 def test_laplacian_commutes_with_a_roll_along_a_periodic_axis(field, lattice, pad_mode):
     shift = 5
     grid = _as_5d(field)
-    direct = compute_laplacian(_as_5d(jnp.roll(field, shift, axis=0)), lattice.w, pad_mode)
+    direct = build_differential(lattice, pad_mode)[1](_as_5d(jnp.roll(field, shift, axis=0)), {})
 
     np.testing.assert_array_equal(
-        np.asarray(jnp.roll(compute_laplacian(grid, lattice.w, pad_mode), shift, axis=0)),
+        np.asarray(jnp.roll(build_differential(lattice, pad_mode)[1](grid, {}), shift, axis=0)),
         np.asarray(direct),
     )
 

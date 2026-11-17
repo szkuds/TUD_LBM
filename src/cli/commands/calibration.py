@@ -18,7 +18,7 @@ from src.cli._console import cli_command
 from src.cli._console import console
 from src.cli._console import success
 from src.cli.app import cli
-from src.cli.config_loading import _expand_raw_config
+from src.cli.config_loading import _build_config
 from src.cli.config_loading import _load_raw_config
 from src.config.multiphase import multiphase_params
 from src.config.run_config import CONFIG_FILENAME
@@ -63,20 +63,19 @@ def _plan_sweeps(config_tomls: tuple[str, ...], *, closed_form: bool) -> tuple[d
     staged: dict[Path, SimulationConfig] = {}
     sweep_runs = 0
     for config_toml in config_tomls:
-        configs, *_ = _expand_raw_config(_load_raw_config(config_toml, ()))
-        for config in configs:
-            sweep_runs += is_sweep_config(config)
-            if not _stageable(config, closed_form=closed_form):
-                continue
-            for sweep_config in calibration_configs(config):
-                path = sweep_config_path(sweep_config)
-                # The folder name is a readable label, not the fluid's identity.
-                if staged.setdefault(path, sweep_config) != sweep_config:
-                    msg = (
-                        f"two different fluids share the folder {path.parent.parent.name!r} "
-                        "(same EOS, kappa and densities, other parameters differ); stage them one at a time"
-                    )
-                    raise ValueError(msg)
+        config = _build_config(_load_raw_config(config_toml, ()))
+        sweep_runs += is_sweep_config(config)
+        if not _stageable(config, closed_form=closed_form):
+            continue
+        for sweep_config in calibration_configs(config):
+            path = sweep_config_path(sweep_config)
+            # The folder name is a readable label, not the fluid's identity.
+            if staged.setdefault(path, sweep_config) != sweep_config:
+                msg = (
+                    f"two different fluids share the folder {path.parent.parent.name!r} "
+                    "(same EOS, kappa and densities, other parameters differ); stage them one at a time"
+                )
+                raise ValueError(msg)
     return staged, sweep_runs
 
 

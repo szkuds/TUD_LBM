@@ -250,25 +250,18 @@ In this mode ``run()`` returns ``(final_state, None)`` — the second element is
 Parameter sweeps
 ----------------
 
-Any sweep-eligible field given a **list** value expands into a Cartesian
-product of runs.  This works for top-level fields and for keys nested inside
-``[multiphase]``, ``[wetting]``, ``[hysteresis]``, ``[chemical_step]``, and
-the force tables:
+A sweep is staged, not run: ``tud-lbm sweep stage`` writes one completed TOML
+per combination of its ``--set`` axes (the Cartesian product).  The paths use
+the ``--override`` syntax::
 
-.. code-block:: toml
+    uv run tud-lbm sweep stage cfg.toml --set 'tau=[0.6, 0.7, 0.8]' \
+        --set 'gravity_force.force_g=[1e-6, 5e-6]' --out configs/var_tau_g/   # six files
 
-    [simulation_type]
-    tau = [0.6, 0.7, 0.8]     # three runs
-
-    [gravity_force]
-    force_g = [1e-6, 5e-6]    # × two → six runs total
-
-Run them in parallel and build cross-run comparison plots afterwards::
-
-    uv run tud-lbm run examples/config_parallel.toml --max-workers 4 --compare
-
-The same expansion is available from Python through
-:func:`~src.config.array_expansion.expand_config`.
+Each file is ``<simulation_name>.toml``, validated and with every default filled
+in.  Name the runs with ``--name 'var_{tau}_{force_g}'`` (fields are the last
+key of each axis).  Run the files one by one with ``tud-lbm run``, or pass the
+directory to ``scripts/db_pipeline.sh``, then compare them with
+``tud-lbm compare``.  A list value in a config is an error, not a sweep.
 
 Looking at the results
 ----------------------
