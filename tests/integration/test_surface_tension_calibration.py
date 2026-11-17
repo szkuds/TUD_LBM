@@ -1,6 +1,6 @@
 """End-to-end surface-tension calibration over a real droplet sweep.
 
-``tests/io/test_surface_tension_calibration.py`` covers staging, collection, the
+``tests/simulation_io/test_surface_tension_calibration.py`` covers staging, collection, the
 caches and the artefact tree on synthetic run directories. This module closes
 the loop those tests fake: the staged sweep configs are run through the
 ordinary run pipeline (``build_setup`` -> ``init_state`` -> ``run`` with

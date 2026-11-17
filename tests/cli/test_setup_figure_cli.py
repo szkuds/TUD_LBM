@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from src.cli.commands import cli
-from tests.io.test_setup_figure import step_config
+from tests.simulation_io.test_setup_figure import step_config
 from tests.support.run_dirs import build_run_dir
 
 _EXIT_USAGE = 2

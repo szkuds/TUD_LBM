@@ -158,7 +158,7 @@ LABEL_X_AVG_NORM = r"$X_{\mathrm{CM}}/R_0$"
 #: strings rather than imported: ``regime_classification`` reaches this module
 #: through ``acceleration_analysis``, so importing the enum here would close an
 #: import cycle. ``Regime`` is a :class:`~enum.StrEnum`, so its members index
-#: these dicts directly. ``tests/io/test_regime_map_plot.py`` pins the keys to
+#: these dicts directly. ``tests/simulation_io/test_regime_map_plot.py`` pins the keys to
 #: the enum.
 REGIME_MARKERS: dict[str, str] = {
     "Pinning": "o",
