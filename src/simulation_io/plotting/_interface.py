@@ -37,6 +37,7 @@ from src.simulation_io.analysis.interface_contour import interface_lines
 from src.simulation_io.analysis.interface_contour import level_value
 from src.simulation_io.analysis.interface_contour import resolve_interface_levels
 from src.simulation_io.plotting._analysis_common import _set_empty_state
+from src.simulation_io.plotting._analysis_common import add_panel_colorbar
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
@@ -206,13 +207,13 @@ class _InterfaceEvolutionPlot(AnalysisPlot):
         collection.set_array(timesteps[precomputed["line_snapshot"]])
         collection.set_clim(float(timesteps.min()), float(timesteps.max()))
         ax.add_collection(collection)
-        ax.figure.colorbar(collection, ax=ax, fraction=0.046, pad=0.04, label="Timestep")
+        add_panel_colorbar(ax, collection, "Timestep")
 
         _set_domain_axes(ax, self.config)
         levels = precomputed["levels"]
         lo, hi = float(levels.min()), float(levels.max())
         span = f"ρ={lo:.4g}" if np.isclose(lo, hi) else f"ρ={lo:.4g}–{hi:.4g}"
-        ax.set_title(f"{self.title}  {span}")
+        ax.set_title(f"{self.title}\n{span}")
 
 
 @analysis_operator(name="interface_evolution_config")

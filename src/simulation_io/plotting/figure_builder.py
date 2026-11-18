@@ -39,45 +39,30 @@ _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
 
 _ANALYSIS_PANEL_FACECOLOR = "#f5f5f5"
 
-#: Figure fractions reserved by ``tight_layout`` when there is no shared legend.
-_LAYOUT_BOTTOM = 0.03
-_LAYOUT_TOP = 0.95
-#: Height of one shared-legend row, in multiples of its font size.
-_LEGEND_ROW_EM = 1.8
-_POINTS_PER_INCH = 72.0
 
-
-def _add_shared_legend(fig: plt.Figure, axes: list[plt.Axes]) -> float:
+def _add_shared_legend(fig: plt.Figure, axes: list[plt.Axes]) -> None:
     """Place one legend below the panels for every labelled artist on *axes*.
 
     Overlays label their artists but never draw a legend, because the same
     entries recur on every panel they are drawn on. Entries are de-duplicated by
-    label in first-seen order.
-
-    Returns:
-        The figure fraction the legend occupies at the bottom, for ``tight_layout``.
+    label in first-seen order. The figure must use the constrained layout, which
+    reserves the space of an ``outside`` legend.
     """
     entries: dict[str, Artist] = {}
     for ax in axes:
         for handle, label in zip(*ax.get_legend_handles_labels(), strict=True):
             entries.setdefault(label, handle)
     if not entries:
-        return _LAYOUT_BOTTOM
+        return
 
-    fontsize = DEFAULT_STYLE.shared_legend_fontsize
-    ncol = min(len(entries), DEFAULT_STYLE.shared_legend_max_columns)
-    rows = math.ceil(len(entries) / ncol)
     fig.legend(
         list(entries.values()),
         list(entries),
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.0),
-        ncol=ncol,
-        fontsize=fontsize,
+        loc="outside lower center",
+        ncol=min(len(entries), DEFAULT_STYLE.shared_legend_max_columns),
+        fontsize=DEFAULT_STYLE.shared_legend_fontsize,
         frameon=False,
     )
-    row_inches = _LEGEND_ROW_EM * fontsize / _POINTS_PER_INCH
-    return _LAYOUT_BOTTOM + rows * row_inches / fig.get_figheight()
 
 
 def _render_error(ax: plt.Axes, name: str, exc: Exception) -> None:
@@ -377,6 +362,7 @@ class FigureBuilder:
             ncols,
             figsize=(panel_w * ncols, panel_h * nrows),
             squeeze=False,
+            layout="constrained",
         )
 
         for idx, op in enumerate(field_ops):
@@ -393,11 +379,10 @@ class FigureBuilder:
             axes[row][col].set_visible(False)
 
         field_axes = [axes[row][col] for row, col in (divmod(idx, ncols) for idx in range(len(field_ops)))]
-        bottom = _add_shared_legend(fig, field_axes)
+        _add_shared_legend(fig, field_axes)
 
         title = self.config.simulation_name or "simulation"
         fig.suptitle(f"{title} - Timestep {timestep}", fontsize=DEFAULT_STYLE.suptitle_fontsize)
-        plt.tight_layout(rect=(0, bottom, 1, _LAYOUT_TOP))
 
         return fig
 

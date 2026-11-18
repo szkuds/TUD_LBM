@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
     import matplotlib.axes
+    import matplotlib.cm
     from src.config import SimulationConfig
     from src.simulation_io.analysis.droplet_metrics import DropletSeries
 
@@ -29,6 +30,20 @@ _REQUIRES_PREFIX = "(Requires: "
 _CONTACT_ANGLE_Y_LABEL = "Contact angle (deg)"
 _CONTACT_LINE_SPEED_Y_LABEL = "d(cll)/dt"
 _COLOR_TAB_BLUE = DEFAULT_STYLE.colors["max_velocity"]
+
+
+#: Colourbar inset beside a panel, in axes fractions: ``(x0, y0, width, height)``.
+_COLORBAR_INSET = (1.03, 0.0, 0.04, 1.0)
+
+
+def add_panel_colorbar(ax: matplotlib.axes.Axes, mappable: matplotlib.cm.ScalarMappable, label: str) -> None:
+    """Draw *mappable*'s colourbar beside *ax*, exactly as tall as the axes box.
+
+    The bar is an inset of *ax*, so it follows the box an equal-aspect image
+    shrinks the axes to and never reaches the next row of panels. The figure's
+    constrained layout includes the inset when it spaces the panels.
+    """
+    ax.figure.colorbar(mappable, cax=ax.inset_axes(_COLORBAR_INSET), label=label)
 
 
 def _empty_data_message(required_keys: tuple[str, ...] | None = None) -> str:

@@ -18,7 +18,9 @@ from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._wetting_modification import anchor_window_half_width
 from src.registry import get_operators
 from src.simulation_io.analysis.wetting_overlay import WALL_NORMAL
+from src.simulation_io.analysis.wetting_overlay import ContactAngles
 from src.simulation_io.analysis.wetting_overlay import angle_glyph
+from src.simulation_io.analysis.wetting_overlay import angle_label_anchor
 from src.simulation_io.analysis.wetting_overlay import contact_angles
 from src.simulation_io.analysis.wetting_overlay import edge_bands
 from src.simulation_io.analysis.wetting_overlay import to_physical
@@ -217,6 +219,49 @@ def test_glyph_tangent_leans_over_the_dispersed_phase():
     assert left.arc[0, 1] == pytest.approx(WALL_NORMAL)
 
 
+@pytest.mark.parametrize("edge", [Edge.BOTTOM, Edge.TOP])
+@pytest.mark.parametrize("theta", [70.0, 120.0])
+def test_angle_labels_grow_away_from_the_inclusion_along_a_horizontal_wall(edge, theta):
+    shape = (_NX, _NY)
+    angles = ContactAngles(edge, theta, theta, cll_left=25.0, cll_right=35.0)
+    length = 10.0
+
+    left = angle_label_anchor(angles, ContactLine.LEFT, shape, length)
+    right = angle_label_anchor(angles, ContactLine.RIGHT, shape, length)
+
+    assert (left.ha, right.ha) == ("right", "left")
+    # Past the tangent's outward reach, which is non-zero only for theta > 90.
+    reach = max(0.0, -math.cos(math.radians(theta))) * length
+    assert left.xy[0] < angles.cll_left - reach
+    assert right.xy[0] > angles.cll_right + reach
+
+
+@pytest.mark.parametrize("edge", [Edge.LEFT, Edge.RIGHT])
+def test_angle_labels_grow_away_from_the_inclusion_along_a_vertical_wall(edge):
+    angles = ContactAngles(edge, 80.0, 80.0, cll_left=25.0, cll_right=35.0)
+
+    left = angle_label_anchor(angles, ContactLine.LEFT, (_NY, _NX), 10.0)
+    right = angle_label_anchor(angles, ContactLine.RIGHT, (_NY, _NX), 10.0)
+
+    assert (left.va, right.va) == ("top", "bottom")
+    assert left.xy[1] < angles.cll_left
+    assert right.xy[1] > angles.cll_right
+
+
+def test_an_angle_label_without_room_outside_goes_inside_on_a_lower_row():
+    angles = ContactAngles(Edge.BOTTOM, 70.0, 70.0, cll_left=3.0, cll_right=35.0)
+
+    left = angle_label_anchor(angles, ContactLine.LEFT, (_NX, _NY), 10.0, room=8.0)
+    right = angle_label_anchor(angles, ContactLine.RIGHT, (_NX, _NY), 10.0, room=8.0)
+
+    # No room left of x = 3: the left label grows right from inside the inclusion.
+    assert left.ha == "left"
+    assert left.xy[0] > angles.cll_left
+    assert right.ha == "left"
+    # A different row from the outside label, so the two cannot meet.
+    assert left.xy[1] > right.xy[1]
+
+
 # --- operator and FigureBuilder -------------------------------------------
 
 
@@ -353,3 +398,52 @@ def test_bulk_drift_below_the_prescribed_liquid_does_not_widen_the_region():
     assert widened < _NX // 2
     for side in (band.left, band.right):
         assert np.abs(side.cells - side.anchor).max() <= anchor_window_half_width(_NX)
+
+
+def _extent(artist):
+    """Display-space box of *artist*, from the figure's last draw."""
+    return artist.get_window_extent()
+
+
+def test_a_wide_frame_has_no_overlapping_labels_titles_or_colourbars(tmp_path):
+    """On a wide, short domain the two θ labels, the titles and the colourbars stay apart."""
+    shape = (240, 30)
+    builder = FigureBuilder(
+        _config(shape=shape),
+        run_dir=tmp_path,
+        fields=["density", "velocity", "interface"],
+        overlays=["interface", "contact_angle"],
+    )
+    data = _data(_droplet(shape=shape))
+    data["u"] = np.zeros((*shape, 1, 1, 2))
+    fig = builder.render_figure(data, timestep=0)
+    assert fig is not None
+    fig.canvas.draw()
+
+    density = _panel(fig, "Density")
+    labels = [_extent(text) for text in density.texts if text.get_text().startswith("θ=")]
+    assert len(labels) == 2
+    assert not labels[0].overlaps(labels[1])
+
+    # The colourbars are insets of their panels.
+    colourbars = [_extent(child) for ax in fig.axes for child in ax.child_axes]
+    assert colourbars
+    titles = [_extent(ax.title) for ax in fig.axes if ax.get_title()]
+    assert not any(title.overlaps(bar) for title in titles for bar in colourbars)
+    plt.close(fig)
+
+
+def test_dual_axis_legend_clears_its_own_x_axis():
+    from src.simulation_io.plotting._ca_theta_plot import DualAxisStyle
+    from src.simulation_io.plotting._ca_theta_plot import _draw_dual_axis_on_ax
+
+    fig, ax = plt.subplots(layout="constrained")
+    x = np.linspace(-1.0, 2.0, 20)
+    _draw_dual_axis_on_ax(ax, x, -x, x, 70 + x, 100 + x, x_label="x", style=DualAxisStyle(legend_outside=True))
+    fig.canvas.draw()
+
+    legend = _extent(ax.get_legend())
+    decoration = [_extent(ax.xaxis.label)]
+    decoration += [_extent(tick) for tick in ax.get_xticklabels() if tick.get_text()]
+    assert not any(legend.overlaps(box) for box in decoration)
+    plt.close(fig)

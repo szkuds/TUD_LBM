@@ -23,6 +23,7 @@ the scatter-only rule for data-series plots.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from matplotlib.collections import LineCollection
+from matplotlib.textpath import TextPath
 from src.config.wetting import ContactLine
 from src.protocols import PlotOperator
 from src.registry import plotting_operator
@@ -30,6 +31,7 @@ from src.simulation_io.analysis.droplet_metrics import extract_rho_2d
 from src.simulation_io.analysis.interface_contour import interface_lines
 from src.simulation_io.analysis.wetting_overlay import anchor_tick
 from src.simulation_io.analysis.wetting_overlay import angle_glyph
+from src.simulation_io.analysis.wetting_overlay import angle_label_anchor
 from src.simulation_io.analysis.wetting_overlay import band_cell_segments
 from src.simulation_io.analysis.wetting_overlay import contact_angles
 from src.simulation_io.analysis.wetting_overlay import edge_bands
@@ -159,12 +161,38 @@ class ContactAnglePlotOperator(PlotOperator):
             glyph = angle_glyph(angles, side, shape, length)
             for line in (glyph.tangent, glyph.arc):
                 ax.plot(line[:, 0], line[:, 1], color=color, linewidth=DEFAULT_STYLE.contact_angle_linewidth)
+            text = f"θ={glyph.theta:.1f}°"
+            room = _text_length_in_cells(ax, text, along_x=angles.edge.normal_axis == 1)
+            anchor = angle_label_anchor(angles, side, shape, length, room=room)
             ax.annotate(
-                f"θ={glyph.theta:.1f}°",
-                xy=glyph.label_xy,
+                text,
+                xy=anchor.xy,
                 color=color,
                 fontsize=DEFAULT_STYLE.contact_angle_fontsize,
-                ha="center",
-                va="center",
+                ha=anchor.ha,
+                va=anchor.va,
+                clip_on=True,
                 bbox={"boxstyle": "round,pad=0.15", "facecolor": "black", "alpha": 0.55, "linewidth": 0},
             )
+
+
+#: Allowance for the label's box padding and for the constrained layout, which
+#: shrinks the panel after the overlay is drawn.
+_TEXT_ROOM_MARGIN = 1.4
+_POINTS_PER_INCH = 72.0
+
+
+def _text_length_in_cells(ax: matplotlib.axes.Axes, text: str, *, along_x: bool) -> float:
+    """Length of a contact-angle label along the wall, in cells, at the panel's current scale."""
+    width_points = TextPath((0.0, 0.0), text, size=DEFAULT_STYLE.contact_angle_fontsize).get_extents().width
+    ax.apply_aspect()
+    if along_x:
+        axis_pixels = ax.bbox.width
+        span = abs(ax.get_xlim()[1] - ax.get_xlim()[0])
+    else:
+        axis_pixels = ax.bbox.height
+        span = abs(ax.get_ylim()[1] - ax.get_ylim()[0])
+    axis_points = axis_pixels * _POINTS_PER_INCH / ax.figure.dpi
+    if axis_points <= 0.0:
+        return 0.0
+    return _TEXT_ROOM_MARGIN * width_points * span / axis_points

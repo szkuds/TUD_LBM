@@ -64,6 +64,14 @@ _CONTACT_KEYS = ("ca_left", "ca_right", "cll_left", "cll_right")
 
 #: Label distance from the contact line, in arc radii — clear of the arc.
 _LABEL_RADIUS = 1.8
+#: Outside label: gap past the glyph along the wall, and height above it, in glyph lengths.
+_OUTSIDE_LABEL_GAP = 0.15
+_OUTSIDE_LABEL_HEIGHT = 0.4
+#: Tangential coordinate of the domain's first cell face (cell centres are integers).
+_FIRST_FACE = -0.5
+#: Inside fallback: below the glyph (its tangent reaches one length), a row apart from the
+#: other side's outside label.
+_INSIDE_LABEL_HEIGHT = 1.2
 
 
 @dataclass(frozen=True)
@@ -109,6 +117,15 @@ class AngleGlyph:
     arc: np.ndarray
     label_xy: tuple[float, float]
     theta: float
+
+
+@dataclass(frozen=True)
+class LabelAnchor:
+    """Panel position and text alignment of a label that grows away from the inclusion."""
+
+    xy: tuple[float, float]
+    ha: str
+    va: str
 
 
 def wetting_edge(config: SimulationConfig) -> Edge | None:
@@ -287,3 +304,46 @@ def angle_glyph(
         label_xy=(float(lx), float(ly)),
         theta=theta_deg,
     )
+
+
+def angle_label_anchor(
+    angles: ContactAngles,
+    side: ContactLine,
+    shape: tuple[int, int],
+    length: float,
+    room: float = 0.0,
+) -> LabelAnchor:
+    """Anchor for one contact angle's label, outside the inclusion where it fits.
+
+    The anchor lies on the far side of the contact line from the inclusion, past
+    the outward reach of the tangent (which leans outward for ``θ > 90°``), and
+    the text is aligned to grow further outward. The two labels of a wall
+    therefore grow apart and cannot overlap while ``cll_left < cll_right``,
+    however narrow the panel is.
+
+    When the text (*room* cells along the wall) would leave the domain, the label
+    goes inside the inclusion instead, growing inward, at a lower height than the
+    outside label of the other side, so the two still cannot meet.
+    :func:`angle_glyph`'s ``label_xy`` (inside the arc) stays as it is for the
+    setup schematic.
+    """
+    left = side == ContactLine.LEFT
+    sign = 1.0 if left else -1.0
+    theta = math.radians(angles.theta_left if left else angles.theta_right)
+    cll = angles.cll_left if left else angles.cll_right
+    tangential_extent = shape[1 - angles.edge.normal_axis]
+    outward_reach = max(0.0, -math.cos(theta)) * length
+    t = cll - sign * (outward_reach + _OUTSIDE_LABEL_GAP * length)
+    outward = -sign
+    if not _FIRST_FACE <= t + outward * room <= tangential_extent - 1 - _FIRST_FACE:
+        t = cll + sign * _OUTSIDE_LABEL_GAP * length
+        n = WALL_NORMAL + _INSIDE_LABEL_HEIGHT * length
+        outward = sign
+    else:
+        n = WALL_NORMAL + _OUTSIDE_LABEL_HEIGHT * length
+    x, y = to_physical(t, n, angles.edge, shape)
+    # ``to_physical`` keeps the tangential direction, so the text grows along +/- that axis.
+    xy = (float(x), float(y))
+    if angles.edge.normal_axis == 1:
+        return LabelAnchor(xy=xy, ha="left" if outward > 0 else "right", va="center")
+    return LabelAnchor(xy=xy, ha="center", va="bottom" if outward > 0 else "top")

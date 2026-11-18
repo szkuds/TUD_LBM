@@ -7,6 +7,7 @@ import numpy as np
 from src.config.multiphase import multiphase_params
 from src.protocols import PlotOperator
 from src.registry import plotting_operator
+from src.simulation_io.plotting._analysis_common import add_panel_colorbar
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 # Density ratio threshold for using log scale
@@ -52,6 +53,6 @@ class DensityPlotOperator(PlotOperator):
             im = ax.imshow(rho, origin="lower", aspect="equal", cmap=DEFAULT_STYLE.colormap_density)
             ax.set_title(f"Density  t={timestep}")
 
-        ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Density")
+        add_panel_colorbar(ax, im, "Density")
         ax.set_xlabel("x")
         ax.set_ylabel("y")

@@ -141,8 +141,8 @@ def _draw_dual_axis_on_ax(
         ax1.legend(
             h1 + h2,
             l1 + l2,
-            loc="upper center",
-            bbox_to_anchor=(0.5, -0.02),
+            loc="lower center",
+            bbox_to_anchor=(0.5, 1.02),
             ncols=2,
             fontsize=style.legend_fontsize,
         )
