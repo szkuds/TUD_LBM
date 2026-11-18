@@ -22,6 +22,7 @@ from typing import Any
 from typing import NamedTuple
 from typing import Self
 import jax.numpy as jnp
+from src.config.boundary import Edge
 from src.registry import force_model
 
 if TYPE_CHECKING:
@@ -114,6 +115,48 @@ def equilibrium_h(
     return w * potential
 
 
+#: The two electrodes: the solid surfaces of these edges carry the plate voltages.
+#: The config requires both edges to be walls, so each surface lies half a cell
+#: outside its edge row (the half-way bounce-back position).
+PLATES: tuple[Edge, Edge] = (Edge.BOTTOM, Edge.TOP)
+
+
+def plate_voltage(params: ElectricParams, edge: Edge) -> float:
+    """The voltage the solid surface of *edge* carries."""
+    return params.voltage_top if edge.at_far_end else params.voltage_bottom
+
+
+def electric_field(
+    h: jnp.ndarray,
+    gradient: DifferentialOperator,
+    params: ElectricParams,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """The electric field ``E = -grad(U)`` of the potential ``U = sum_i h_i``.
+
+    Beyond each plate the potential is mirrored through the plate voltage,
+    ``U_ghost = 2*U_plate - U_edge``: the solid surface half a cell out carries
+    ``U_plate``. The gradient is the run's own, on the field extended by those
+    rows, so the edge rows see the plate rather than their own padding.
+
+    Args:
+        h: Electric-potential distributions, shape ``(nx, ny, nz, q, 1)``.
+        gradient: The gradient the force uses (``gradient_standard``).
+        params: The electric parameters (the plate voltages).
+
+    Returns:
+        ``(ex, ey)``, each of shape ``(nx, ny)``, on the first z slice.
+    """
+    potential = jnp.sum(h, axis=3, keepdims=True)[:, :, :1, :, :]  # (nx, ny, 1, 1, 1)
+    bottom, top = PLATES
+    axis = bottom.normal_axis
+    rows = jnp.moveaxis(potential, axis, 0)
+    below = 2.0 * plate_voltage(params, bottom) - rows[:1]
+    above = 2.0 * plate_voltage(params, top) - rows[-1:]
+    extended = jnp.moveaxis(jnp.concatenate([below, rows, above]), 0, axis)
+    grad_potential = jnp.moveaxis(jnp.moveaxis(gradient(extended), axis, 0)[1:-1], 0, axis)  # (nx, ny, 1, 1, 2)
+    return -grad_potential[:, :, 0, 0, 0], -grad_potential[:, :, 0, 0, 1]
+
+
 # ══════════════════════════════════════════════════════════════════════
 # Registry-backed force module
 # ══════════════════════════════════════════════════════════════════════
@@ -190,16 +233,7 @@ class ElectricForceModule(NamedTuple):
             self.params.permittivity_vapour,
         )
 
-        # Sum over q-axis for potential; extract z-slice to 2D
-        potential_3d = jnp.sum(state.ext["electric"].h, axis=3, keepdims=True)  # (nx, ny, nz, 1, 1)
-        potential_3d_for_grad = potential_3d[:, :, :1, :, :]  # (nx, ny, 1, 1, 1) - take z slice for gradient
-
-        # Gradient of potential → electric field
-        grad_potential = grad(potential_3d_for_grad)  # input: (nx, ny, 1, 1, 1) → output: (nx, ny, 1, 1, 2)
-        du_dx = grad_potential[:, :, 0, 0, 0]
-        du_dy = grad_potential[:, :, 0, 0, 1]
-        ex = -du_dx
-        ey = -du_dy
+        ex, ey = electric_field(state.ext["electric"].h, grad, self.params)
 
         # Gradient of permittivity - broadcast epsilon to (nx, ny, 1, 1, 1)
         epsilon_3d = epsilon_2d[:, :, None, None, None]  # (nx, ny, 1, 1, 1)

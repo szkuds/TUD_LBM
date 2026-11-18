@@ -46,7 +46,9 @@ radii   = [0.3]
 force_g = 0
 inclination_angle_deg = 90
 
-# To add a second force, just add another section:
+# To add a second force, just add another section. The electric plates are
+# the solid surfaces of the bottom and top edges, so both must be walls
+# ("bounce-back" or "wetting") in [boundary_conditions]:
 #
 # [electric_force]
 # permittivity_liquid = 1.0

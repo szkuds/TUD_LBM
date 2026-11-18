@@ -63,11 +63,17 @@ _ELECTRIC = {
 }
 
 
+#: The electric plates are the solid surfaces of these walls.
+_PLATES = {"bottom": "bounce-back", "top": "bounce-back"}
+
+
 def electric_addon(lattice, section=None):
     """The electric addon's hooks for an ``electric_force`` *section*."""
     from src.addons._electric import build_electric_addon
 
-    config = SimulationConfig(forces={"electric_force": dict(section or _ELECTRIC)}, grid_shape=(NX, NY, NZ))
+    config = SimulationConfig(
+        forces={"electric_force": dict(section or _ELECTRIC)}, grid_shape=(NX, NY, NZ), boundary_conditions=_PLATES
+    )
     hooks = build_electric_addon(config)
     assert hooks is not None
     return hooks
@@ -497,9 +503,10 @@ class TestElectricFeatureInit:
     def test_linear_profile(self, lattice, electric_force):
         setup = make_electric_setup(lattice, electric_force)
         hi = electric_addon(lattice).init_state(setup).h
-        potential = jnp.sum(hi, axis=3, keepdims=True)
-        np.testing.assert_allclose(float(potential[0, 0, 0, 0, 0]), 0.0, atol=1e-10)
-        np.testing.assert_allclose(float(potential[0, -1, 0, 0, 0]), 1.0, atol=1e-10)
+        potential = np.asarray(jnp.sum(hi, axis=3))[:, :, 0, 0]
+        # Linear between the plate surfaces half a cell outside rows 0 and NY - 1.
+        expected = (np.arange(NY) + 0.5) / NY
+        np.testing.assert_allclose(potential, np.broadcast_to(expected, (NX, NY)), atol=1e-12)
 
     def test_inactive_without_an_electric_force(self, lattice, sim_config):
         from src.addons._electric import build_electric_addon
@@ -617,6 +624,7 @@ class TestElectricForceSetupWiring:
                     }
                 },
                 "grid_shape": (NX, NY),
+                "boundary_conditions": _PLATES,
                 "nt": 10,
             }
         )

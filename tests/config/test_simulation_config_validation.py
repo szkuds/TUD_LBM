@@ -294,9 +294,27 @@ class TestValidateForces:
                 }
             },
             grid_shape=(8, 8),
+            boundary_conditions={"bottom": "bounce-back", "top": "wetting"},
         )
         assert cfg.forces["electric_force"] is not None
         assert cfg.forces["electric_force"]["voltage_top"] == 0.0
+
+    @pytest.mark.parametrize(
+        "edges",
+        [{}, {"bottom": "bounce-back"}, {"bottom": "symmetry", "top": "bounce-back"}],
+        ids=["periodic", "top_periodic", "bottom_symmetry"],
+    )
+    def test_electric_force_needs_solid_plates(self, edges):
+        forces = {
+            "electric_force": {
+                "permittivity_liquid": 1.0,
+                "permittivity_vapour": 1.0,
+                "conductivity_liquid": 0.1,
+                "conductivity_vapour": 0.1,
+            }
+        }
+        with pytest.raises(ValueError, match="needs solid bottom and top edges"):
+            SimulationConfig(forces=forces, grid_shape=(8, 8), boundary_conditions=edges)
 
     def test_active_forces_lists_only_configured_sections(self):
         cfg = SimulationConfig(forces={"gravity_force": {"force_g": 1e-6}}, grid_shape=(8, 8))

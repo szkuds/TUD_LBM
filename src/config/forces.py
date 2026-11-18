@@ -11,10 +11,18 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import NamedTuple
 from src.config._checks import validate_positive
+from src.config.boundary import Edge
 from src.config.defaults import FORCES
 
 if TYPE_CHECKING:
     from src.config.simulation_config import SimulationConfig
+
+
+#: The edges whose solid surfaces carry the electric plate voltages.
+ELECTRODE_EDGES: tuple[Edge, Edge] = (Edge.BOTTOM, Edge.TOP)
+
+#: The boundary conditions that make an edge a solid wall (half-way bounce-back).
+SOLID_BOUNDARY_CONDITIONS: frozenset[str] = frozenset({"bounce-back", "wetting"})
 
 
 class ForceSchema(NamedTuple):
@@ -62,3 +70,20 @@ def validate_forces(config: SimulationConfig) -> None:
             raise ValueError(msg)
         for key in schema.positive:
             validate_positive(params.get(key), f"[{name}] {key}")
+    if "electric_force" in config.forces:
+        _validate_electrodes(config)
+
+
+def _validate_electrodes(config: SimulationConfig) -> None:
+    """The electric plates are the solid surfaces of the bottom and top edges: both must be walls."""
+    edges = config.boundary_conditions or {}
+    not_solid = [
+        f"{edge}={edges.get(edge)!r}" for edge in ELECTRODE_EDGES if edges.get(edge) not in SOLID_BOUNDARY_CONDITIONS
+    ]
+    if not_solid:
+        solid = ", ".join(sorted(SOLID_BOUNDARY_CONDITIONS))
+        msg = (
+            "[electric_force] needs solid bottom and top edges: their surfaces carry voltage_bottom and "
+            f"voltage_top. Set each to one of {solid}; got {', '.join(not_solid)}."
+        )
+        raise ValueError(msg)

@@ -341,7 +341,10 @@ by the configuration, so ``build`` reads ``params[key]`` and checks nothing.
 ``electric_force``
     Leaky-dielectric force from the electric potential, a second distribution
     ``h`` in ``State.ext["electric"]`` that the ``electric`` addon
-    initialises and advances.
+    initialises and advances. The plates are the solid surfaces of the bottom
+    and top edges, so both must be walls (``bounce-back`` or ``wetting``). Each
+    surface lies half a cell outside its edge row and carries ``voltage_bottom``
+    or ``voltage_top``.
 
 Setting ``gravity_force`` and ``gravity_masked_force`` together is a
 configuration error.

@@ -229,7 +229,8 @@ def test_a_step_commutes_with_a_roll_along_z(lattice) -> None:
                         "conductivity_liquid": 0.01,
                         "conductivity_vapour": 0.001,
                     }
-                }
+                },
+                "boundary_conditions": {"bottom": "bounce-back", "top": "bounce-back"},
             },
             "electric_force",
             id="electric",

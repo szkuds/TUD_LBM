@@ -42,6 +42,8 @@ _ELECTRIC: dict[str, Any] = {
     "voltage_top": 1.0e-3,
     "voltage_bottom": 0.0,
 }
+#: The electric plates are the solid surfaces of these walls.
+_PLATES: dict[str, Any] = {"bottom": "bounce-back", "top": "bounce-back"}
 _DROPLET: dict[str, Any] = {
     "init_type": "multiphase_bubbles",
     "initialisation": {
@@ -60,7 +62,10 @@ _CASES: dict[str, tuple[dict[str, Any], set[str]]] = {
         _MULTIPHASE | _DROPLET | {"boundary_conditions": _WALL, "wetting": _WETTING, "hysteresis": _HYSTERESIS},
         {"wetting"},
     ),
-    "electric": (_MULTIPHASE | {"forces": {"electric_force": _ELECTRIC}}, {"electric"}),
+    "electric": (
+        _MULTIPHASE | {"forces": {"electric_force": _ELECTRIC}, "boundary_conditions": _PLATES},
+        {"electric"},
+    ),
     "wetting_and_electric": (
         _MULTIPHASE
         | _DROPLET
