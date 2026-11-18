@@ -12,6 +12,7 @@ import jax.numpy as jnp
 import pytest
 from src.config.boundary import Edge
 from src.config.wetting import ContactLine
+from src.config.wetting import KnobLimits
 from src.operators.wetting import _hysteresis as hyst
 from src.operators.wetting._hysteresis import _cost_cll
 from src.operators.wetting._hysteresis import _import_optax
@@ -385,7 +386,7 @@ def test_plain_hysteresis_never_saturates(monkeypatch):
 # _step_saturation — the post-step region starts at the bound
 # ---------------------------------------------------------------------------
 
-_W5 = jnp.array(5.0)
+_LIMITS = KnobLimits(phi_max=2.0, d_rho_max=0.3)  # W = 5, contrast 1
 _PRE_PHI, _PRE_D_RHO = 1.0, 0.07
 
 
@@ -399,7 +400,7 @@ def _saturation(*, on_post, held, ca, moving, advancing, is_bubble=False, adv=50
         advancing=jnp.array(advancing),
         is_bubble=jnp.array(is_bubble),
         gap=1.0,
-        w=_W5,
+        limits=_LIMITS,
     )
     return bool(saturated), float(phi), float(d_rho)
 

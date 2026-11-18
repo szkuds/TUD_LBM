@@ -13,10 +13,14 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 from src.config.boundary import Edge
+from src.config.wetting import KnobLimits
 
 # =====================================================================
 # Helpers — build a synthetic droplet rho_t_plus1 field
 # =====================================================================
+
+#: The knob limits of interface_width 5 and a density contrast of 1: phi <= 2, d_rho <= 0.3.
+_LIMITS = KnobLimits(phi_max=2.0, d_rho_max=0.3)
 
 
 def _droplet_rho(
@@ -288,7 +292,7 @@ class TestWettingParamsHelpers:
             phi_left=jnp.array(0.5),
             phi_right=jnp.array(2.5),
         )
-        clamped = _clamp_params(p, jnp.array(5.0))
+        clamped = _clamp_params(p, _LIMITS)
         np.testing.assert_allclose(float(clamped.d_rho_left), 0.0, atol=1e-6)
         np.testing.assert_allclose(float(clamped.d_rho_right), 0.3, atol=1e-6)
         np.testing.assert_allclose(float(clamped.phi_left), 1.0, atol=1e-6)
@@ -351,7 +355,7 @@ class TestOptimiseSingleParam:
             _mask_d_rho_left,
             optax.adam(0.01),  # ty: ignore[invalid-argument-type]
             50,
-            jnp.array(5.0),
+            _LIMITS,
         )
         assert float(loss_final) < float(objective(p0))
 
@@ -366,7 +370,7 @@ class TestOptimiseSingleParam:
 
         @jax.jit
         def run_opt(initial_params):
-            return _optimise_single_param(objective, initial_params, _mask_d_rho_left, opt, 10, jnp.array(5.0))  # ty: ignore[invalid-argument-type]
+            return _optimise_single_param(objective, initial_params, _mask_d_rho_left, opt, 10, _LIMITS)  # ty: ignore[invalid-argument-type]
 
         _p_final, loss, iters = run_opt(_params(0.15))
         assert not jnp.isnan(loss)
@@ -387,7 +391,7 @@ class TestOptimiseSingleParam:
             _mask_d_rho_left,
             optax.adam(0.01),  # ty: ignore[invalid-argument-type]
             50,
-            jnp.array(5.0),
+            _LIMITS,
         )
         assert float(loss_final) == 0.0
         assert int(iters) == 0  # loop body never ran
@@ -409,7 +413,7 @@ class TestOptimiseSingleParam:
             _mask_d_rho_left,
             optax.adam(0.01),  # ty: ignore[invalid-argument-type]
             500,
-            jnp.array(5.0),
+            _LIMITS,
             loss_tol=loss_tol,
         )
         assert float(loss_final) <= loss_tol
@@ -432,7 +436,7 @@ class TestOptimiseSingleParam:
             _mask_d_rho_left,
             opt,  # ty: ignore[invalid-argument-type]
             max_iterations,
-            jnp.array(5.0),
+            _LIMITS,
             loss_tol=0.0,
         )
 
@@ -442,7 +446,7 @@ class TestOptimiseSingleParam:
         for _ in range(max_iterations):
             grads = _mask_d_rho_left(jax.grad(objective)(params))
             updates, opt_state = opt.update(grads, opt_state, params)
-            params = _clamp_params(optax.apply_updates(params, updates), jnp.array(5.0))  # ty: ignore[invalid-argument-type]
+            params = _clamp_params(optax.apply_updates(params, updates), _LIMITS)  # ty: ignore[invalid-argument-type]
 
         assert jnp.allclose(p_final.d_rho_left, params.d_rho_left)
         assert int(iters) == max_iterations  # ran the full budget

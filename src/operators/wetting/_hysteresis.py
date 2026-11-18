@@ -47,10 +47,10 @@ from typing import TYPE_CHECKING
 from typing import NamedTuple
 import jax
 import jax.numpy as jnp
-from src.config.wetting import D_RHO_SPAN_W
-from src.config.wetting import PHI_SPAN_W
 from src.config.wetting import ContactLine
+from src.config.wetting import KnobLimits
 from src.config.wetting import chemical_step_regions
+from src.config.wetting import wetting_knob_limits
 from src.config.wetting import wetting_rho_mean
 from src.operators.wetting._contact_angle import compute_contact_angle
 from src.operators.wetting._contact_line import compute_contact_line_location
@@ -209,7 +209,7 @@ def _step_saturation(
     advancing: jnp.ndarray,
     is_bubble: jnp.ndarray,
     gap: float,
-    w: jnp.ndarray,
+    limits: KnobLimits,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """``(saturated, phi, d_rho)`` for one side at a chemical step.
 
@@ -237,8 +237,8 @@ def _step_saturation(
     )
     saturated = (step_side.on_post | step_side.held) & far
     use_phi = (advancing | step_side.held) ^ is_bubble
-    phi = jnp.where(use_phi, 1.0 + PHI_SPAN_W / w, _PHI_NEUTRAL)
-    d_rho = jnp.where(use_phi, _D_RHO_NEUTRAL, D_RHO_SPAN_W / w)
+    phi = jnp.where(use_phi, limits.phi_max, _PHI_NEUTRAL)
+    d_rho = jnp.where(use_phi, _D_RHO_NEUTRAL, limits.d_rho_max)
     held_on_pre = step_side.held & ~step_side.on_post
     return (
         saturated,
@@ -337,18 +337,18 @@ def _side_hyperparams(
     )
 
 
-def _clamp_params(params: WettingParams, w: jnp.ndarray) -> WettingParams:
-    """Clamp wetting parameters to ``phi`` ∈ [1, 1 + 5/W] and ``d_rho`` ∈ [0, 1.5/W].
+def _clamp_params(params: WettingParams, limits: KnobLimits) -> WettingParams:
+    """Clamp wetting parameters to ``phi`` ∈ [1, phi_max] and ``d_rho`` ∈ [0, d_rho_max].
 
-    The parameters act on near-wall density profiles whose magnitude scales
-    inversely with the interface width ``W``. ``jnp.clip`` has zero gradient at
+    The limits come from the config (:func:`~src.config.wetting.wetting_knob_limits`):
+    ``1 + 5/W`` and ``1.5 * (rho_l - rho_v)/W``. ``jnp.clip`` has zero gradient at
     the boundaries, so a parameter on a limit gets no further signal that way.
     """
     return WettingParams(
-        phi_left=jnp.clip(params.phi_left, 1.0, 1.0 + PHI_SPAN_W / w),
-        phi_right=jnp.clip(params.phi_right, 1.0, 1.0 + PHI_SPAN_W / w),
-        d_rho_left=jnp.clip(params.d_rho_left, 0.0, D_RHO_SPAN_W / w),
-        d_rho_right=jnp.clip(params.d_rho_right, 0.0, D_RHO_SPAN_W / w),
+        phi_left=jnp.clip(params.phi_left, 1.0, limits.phi_max),
+        phi_right=jnp.clip(params.phi_right, 1.0, limits.phi_max),
+        d_rho_left=jnp.clip(params.d_rho_left, 0.0, limits.d_rho_max),
+        d_rho_right=jnp.clip(params.d_rho_right, 0.0, limits.d_rho_max),
     )
 
 
@@ -424,7 +424,7 @@ def _optimise_single_param(
     grad_mask_fn: Callable[[WettingParams], WettingParams],
     optimiser: OptaxLike,
     max_iterations: int | jnp.ndarray,
-    w: jnp.ndarray,
+    limits: KnobLimits,
     loss_tol: float = 1e-4,
 ) -> tuple[WettingParams, jnp.ndarray, jnp.ndarray]:
     """Run an ``optax`` optimisation loop with masked gradients.
@@ -440,8 +440,7 @@ def _optimise_single_param(
             target parameter(s).
         optimiser: An ``optax`` optimiser instance.
         max_iterations: Maximum number of inner steps; may be a traced scalar.
-        w: Interface width used to scale the parameter clamp bounds
-            (see :func:`_clamp_params`).
+        limits: The knobs' clamp limits (see :func:`_clamp_params`).
         loss_tol: Convergence tolerance; the loop exits once the loss
             drops to or below this value.
 
@@ -462,7 +461,7 @@ def _optimise_single_param(
         loss, grads = jax.value_and_grad(objective_fn)(params)
         updates, new_opt_state = optimiser.update(grad_mask_fn(grads), opt_state, params)
         stepped = WettingParams(*(p + u for p, u in zip(params, updates, strict=True)))
-        return (_clamp_params(stepped, w), new_opt_state, loss, iteration + 1)
+        return (_clamp_params(stepped, limits), new_opt_state, loss, iteration + 1)
 
     init_carry = (initial_params, opt_state, initial_loss, jnp.array(0))
     final_params, _opt_state, final_loss, iters = jax.lax.while_loop(cond_fn, body_fn, init_carry)
@@ -566,7 +565,7 @@ def _update_wetting_state_impl(
     ``rho_t_plus1`` (:func:`_measure`) at the wall *edge*. ``t`` is used only by
     the ``--debug-wetting`` trace.
     """
-    rho_mean, w = _wetting_constants(setup)
+    rho_mean, limits = _wetting_constants(setup)
     hc = setup.config.hysteresis
     if hc is None:
         msg = "[hysteresis] is required for hysteresis wetting update"
@@ -606,7 +605,7 @@ def _update_wetting_state_impl(
                 advancing=advancing,
                 is_bubble=is_bubble,
                 gap=float(hc["saturation_gap"]),
-                w=w,
+                limits=limits,
             )
         sides.append(
             _Side(
@@ -661,7 +660,7 @@ def _update_wetting_state_impl(
 
     def optimise(s: _Side, knob: str) -> Callable[[WettingParams], tuple[WettingParams, jnp.ndarray, jnp.ndarray]]:
         return lambda p: _optimise_single_param(
-            objective(s), p, _grad_mask(f"{knob}_{s.line}"), s.optimiser, s.max_iter, w, loss_tol
+            objective(s), p, _grad_mask(f"{knob}_{s.line}"), s.optimiser, s.max_iter, limits, loss_tol
         )
 
     def skip(s: _Side) -> Callable[[WettingParams], tuple[WettingParams, jnp.ndarray, jnp.ndarray]]:
@@ -775,20 +774,20 @@ def wetting_params(wetting: WettingState) -> WettingParams:
     return WettingParams(**{name: getattr(wetting, name) for name in WettingParams._fields})
 
 
-def _wetting_constants(setup: SimulationSetup) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """``(rho_mean, interface_width)`` of a hysteresis run."""
-    mp = setup.multiphase_params
+def _wetting_constants(setup: SimulationSetup) -> tuple[jnp.ndarray, KnobLimits]:
+    """``(rho_mean, knob limits)`` of a hysteresis run."""
     rho_mean = wetting_rho_mean(setup.config)
-    assert mp is not None  # noqa: S101 - SimulationConfig rejects wetting on a single-phase run
-    assert rho_mean is not None  # noqa: S101 - as above: two phases
-    return jnp.array(rho_mean), jnp.array(float(mp.interface_width))
+    limits = wetting_knob_limits(setup.config)
+    assert rho_mean is not None  # noqa: S101 - SimulationConfig rejects wetting on a single-phase run
+    assert limits is not None  # noqa: S101 - as above: two phases
+    return jnp.array(rho_mean), limits
 
 
 def _measure(
     rho: jnp.ndarray, setup: SimulationSetup, edge: Edge
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """``(ca_left, ca_right, cll_left, cll_right)`` of *rho* at the wetting edge *edge*."""
-    rho_mean, _w = _wetting_constants(setup)
+    rho_mean, _limits = _wetting_constants(setup)
     ca_left, ca_right = compute_contact_angle(rho, rho_mean, edge=edge)
     cll_left, cll_right = compute_contact_line_location(rho, ca_left, ca_right, rho_mean, edge=edge)
     return ca_left, ca_right, cll_left, cll_right

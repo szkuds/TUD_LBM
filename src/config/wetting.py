@@ -44,8 +44,9 @@ if TYPE_CHECKING:
     import numpy as np
     from src.config.simulation_config import SimulationConfig
 
-#: Full-scale ``phi - 1`` and ``d_rho`` times the interface width — the clamp
-#: limits of the hysteresis optimiser, ``phi <= 1 + 5/W`` and ``d_rho <= 1.5/W``.
+#: Full-scale ``phi - 1`` times the interface width, and full-scale ``d_rho`` times the interface
+#: width over the density contrast: the clamp limits of the hysteresis optimiser,
+#: ``phi <= 1 + 5/W`` and ``d_rho <= 1.5 * (rho_l - rho_v)/W`` (:func:`wetting_knob_limits`).
 PHI_SPAN_W: float = 5.0
 D_RHO_SPAN_W: float = 1.5
 #: The keys every ``[chemical_step]`` needs: the chemical step location and the
@@ -91,6 +92,18 @@ class TangentialSide(StrEnum):
 
 #: Every key the hysteresis operators read.
 _HYSTERESIS_KEYS: frozenset[str] = frozenset({"ca_advancing", "ca_receding", "max_iterations_above", *HYSTERESIS})
+
+
+class KnobLimits(NamedTuple):
+    """The upper clamp limits of the two wetting knobs (both lower limits are neutral).
+
+    Attributes:
+        phi_max: Largest ``phi``, ``1 + PHI_SPAN_W / interface_width``.
+        d_rho_max: Largest ``d_rho``, ``D_RHO_SPAN_W * (rho_l - rho_v) / W``.
+    """
+
+    phi_max: float
+    d_rho_max: float
 
 
 class ChemicalStepRegions(NamedTuple):
@@ -338,6 +351,34 @@ def wetting_scalars(config: SimulationConfig) -> dict[str, float] | None:
     }
 
 
+def wetting_knob_limits(config: SimulationConfig) -> KnobLimits | None:
+    """The clamp limits of ``phi`` and ``d_rho``, or ``None`` without two phases.
+
+    ``phi`` multiplies the ghost density, so its limit is dimensionless: ``1 + 5/W``
+    with the configured ``interface_width``, as before.
+
+    ``d_rho`` is subtracted from the ghost density, so it is a density. Its effect on
+    the contact angle is its size against the interface's own density gradient,
+    ``(rho_l - rho_v)/W``, so the limit is ``1.5 * (rho_l - rho_v)/W``. The former
+    ``1.5/W`` assumed a contrast of 1 (the double-well, where it was set). For a
+    Carnahan-Starling bubble (contrast 12.15) it was 2.5% of the contrast: the
+    trailing line held at a chemical step had its ``d_rho`` at that limit and its
+    angle stopped at ~56° against a receding bound of 50° (2026-11-17 runs X2, X3;
+    T_r 0.6 only just reached 50°). The contrast is the run's phase references
+    (:func:`~src.config.multiphase.phase_references`) and ``W`` the measured interface
+    width on a restart (:func:`wetting_interface_width`), else ``interface_width``:
+    the Carnahan-Starling ``interface_width`` is only an initialisation hint.
+    """
+    params = multiphase_params(config)
+    references = phase_references(config)
+    if params is None or references is None:
+        return None
+    configured = float(params.interface_width)
+    width = wetting_interface_width(config) or configured
+    contrast = references[1] - references[0]
+    return KnobLimits(phi_max=1.0 + PHI_SPAN_W / configured, d_rho_max=D_RHO_SPAN_W * contrast / width)
+
+
 def chemical_step_regions(config: SimulationConfig) -> ChemicalStepRegions | None:
     """The stepped edge, or ``None`` without a chemical step or wetting.
 
@@ -349,12 +390,11 @@ def chemical_step_regions(config: SimulationConfig) -> ChemicalStepRegions | Non
     """
     step = config.chemical_step
     wall = wetting_scalars(config)
-    params = multiphase_params(config)
+    limits = wetting_knob_limits(config)
     phase = dispersed_phase(config)
-    if step is None or wall is None or params is None:
+    if step is None or wall is None or limits is None:
         return None
     assert phase is not None  # noqa: S101 - validate_chemical_step guarantees it
-    width = float(params.interface_width)
     post_wets_dispersed_more = float(step["ca_advancing_post_step"]) < float(step["ca_advancing_pre_step"])
     post_wets_more = post_wets_dispersed_more == (phase == DispersedPhase.LIQUID)
     return ChemicalStepRegions(
@@ -364,8 +404,8 @@ def chemical_step_regions(config: SimulationConfig) -> ChemicalStepRegions | Non
         pre_phi_right=wall["phi_right"],
         pre_d_rho_left=wall["d_rho_left"],
         pre_d_rho_right=wall["d_rho_right"],
-        post_phi=1.0 + PHI_SPAN_W / width if post_wets_more else 1.0,
-        post_d_rho=0.0 if post_wets_more else D_RHO_SPAN_W / width,
+        post_phi=limits.phi_max if post_wets_more else 1.0,
+        post_d_rho=0.0 if post_wets_more else limits.d_rho_max,
         pre_side=TangentialSide(step["chemical_step_pre_side"]),
     )
 

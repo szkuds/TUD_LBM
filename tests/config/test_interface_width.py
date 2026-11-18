@@ -6,6 +6,7 @@ import pytest
 from src.config import SimulationConfig
 from src.config.init_field import measure_interface_width
 from src.config.wetting import wetting_interface_width
+from src.config.wetting import wetting_knob_limits
 
 NX, NY = 80, 60
 RHO_L, RHO_V = 1.0, 0.01
@@ -71,3 +72,52 @@ def test_a_fresh_run_has_no_measured_width():
 
 def test_a_single_phase_run_has_no_width():
     assert wetting_interface_width(SimulationConfig(grid_shape=(NX, NY))) is None
+
+
+# --- the knob limits: d_rho is a density, scaled by the contrast over the width ---------------
+
+
+def test_a_fresh_run_limits_d_rho_by_the_configured_contrast_and_width():
+    limits = wetting_knob_limits(SimulationConfig(multiphase=MULTIPHASE, grid_shape=(NX, NY)))
+
+    assert limits is not None
+    assert limits.phi_max == pytest.approx(1.0 + 5.0 / 5)
+    assert limits.d_rho_max == pytest.approx(1.5 * (RHO_L - RHO_V) / 5)
+
+
+def test_d_rho_limit_grows_with_the_density_contrast():
+    """A twelvefold contrast (a Carnahan-Starling bubble against the double-well) needs a twelvefold d_rho."""
+    dense = MULTIPHASE | {"rho_l": 12.0, "rho_v": 0.01}
+
+    small = wetting_knob_limits(SimulationConfig(multiphase=MULTIPHASE, grid_shape=(NX, NY)))
+    large = wetting_knob_limits(SimulationConfig(multiphase=dense, grid_shape=(NX, NY)))
+
+    assert small is not None
+    assert large is not None
+    assert large.d_rho_max / small.d_rho_max == pytest.approx((12.0 - 0.01) / (RHO_L - RHO_V))
+    assert large.phi_max == small.phi_max
+
+
+def test_a_restart_limits_d_rho_by_the_init_field_contrast_and_width(tmp_path):
+    rho = _cap(9.0)
+    npz_path = tmp_path / "init_state.npz"
+    np.savez(npz_path, rho=rho[:, :, None, None, None])
+    config = SimulationConfig(
+        multiphase=MULTIPHASE,
+        grid_shape=(NX, NY),
+        init_type="init_from_file",
+        init_dir=str(npz_path),
+        initialisation={},
+    )
+    width = wetting_interface_width(config)
+    assert width is not None
+
+    limits = wetting_knob_limits(config)
+
+    assert limits is not None
+    assert limits.d_rho_max == pytest.approx(1.5 * (rho.max() - rho.min()) / width)
+    assert limits.phi_max == pytest.approx(1.0 + 5.0 / 5)
+
+
+def test_a_single_phase_run_has_no_knob_limits():
+    assert wetting_knob_limits(SimulationConfig(grid_shape=(NX, NY))) is None

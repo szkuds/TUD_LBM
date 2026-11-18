@@ -705,7 +705,9 @@ class TestChemicalStepRegions:
         cfg = _hysteresis_config({}, chemical_step=step)
         wall = chemical_step_regions(cfg)
         assert wall is not None
-        assert (wall.post_phi, wall.post_d_rho) == (1.0, 1.5 / 4)
+        assert wall.post_phi == 1.0
+        # d_rho limit 1.5 * (rho_l - rho_v) / W: a density, scaled by the contrast (1.0 - 0.33)
+        assert wall.post_d_rho == pytest.approx(1.5 * (1.0 - 0.33) / 4)
 
     def test_no_step_no_wall(self):
         assert chemical_step_regions(_hysteresis_config({})) is None
@@ -727,7 +729,9 @@ class TestChemicalStepRegions:
         cfg = _hysteresis_config({}, chemical_step=dict(_STEP), initialisation=bubble)
         wall = chemical_step_regions(cfg)
         assert wall is not None
-        assert (wall.post_phi, wall.post_d_rho) == (1.0, 1.5 / 4)
+        assert wall.post_phi == 1.0
+        # d_rho limit 1.5 * (rho_l - rho_v) / W: a density, scaled by the contrast (1.0 - 0.33)
+        assert wall.post_d_rho == pytest.approx(1.5 * (1.0 - 0.33) / 4)
 
     def test_a_fixed_wetting_step_splits_without_hysteresis(self):
         cfg = _fixed_step_config(dict(_STEP), wetting={"phi_left": 1.2, "phi_right": 1.2})
