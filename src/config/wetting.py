@@ -49,6 +49,10 @@ if TYPE_CHECKING:
 #: ``phi <= 1 + 5/W`` and ``d_rho <= 1.5 * (rho_l - rho_v)/W`` (:func:`wetting_knob_limits`).
 PHI_SPAN_W: float = 5.0
 D_RHO_SPAN_W: float = 1.5
+#: Full-scale ``d_rho`` of the fixed post-step cells, in the same units as ``D_RHO_SPAN_W``. A third
+#: of the optimiser's limit: the post-step region's own wettability, not the controller's reach
+#: (:func:`chemical_step_regions`).
+POST_D_RHO_SPAN_W: float = 0.5
 #: The keys every ``[chemical_step]`` needs: the chemical step location and the
 #: contact angles of the pre-step and post-step regions.
 CHEMICAL_STEP_REQUIRED_KEYS: tuple[str, ...] = (
@@ -370,13 +374,24 @@ def wetting_knob_limits(config: SimulationConfig) -> KnobLimits | None:
     the Carnahan-Starling ``interface_width`` is only an initialisation hint.
     """
     params = multiphase_params(config)
+    scale = _d_rho_scale(config)
+    if params is None or scale is None:
+        return None
+    return KnobLimits(phi_max=1.0 + PHI_SPAN_W / float(params.interface_width), d_rho_max=D_RHO_SPAN_W * scale)
+
+
+def _d_rho_scale(config: SimulationConfig) -> float | None:
+    """``(rho_l - rho_v)/W``, the density scale of ``d_rho``, or ``None`` without two phases.
+
+    The contrast is the run's phase references and ``W`` the measured interface width on a
+    restart, else ``interface_width`` (see :func:`wetting_knob_limits`).
+    """
+    params = multiphase_params(config)
     references = phase_references(config)
     if params is None or references is None:
         return None
-    configured = float(params.interface_width)
-    width = wetting_interface_width(config) or configured
-    contrast = references[1] - references[0]
-    return KnobLimits(phi_max=1.0 + PHI_SPAN_W / configured, d_rho_max=D_RHO_SPAN_W * contrast / width)
+    width = wetting_interface_width(config) or float(params.interface_width)
+    return (references[1] - references[0]) / width
 
 
 def chemical_step_regions(config: SimulationConfig) -> ChemicalStepRegions | None:
@@ -385,8 +400,17 @@ def chemical_step_regions(config: SimulationConfig) -> ChemicalStepRegions | Non
     The post-step region is pulled toward its own wettability. The windows are in the
     dispersed frame, so a lower post advancing angle means the post-step region wets
     the *dispersed* phase more. ``phi`` and ``d_rho`` are liquid-frame knobs: that
-    is ``phi`` (more liquid-wetting) for a droplet and ``d_rho`` (less) for a
-    bubble, each at its clamp limit.
+    is ``phi`` (more liquid-wetting) for a droplet, at its clamp limit, and ``d_rho``
+    (less) for a bubble, at ``0.5 * (rho_l - rho_v)/W``.
+
+    **The bubble's post-step value is not the clamp limit.** The fixed cells sit in the
+    leading line's wetting band up to 1.5 interface widths ahead of it, on liquid. At the
+    limit (``1.5 * (rho_l - rho_v)/W``, 0.97 for the T_r 0.5 bubble) they drove that wall
+    liquid to the spinodal while the line was still ~16 cells from the step: a vapour patch
+    formed on the post-step region, merged with the bubble, the measured angle fell to
+    29-38° and every stage 2 run of 2026-11-19 went NaN. A third of the limit (~0.32) is
+    what every earlier crossing used (0.3) and lies inside the 0.20-0.35 the lines hold on
+    the post-step region at 70°-50°.
     """
     step = config.chemical_step
     wall = wetting_scalars(config)
@@ -397,6 +421,8 @@ def chemical_step_regions(config: SimulationConfig) -> ChemicalStepRegions | Non
     assert phase is not None  # noqa: S101 - validate_chemical_step guarantees it
     post_wets_dispersed_more = float(step["ca_advancing_post_step"]) < float(step["ca_advancing_pre_step"])
     post_wets_more = post_wets_dispersed_more == (phase == DispersedPhase.LIQUID)
+    scale = _d_rho_scale(config)
+    assert scale is not None  # noqa: S101 - wetting_knob_limits returned limits, so two phases
     return ChemicalStepRegions(
         edge=Edge(step["chemical_step_edge"]),
         step_x=float(step["chemical_step_location"]) * config.grid_shape[0],
@@ -405,7 +431,7 @@ def chemical_step_regions(config: SimulationConfig) -> ChemicalStepRegions | Non
         pre_d_rho_left=wall["d_rho_left"],
         pre_d_rho_right=wall["d_rho_right"],
         post_phi=limits.phi_max if post_wets_more else 1.0,
-        post_d_rho=0.0 if post_wets_more else limits.d_rho_max,
+        post_d_rho=0.0 if post_wets_more else POST_D_RHO_SPAN_W * scale,
         pre_side=TangentialSide(step["chemical_step_pre_side"]),
     )
 

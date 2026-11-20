@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 from src.config import SimulationConfig
 from src.config.init_field import measure_interface_width
+from src.config.wetting import chemical_step_regions
 from src.config.wetting import wetting_interface_width
 from src.config.wetting import wetting_knob_limits
 
@@ -121,3 +122,29 @@ def test_a_restart_limits_d_rho_by_the_init_field_contrast_and_width(tmp_path):
 
 def test_a_single_phase_run_has_no_knob_limits():
     assert wetting_knob_limits(SimulationConfig(grid_shape=(NX, NY))) is None
+
+
+def test_a_bubble_post_step_region_pulls_with_a_third_of_the_d_rho_limit():
+    """At the limit the fixed post-step cells drove the wall liquid to the spinodal ahead of the line."""
+    bubble = SimulationConfig(
+        multiphase=MULTIPHASE,
+        grid_shape=(NX, NY),
+        boundary_conditions={"top": "wetting"},
+        hysteresis={},
+        chemical_step={
+            "chemical_step_location": 0.5,
+            "ca_advancing_pre_step": 120.0,
+            "ca_receding_pre_step": 100.0,
+            "ca_advancing_post_step": 70.0,
+            "ca_receding_post_step": 50.0,
+        },
+        initialisation={"centres": [[0.7, 1.0]], "radii": [0.2], "dispersed": "vapour"},
+        init_type="multiphase_bubbles",
+    )
+    limits = wetting_knob_limits(bubble)
+    regions = chemical_step_regions(bubble)
+
+    assert limits is not None
+    assert regions is not None
+    assert regions.post_phi == 1.0
+    assert regions.post_d_rho == pytest.approx(limits.d_rho_max / 3)
