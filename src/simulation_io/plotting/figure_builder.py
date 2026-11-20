@@ -5,6 +5,7 @@ import math
 import warnings
 from pathlib import Path
 import matplotlib as mpl
+from src.config.wetting import has_wetting_edge
 
 mpl.use("Agg")
 
@@ -25,8 +26,8 @@ if TYPE_CHECKING:
     import numpy as np
     from matplotlib.artist import Artist
     from src.config import SimulationConfig
-    from .base import AnalysisPlot
-    from .base import PlotOperator
+    from src.protocols import AnalysisPlot
+    from src.protocols import PlotOperator
 
 _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
     1: (1, 1),
@@ -35,55 +36,33 @@ _SMALL_LAYOUTS: dict[int, tuple[int, int]] = {
     4: (2, 2),
 }
 
-_WETTING_SIM_TYPES: frozenset[str] = frozenset(
-    {
-        "multiphase_wetting",
-        "multiphase_hysteresis",
-        "multiphase_hysteresis_chemical_step",
-    }
-)
 
 _ANALYSIS_PANEL_FACECOLOR = "#f5f5f5"
 
-#: Figure fractions reserved by ``tight_layout`` when there is no shared legend.
-_LAYOUT_BOTTOM = 0.03
-_LAYOUT_TOP = 0.95
-#: Height of one shared-legend row, in multiples of its font size.
-_LEGEND_ROW_EM = 1.8
-_POINTS_PER_INCH = 72.0
 
-
-def _add_shared_legend(fig: plt.Figure, axes: list[plt.Axes]) -> float:
+def _add_shared_legend(fig: plt.Figure, axes: list[plt.Axes]) -> None:
     """Place one legend below the panels for every labelled artist on *axes*.
 
     Overlays label their artists but never draw a legend, because the same
     entries recur on every panel they are drawn on. Entries are de-duplicated by
-    label in first-seen order.
-
-    Returns:
-        The figure fraction the legend occupies at the bottom, for ``tight_layout``.
+    label in first-seen order. The figure must use the constrained layout, which
+    reserves the space of an ``outside`` legend.
     """
     entries: dict[str, Artist] = {}
     for ax in axes:
         for handle, label in zip(*ax.get_legend_handles_labels(), strict=True):
             entries.setdefault(label, handle)
     if not entries:
-        return _LAYOUT_BOTTOM
+        return
 
-    fontsize = DEFAULT_STYLE.shared_legend_fontsize
-    ncol = min(len(entries), DEFAULT_STYLE.shared_legend_max_columns)
-    rows = math.ceil(len(entries) / ncol)
     fig.legend(
         list(entries.values()),
         list(entries),
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.0),
-        ncol=ncol,
-        fontsize=fontsize,
+        loc="outside lower center",
+        ncol=min(len(entries), DEFAULT_STYLE.shared_legend_max_columns),
+        fontsize=DEFAULT_STYLE.shared_legend_fontsize,
         frameon=False,
     )
-    row_inches = _LEGEND_ROW_EM * fontsize / _POINTS_PER_INCH
-    return _LAYOUT_BOTTOM + rows * row_inches / fig.get_figheight()
 
 
 def _render_error(ax: plt.Axes, name: str, exc: Exception) -> None:
@@ -156,7 +135,7 @@ class FigureBuilder:
 
         requested = fields or self.config.plot_fields
         if not requested:
-            if self.config.sim_type in _WETTING_SIM_TYPES:
+            if has_wetting_edge(self.config):
                 # Wetting default: density field for droplet visibility + dual-axis Ca/θ vs position.
                 requested = ["density", "ca_theta_vs_x"]
             else:
@@ -383,6 +362,7 @@ class FigureBuilder:
             ncols,
             figsize=(panel_w * ncols, panel_h * nrows),
             squeeze=False,
+            layout="constrained",
         )
 
         for idx, op in enumerate(field_ops):
@@ -399,11 +379,10 @@ class FigureBuilder:
             axes[row][col].set_visible(False)
 
         field_axes = [axes[row][col] for row, col in (divmod(idx, ncols) for idx in range(len(field_ops)))]
-        bottom = _add_shared_legend(fig, field_axes)
+        _add_shared_legend(fig, field_axes)
 
         title = self.config.simulation_name or "simulation"
         fig.suptitle(f"{title} - Timestep {timestep}", fontsize=DEFAULT_STYLE.suptitle_fontsize)
-        plt.tight_layout(rect=(0, bottom, 1, _LAYOUT_TOP))
 
         return fig
 

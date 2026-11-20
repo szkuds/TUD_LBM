@@ -14,26 +14,15 @@ from src.cli._console import console
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-#: The value a confirm/override loop is deciding about — the expanded config (or
-#: tuple of configs) built from the raw dict the override is applied to.
+#: The value a confirm/override loop is deciding about — the config built from
+#: the raw dict the override is applied to.
 _T = TypeVar("_T")
 
-#: TOML section name -> the ``SimulationConfig`` field it flattens to (``""`` for
-#: sections merged straight into the top level). Mirrors the section handling in
-#: :meth:`src.config.adapter_base.ConfigAdapter._merge_sections`, so an override
-#: path can be written with the same section names the config file uses.
-#: ``tests/cli/test_cli.py::TestSectionAliasMap`` pins the two together — the
-#: ``obstacle`` entry was missing here for exactly that reason.
-_SECTION_ALIAS_MAP = {
-    "simulation_type": "",
-    "multiphase": "",
-    "output": "",
-    "boundary_conditions": "bc_config",
-    "wetting": "wetting_config",
-    "hysteresis": "hysteresis_config",
-    "chemical_step": "chemical_step_config",
-    "obstacle": "obstacle_config",
-}
+#: TOML sections merged straight into the top level by
+#: :func:`src.config.sections.merge_sections`; every other section is the
+#: ``SimulationConfig`` field of the same name, or for ``[*_force]`` an entry of
+#: ``forces``. So an override path uses the section names the config file uses.
+_FLATTENED_SECTIONS = frozenset({"simulation_type", "output"})
 
 
 def _parse_override_argument(raw_override: str) -> tuple[str, object]:
@@ -115,19 +104,15 @@ def _parse_override_argument(raw_override: str) -> tuple[str, object]:
 def _normalise_override_path(path: str) -> list[str]:
     """Map TOML table paths to raw-config keys and split into segments.
 
-    Normalises TOML section aliases to their field names:
-    - simulation_type.* → * (direct field)
-    - boundary_conditions.* → bc_config.*
-    - wetting.* → wetting_config.*
-    - hysteresis.* → hysteresis_config.*
-    - electric_force.* → electric_force.*
-    - gravity_force.* → gravity_force.*
+    - simulation_type.* and output.* → * (direct field)
+    - gravity_force.* → forces.gravity_force.* (any ``*_force`` section)
+    - any other section keeps its name, which is its field's
 
     Args:
         path: Dotted-path string (e.g., "simulation_type.tau" or "gravity_force.force_g").
 
     Returns:
-        List of path segments (e.g., ["tau"] or ["gravity_force", "force_g"]).
+        List of path segments (e.g., ["tau"] or ["forces", "gravity_force", "force_g"]).
 
     Raises:
         ValueError: If path is empty or becomes empty after normalisation.
@@ -137,10 +122,10 @@ def _normalise_override_path(path: str) -> list[str]:
         # ['tau']
 
         _normalise_override_path('gravity_force.force_g')
-        # ['gravity_force', 'force_g']
+        # ['forces', 'gravity_force', 'force_g']
 
         _normalise_override_path('boundary_conditions.top')
-        # ['bc_config', 'top']
+        # ['boundary_conditions', 'top']
     """
     parts = [segment.strip() for segment in path.split(".") if segment.strip()]
     if not parts:
@@ -148,10 +133,10 @@ def _normalise_override_path(path: str) -> list[str]:
         raise ValueError(msg)
 
     head = parts[0]
-    if head in _SECTION_ALIAS_MAP:
-        mapped = _SECTION_ALIAS_MAP[head]
-        # SIM108: use ternary instead of if-else block
-        parts = [mapped, *parts[1:]] if mapped else parts[1:]
+    if head in _FLATTENED_SECTIONS:
+        parts = parts[1:]
+    elif head.endswith("_force"):
+        parts = ["forces", *parts]
 
     if not parts:
         msg = f"override path '{path}' does not reference a field"
@@ -162,13 +147,12 @@ def _normalise_override_path(path: str) -> list[str]:
 def _known_override_heads() -> set[str]:
     """Every first segment an override path may start with.
 
-    The ``SimulationConfig`` field names plus the section aliases above, so
-    ``bc_config.left`` and ``boundary_conditions.left`` are both accepted.
+    The ``SimulationConfig`` field names plus the flattened sections above.
     Imported lazily to keep this module free of a config dependency.
     """
     from src.config import SimulationConfig
 
-    return set(SimulationConfig.__dataclass_fields__) | set(_SECTION_ALIAS_MAP)
+    return set(SimulationConfig.__dataclass_fields__) | _FLATTENED_SECTIONS
 
 
 def _reject_unknown_field(path: str, head: str) -> None:
@@ -176,7 +160,7 @@ def _reject_unknown_field(path: str, head: str) -> None:
 
     Caught here because neither layer below reports it usefully: the adapter
     sweeps an unknown key into ``config.extra`` and says nothing, while
-    ``expand_config`` calls ``SimulationConfig(**raw)`` and surfaces a bare
+    ``SimulationConfig(**raw)`` surfaces a bare
     ``unexpected keyword argument``. Both leave the operator guessing at a
     typo, so the suggestion is made where the typo was actually typed.
     """
@@ -193,7 +177,7 @@ def _set_nested_override(raw_config: dict[str, Any], path: str, value: object) -
     """Apply a typed override value to raw config using dotted-path syntax.
 
     Automatically creates nested dicts as needed. For example, to set
-    gravity_force.force_g=5e-7, this will create raw_config['gravity_force']
+    gravity_force.force_g=5e-7, this will create raw_config['forces']['gravity_force']
     if it doesn't exist, then set its 'force_g' sub-key.
 
     Args:
@@ -211,7 +195,7 @@ def _set_nested_override(raw_config: dict[str, Any], path: str, value: object) -
 
         raw = {}
         _set_nested_override(raw, 'gravity_force.force_g', 5e-7)
-        # raw == {'gravity_force': {'force_g': 5e-7}}
+        # raw == {'forces': {'gravity_force': {'force_g': 5e-7}}}
     """
     parts = _normalise_override_path(path)
 
@@ -238,7 +222,7 @@ def _apply_overrides(raw_config: dict[str, Any], overrides: tuple[str, ...]) -> 
     """Parse and apply all --override expressions in order.
 
     Each override is parsed, type-checked, and applied to raw_config before
-    config expansion. This allows CLI users to override or create config
+    the config is built. This allows CLI users to override or create config
     fields without editing the file.
 
     Overrides are applied in the order provided, so later values override
@@ -291,9 +275,9 @@ def confirm_or_override(
 
     Loops until the operator answers yes or no, so a mistyped parameter is
     corrected in place rather than by cancelling and re-invoking the command.
-    *rebuild* re-expands the mutated raw dict **and displays the new summary** —
+    *rebuild* rebuilds the mutated raw dict **and displays the new summary** —
     each caller shows its own — and *prompt* is re-evaluated each round because
-    an override can change what is being confirmed (a scalar becoming a sweep).
+    an override can change what is being confirmed.
 
     The override is applied to a copy and only committed into *raw_config* once
     *rebuild* succeeds: a rejected expression must not leave the raw dict in a

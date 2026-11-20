@@ -1,7 +1,8 @@
 """Tests for the circular obstacle mask builder."""
 
 import pytest
-from src.config.obstacle_mask import build_obstacle_mask
+from src.config import SimulationConfig
+from src.config.obstacle import obstacle_mask
 from src.operators.obstacle._circle import build_circle_mask
 
 
@@ -25,10 +26,13 @@ def test_raises_on_3d_grid() -> None:
 
 
 def test_build_obstacle_mask_dispatches_to_circle() -> None:
-    mask = build_obstacle_mask({"shape": "circle", "center_x": 10, "center_y": 10, "radius": 5}, (20, 20, 1))
+    config = SimulationConfig(
+        grid_shape=(20, 20), obstacle={"shape": "circle", "center_x": 10, "center_y": 10, "radius": 5}
+    )
+    mask = obstacle_mask(config)
     assert mask is not None
     assert mask.shape == (20, 20, 1, 1, 1)
 
 
 def test_build_obstacle_mask_none_config_returns_none() -> None:
-    assert build_obstacle_mask(None, (20, 20, 1)) is None
+    assert obstacle_mask(SimulationConfig(grid_shape=(20, 20))) is None

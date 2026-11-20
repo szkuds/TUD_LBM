@@ -10,6 +10,7 @@ All operations are JAX-compatible and jittable.
 from __future__ import annotations
 import math
 import jax.numpy as jnp
+from src.config.boundary import Edge
 from src.operators.wetting._canonical_view import to_canonical
 from src.operators.wetting._interface_crossings import interface_crossings
 
@@ -18,13 +19,13 @@ def compute_contact_angle(
     rho: jnp.ndarray,
     rho_mean: float | jnp.ndarray,
     *,
-    edge: str = "bottom",
+    edge: Edge = Edge.BOTTOM,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Compute contact angles (left and right) from a density field.
 
     The field is first mapped into the wall-aligned canonical frame for
     *edge* (see :func:`~src.operators.wetting._canonical_view.to_canonical`),
-    so the wetting wall is at column 0 with liquid above. The algorithm then
+    so the wetting edge is at column 0 with liquid above. The algorithm then
     finds the liquid-vapour transition at the two fluid rows nearest the wall
     (``j=1`` and ``j=2``), interpolates the interface tangential position, and
     derives the contact angle from the slope.
@@ -49,7 +50,7 @@ def compute_contact_angle(
     Args:
         rho: Density field, shape ``(nx, ny, nz, 1, 1)``.
         rho_mean: Mean density ``(rho_l + rho_v) / 2``.
-        edge: Wetting wall — ``"bottom"`` (default), ``"top"``, ``"left"``,
+        edge: Wetting edge — ``"bottom"`` (default), ``"top"``, ``"left"``,
             or ``"right"``.
 
     Returns:

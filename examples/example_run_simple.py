@@ -1,4 +1,4 @@
-"""Single-phase LBM simulation example_for_test using the functional API.
+"""Single-phase LBM simulation with the functional API.
 
 Demonstrates the streaming I/O mode — snapshots are saved to disk at
 each save_interval via jax.debug.callback, then plotted post-run.
@@ -44,6 +44,7 @@ def run_and_save():
         nt=config.nt,
         save_interval=config.save_interval,
         io_handler=io,
+        skip_interval=config.skip_interval,
         save_fields=tuple(config.save_fields) if config.save_fields else None,
     )
 

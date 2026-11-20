@@ -12,6 +12,7 @@ from src.cli.commands import analysis as analysis
 from src.cli.commands import benchmark as benchmark
 from src.cli.commands import calibration as calibration
 from src.cli.commands import run as run
+from src.cli.commands import sweep as sweep
 from src.cli.commands import visualise as visualise
 
-__all__ = ["analysis", "benchmark", "calibration", "cli", "run", "visualise"]
+__all__ = ["analysis", "benchmark", "calibration", "cli", "run", "sweep", "visualise"]

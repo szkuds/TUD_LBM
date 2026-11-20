@@ -10,7 +10,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 
 from src.config.run_config import SNAPSHOT_PREFIX
-from .base import OutputWriter
+from src.protocols import OutputWriter
 
 # VTK requires 3D vector fields
 _VTK_VECTOR_DIMENSION = 3

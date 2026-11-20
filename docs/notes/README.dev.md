@@ -317,18 +317,10 @@ final_state, _ = run(setup, state, nt=config.nt,
                      io_handler=io)
 ```
 
-For **parameter sweeps**, use the parallel runner:
+For **parameter sweeps**, stage one completed TOML per combination and run each file:
 
-```python
-from src.config.adapter_toml import TomlAdapter
-from src.config.array_expansion import expand_config
-from src.pipeline.parallel_runner import run_parallel_simulations
-
-adapter = TomlAdapter()
-config_dict = adapter.load_raw("config_parallel.toml")
-configs, metadata = expand_config(config_dict)
-
-results = run_parallel_simulations(configs, max_workers=4, verbose=True)
+```bash
+tud-lbm sweep stage config.toml --set 'tau=[0.6, 0.7, 0.8]' --out configs/var_tau/
 ```
 
 ---
@@ -348,7 +340,6 @@ same names the registry resolves at runtime.
 | `adapter_base`      | `ConfigAdapter`, `get_adapter`                                | Abstract base for config adapters; `get_adapter()` dispatches on file extension.                                               |
 | `adapter_toml`      | `TomlAdapter`                                                 | Reads and writes `.toml` configuration files.                                                                                  |
 | `adapter_dict`      | `DictAdapter`                                                 | Reads configuration from plain Python dicts (flat or nested).                                                                  |
-| `array_expansion`   | `expand_config`, `ArrayParameterSet`                          | Expands list-valued fields into a Cartesian product of `SimulationConfig` objects for parameter sweeps.                        |
 | `config_overview`   | `ENABLE_X64`, `DISABLE_JIT`, `DEBUG_FLAG`, `BASE_RESULTS_DIR` | Canonical global flags and constants. `BASE_RESULTS_DIR` honours `TUD_LBM_DATA_DIR`.                                           |
 | `jax_config`        | `configure_jax`                                               | Centralised JAX configuration (64-bit precision, JIT toggle).                                                                  |
 
@@ -369,9 +360,7 @@ same names the registry resolves at runtime.
 | **Multiphase**          | `eos`, `kappa`, `rho_l`, `rho_v`, `interface_width`, `g`, `a_eos`, `b_eos`, `r_eos`, `t_eos` | all `None`                             |
 | **Extensible**          | `extra`                                                                                    | `{}`                                     |
 
-Fields declared with `array_field()` are sweep-eligible; `wetting_config`,
-`hysteresis_config`, `chemical_step_config`, and the force sections are also
-sweepable one level deep. See [Adapters](../adapters.rst).
+A list value is never a sweep: stage one with `tud-lbm sweep stage`. See [Adapters](../adapters.rst).
 
 ---
 
@@ -381,7 +370,6 @@ sweepable one level deep. See [Adapters](../adapters.rst).
 | ----------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `setup`           | `SimulationSetup`, `build_setup`               | **Immutable `NamedTuple` operator container.** Built from `SimulationConfig`; holds pre-built operators, masks, and JIT scalars. |
 | `runner`          | `run`, `init_state`                            | `lax.scan` time-stepping loop, in-memory or streaming-I/O mode.                                                                 |
-| `parallel_runner` | `run_parallel_simulations`, `SimulationResult` | Runs multiple configs via `ProcessPoolExecutor`; returns per-run status, output dir, parameters, error, and duration.           |
 | `state/`          | `State`, `WettingState`                        | `NamedTuple` pytrees carrying `f`, `rho`, `u`, `t`, forces, `h`, and wetting parameters.                                        |
 
 ---
@@ -459,8 +447,7 @@ Frequently used `run` options:
 | `--dry-run`                   | Parse and display the configuration without running.                    |
 | `--override KEY=VALUE`        | Override a config key; values are parsed as TOML literals.              |
 | `--no-prompt`                 | Skip interactive prompts.                                               |
-| `--max-workers N`             | Parallel workers for a sweep.                                           |
-| `--compare`                   | Build cross-run comparison plots after a sweep.                         |
+| `--compare`                   | Build the CSV and comparison plots after the run.                       |
 | `--continue`                  | Resume from a previous run directory.                                   |
 | `--init-dir`                  | Seed initialisation from saved data.                                    |
 | `--init-wetting [NT]`         | Wetting initialisation; NT sets the equilibration length (default 50000). |

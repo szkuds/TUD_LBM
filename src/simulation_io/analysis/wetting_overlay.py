@@ -5,7 +5,7 @@ operators themselves rather than from a post-processing copy of them:
 
 Wall band
     The ghost-row cells the wetting BC actually modifies, from
-    :func:`~src.operators.wetting._apply_edge.wetting_edge_regions` run on the
+    :func:`~src.operators.wetting._apply_edge.wetting_edge_bands` run on the
     same stencil padding the wetting differential operators use, together with
     the ``rho_lower``/``rho_upper`` bounds they are clipped to. A second
     definition of the region here could silently disagree with the solver, which
@@ -39,21 +39,20 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from typing import Literal
 import numpy as np
+from src.config.boundary import Edge
+from src.config.boundary import pad_modes
+from src.config.multiphase import phase_references
+from src.config.wetting import ContactLine
+from src.config.wetting import wetting_interface_width
+from src.config.wetting import wetting_rho_mean
 from src.simulation_io.analysis.droplet_metrics._snapshot import to_canonical_2d
-from src.simulation_io.analysis.interface_contour import config_rho_mean
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from numpy.typing import ArrayLike
     from src.config import SimulationConfig
-    from src.operators.wetting._wetting_modification import WettingRegion
-
-Side = Literal["left", "right"]
-
-#: The two contact lines, in the ascending tangential order the solver anchors them in.
-SIDES: tuple[Side, Side] = ("left", "right")
+    from src.operators.wetting._wetting_modification import WettingBand
 
 #: Canonical normal coordinate of the solid surface: half a cell below the wall row.
 WALL_NORMAL = -0.5
@@ -65,13 +64,21 @@ _CONTACT_KEYS = ("ca_left", "ca_right", "cll_left", "cll_right")
 
 #: Label distance from the contact line, in arc radii — clear of the arc.
 _LABEL_RADIUS = 1.8
+#: Outside label: gap past the glyph along the wall, and height above it, in glyph lengths.
+_OUTSIDE_LABEL_GAP = 0.15
+_OUTSIDE_LABEL_HEIGHT = 0.4
+#: Tangential coordinate of the domain's first cell face (cell centres are integers).
+_FIRST_FACE = -0.5
+#: Inside fallback: below the glyph (its tangent reaches one length), a row apart from the
+#: other side's outside label.
+_INSIDE_LABEL_HEIGHT = 1.2
 
 
 @dataclass(frozen=True)
 class SideBand:
     """One contact line's modified cells, anchor and density bounds."""
 
-    side: Side
+    side: ContactLine
     cells: np.ndarray
     anchor: float
     rho_lower: float
@@ -79,23 +86,23 @@ class SideBand:
 
 
 @dataclass(frozen=True)
-class WallBand:
-    """The ghost-row cells one wetting wall modifies, indexed along that wall."""
+class EdgeBands:
+    """The ghost-row cells one wetting edge modifies, indexed along that wall."""
 
-    edge: str
+    edge: Edge
     left: SideBand
     right: SideBand
 
-    def side(self, side: Side) -> SideBand:
+    def side(self, side: ContactLine) -> SideBand:
         """The :class:`SideBand` for *side*."""
-        return self.left if side == "left" else self.right
+        return self.left if side == ContactLine.LEFT else self.right
 
 
 @dataclass(frozen=True)
 class ContactAngles:
     """Dispersed-phase contact angles (degrees) and contact-line positions at one wall."""
 
-    edge: str
+    edge: Edge
     theta_left: float
     theta_right: float
     cll_left: float
@@ -112,38 +119,51 @@ class AngleGlyph:
     theta: float
 
 
-def wetting_edge(config: SimulationConfig) -> str | None:
+@dataclass(frozen=True)
+class LabelAnchor:
+    """Panel position and text alignment of a label that grows away from the inclusion."""
+
+    xy: tuple[float, float]
+    ha: str
+    va: str
+
+
+def wetting_edge(config: SimulationConfig) -> Edge | None:
     """The wall contact angles are measured at, or ``None`` for a run without one."""
     from src.operators.wetting._edge_config import first_wetting_edge
 
-    return first_wetting_edge(config.bc_config)
+    return first_wetting_edge(config.boundary_conditions)
 
 
-def wall_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[WallBand]:
-    """The modified ghost-row cells of every wetting wall in *config*.
+def edge_bands(rho_2d: np.ndarray, config: SimulationConfig) -> list[EdgeBands]:
+    """The modified ghost-row cells of every wetting edge in *config*.
 
-    Empty when the config has no wetting wall or lacks ``rho_l``/``rho_v``.
+    Empty when the config has no wetting edge or lacks ``rho_l``/``rho_v``.
     """
-    if config.rho_l is None or config.rho_v is None or not config.bc_config:
+    references = phase_references(config)
+    if references is None:
         return []
-    rho_l, rho_v = float(config.rho_l), float(config.rho_v)
+    rho_v, rho_l = references
 
     import jax.numpy as jnp
     from src.operators.differential._pad_utils import _apply_stencil_padding
-    from src.operators.wetting._apply_edge import wetting_edge_regions
+    from src.operators.wetting._apply_edge import wetting_edge_bands
     from src.operators.wetting._edge_config import _resolve_wetting_edges
 
-    grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), config.pad_modes)
-    bands: list[WallBand] = []
-    for edge, perp_start_periodic, perp_end_periodic in _resolve_wetting_edges(config.bc_config):
-        regions = wetting_edge_regions(grid_padded, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v)
-        sides = tuple(_side_band(side, region) for side, region in zip(SIDES, regions, strict=True))
-        bands.append(WallBand(edge, *sides))
+    interface_width = wetting_interface_width(config)
+    grid_padded = _apply_stencil_padding(jnp.asarray(rho_2d, dtype=float), pad_modes(config))
+    bands: list[EdgeBands] = []
+    for edge, perp_start_periodic, perp_end_periodic in _resolve_wetting_edges(config.boundary_conditions or {}):
+        regions = wetting_edge_bands(
+            grid_padded, edge, perp_start_periodic, perp_end_periodic, rho_l, rho_v, interface_width
+        )
+        sides = tuple(_side_band(side, region) for side, region in zip(ContactLine, regions, strict=True))
+        bands.append(EdgeBands(edge, *sides))
     return bands
 
 
-def _side_band(side: Side, region: WettingRegion) -> SideBand:
-    """One solver :class:`~src.operators.wetting._wetting_modification.WettingRegion` as plain numpy."""
+def _side_band(side: ContactLine, region: WettingBand) -> SideBand:
+    """One solver :class:`~src.operators.wetting._wetting_modification.WettingBand` as plain numpy."""
     return SideBand(
         side,
         np.flatnonzero(np.asarray(region.mask)),
@@ -163,15 +183,15 @@ def contact_angles(
     rho_2d: np.ndarray,
     config: SimulationConfig,
 ) -> ContactAngles | None:
-    """Contact angles at the measurement wall, preferring the snapshot's saved values.
+    """Contact angles at the measurement edge, preferring the snapshot's saved values.
 
-    Returns ``None`` when there is no wetting wall, no ``rho_mean``, or the rows
+    Returns ``None`` when there is no wetting edge, no ``rho_mean``, or the rows
     the measurement reads do not each cross ``rho_mean`` twice — a detached or
     absent inclusion, for which the solver's static-shape crossing search
     collapses to index 0 and reports a meaningless angle.
     """
     edge = wetting_edge(config)
-    rho_mean = config_rho_mean(config)
+    rho_mean = wetting_rho_mean(config)
     if edge is None or rho_mean is None:
         return None
     canonical = to_canonical_2d(rho_2d, edge)
@@ -187,7 +207,7 @@ def contact_angles(
     return ContactAngles(edge, ca_l, ca_r, cll_l, cll_r)
 
 
-def _recompute(rho_2d: np.ndarray, rho_mean: float, edge: str) -> tuple[float, float, float, float]:
+def _recompute(rho_2d: np.ndarray, rho_mean: float, edge: Edge) -> tuple[float, float, float, float]:
     """Run the step's own contact-angle and contact-line operators on one field."""
     import jax.numpy as jnp
     from src.operators.wetting._contact_angle import compute_contact_angle
@@ -203,7 +223,7 @@ def _recompute(rho_2d: np.ndarray, rho_mean: float, edge: str) -> tuple[float, f
 def to_physical(
     tangential: ArrayLike,
     normal: ArrayLike,
-    edge: str,
+    edge: Edge,
     shape: tuple[int, int],
 ) -> tuple[np.ndarray, np.ndarray]:
     """Map canonical ``(tangential, normal)`` coordinates to panel ``(x, y)``.
@@ -214,25 +234,17 @@ def to_physical(
     Args:
         tangential: Position along the wall.
         normal: Distance from the wall row into the fluid.
-        edge: The wall — ``"bottom"``, ``"top"``, ``"left"`` or ``"right"``.
+        edge: The in-plane wall.
         shape: Physical ``(nx, ny)``.
     """
-    nx, ny = shape
     t = np.asarray(tangential, dtype=float)
     n = np.asarray(normal, dtype=float)
-    if edge == "bottom":
-        return t, n
-    if edge == "top":
-        return t, (ny - 1) - n
-    if edge == "left":
-        return n, t
-    if edge == "right":
-        return (nx - 1) - n, t
-    msg = f"Unknown wall edge {edge!r}."
-    raise ValueError(msg)
+    extent = shape[edge.normal_axis]
+    away = (extent - 1) - n if edge.at_far_end else n
+    return (away, t) if edge.normal_axis == 0 else (t, away)
 
 
-def band_cell_segments(band: WallBand, side: Side, shape: tuple[int, int]) -> list[np.ndarray]:
+def band_cell_segments(band: EdgeBands, side: ContactLine, shape: tuple[int, int]) -> list[np.ndarray]:
     """One ``(2, 2)`` segment per modified cell, lying on the solid surface of *band*'s wall."""
     segments = []
     for cell in band.side(side).cells:
@@ -241,7 +253,7 @@ def band_cell_segments(band: WallBand, side: Side, shape: tuple[int, int]) -> li
     return segments
 
 
-def anchor_tick(band: WallBand, side: Side, shape: tuple[int, int], height: float) -> np.ndarray | None:
+def anchor_tick(band: EdgeBands, side: ContactLine, shape: tuple[int, int], height: float) -> np.ndarray | None:
     """A ``(2, 2)`` segment normal to the wall at one side's contact-line anchor.
 
     ``None`` when that side modifies nothing, so an anchor the contrast floor
@@ -257,7 +269,7 @@ def anchor_tick(band: WallBand, side: Side, shape: tuple[int, int], height: floa
 
 def angle_glyph(
     angles: ContactAngles,
-    side: Side,
+    side: ContactLine,
     shape: tuple[int, int],
     length: float,
     arc_points: int = 24,
@@ -268,9 +280,10 @@ def angle_glyph(
     lines, so measured from the wall direction pointing into it the tangent is
     ``(cos θ, sin θ)`` at the left line and ``(-cos θ, sin θ)`` at the right.
     """
-    sign = 1.0 if side == "left" else -1.0
-    theta_deg = angles.theta_left if side == "left" else angles.theta_right
-    cll = angles.cll_left if side == "left" else angles.cll_right
+    left = side == ContactLine.LEFT
+    sign = 1.0 if left else -1.0
+    theta_deg = angles.theta_left if left else angles.theta_right
+    cll = angles.cll_left if left else angles.cll_right
     theta = math.radians(theta_deg)
     radius = 0.5 * length
 
@@ -291,3 +304,46 @@ def angle_glyph(
         label_xy=(float(lx), float(ly)),
         theta=theta_deg,
     )
+
+
+def angle_label_anchor(
+    angles: ContactAngles,
+    side: ContactLine,
+    shape: tuple[int, int],
+    length: float,
+    room: float = 0.0,
+) -> LabelAnchor:
+    """Anchor for one contact angle's label, outside the inclusion where it fits.
+
+    The anchor lies on the far side of the contact line from the inclusion, past
+    the outward reach of the tangent (which leans outward for ``θ > 90°``), and
+    the text is aligned to grow further outward. The two labels of a wall
+    therefore grow apart and cannot overlap while ``cll_left < cll_right``,
+    however narrow the panel is.
+
+    When the text (*room* cells along the wall) would leave the domain, the label
+    goes inside the inclusion instead, growing inward, at a lower height than the
+    outside label of the other side, so the two still cannot meet.
+    :func:`angle_glyph`'s ``label_xy`` (inside the arc) stays as it is for the
+    setup schematic.
+    """
+    left = side == ContactLine.LEFT
+    sign = 1.0 if left else -1.0
+    theta = math.radians(angles.theta_left if left else angles.theta_right)
+    cll = angles.cll_left if left else angles.cll_right
+    tangential_extent = shape[1 - angles.edge.normal_axis]
+    outward_reach = max(0.0, -math.cos(theta)) * length
+    t = cll - sign * (outward_reach + _OUTSIDE_LABEL_GAP * length)
+    outward = -sign
+    if not _FIRST_FACE <= t + outward * room <= tangential_extent - 1 - _FIRST_FACE:
+        t = cll + sign * _OUTSIDE_LABEL_GAP * length
+        n = WALL_NORMAL + _INSIDE_LABEL_HEIGHT * length
+        outward = sign
+    else:
+        n = WALL_NORMAL + _OUTSIDE_LABEL_HEIGHT * length
+    x, y = to_physical(t, n, angles.edge, shape)
+    # ``to_physical`` keeps the tangential direction, so the text grows along +/- that axis.
+    xy = (float(x), float(y))
+    if angles.edge.normal_axis == 1:
+        return LabelAnchor(xy=xy, ha="left" if outward > 0 else "right", va="center")
+    return LabelAnchor(xy=xy, ha="center", va="bottom" if outward > 0 else "top")

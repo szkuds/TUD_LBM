@@ -40,7 +40,7 @@ example configurations::
 
     uv run tud-lbm run examples/config_simple.toml
 
-That runs a 100×100 single-phase D2Q9 domain for 1000 steps, saving a
+That runs a 100×100 single-phase D2Q9 domain for 101 steps, saving a
 snapshot every 100, and writes everything to a timestamped run directory.
 Before committing to a long run, inspect what the configuration resolves to::
 
@@ -48,8 +48,9 @@ Before committing to a long run, inspect what the configuration resolves to::
 
 Values can be changed without editing the file.  Override keys may be a bare
 field name or a dotted section path (``simulation_type.simulation_name``,
-``hysteresis.ca_advancing``), and values are parsed as TOML literals — so
-strings need quotes::
+``multiphase.kappa``, ``hysteresis.ca_advancing``,
+``forces.gravity_force.force_g``), and values are parsed as TOML literals —
+so strings need quotes::
 
     uv run tud-lbm run examples/config_simple.toml \
         --override tau=0.8 \
@@ -64,20 +65,32 @@ in, final state out:
 
 .. code-block:: python
 
-    from src import SimulationConfig, build_setup, init_state, run
+    from src import SimulationConfig, build_setup, init_state, observe, run
 
     config = SimulationConfig(grid_shape=(64, 64), tau=0.8, nt=1000)
     setup = build_setup(config)
     state = init_state(setup)
     final_state, trajectory = run(setup, state, nt=config.nt)
 
-    print(final_state.rho.shape)   # (64, 64, 1, 1, 1)
+    print(observe(setup, final_state).rho.shape)   # (64, 64, 1, 1, 1)
 
 A bare :class:`~src.config.simulation_config.SimulationConfig` defaults to a
-D2Q9 lattice, BGK collision, periodic boundaries on all six faces, and
-rest-equilibrium initialisation.  ``trajectory`` is the stacked history of
-every step; for long runs prefer the streaming mode described in
-:ref:`quickstart-streaming`.
+D2Q9 lattice, BGK collision, the default periodic boundary condition on all four edges, and
+rest-equilibrium initialisation.  The state carries only the populations
+``f``, the time ``t`` and the addon substates; :func:`~src.pipeline.step.observe`
+derives density, velocity, forces and pressure from it.
+
+``trajectory`` is the stacked history of every step, so its memory grows with
+``nt`` times the grid — a 48³ D3Q19 run over 6000 steps needs about 100 GB.
+For anything long use the streaming mode described in
+:ref:`quickstart-streaming`, or advance without keeping the history:
+
+.. code-block:: python
+
+    import jax
+    from src.pipeline.step import step
+
+    final_state = jax.lax.scan(lambda s, _: (step(setup, s), None), state, None, length=1000)[0]
 
 To start from a file instead, load it through an adapter:
 
@@ -98,7 +111,6 @@ TOML files are organised into sections that the adapter flattens onto
 
     [simulation_type]
     simulation_name = "test_multiphase"
-    type = "multiphase"          # → SimulationConfig.sim_type
     grid_shape = [128, 128]
     lattice_type = "D2Q9"
     tau = 0.99
@@ -110,14 +122,14 @@ TOML files are organised into sections that the adapter flattens onto
     radii = [0.2]
     dispersed = "liquid"
 
-    [multiphase]                 # required when type contains "multiphase"
+    [multiphase]                 # its presence makes the run multiphase
     kappa = 0.04
     rho_l = 1.0
     rho_v = 0.001
     interface_width = 5
     eos = "double-well"
 
-    [boundary_conditions]        # per face; omitted faces default to periodic
+    [boundary_conditions]        # per edge; an omitted edge is periodic (the default)
     left = "periodic"
     right = "periodic"
     top = "periodic"
@@ -131,38 +143,91 @@ TOML files are organised into sections that the adapter flattens onto
 The recognised sections are ``[simulation_type]``, ``[initialisation]``,
 ``[multiphase]``, ``[boundary_conditions]``, ``[obstacle]``, ``[wetting]``,
 ``[hysteresis]``, ``[chemical_step]``, ``[output]``, and any
-``[<name>_force]`` table matching a force field on the config
-(``[gravity_force]``, ``[gravity_masked_force]``, ``[electric_force]``).
-Unknown keys are collected into ``config.extra`` rather than rejected.
+``[<name>_force]`` table with a schema in ``config/forces.py``
+(``[gravity_force]``, ``[gravity_masked_force]``, ``[electric_force]``),
+which loads into ``config.forces``.  Unknown keys in ``[simulation_type]``
+are collected into ``config.extra`` rather than rejected.  A file written in
+the old layout, with ``type = ...`` in ``[simulation_type]``, still loads; see
+:doc:`adapters`.
 
-Choosing a simulation type
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Choosing the physics
+~~~~~~~~~~~~~~~~~~~~
 
-``type`` selects the step operator that drives each timestep:
+There is no simulation type.  Each section switches on what it describes,
+and they combine:
 
 .. list-table::
    :header-rows: 1
-   :widths: 40 60
+   :widths: 30 70
 
-   * - ``type``
-     - Adds on top of the previous row
-   * - ``single_phase``
-     - BGK/MRT collide–stream–boundary loop
-   * - ``multiphase``
-     - chemical potential, interparticle force
-   * - ``multiphase_wetting``
-     - fixed contact-angle wall condition
-   * - ``multiphase_hysteresis``
-     - per-step optimisation of the wetting parameters against an
-       advancing/receding contact-angle window
-   * - ``multiphase_hysteresis_chemical_step``
-     - per-side angle targets, chosen from the contact line's position
-       relative to a chemical step
+   * - Section
+     - Adds
+   * - (none)
+     - single-phase BGK/MRT collide–stream loop with boundary conditions
+   * - ``[multiphase]``
+     - chemical-potential multiphase simulation with the well-balanced LBM (WB-LBM) and a specified EOS. Set by ``eos``, ``kappa``, ``rho_l``, ``rho_v``, ``interface_width``.
+   * - ``[boundary_conditions]``
+     - a boundary condition per edge; the default boundary condition is periodic. Set by e.g. ``bottom = "bounce-back"``.
+   * - ``[obstacle]``
+     - a circular obstacle with a bounce-back boundary condition. Set by ``center_x``, ``center_y``, ``radius``.
+   * - ``[wetting]`` + a ``"wetting"`` edge
+     - wetting boundary condition with a fixed contact angle at that edge. Set by ``phi_left``, ``phi_right``, ``d_rho_left``, ``d_rho_right``.
+   * - ``[hysteresis]``
+     - wetting boundary condition with contact angle hysteresis on that edge. Set by ``ca_advancing``, ``ca_receding``.
+   * - ``[chemical_step]``
+     - an edge with two regions, each with its own wetting boundary condition, with or without contact angle hysteresis. Set by ``ca_advancing_pre_step``, ``ca_receding_pre_step``, ``ca_advancing_post_step``, ``ca_receding_post_step``; ``chemical_step_location`` separates the regions.
+   * - ``[<name>_force]``
+     - a body force (``gravity_force``, ``gravity_masked_force``, ``electric_force``; at most one gravity force). Set by e.g. ``force_g``, ``inclination_angle_deg``.
 
-Any type containing ``multiphase`` requires ``[multiphase]`` with ``eos``,
-``kappa``, ``rho_l``, ``rho_v``, and ``interface_width``.  Choosing
-``eos = "carnahan-starling"`` additionally requires ``a_eos``, ``b_eos``,
-``r_eos``, and ``t_eos``.
+Without ``[hysteresis]``, the pre-step region of a chemical step follows the ``[wetting]`` values and the post-step region takes the clamp limit toward the post-step contact angles. Every wetting section needs ``[multiphase]`` and a ``"wetting"`` edge.
+
+``[multiphase]`` needs ``eos``, ``kappa``, ``rho_l``, ``rho_v`` and
+``interface_width``; ``eos = "carnahan-starling"`` additionally needs
+``a_eos``, ``b_eos``, ``r_eos`` and ``t_eos``, and may omit ``rho_l``/``rho_v``:
+they are then the Maxwell coexistence pair of those four (omit them to sweep
+``t_eos``).  A 3D run (``lattice_type =
+"D3Q19"``) supports the bulk physics only: see :doc:`operators`.
+
+.. _terminology:
+
+Terminology
+~~~~~~~~~~~
+
+The documentation, the CLI and the error messages use one term for one thing:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Term
+     - Meaning
+   * - edge
+     - A side of the domain: ``bottom``, ``top``, ``left``, ``right``, and
+       ``front``/``back`` on a 3D lattice.
+   * - boundary condition
+     - What an edge has (``periodic``, ``bounce-back``, ``wetting``, ...).
+       The default boundary condition is ``periodic``.
+   * - wetting boundary condition
+     - A ``"wetting"`` edge with ``[wetting]``: a fixed contact angle.
+   * - contact angle hysteresis
+     - ``[hysteresis]``: the wetting boundary condition holds the contact angle
+       between the receding contact angle (``ca_receding``) and the advancing
+       contact angle (``ca_advancing``).
+   * - chemical step, chemical step location
+     - ``[chemical_step]``: the wetting edge is split at
+       ``chemical_step_location`` into two regions.
+   * - pre-step region, post-step region
+     - The two regions of a chemical step. The inclusion starts on the
+       pre-step region and moves toward the post-step region.
+   * - wetting band
+     - The ghost cells round a contact line that the wetting boundary
+       condition modifies.
+   * - inclusion
+     - The dispersed droplet or bubble.
+   * - body force
+     - A force from a ``[<name>_force]`` section.
+   * - WB-LBM
+     - The well-balanced lattice Boltzmann method that the multiphase model uses.
 
 What a run produces
 -------------------
@@ -230,25 +295,18 @@ In this mode ``run()`` returns ``(final_state, None)`` — the second element is
 Parameter sweeps
 ----------------
 
-Any sweep-eligible field given a **list** value expands into a Cartesian
-product of runs.  This works for top-level fields and for keys nested inside
-``[wetting]``, ``[hysteresis]``, ``[chemical_step]``, and the force tables:
+A sweep is staged, not run: ``tud-lbm sweep stage`` writes one completed TOML
+per combination of its ``--set`` axes (the Cartesian product).  The paths use
+the ``--override`` syntax::
 
-.. code-block:: toml
+    uv run tud-lbm sweep stage cfg.toml --set 'tau=[0.6, 0.7, 0.8]' \
+        --set 'gravity_force.force_g=[1e-6, 5e-6]' --out configs/var_tau_g/   # six files
 
-    [simulation_type]
-    type = "single_phase"
-    tau = [0.6, 0.7, 0.8]     # three runs
-
-    [gravity_force]
-    force_g = [1e-6, 5e-6]    # × two → six runs total
-
-Run them in parallel and build cross-run comparison plots afterwards::
-
-    uv run tud-lbm run examples/config_parallel.toml --max-workers 4 --compare
-
-The same expansion is available from Python through
-:func:`~src.config.array_expansion.expand_config`.
+Each file is ``<simulation_name>.toml``, validated and with every default filled
+in.  Name the runs with ``--name 'var_{tau}_{force_g}'`` (fields are the last
+key of each axis).  Run the files one by one with ``tud-lbm run``, or pass the
+directory to ``scripts/db_pipeline.sh``, then compare them with
+``tud-lbm compare``.  A list value in a config is an error, not a sweep.
 
 Looking at the results
 ----------------------

@@ -13,6 +13,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
+from src.config.multiphase import multiphase_params
 from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import SNAPSHOT_GLOB
 from src.simulation_io.analysis.droplet_metrics._scales import MetricScales
@@ -64,6 +65,9 @@ CSV_COLUMNS: tuple[str, ...] = (
     "sigma_lg",
     "sigma_lg_source",
     "Ca_analytical",
+    "We",
+    "L",
+    "L_over_Omega",
 )
 
 
@@ -197,6 +201,28 @@ class DropletSeries:
         """Reynolds number based on the initial droplet diameter."""
         return (self.avg_u_x * (2.0 * self.scales.r_zero)) / self.scales.nu
 
+    @cached_property
+    def we(self) -> np.ndarray:
+        """Weber number ``rho_l * u^2 * 2R_0 / sigma``, on the length and velocity of :attr:`re`.
+
+        Built on the liquid density and the primary sigma; all zeros when no
+        sigma is available, as for :attr:`ca`.
+        """
+        sigma = self.scales.sigma_primary
+        if not sigma:
+            return np.zeros_like(self.avg_u_x)
+        return (self.scales.rho_l * self.avg_u_x**2 * (2.0 * self.scales.r_zero)) / sigma
+
+    @cached_property
+    def contact_length(self) -> np.ndarray:
+        """Wetted length ``|cll_right - cll_left|`` in lattice units."""
+        return np.abs(self.cll_right - self.cll_left)
+
+    @cached_property
+    def contact_length_norm(self) -> np.ndarray:
+        """:attr:`contact_length` over the initial droplet area ``Omega_D``."""
+        return self.contact_length / self.scales.omega
+
     def to_dataframe(self) -> pd.DataFrame:
         """Serialise to the ``simulation_data.csv`` column layout.
 
@@ -233,6 +259,9 @@ class DropletSeries:
                 "sigma_lg": self.scales.sigma_primary,
                 "sigma_lg_source": self.scales.sigma_source,
                 "Ca_analytical": self.ca_analytical,
+                "We": self.we,
+                "L": self.contact_length,
+                "L_over_Omega": self.contact_length_norm,
             },
             columns=list(CSV_COLUMNS),
         )
@@ -299,7 +328,7 @@ def compute_droplet_series(
 
     Returns ``None`` on a capability failure — no parseable snapshots, or a
     config without the multiphase parameters needed to define an interface.
-    This function has no opinion about ``sim_type``; gating which runs get
+    This function has no opinion about the run's sections; gating which runs get
     analysed is the caller's decision.
     """
     scales = resolve_scales(config)
@@ -349,20 +378,17 @@ def _config_fingerprint(config: SimulationConfig) -> tuple[object, ...]:
     Anything absent here provably cannot affect the result, so including more
     would only cause spurious cache misses.
     """
-    chem = config.chemical_step_config
+    chem = config.chemical_step
+    params = multiphase_params(config)
     step_location = chem.get("chemical_step_location") if isinstance(chem, dict) else None
     # Via the same resolver the scales use, so a `[gravity_masked_force]` run's
-    # angle reaches the key. Reading `config.gravity_force` alone left every
+    # angle reaches the key. Reading `[gravity_force]` alone left every
     # masked-force run fingerprinted at None, colliding runs that differ only
     # in inclination.
     incl = inclination_angle_deg(config)
     return (
-        config.sim_type,
-        config.rho_l,
-        config.rho_v,
+        params,
         config.tau,
-        config.kappa,
-        config.interface_width,
         config.save_interval,
         tuple(config.grid_shape),
         config.init_dir,

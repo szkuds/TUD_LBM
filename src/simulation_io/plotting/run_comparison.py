@@ -19,7 +19,9 @@ from src.simulation_io.analysis.run_labels import resolve_label_keys
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 from src.simulation_io.plotting.figure_config import LABEL_CA
 from src.simulation_io.plotting.figure_config import LABEL_IT_NORM
+from src.simulation_io.plotting.figure_config import LABEL_L_OMEGA
 from src.simulation_io.plotting.figure_config import LABEL_RE
+from src.simulation_io.plotting.figure_config import LABEL_WE
 from src.simulation_io.plotting.figure_config import LABEL_X_AVG_NORM
 
 if TYPE_CHECKING:
@@ -34,7 +36,6 @@ _DIR_SPLIT_PARTS = 2
 class _PlotConfig(TypedDict, total=False):
     filename: str
     x: str
-    x_pair: tuple[str, str]
     y: str
     y_pair: tuple[str, str]
     pair_labels: tuple[str, str]
@@ -104,14 +105,6 @@ _COMPARISON_PLOT_CONFIGS: list[_PlotConfig] = [
         "ylabel": r"$\theta$ (degrees)",
     },
     {
-        "filename": "09_contact_angle_vs_Ca_cll.png",
-        "x_pair": ("Ca_cll_left", "Ca_cll_right"),
-        "y_pair": ("ca_left", "ca_right"),
-        "pair_labels": ("Trailing", "Leading"),
-        "xlabel": r"$\mathrm{Ca}_{\mathrm{CL}}$ [−]",
-        "ylabel": r"$\theta$ (degrees)",
-    },
-    {
         "filename": "10_Re_vs_iteration.png",
         "x": "normalised_iteration",
         "y": "Re",
@@ -124,6 +117,34 @@ _COMPARISON_PLOT_CONFIGS: list[_PlotConfig] = [
         "y": "Re",
         "xlabel": LABEL_X_AVG_NORM,
         "ylabel": LABEL_RE,
+    },
+    {
+        "filename": "12_We_vs_iteration.png",
+        "x": "normalised_iteration",
+        "y": "We",
+        "xlabel": LABEL_IT_NORM,
+        "ylabel": LABEL_WE,
+    },
+    {
+        "filename": "13_We_vs_x_avg.png",
+        "x": "avg_x_location_norm",
+        "y": "We",
+        "xlabel": LABEL_X_AVG_NORM,
+        "ylabel": LABEL_WE,
+    },
+    {
+        "filename": "14_contact_length_vs_iteration.png",
+        "x": "normalised_iteration",
+        "y": "L_over_Omega",
+        "xlabel": LABEL_IT_NORM,
+        "ylabel": LABEL_L_OMEGA,
+    },
+    {
+        "filename": "15_contact_length_vs_x_avg.png",
+        "x": "avg_x_location_norm",
+        "y": "L_over_Omega",
+        "xlabel": LABEL_X_AVG_NORM,
+        "ylabel": LABEL_L_OMEGA,
     },
 ]
 
@@ -169,12 +190,11 @@ def _load_comparison_entries(parent_dir: Path, label_keys: Sequence[str] | None 
         if config is None:
             continue
 
-        adv_ca = config.wetting_config.get("advancing_ca", 0) if config.wetting_config else 0
         entries.append(
             {
                 "name": config.simulation_name or _clean_dir_label(run_dir.name),
                 "numbers": compute_dimensionless_numbers(config),
-                "sort_key": adv_ca,
+                "sort_key": 0,
                 "data": pd.read_csv(csv_path),
             }
         )
@@ -242,9 +262,8 @@ def _plot_comparison_entry(
 
     y1, y2 = pc["y_pair"]
     l1, l2 = pc["pair_labels"]
-    x1_col, x2_col = pc.get("x_pair", (x_col, x_col))
-    _scatter_series(ax, df, x1_col, y1, color=color, marker=marker, alpha=1.0, label=f"{label} ({l1})")
-    _scatter_series(ax, df, x2_col, y2, color=color, marker=marker, alpha=0.5, label=f"{label} ({l2})")
+    _scatter_series(ax, df, x_col, y1, color=color, marker=marker, alpha=1.0, label=f"{label} ({l1})")
+    _scatter_series(ax, df, x_col, y2, color=color, marker=marker, alpha=0.5, label=f"{label} ({l2})")
 
 
 def compare_runs(parent_dir: str | Path, label_keys: Sequence[str] | None = None) -> None:
@@ -281,7 +300,7 @@ def compare_runs(parent_dir: str | Path, label_keys: Sequence[str] | None = None
         for i, entry in enumerate(entries):
             color = str(colors[i % len(colors)])
             marker = _COMPARISON_MARKERS[i % len(_COMPARISON_MARKERS)]
-            x_col = pc["x_pair"][0] if "x_pair" in pc else pc["x"]
+            x_col = pc["x"]
             if x_col not in entry["data"].columns:
                 continue
             _plot_comparison_entry(ax, entry["data"], pc, x_col, color, marker, entry["label"])

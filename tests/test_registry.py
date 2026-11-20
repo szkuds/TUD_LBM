@@ -166,23 +166,25 @@ class TestRegistryPopulated:
         expected = {
             "standard",
             "multiphase_bubbles",
-            "wetting",
-            "wetting_chem_step",
             "init_from_file",
         }
         assert names >= expected
 
-    def test_wetting_registered(self):
-        """The ``wetting`` kind holds the hysteresis updates and nothing else."""
-        assert get_operator_names("wetting") == {"hysteresis", "chemical_step_hysteresis"}
+    def test_addons_registered(self):
+        """Each addon module registers its builder under the ``addon`` kind, by its ``State.ext`` key."""
+        import src.addons
+
+        assert get_operator_names("addon") == {"electric", "wetting"}
+
+    def test_the_step_and_plugin_kinds_are_gone(self):
+        """The addon slots replaced the step variants, the hysteresis kind and the extra-state plugins."""
+        import src.addons
+
+        assert get_operator_category().isdisjoint({"update_timestep", "wetting", "extra_state"})
 
     def test_lattice_registered(self):
         names = get_operator_names("lattice")
         assert "D2Q9" in names
-
-    def test_extra_state_registered(self):
-        names = get_operator_names("extra_state")
-        assert names >= {"electric", "wetting"}
 
 
 # =====================================================================

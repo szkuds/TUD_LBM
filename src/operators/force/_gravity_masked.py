@@ -114,6 +114,7 @@ from typing import Any
 from typing import NamedTuple
 from typing import Self
 import jax.numpy as jnp
+from src.config.multiphase import phase_references
 from src.operators.force._gravity import _build_gravity_template
 from src.registry import force_model
 
@@ -146,13 +147,7 @@ def _ramp_fraction(t: jnp.ndarray, force: GravityForceModule) -> jnp.ndarray | f
 # ══════════════════════════════════════════════════════════════════════
 
 
-@force_model(
-    name="gravity_masked_force",
-    required=("force_g",),
-    defaults={"inclination_angle_deg": 0.0, "ramp_start_t": 0.0},
-    optional=("ramp_steps",),
-    positive=("ramp_steps",),
-)
+@force_model(name="gravity_masked_force")
 class GravityForceModule(NamedTuple):
     """Buoyancy-referenced gravity, bound to its template and band (:class:`ForceOperator`).
 
@@ -192,7 +187,7 @@ class GravityForceModule(NamedTuple):
                 (defaulted by the config), and ``ramp_steps`` when a switch-on
                 ramp is configured (the config has checked it is positive).
             grid_shape: Spatial dimensions ``(nx, ny, nz, ...)``.
-            config: Simulation configuration; its ``phase_references`` band
+            config: Simulation configuration; its ``phase_references`` (:mod:`src.config.multiphase`) band
                 the phase indicator.
             lattice: The simulation lattice (for the velocity dimension).
 
@@ -204,7 +199,7 @@ class GravityForceModule(NamedTuple):
         template = _build_gravity_template(params, grid_shape, lattice)
 
         band_lo = band_hi = drho = None
-        if (refs := config.phase_references) is not None:
+        if (refs := phase_references(config)) is not None:
             rho_lo, rho_hi = refs
             drho = rho_hi - rho_lo
             band_lo = rho_lo + _PHASE_BAND * drho

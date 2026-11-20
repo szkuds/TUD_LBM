@@ -17,6 +17,7 @@ from src.operators.collision._mrt import SHEAR_MOMENTS
 from src.operators.collision._mrt import M
 from src.operators.collision._mrt import collide_mrt
 from src.operators.collision._mrt import couple_shear_to_tau
+from tests.support.config import merge_overrides
 
 _Q = len(_FREE_RATE_DEFAULTS)
 #: A k_diag whose shear entries disagree with tau, as the measured config did.
@@ -25,14 +26,8 @@ _TAU = 0.99
 
 
 def _config(**overrides: object):
-    base: dict[str, object] = {
-        "sim_type": "single_phase",
-        "grid_shape": (16, 16),
-        "tau": _TAU,
-        "collision_scheme": "mrt",
-        "k_diag": _DECOUPLED,
-    }
-    base.update(overrides)
+    base: dict[str, object] = {"grid_shape": (16, 16), "tau": _TAU, "collision_scheme": "mrt", "k_diag": _DECOUPLED}
+    merge_overrides(base, overrides)
     return DictAdapter().load(base)
 
 
@@ -95,26 +90,6 @@ def test_bgk_is_untouched():
     config = _config(collision_scheme="bgk", k_diag=None)
 
     assert config.k_diag is None
-
-
-def test_sweeps_couple_each_expanded_config():
-    """``tau`` is sweep-eligible, so the coupling must follow each expanded value."""
-    from src.config.array_expansion import expand_config
-
-    configs, _ = expand_config(
-        {
-            "sim_type": "single_phase",
-            "grid_shape": (16, 16),
-            "tau": [0.8, 1.2],
-            "collision_scheme": "mrt",
-            "k_diag": _DECOUPLED,
-        }
-    )
-
-    assert len(configs) == 2
-    for config in configs:
-        assert config.k_diag is not None
-        assert config.k_diag[SHEAR_MOMENTS[0]] == pytest.approx(1.0 / config.tau)
 
 
 def test_only_the_shear_moments_relax_and_they_relax_at_one_over_tau():

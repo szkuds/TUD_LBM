@@ -27,8 +27,6 @@ def from_toml(path: str) -> SimulationConfig:
     Returns:
         A :class:`SimulationConfig`.
     """
-    # Lazy import to avoid pulling in tomllib when unused\n    from src.config.adapter_toml import TomlAdapter
-
     return TomlAdapter().load(path)
 
 

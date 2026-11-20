@@ -1,4 +1,4 @@
-"""Multiphase LBM wetting/hysteresis simulation example_for_test.
+"""Multiphase droplet crossing a chemical step on a wetting edge with contact angle hysteresis.
 
 Uses the streaming I/O path to write snapshots to disk during the
 ``jax.lax.scan`` loop via ``jax.debug.callback``, then plots them
@@ -35,6 +35,7 @@ def wetting_hysteresis_simulation():
         base_dir=config.results_dir,
         config=config,
         simulation_name=config.simulation_name,
+        output_format=config.output_format,
     )
 
     # Stream snapshots to disk during the lax.scan loop.
@@ -44,6 +45,7 @@ def wetting_hysteresis_simulation():
         nt=config.nt,
         save_interval=config.save_interval,
         io_handler=io,
+        skip_interval=config.skip_interval,
         save_fields=tuple(config.save_fields) if config.save_fields else None,
     )
 

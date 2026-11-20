@@ -12,6 +12,7 @@ from src.registry import macroscopic_operator
 
 if TYPE_CHECKING:
     from src.lattice.lattice import Lattice
+    from src.protocols import DifferentialOperator
 
 #: Lattice speed of sound squared, shared by D2Q9 and D3Q19.
 CS2 = 1.0 / 3.0
@@ -22,7 +23,10 @@ def compute_macroscopic(
     f: jnp.ndarray,
     lattice: Lattice,
     force: jnp.ndarray | None = None,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray]:
+    *,
+    gradient_standard: DifferentialOperator | None = None,  # noqa: ARG001 - MacroscopicOperator shape
+    laplacian_density: DifferentialOperator | None = None,  # noqa: ARG001 - MacroscopicOperator shape
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray | None, jnp.ndarray, None]:
     """Compute density, velocity and pressure from population distributions.
 
     Args:
@@ -31,10 +35,14 @@ def compute_macroscopic(
         force: Optional external force field, shape ``(nx, ny, nz, 1, 2)``.
             When provided the velocity is corrected:
             ``u_eq = u + force / (2 rho)``.
+        gradient_standard: Unused; a single phase has no chemical potential.
+        laplacian_density: Unused; a single phase has no chemical potential.
 
     Returns:
-        ``(rho, u, force, pressure)``; *force* is echoed back (``None`` when
-        not given) so the return shape matches the multiphase operator.
+        ``(rho, u, force, pressure, lattice_pressure)``; *force* is echoed back
+        (``None`` when not given) so the return shape matches the multiphase
+        operator, and ``lattice_pressure`` is ``None``: a single-phase equilibrium
+        carries its own.
 
         * ``rho``: shape ``(nx, ny, nz, 1, 1)``
         * ``u``: shape ``(nx, ny, nz, 1, 2)``; force-corrected when *force* is given
@@ -51,4 +59,4 @@ def compute_macroscopic(
     if force is not None:
         u: jnp.ndarray = u + force / (2.0 * rho)
 
-    return rho, u, force, CS2 * rho
+    return rho, u, force, CS2 * rho, None

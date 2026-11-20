@@ -17,6 +17,7 @@ from src import SimulationConfig
 from src import build_setup
 from src import run
 from src.pipeline.runner import init_state
+from src.pipeline.step import observe
 from src.simulation_io.readers import DictAdapter
 
 
@@ -31,8 +32,8 @@ class TestMinimalSimulation:
         final_state, _ = run(setup, state, nt=10)
 
         assert final_state.t == 10
-        assert final_state.rho.shape == (32, 32, 1, 1, 1)
-        assert final_state.u.shape == (32, 32, 1, 1, 2)
+        assert observe(setup, final_state).rho.shape == (32, 32, 1, 1, 1)
+        assert observe(setup, final_state).u.shape == (32, 32, 1, 1, 2)
         assert not np.isnan(final_state.f).any()
 
     def test_minimal_with_trajectory(self):
@@ -59,7 +60,7 @@ class TestConfigCreation:
         assert config.nt == 1000
         assert config.lattice_type == "D2Q9"
         assert config.collision_scheme == "bgk"
-        assert config.sim_type == "single_phase"
+        assert config.multiphase is None
 
     def test_custom_grid_shapes(self):
         """Test various grid shapes."""
@@ -69,7 +70,7 @@ class TestConfigCreation:
             state = init_state(setup)
             final_state, _ = run(setup, state, nt=5)
 
-            assert final_state.rho.shape == (*shape, 1, 1, 1)
+            assert observe(setup, final_state).rho.shape == (*shape, 1, 1, 1)
 
     def test_tau_must_be_greater_than_half(self):
         """Verify tau validation."""
@@ -153,7 +154,7 @@ class TestParameterSweep:
                 {
                     "tau": tau,
                     "final_t": final_state.t,
-                    "rho_mean": float(final_state.rho.mean()),
+                    "rho_mean": float(observe(setup, final_state).rho.mean()),
                 }
             )
 
@@ -174,7 +175,7 @@ class TestParameterSweep:
             results.append(
                 {
                     "shape": shape,
-                    "rho_shape": final_state.rho.shape,
+                    "rho_shape": observe(setup, final_state).rho.shape,
                 }
             )
 
@@ -187,13 +188,15 @@ class TestForceConfiguration:
     def test_gravity_force(self):
         """Verify gravity force configuration and execution."""
         config = SimulationConfig(
+            forces={
+                "gravity_force": {
+                    "force_g": 1e-5,
+                    "inclination_angle_deg": 45.0,
+                }
+            },
             grid_shape=(16, 16),
             tau=0.8,
             nt=5,
-            gravity_force={
-                "force_g": 1e-5,
-                "inclination_angle_deg": 45.0,
-            },
         )
 
         setup = build_setup(config)
@@ -205,12 +208,7 @@ class TestForceConfiguration:
 
     def test_no_forces(self):
         """Verify simulation without forces (default)."""
-        config = SimulationConfig(
-            grid_shape=(16, 16),
-            tau=0.8,
-            nt=5,
-            gravity_force=None,
-        )
+        config = SimulationConfig(grid_shape=(16, 16), tau=0.8, nt=5)
 
         setup = build_setup(config)
         state = init_state(setup)
@@ -225,11 +223,10 @@ class TestForceConfiguration:
             match=r"Only one gravity force can be applied, got gravity_force, gravity_masked_force",
         ):
             SimulationConfig(
+                forces={"gravity_force": {"force_g": 1e-6}, "gravity_masked_force": {"force_g": 1e-6}},
                 grid_shape=(16, 16),
                 tau=0.8,
                 nt=5,
-                gravity_force={"force_g": 1e-6},
-                gravity_masked_force={"force_g": 1e-6},
             )
 
 
@@ -256,8 +253,8 @@ class TestOutputAdapters:
             numpy_writer.save_data_step(
                 iteration=0,
                 data={
-                    "rho_t_plus1": final_state.rho,
-                    "u": final_state.u,
+                    "rho_t_plus1": np.asarray(observe(setup, final_state).rho),
+                    "u": np.asarray(observe(setup, final_state).u),
                 },
             )
 
@@ -285,8 +282,8 @@ class TestOutputAdapters:
             vtk_writer.save_data_step(
                 iteration=0,
                 data={
-                    "rho_t_plus1": final_state.rho,
-                    "u": final_state.u,
+                    "rho_t_plus1": np.asarray(observe(setup, final_state).rho),
+                    "u": np.asarray(observe(setup, final_state).u),
                 },
             )
 
@@ -306,11 +303,11 @@ class TestStateConsistency:
         final_state, _ = run(setup, state, nt=10)
 
         # No NaNs
-        assert not np.isnan(final_state.rho).any()
-        assert not np.isnan(final_state.u).any()
+        assert not np.isnan(observe(setup, final_state).rho).any()
+        assert not np.isnan(observe(setup, final_state).u).any()
 
         # Density should be positive
-        assert (final_state.rho > 0).all()
+        assert (observe(setup, final_state).rho > 0).all()
 
     def test_velocity_bounded(self):
         """Verify velocity stays within physical bounds."""
@@ -320,7 +317,7 @@ class TestStateConsistency:
         final_state, _ = run(setup, state, nt=10)
 
         # Mach number should be small (subsonic flow)
-        u_mag = np.sqrt(final_state.u[..., 0] ** 2 + final_state.u[..., 1] ** 2)
+        u_mag = np.sqrt(observe(setup, final_state).u[..., 0] ** 2 + observe(setup, final_state).u[..., 1] ** 2)
         assert (u_mag < 0.3).all()  # Typical LBM limit
 
     def test_timestep_increments(self):
@@ -344,7 +341,7 @@ class TestEdgeCases:
         state = init_state(setup)
         final_state, _ = run(setup, state, nt=2)
 
-        assert final_state.rho.shape == (4, 4, 1, 1, 1)
+        assert observe(setup, final_state).rho.shape == (4, 4, 1, 1, 1)
 
     def test_very_large_tau(self):
         """Verify large tau values work."""

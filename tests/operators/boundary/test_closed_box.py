@@ -13,11 +13,17 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from src.config.boundary_edges import build_boundary_edges
-from src.config.boundary_edges import periodic_axes
+from src.config import SimulationConfig
+from src.config.boundary import boundary_edges
+from src.config.boundary import periodic_axes
 from src.lattice.lattice import build_lattice
 from src.operators.boundary import build_bc
 from src.operators.streaming import build_streaming_fn
+
+
+def _edges_of(section):
+    return boundary_edges(SimulationConfig(boundary_conditions=section))
+
 
 NX, NY, NZ = 8, 6, 1
 
@@ -31,9 +37,9 @@ def lattice():
     return build_lattice("D2Q9")
 
 
-def _total_mass_after(bc_config, lattice, steps=25):
-    stream = build_streaming_fn(periodic_axes(bc_config))
-    bc_fn = build_bc(build_boundary_edges(bc_config), lattice)
+def _total_mass_after(boundary_conditions, lattice, steps=25):
+    stream = build_streaming_fn(periodic_axes(SimulationConfig(boundary_conditions=boundary_conditions)))
+    bc_fn = build_bc(_edges_of(boundary_conditions), lattice)
 
     f = jax.random.uniform(jax.random.PRNGKey(0), (NX, NY, NZ, lattice.q, 1))
     masses = [float(jnp.sum(f))]

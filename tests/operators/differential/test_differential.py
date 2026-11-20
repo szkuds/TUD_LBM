@@ -1,11 +1,10 @@
-"""Tests for operators/differential — compute_gradient, make_wetting_gradient, compute_laplacian.
+"""Tests for operators/differential — build_differential.
 
 Verifies:
 - Shape correctness on small grids
 - Mathematical correctness (linear field → constant gradient; quadratic → nonzero Laplacian)
 - JIT-compatibility
-- Wetting closure: shape and ghost-cell effect
-- Registry entries
+- Ghost fill: shape and ghost-cell effect, read from ext
 """
 
 from __future__ import annotations
@@ -43,6 +42,20 @@ def _wetting(phi_l, phi_r, d_rho_l, d_rho_r):
         phi_left=jnp.asarray(phi_l),
         phi_right=jnp.asarray(phi_r),
     )
+
+
+def _gradient(grid, lattice, pad_mode):
+    """The plain gradient stencil over *pad_mode*."""
+    from src.operators.differential import build_differential
+
+    return build_differential(lattice, tuple(pad_mode))[0](grid, {})
+
+
+def _laplacian(grid, lattice, pad_mode):
+    """The plain Laplacian stencil over *pad_mode*."""
+    from src.operators.differential import build_differential
+
+    return build_differential(lattice, tuple(pad_mode))[1](grid, {})
 
 
 def _droplet_on_bottom_wall():
@@ -83,23 +96,19 @@ def linear_x_field():
 
 
 # =====================================================================
-# compute_gradient
+# gradient
 # =====================================================================
 
 
-class TestComputeGradient:
-    """``compute_gradient`` output shape and basic maths."""
+class TestGradient:
+    """The plain gradient: output shape and basic maths."""
 
     def test_output_shape(self, lattice, const_field, periodic_pad):
-        from src.operators.differential._gradient import compute_gradient
-
-        out = compute_gradient(const_field, lattice.w, lattice.c, periodic_pad)
+        out = _gradient(const_field, lattice, periodic_pad)
         assert out.shape == (NX, NY, NZ, 1, 2)
 
     def test_constant_field_zero_gradient(self, lattice, const_field, periodic_pad):
-        from src.operators.differential._gradient import compute_gradient
-
-        out = compute_gradient(const_field, lattice.w, lattice.c, periodic_pad)
+        out = _gradient(const_field, lattice, periodic_pad)
         np.testing.assert_allclose(np.array(out), 0.0, atol=1e-5)
 
     def test_x_gradient_nonzero_for_x_varying_field(
@@ -108,89 +117,69 @@ class TestComputeGradient:
         linear_x_field,
         periodic_pad,
     ):
-        from src.operators.differential._gradient import compute_gradient
-
-        out = compute_gradient(linear_x_field, lattice.w, lattice.c, periodic_pad)
+        out = _gradient(linear_x_field, lattice, periodic_pad)
         # gx should be nonzero almost everywhere (periodic wrap creates edge artefacts)
         gx = np.array(out[:, :, 0, 0])
         # Interior columns should have positive gx
         assert float(np.mean(np.abs(gx[1:-1, :]))) > 0.1
 
     def test_jittable(self, lattice, const_field, periodic_pad):
-        from src.operators.differential._gradient import compute_gradient
+        from src.operators.differential import build_differential
 
-        jitted = jax.jit(compute_gradient, static_argnames=("pad_mode",))
-        out = jitted(const_field, lattice.w, lattice.c, pad_mode=tuple(periodic_pad))
+        gradient, _ = build_differential(lattice, tuple(periodic_pad))
+        out = jax.jit(gradient)(const_field, {})
         assert out.shape == (NX, NY, NZ, 1, 2)
 
-    def test_accessor_matches_raw_stencil_and_rejects_wetting(self, lattice, linear_x_field):
-        """``build_gradient_fn`` binds the lattice and pad modes; it has no wetting wall."""
-        from src.operators.differential import build_gradient_fn
-        from src.operators.differential._gradient import compute_gradient
+    def test_ignores_ext_without_a_ghost_fill(self, lattice, linear_x_field):
+        """Without a ghost fill, ``build_differential``'s gradient does not read *ext*."""
+        from src.operators.differential import build_differential
 
-        op = build_gradient_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))
-        expected = compute_gradient(linear_x_field, lattice.w, lattice.c, ("wrap", "wrap", "wrap", "wrap"))
-        np.testing.assert_array_equal(np.asarray(op(linear_x_field)), np.asarray(expected))
-        wetting = _wetting(PHI, PHI, D_RHO, D_RHO)
-        with pytest.raises(TypeError, match="does not accept wetting parameters"):
-            op(linear_x_field, wetting)
+        op, _ = build_differential(lattice, ("wrap", "wrap", "wrap", "wrap"))
+        expected = op(linear_x_field, {})
+        wall = {"wetting": _wetting(1.3, 1.3, D_RHO, D_RHO)}
+        np.testing.assert_array_equal(np.asarray(op(linear_x_field, wall)), np.asarray(expected))
 
 
 # =====================================================================
-# compute_laplacian
+# Laplacian
 # =====================================================================
 
 
-class TestComputeLaplacian:
-    """``compute_laplacian`` output shape and basic maths."""
+class TestLaplacian:
+    """The plain Laplacian: output shape and basic maths."""
 
     def test_output_shape(self, lattice, const_field, periodic_pad):
-        from src.operators.differential._laplacian import compute_laplacian
-
-        out = compute_laplacian(const_field, lattice.w, periodic_pad)
+        out = _laplacian(const_field, lattice, periodic_pad)
         assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_constant_field_zero_laplacian(self, lattice, const_field, periodic_pad):
-        from src.operators.differential._laplacian import compute_laplacian
-
-        out = compute_laplacian(const_field, lattice.w, periodic_pad)
+        out = _laplacian(const_field, lattice, periodic_pad)
         np.testing.assert_allclose(np.array(out), 0.0, atol=1e-5)
-
-    def test_2d_input_accepted(self, lattice, periodic_pad):
-        from src.operators.differential._laplacian import compute_laplacian
-
-        out = compute_laplacian(jnp.ones((NX, NY, NZ, 1, 1)), lattice.w, periodic_pad)
-        assert out.shape == (NX, NY, NZ, 1, 1)
 
     def test_quadratic_field_nonzero_laplacian(self, lattice, periodic_pad):
         """f(i,j) = i² — Laplacian should be ~2 in the interior."""
-        from src.operators.differential._laplacian import compute_laplacian
-
         xs = jnp.arange(NX, dtype=jnp.float64)
         field = (xs**2)[:, None, None, None, None] * jnp.ones((NX, NY, NZ, 1, 1))
-        out = compute_laplacian(field, lattice.w, periodic_pad)
+        out = _laplacian(field, lattice, periodic_pad)
         # Interior (avoid periodic wrap artefacts at boundaries)
         lap_interior = np.array(out[2:-2, 2:-2, 0, 0])
         assert float(np.mean(np.abs(lap_interior))) > 0.5
 
     def test_jittable(self, lattice, const_field, periodic_pad):
-        from src.operators.differential._laplacian import compute_laplacian
+        from src.operators.differential import build_differential
 
-        jitted = jax.jit(compute_laplacian, static_argnames=("pad_mode",))
-        out = jitted(const_field, lattice.w, pad_mode=tuple(periodic_pad))
+        _, laplacian = build_differential(lattice, tuple(periodic_pad))
+        out = jax.jit(laplacian)(const_field, {})
         assert out.shape == (NX, NY, NZ, 1, 1)
 
-    def test_accessor_matches_raw_stencil_and_rejects_wetting(self, lattice, linear_x_field):
-        """``build_laplacian_fn`` binds the lattice and pad modes; it has no wetting wall."""
-        from src.operators.differential import build_laplacian_fn
-        from src.operators.differential._laplacian import compute_laplacian
+    def test_ignores_ext_without_a_ghost_fill(self, lattice, linear_x_field):
+        """Without a ghost fill, ``build_differential``'s Laplacian does not read *ext*."""
+        from src.operators.differential import build_differential
 
-        op = build_laplacian_fn(lattice, ("wrap", "wrap", "wrap", "wrap"))
-        expected = compute_laplacian(linear_x_field, lattice.w, ("wrap", "wrap", "wrap", "wrap"))
-        np.testing.assert_array_equal(np.asarray(op(linear_x_field)), np.asarray(expected))
-        wetting = _wetting(PHI, PHI, D_RHO, D_RHO)
-        with pytest.raises(TypeError, match="does not accept wetting parameters"):
-            op(linear_x_field, wetting)
+        _, op = build_differential(lattice, ("wrap", "wrap", "wrap", "wrap"))
+        expected = op(linear_x_field, {})
+        wall = {"wetting": _wetting(1.3, 1.3, D_RHO, D_RHO)}
+        np.testing.assert_array_equal(np.asarray(op(linear_x_field, wall)), np.asarray(expected))
 
 
 # =====================================================================
@@ -198,59 +187,48 @@ class TestComputeLaplacian:
 # =====================================================================
 
 
-class TestBuildWettingGradient:
-    """``build_wetting_gradient`` returns a :class:`DifferentialOperator` with correct behaviour."""
-
-    @pytest.fixture
-    def wetting_params(self):
-        return _wetting(PHI, PHI, D_RHO, D_RHO)
+class TestGhostFill:
+    """``build_differential(..., ghost_fill)`` rewrites the padded ghost layer from ``ext`` before the stencil."""
 
     @staticmethod
-    def _build(lattice, pad, default, bc_config=None):
-        from src.operators.differential._gradient_wetting import build_wetting_gradient
+    def _wall_fill(boundary_conditions):
+        """The wetting wall as a ghost fill, reading its four parameters from ``ext["wetting"]``."""
+        apply = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, boundary_conditions=boundary_conditions)
 
-        return build_wetting_gradient(lattice.w, lattice.c, pad, bc_config, rho_l=RHO_L, rho_v=RHO_V, default=default)
+        def fill(padded, ext):
+            wall = ext["wetting"]
+            return apply(padded, wall.phi_left, wall.phi_right, wall.d_rho_left, wall.d_rho_right)
 
-    def test_output_shape(self, lattice, periodic_pad, wetting_params, const_field):
-        fn = self._build(lattice, periodic_pad, wetting_params)
-        assert fn(const_field, wetting_params).shape == (NX, NY, NZ, 1, 2)
+        return fill
 
-    def test_differs_from_plain_gradient_on_nonuniform_field(self, lattice, wetting_params):
-        """Wetting correction changes the gradient when a droplet interface meets the wall."""
-        from src.operators.differential._gradient import compute_gradient
+    def test_output_shape(self, lattice, periodic_pad, const_field):
+        from src.operators.differential import build_differential
 
-        rho = _droplet_on_bottom_wall()
-        plain = compute_gradient(rho, lattice.w, lattice.c, _WETTING_PAD)
-        wetting_fn = self._build(lattice, _WETTING_PAD, wetting_params, _WETTING_BC)
+        gradient, laplacian = build_differential(lattice, periodic_pad, self._wall_fill(None))
+        ext = {"wetting": _wetting(PHI, PHI, D_RHO, D_RHO)}
+        assert gradient(const_field, ext).shape == (NX, NY, NZ, 1, 2)
+        assert laplacian(const_field, ext).shape == (NX, NY, NZ, 1, 1)
 
-        assert not jnp.allclose(plain, wetting_fn(rho, wetting_params), atol=1e-9)
-
-    def test_without_wetting_uses_build_time_default(self, lattice):
-        """``op(grid)`` applies the default; an explicit argument overrides it."""
-        rho = _droplet_on_bottom_wall()
-        default = _wetting(1.3, 1.3, 0.0, 0.0)
-        fn = self._build(lattice, _WETTING_PAD, default, _WETTING_BC)
-
-        np.testing.assert_array_equal(np.asarray(fn(rho)), np.asarray(fn(rho, default)))
-        neutral = fn(rho, _wetting(PHI, PHI, D_RHO, D_RHO))
-        assert not jnp.allclose(fn(rho), neutral, atol=1e-9)
-
-
-class TestWithDefaultWetting:
-    """``with_default_wetting`` (hysteresis step) rebinds the parameters a wetting operator applies."""
-
-    def test_bound_operator_applies_the_bound_params(self, lattice):
-        from src.operators.differential import build_wetting_laplacian_fn
-        from src.operators.step._multiphase_hysteresis import with_default_wetting
+    def test_differs_from_plain_gradient_on_nonuniform_field(self, lattice):
+        """The wall changes the gradient where a droplet interface meets it."""
+        from src.operators.differential import build_differential
 
         rho = _droplet_on_bottom_wall()
-        neutral = _wetting(PHI, PHI, D_RHO, D_RHO)
-        live = _wetting(1.3, 0.9, 0.02, -0.01)
-        op = build_wetting_laplacian_fn(lattice, _WETTING_PAD, _WETTING_BC, rho_l=RHO_L, rho_v=RHO_V, default=neutral)
-        bound = with_default_wetting(op, live)
+        plain = _gradient(rho, lattice, _WETTING_PAD)
+        gradient, _ = build_differential(lattice, _WETTING_PAD, self._wall_fill(_WETTING_BC))
 
-        np.testing.assert_array_equal(np.asarray(bound(rho)), np.asarray(op(rho, live)))
-        np.testing.assert_array_equal(np.asarray(bound(rho, neutral)), np.asarray(op(rho)))
+        assert not jnp.allclose(plain, gradient(rho, {"wetting": _wetting(PHI, PHI, D_RHO, D_RHO)}), atol=1e-9)
+
+    def test_the_wall_is_read_from_ext(self, lattice):
+        """Two wall states in ``ext`` give two Laplacians: the live parameters, not build-time ones."""
+        from src.operators.differential import build_differential
+
+        rho = _droplet_on_bottom_wall()
+        _, laplacian = build_differential(lattice, _WETTING_PAD, self._wall_fill(_WETTING_BC))
+        neutral = laplacian(rho, {"wetting": _wetting(PHI, PHI, D_RHO, D_RHO)})
+        live = laplacian(rho, {"wetting": _wetting(1.3, 0.9, 0.02, -0.01)})
+
+        assert not jnp.allclose(neutral, live, atol=1e-9)
 
 
 # =====================================================================
@@ -409,7 +387,7 @@ class TestWettingUtil:
     def test_bottom_wetting_changes_bottom_ghost_row(self):
         """Bottom-only wetting should modify the bottom ghost row."""
         bc = {"bottom": "wetting", "top": "bounce-back"}
-        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config=bc)
+        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, boundary_conditions=bc)
         gp = self._striped((NX + 2, NY + 2), axis=0)
         gp_out = fn(gp, PHI, 1.3, D_RHO, D_RHO)
         # Bottom ghost row should have been modified
@@ -418,7 +396,7 @@ class TestWettingUtil:
     def test_top_wetting_only(self):
         """Top-only wetting should modify only the top ghost row."""
         bc = {"bottom": "bounce-back", "top": "wetting"}
-        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config=bc)
+        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, boundary_conditions=bc)
         gp = self._striped((NX + 2, NY + 2), axis=0)
         gp_out = fn(gp, PHI, 1.3, D_RHO, D_RHO)
         # Bottom ghost row should be unchanged
@@ -434,7 +412,7 @@ class TestWettingUtil:
             "bottom": "bounce-back",
             "top": "bounce-back",
         }
-        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config=bc)
+        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, boundary_conditions=bc)
         gp = self._striped((NX + 2, NY + 2), axis=1)
         gp_out = fn(gp, PHI, 1.3, D_RHO, D_RHO)
         # Left and right ghost columns should be modified
@@ -445,8 +423,8 @@ class TestWettingUtil:
         np.testing.assert_array_equal(np.array(gp_out[1:-1, -1]), np.array(gp[1:-1, -1]))
 
     def test_no_wetting_edges_leaves_array_unchanged(self):
-        """An empty bc_config should leave the array entirely unchanged."""
-        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config={})
+        """An empty boundary_conditions should leave the array entirely unchanged."""
+        fn = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, boundary_conditions={})
         gp = jnp.ones((NX + 2, NY + 2)) * 0.5
         gp_out = fn(gp, PHI, 1.3, D_RHO, D_RHO)
         np.testing.assert_array_equal(np.array(gp_out), np.array(gp))
@@ -457,13 +435,13 @@ class TestWettingUtil:
         from src.operators.wetting._applicator import build_wetting_applicator
 
         # Periodic perpendicular (default for unspecified edges)
-        fn_periodic = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, bc_config={"bottom": "wetting"})
+        fn_periodic = build_wetting_applicator(rho_l=RHO_L, rho_v=RHO_V, boundary_conditions={"bottom": "wetting"})
 
         # Non-periodic perpendicular (bounce-back on left/right)
         fn_nonperiodic = build_wetting_applicator(
             rho_l=RHO_L,
             rho_v=RHO_V,
-            bc_config={
+            boundary_conditions={
                 "bottom": "wetting",
                 "left": "bounce-back",
                 "right": "bounce-back",

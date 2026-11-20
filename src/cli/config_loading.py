@@ -1,8 +1,7 @@
-"""Loading, expanding and validating simulation configs for the CLI."""
+"""Loading and validating simulation configs for the CLI."""
 
 from __future__ import annotations
 from pathlib import Path
-from typing import TYPE_CHECKING
 from typing import Any
 import click
 from rich.prompt import Prompt
@@ -13,9 +12,6 @@ from src.config.run_config import CONFIG_FILENAME
 from src.config.run_config import DATA_DIRNAME
 from src.config.run_config import SNAPSHOT_GLOB
 from src.config.run_config import SNAPSHOT_PREFIX
-
-if TYPE_CHECKING:
-    from src.config.array_expansion import ArrayParameterSet
 
 
 def _validate_cli_args(
@@ -105,22 +101,13 @@ def _load_raw_config(
     return raw_config
 
 
-def _expand_raw_config(
-    raw_config: dict[str, Any],
-) -> tuple[list[SimulationConfig], SimulationConfig | None, ArrayParameterSet | None, list[dict[str, Any]] | None]:
-    """Expand a raw config dict; return (configs, config, sweep_metadata, parameters_list)."""
-    from src.config.array_expansion import enumerate_configs
-    from src.config.array_expansion import expand_config
-
-    configs, sweep_metadata = expand_config(raw_config)
-    if sweep_metadata is None:
-        return configs, configs[0], None, None
-    parameters_list = [params for _, params, _ in enumerate_configs(raw_config)]
-    return configs, None, sweep_metadata, parameters_list
+def _build_config(raw_config: dict[str, Any]) -> SimulationConfig:
+    """The validated config of a raw dict. A list where a sweep axis used to be raises ``ValueError``."""
+    return SimulationConfig(**raw_config)
 
 
-def _load_config_interactive() -> tuple[list[SimulationConfig], SimulationConfig, None, None]:
-    """Collect simulation parameters interactively; return the same 4-tuple as _load_config_from_file."""
+def _load_config_interactive() -> SimulationConfig:
+    """Collect simulation parameters interactively."""
     console.print("[cyan]Interactive mode - creating default simulation config[/cyan]")
 
     grid_x = int(Prompt.ask("Grid size X", default="100"))
@@ -129,23 +116,12 @@ def _load_config_interactive() -> tuple[list[SimulationConfig], SimulationConfig
     nt = int(Prompt.ask("Number of timesteps", default="1000"))
     save_interval = int(Prompt.ask("Save interval", default=str(nt // 10)))
 
-    config = SimulationConfig(
+    return SimulationConfig(
         grid_shape=(grid_x, grid_y),
         tau=tau,
         nt=nt,
         save_interval=save_interval,
     )
-    return [config], config, None, None
-
-
-def _expand_single_phase(raw_config: dict[str, Any], phase_name: str) -> SimulationConfig:
-    from src.config.array_expansion import expand_config
-
-    configs, _ = expand_config(raw_config)
-    if len(configs) != 1:
-        msg = f"--init-wetting does not support parameter sweeps ({phase_name} expansion must yield exactly 1 config)."
-        raise click.UsageError(msg)
-    return configs[0]
 
 
 def _validate_run_dir_has_config(run_dir: str) -> Path:
@@ -157,22 +133,6 @@ def _validate_run_dir_has_config(run_dir: str) -> Path:
     return config_path
 
 
-def _load_single_config(
-    config_toml: str,
-    overrides: tuple[str, ...] = (),
-    *,
-    command: str = "analyse",
-    hint: str = "remove list-valued fields from the config",
-) -> SimulationConfig:
-    """Load CONFIG_TOML and expand it to exactly one config; sweeps are rejected.
-
-    *command* and *hint* only shape the error text: every command that reduces a
-    config to a single simulation rejects sweeps for the same structural reason,
-    so they share the load-expand-reject sequence rather than each writing it out.
-    """
-    raw_config = _load_raw_config(config_toml, overrides)
-    _configs, config, sweep_metadata, _params = _expand_raw_config(raw_config)
-    if sweep_metadata is not None or config is None:
-        msg = f"{command} does not support parameter sweeps; {hint}"
-        raise click.UsageError(msg)
-    return config
+def _load_single_config(config_toml: str, overrides: tuple[str, ...] = ()) -> SimulationConfig:
+    """Load CONFIG_TOML, apply *overrides* and return its validated config."""
+    return _build_config(_load_raw_config(config_toml, overrides))

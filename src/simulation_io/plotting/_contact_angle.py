@@ -23,24 +23,26 @@ the scatter-only rule for data-series plots.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from matplotlib.collections import LineCollection
+from matplotlib.textpath import TextPath
+from src.config.wetting import ContactLine
+from src.protocols import PlotOperator
 from src.registry import plotting_operator
 from src.simulation_io.analysis.droplet_metrics import extract_rho_2d
 from src.simulation_io.analysis.interface_contour import interface_lines
-from src.simulation_io.analysis.wetting_overlay import SIDES
 from src.simulation_io.analysis.wetting_overlay import anchor_tick
 from src.simulation_io.analysis.wetting_overlay import angle_glyph
+from src.simulation_io.analysis.wetting_overlay import angle_label_anchor
 from src.simulation_io.analysis.wetting_overlay import band_cell_segments
 from src.simulation_io.analysis.wetting_overlay import contact_angles
-from src.simulation_io.analysis.wetting_overlay import wall_bands
+from src.simulation_io.analysis.wetting_overlay import edge_bands
 from src.simulation_io.analysis.wetting_overlay import wetting_edge
-from src.simulation_io.plotting.base import PlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
     import matplotlib.axes
     import numpy as np
     from src.config import SimulationConfig
-    from src.simulation_io.analysis.wetting_overlay import WallBand
+    from src.simulation_io.analysis.wetting_overlay import EdgeBands
 
 #: Anchor-tick height, in cells normal to the wall.
 _ANCHOR_TICK_HEIGHT = 2.0
@@ -58,11 +60,11 @@ class ContactAnglePlotOperator(PlotOperator):
 
     @classmethod
     def overlay_prompt_default(cls, config: SimulationConfig) -> bool | None:
-        """Offer the overlay, defaulting to yes, only for a run with a wetting wall."""
+        """Offer the overlay, defaulting to yes, only for a run with a wetting edge."""
         return True if wetting_edge(config) is not None else None
 
     def is_available(self, data: dict[str, np.ndarray]) -> bool:
-        """Needs a density field and a wetting wall."""
+        """Needs a density field and a wetting edge."""
         return "rho" in data and wetting_edge(self.config) is not None
 
     def __call__(
@@ -90,16 +92,16 @@ class ContactAnglePlotOperator(PlotOperator):
         rho_2d = extract_rho_2d(data["rho"])
         shape = (int(rho_2d.shape[0]), int(rho_2d.shape[1]))
 
-        bands = wall_bands(rho_2d, self.config)
+        bands = edge_bands(rho_2d, self.config)
         self._draw_band_contours(ax, rho_2d, bands)
-        self._draw_wall_cells(ax, shape, bands)
+        self._draw_band_cells(ax, shape, bands)
         self._draw_angles(ax, data, rho_2d, shape)
 
     def _draw_band_contours(
         self,
         ax: matplotlib.axes.Axes,
         rho_2d: np.ndarray,
-        bands: list[WallBand],
+        bands: list[EdgeBands],
     ) -> None:
         """Contour the density bounds each contact line's cells are clipped to.
 
@@ -108,7 +110,7 @@ class ContactAnglePlotOperator(PlotOperator):
         bound visible.
         """
         for band in bands:
-            for side in SIDES:
+            for side in ContactLine:
                 sideband = band.side(side)
                 if sideband.cells.size == 0:
                     continue
@@ -123,9 +125,9 @@ class ContactAnglePlotOperator(PlotOperator):
                         )
                     )
 
-    def _draw_wall_cells(self, ax: matplotlib.axes.Axes, shape: tuple[int, int], bands: list[WallBand]) -> None:
+    def _draw_band_cells(self, ax: matplotlib.axes.Axes, shape: tuple[int, int], bands: list[EdgeBands]) -> None:
         for band in bands:
-            for side in SIDES:
+            for side in ContactLine:
                 segments = band_cell_segments(band, side, shape)
                 if not segments:
                     continue
@@ -155,16 +157,42 @@ class ContactAnglePlotOperator(PlotOperator):
             return
         length = max(3.0, DEFAULT_STYLE.contact_angle_length_fraction * min(shape))
         color = DEFAULT_STYLE.contact_angle_color
-        for side in SIDES:
+        for side in ContactLine:
             glyph = angle_glyph(angles, side, shape, length)
             for line in (glyph.tangent, glyph.arc):
                 ax.plot(line[:, 0], line[:, 1], color=color, linewidth=DEFAULT_STYLE.contact_angle_linewidth)
+            text = f"θ={glyph.theta:.1f}°"
+            room = _text_length_in_cells(ax, text, along_x=angles.edge.normal_axis == 1)
+            anchor = angle_label_anchor(angles, side, shape, length, room=room)
             ax.annotate(
-                f"θ={glyph.theta:.1f}°",
-                xy=glyph.label_xy,
+                text,
+                xy=anchor.xy,
                 color=color,
                 fontsize=DEFAULT_STYLE.contact_angle_fontsize,
-                ha="center",
-                va="center",
+                ha=anchor.ha,
+                va=anchor.va,
+                clip_on=True,
                 bbox={"boxstyle": "round,pad=0.15", "facecolor": "black", "alpha": 0.55, "linewidth": 0},
             )
+
+
+#: Allowance for the label's box padding and for the constrained layout, which
+#: shrinks the panel after the overlay is drawn.
+_TEXT_ROOM_MARGIN = 1.4
+_POINTS_PER_INCH = 72.0
+
+
+def _text_length_in_cells(ax: matplotlib.axes.Axes, text: str, *, along_x: bool) -> float:
+    """Length of a contact-angle label along the wall, in cells, at the panel's current scale."""
+    width_points = TextPath((0.0, 0.0), text, size=DEFAULT_STYLE.contact_angle_fontsize).get_extents().width
+    ax.apply_aspect()
+    if along_x:
+        axis_pixels = ax.bbox.width
+        span = abs(ax.get_xlim()[1] - ax.get_xlim()[0])
+    else:
+        axis_pixels = ax.bbox.height
+        span = abs(ax.get_ylim()[1] - ax.get_ylim()[0])
+    axis_points = axis_pixels * _POINTS_PER_INCH / ax.figure.dpi
+    if axis_points <= 0.0:
+        return 0.0
+    return _TEXT_ROOM_MARGIN * width_points * span / axis_points

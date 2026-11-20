@@ -51,6 +51,8 @@ import jax.numpy as jnp
 import src.config.config_overview as _flags
 from src.config.run_config import SNAPSHOT_PREFIX
 from src.pipeline.state.state import State
+from src.pipeline.step import observe
+from src.pipeline.step import step
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -94,9 +96,9 @@ def init_state(
     using ``setup.initial_f_fn``, which is built at setup time from
     ``init_type``.  For ``"standard"`` this is the rest equilibrium
     (``f_i = w_i``); for multiphase types it produces a tanh density
-    profile at equilibrium.  Remaining state arrays are initialised
-    with zeros so that the pytree structure stays constant across
-    ``lax.scan`` iterations (JAX requires identical carry structure).
+    profile at equilibrium.  The time comes from the init snapshot (or 0)
+    and ``ext`` from the addons' ``init_state`` slots; nothing else is
+    carried (:func:`~src.pipeline.step.observe` derives the rest).
 
     Args:
         setup: :class:`~setup.simulation_setup.SimulationSetup`.
@@ -109,35 +111,11 @@ def init_state(
     Returns:
         A :class:`State` ready to be passed to :func:`run`.
     """
-    from src.pipeline.state import build_extra_state
-    from src.pipeline.state import build_optional_fields
-
-    lattice = setup.lattice
-    nx, ny, nz = setup.grid_shape[0], setup.grid_shape[1], setup.grid_shape[2]
-
     if f is None:
-        if setup.initial_f_fn is None:
-            msg = "initial_f_fn is required in SimulationSetup to initialise state"
-            raise TypeError(msg)
         f = setup.initial_f_fn(init_kwargs)
-
-    rho = jnp.sum(f, axis=-2, keepdims=True)
-    u = jnp.zeros((nx, ny, nz, 1, lattice.d))
-    t = _t_from_snapshot(setup.config)
-
-    force, force_ext, pressure = build_optional_fields(setup, nx, ny, nz, lattice.d)
-    extra_state = build_extra_state(setup)
-
-    return State(
-        f=f,
-        rho=rho,
-        u=u,
-        t=t,
-        force=force,
-        force_ext=force_ext,
-        pressure=pressure,
-        **extra_state,
-    )
+    # Each addon's substate, keyed by its name; the keys stay fixed for the whole scan.
+    ext = {name: c.init_state(setup) for name, c in setup.addons if c.init_state is not None}
+    return State(f=f, t=_t_from_snapshot(setup.config), ext=ext)
 
 
 # ── Scan body ────────────────────────────────────────────────────────
@@ -158,7 +136,7 @@ def _make_scan_body(
 
     Args:
         step_fn: Unary ``state -> state`` time-step function.  :func:`run`
-            passes ``partial(setup.step_fn, setup)``.
+            passes ``partial(step, setup)``.
         do_stab: Optional stability-diagnostics callback.
         do_save: Optional snapshot callback (streaming I/O mode).
         collect: Whether to emit the new state as the scan's per-step output.
@@ -223,11 +201,6 @@ def run(
     if nt is None:
         nt = setup.config.nt
 
-    if setup.step_fn is None:
-        msg = "step_fn is required in SimulationSetup to run simulation"
-        raise TypeError(msg)
-    _step_fn = setup.step_fn  # capture narrowed value for closures
-
     # ── Stability diagnostics (--debug-stability) ────────────────
     # Flag read as a module attribute at call time; a from-import would
     # freeze the value at import, before the CLI can set it.
@@ -242,6 +215,7 @@ def run(
         )
         do_stab = make_stability_callback(
             stab_dir,
+            observe_fn=partial(observe, setup),
             gradient_density=setup.gradient_density,
             mp=setup.multiphase_params,
             log_interval=max(1, int(_flags.DEBUG_STABILITY_INTERVAL)),
@@ -256,14 +230,13 @@ def run(
 
         do_save = make_save_callback(
             io_handler,
+            partial(observe, setup),
             save_interval=save_interval,
             skip_interval=skip_interval,
             save_fields=save_fields,
         )
 
-        scan_body_io = jax.jit(
-            _make_scan_body(partial(_step_fn, setup), do_stab=do_stab, do_save=do_save, collect=False)
-        )
+        scan_body_io = jax.jit(_make_scan_body(partial(step, setup), do_stab=do_stab, do_save=do_save, collect=False))
 
         final_state, _ = jax.lax.scan(
             scan_body_io,
@@ -274,12 +247,12 @@ def run(
         final_t = int(final_state.t)
         io_handler.save_data_step(
             final_t,
-            _state_to_numpy(final_state, fields=save_fields, t=final_t),
+            _state_to_numpy(final_state, observe(setup, final_state), fields=save_fields, t=final_t),
         )
         return final_state, None
 
     # ── In-memory trajectory mode ────────────────────────────────
-    scan_body = jax.jit(_make_scan_body(partial(_step_fn, setup), do_stab=do_stab, collect=True))
+    scan_body = jax.jit(_make_scan_body(partial(step, setup), do_stab=do_stab, collect=True))
 
     final_state, trajectory = jax.lax.scan(
         scan_body,

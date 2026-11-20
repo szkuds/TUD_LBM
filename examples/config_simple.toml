@@ -1,19 +1,21 @@
 # TUD-LBM Simple Single-Phase Simulation Configuration
 #
-# Load this config via the TOML adapter:
+# Run it from the command line:
 #
-#   from config.adapter_toml import TomlAdapter
-#   from setup.simulation_setup import build_setup
-#   from runner.run import init_state, run
+#   tud-lbm run examples/config_simple.toml
 #
-#   config = TomlAdapter().load("config_simple.toml")
+# or load it via the TOML adapter (see example_run_simple.py):
+#
+#   from src import build_setup, init_state, run
+#   from src.config.adapter_toml import TomlAdapter
+#
+#   config = TomlAdapter().load("examples/config_simple.toml")
 #   setup  = build_setup(config)
 #   state  = init_state(setup)
 #   final_state, trajectory = run(setup, state)
 
 [simulation_type]
 simulation_name = 'Test simple simulation'
-type = "single_phase"
 grid_shape = [100, 100, 1]
 lattice_type = "D2Q9"
 tau = 0.6

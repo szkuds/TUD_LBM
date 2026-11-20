@@ -8,7 +8,7 @@ Quick Start
 
 The main workflow: Config → Setup → State → Run::
 
-    from src import SimulationConfig, build_setup, run, init_state
+    from src import SimulationConfig, build_setup, init_state, observe, run
 
     # 1. Create configuration with sensible defaults
     config = SimulationConfig(grid_shape=(64, 64), tau=0.8, nt=5000)
@@ -19,8 +19,11 @@ The main workflow: Config → Setup → State → Run::
     # 3. Initialise state (single-phase or multiphase)
     state = init_state(setup)
 
-    # 4. Run simulation
+    # 4. Run simulation; the state carries only f, t and the addon substates
     final_state, trajectory = run(setup, state, nt=config.nt)
+
+    # 5. Density, velocity, forces and pressure of a state
+    rho = observe(setup, final_state).rho
 
 Key Classes & Functions
 -----------------------
@@ -29,12 +32,13 @@ Key Classes & Functions
 - SimulationConfig     : Immutable configuration container (sensible defaults)
 - build_lattice()      : Create velocity model (D2Q9, D3Q19, etc.)
 - build_setup()        : Build complete simulation setup
-- State                : Single-phase simulation state (rho, u, f)
-- WettingState         : Multiphase state with contact angle and interface tracking
+- State                : The scan carry: populations f, time t, addon substates ext
+- WettingState         : The wetting addon's substate, State.ext["wetting"]
 
 **Execution:**
 - init_state()         : Initialise state from setup
 - run()                : Execute simulation, returns (final_state, trajectory)
+- observe()            : rho, u, force, force_ext and pressure of a state
 
 **Input/Output:**
 - readers              : Config loaders (DictAdapter, TomlAdapter)
@@ -66,10 +70,11 @@ def __getattr__(name):  # noqa: PLR0911, ANN001, ANN202
     Lattice          : Velocity model (D2Q9, D3Q19, etc.)
     build_lattice()  : Factory to create lattice from config
     build_setup()    : Factory to create complete Setup from config
-    init_state()     : Initialise State or WettingState from setup
+    init_state()     : Initialise State from setup
     run()            : Execute simulation for N timesteps
-    State            : Single-phase simulation state (rho, u, f, t)
-    WettingState     : Multiphase state for contact angle tracking
+    observe()        : Derived fields (rho, u, force, force_ext, pressure) of a state
+    State            : The scan carry (f, t, ext)
+    WettingState     : Wetting substate, State.ext["wetting"]
     """
     if name == "SimulationConfig":
         from src.config.simulation_config import SimulationConfig
@@ -95,12 +100,16 @@ def __getattr__(name):  # noqa: PLR0911, ANN001, ANN202
         from src.pipeline.runner import run
 
         return run
+    if name == "observe":
+        from src.pipeline.step import observe
+
+        return observe
     if name == "State":
         from src.pipeline.state.state import State
 
         return State
     if name == "WettingState":
-        from src.pipeline.state.state import WettingState
+        from src.operators.wetting._params import WettingState
 
         return WettingState
     msg = f"module {__name__!r} has no attribute {name!r}"
@@ -116,6 +125,7 @@ def __dir__():  # noqa: ANN202
         "build_setup",
         "init_state",
         "run",
+        "observe",
         "State",
         "WettingState",
     ]

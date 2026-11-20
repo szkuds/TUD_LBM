@@ -2,7 +2,7 @@
 
 Part of the configuration rather than the analysis layer: the phase densities
 measured here are a property of the run's input, consumed both by the
-configuration (:attr:`SimulationConfig.phase_references`, which bands the
+configuration (:func:`~src.config.multiphase.phase_references`, which bands the
 masked-gravity force) and by ``physical_parameters`` (the reported Bond and
 Archimedes numbers). Keeping one reader under ``config`` lets the force and
 the report share it without the configuration importing ``simulation_io``.
@@ -75,6 +75,7 @@ class InitField(NamedTuple):
     rho_max: float
     rho_mean: float
     drho: float
+    interface_width: float | None
 
 
 def load_init_field(config: SimulationConfig) -> InitField | None:
@@ -138,14 +139,50 @@ def measure_field(rho: np.ndarray) -> InitField | None:
         rho_max=rho_max,
         rho_mean=0.5 * (rho_max + rho_min),
         drho=rho_max - rho_min,
+        interface_width=measure_interface_width(values),
     )
+
+
+#: Half-width, in units of the contrast, of the density band around the mid density
+#: whose cells count as the mid contour of an interface.
+_MID_CONTOUR_BAND = 0.1
+
+
+def measure_interface_width(rho: np.ndarray) -> float | None:
+    """The interface width of a 2D density field, in cells, or ``None`` when it has none.
+
+    ``W = (rho_max - rho_min) / median(|grad rho|)`` over the cells within
+    ``_MID_CONTOUR_BAND`` of the mid density. For a ``tanh(2x/W)`` profile the
+    gradient on the mid contour is ``drho/W``, so this returns the double-well's
+    configured ``interface_width`` (5.2 measured for 5) and gives the
+    Carnahan-Starling EOS, whose ``interface_width`` is only an initialisation
+    hint, a width of its own (18.7 for the T_r 0.5 fluid).
+
+    The median, not the largest gradient: the steepest cells of a field are the
+    wall rows a wetting edge acts on (the same bubble reads 12.9 with them and
+    16.0 without), while the median is the same to 2% on an equilibrated field,
+    at a chemical step and on the post-step region.
+    """
+    field = np.squeeze(np.asarray(rho, dtype=float))
+    if field.ndim != 2 or min(field.shape) < 2:  # noqa: PLR2004 - a 2D field of at least 2 x 2 cells
+        return None
+    rho_min, rho_max = float(field.min()), float(field.max())
+    contrast = rho_max - rho_min
+    if contrast <= 0.0:
+        return None
+    on_contour = np.abs((field - rho_min) / contrast - 0.5) < _MID_CONTOUR_BAND
+    if not on_contour.any():
+        return None
+    gradient = float(np.median(np.hypot(*np.gradient(field))[on_contour]))
+    if gradient <= 0.0:
+        return None
+    return contrast / gradient
 
 
 def measure_init_phase_densities(config: SimulationConfig) -> tuple[float, float] | None:
     """Return ``(rho_min, rho_max)`` measured off the run's init NPZ, or None.
 
-    :attr:`SimulationConfig.phase_references
-    <src.config.simulation_config.SimulationConfig.phase_references>` bands the
+    :func:`~src.config.multiphase.phase_references` bands the
     masked-gravity phase indicator on these, and ``physical_parameters.txt``
     reports the buoyancy contrast off the same :func:`load_init_field`, so the
     contrast a run injects and the one its Bond number quotes cannot diverge.
@@ -155,6 +192,16 @@ def measure_init_phase_densities(config: SimulationConfig) -> tuple[float, float
     if field is None:
         return None
     return field.rho_min, field.rho_max
+
+
+def measure_init_interface_width(config: SimulationConfig) -> float | None:
+    """The interface width measured off the run's init NPZ, in cells, or None.
+
+    See :func:`measure_interface_width`. None when the run has no init file or
+    its field has no interface to measure.
+    """
+    field = load_init_field(config)
+    return None if field is None else field.interface_width
 
 
 #: Wetting-state scalars a hysteresis run carries across a restart: the wall
@@ -170,11 +217,17 @@ RESTORED_WETTING_KEYS: tuple[str, ...] = (
 )
 
 
+#: The regime latch a hysteresis run also resumes. A snapshot from before the
+#: latch existed has none of these, and the restart then starts pinned.
+RESTORED_LATCH_KEYS: tuple[str, ...] = ("latch_left", "latch_right", "stall_left", "stall_right")
+
+
 def load_init_wetting(config: SimulationConfig) -> dict[str, float] | None:
     """The wetting state saved in the run's init NPZ, or ``None``.
 
     Returns ``None`` when no init file resolves or it lacks any of
-    :data:`RESTORED_WETTING_KEYS` (a snapshot from a run without wetting).
+    :data:`RESTORED_WETTING_KEYS` (a snapshot from a run without wetting). The
+    :data:`RESTORED_LATCH_KEYS` are included when the snapshot has them.
     """
     npz_path = resolve_npz_path(config.init_dir or config.initialisation.get("npz_path"))
     if not npz_path:
@@ -183,6 +236,7 @@ def load_init_wetting(config: SimulationConfig) -> dict[str, float] | None:
         with np.load(npz_path) as data:
             if not all(key in data for key in RESTORED_WETTING_KEYS):
                 return None
-            return {key: float(data[key]) for key in RESTORED_WETTING_KEYS}
+            keys = (*RESTORED_WETTING_KEYS, *(key for key in RESTORED_LATCH_KEYS if key in data))
+            return {key: float(data[key]) for key in keys}
     except (KeyError, OSError, TypeError, ValueError):
         return None

@@ -10,9 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
-from typing import Literal
 import numpy as np
 from scipy.signal import savgol_filter
+from src.config.analysis_options import Smoothing
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
@@ -32,8 +32,6 @@ _DEFAULT_SAVGOL_POLYORDER = 2
 _CA_COLOR = "tab:blue"
 _ACCEL_COLOR = "tab:orange"
 
-Smoothing = Literal["raw", "savgol"]
-
 
 @dataclass(frozen=True)
 class AccelerationResult:
@@ -51,7 +49,7 @@ def compute_acceleration(
     df: pd.DataFrame,
     *,
     x_col: str = "normalised_iteration",
-    smoothing: Smoothing = "raw",
+    smoothing: Smoothing = Smoothing.RAW,
     savgol_window: int = _DEFAULT_SAVGOL_WINDOW,
     savgol_polyorder: int = _DEFAULT_SAVGOL_POLYORDER,
 ) -> AccelerationResult:
@@ -73,7 +71,7 @@ def compute_acceleration(
     accel = np.full_like(ca, np.nan)
     if ca.size >= _MIN_POINTS_FOR_SECOND_DIFFERENCE:
         accel[2:] = np.diff(np.diff(ca))
-        if smoothing == "savgol" and accel[2:].size >= savgol_window:
+        if smoothing == Smoothing.SAVGOL and accel[2:].size >= savgol_window:
             accel[2:] = savgol_filter(accel[2:], window_length=savgol_window, polyorder=savgol_polyorder)
 
     valid_accel = np.where(np.isnan(accel), -np.inf, accel)

@@ -17,17 +17,18 @@ from src.operators._loader import auto_load_operators
 from src.registry import get_operators
 
 if TYPE_CHECKING:
-    from src.operators.protocols import SourceTermOperator
+    from src.protocols import SourceTermOperator
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("src.operators.source_term")
 
 
-def build_source_fn(scheme: str = "wb") -> SourceTermOperator:
+def build_source_fn(scheme: str) -> SourceTermOperator:
     """Return a source-term operator satisfying SourceTermOperator protocol.
 
     Args:
-        scheme: Source-term model name. Defaults to "wb" (well-balanced forcing).
+        scheme: Source-term model name, the pair of the configured equilibrium
+            (``src.config.equilibrium.source_term_for``).
 
     Returns:
         A callable satisfying the SourceTermOperator protocol.

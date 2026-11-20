@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING
 from rich.panel import Panel
 from rich.table import Table
 from src.cli._console import console
+from src.config.multiphase import multiphase_params
 
 if TYPE_CHECKING:
     from src.cli.field_select import OperatorChoice
     from src.config import SimulationConfig
-    from src.config.array_expansion import ArrayParameterSet
 
 BOLD_CYAN = "bold cyan"
 
@@ -168,14 +168,17 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
     table.add_column("Parameter", style="cyan", no_wrap=True)
     table.add_column("Value", style="green")
 
-    table.add_row("Simulation Type", config.sim_type)
+    params = multiphase_params(config)
+    table.add_row("Simulation Type", "multiphase" if params is not None else "single_phase")
     table.add_row("Grid Shape", str(config.grid_shape))
     table.add_row("Lattice Type", config.lattice_type)
     table.add_row("Relaxation Time (tau)", str(config.tau))
     table.add_row("Time Steps", str(config.nt))
     table.add_row("Save Interval", str(config.save_interval))
-    if config.bc_config:
-        table.add_row("Boundary Conditions", ", ".join(f"{face}={bc}" for face, bc in config.bc_config.items()))
+    if config.boundary_conditions:
+        table.add_row(
+            "Boundary Conditions", ", ".join(f"{edge}={bc}" for edge, bc in config.boundary_conditions.items())
+        )
     table.add_row("Results Directory", config.results_dir)
     if config.save_fields:
         table.add_row("Save Fields", ", ".join(config.save_fields))
@@ -186,19 +189,14 @@ def _display_config_summary(config: SimulationConfig | None) -> None:
     if config.overlay_fields:
         table.add_row("Overlay Fields", ", ".join(config.overlay_fields))
 
-    if config.is_multiphase:
-        table.add_row("Kappa", str(config.kappa))
-        table.add_row("Liquid Density", str(config.rho_l))
-        table.add_row("Vapor Density", str(config.rho_v))
-        table.add_row("Interface Width", str(config.interface_width))
+    if params is not None:
+        table.add_row("Kappa", str(params.kappa))
+        table.add_row("Liquid Density", str(params.rho_l))
+        table.add_row("Vapor Density", str(params.rho_v))
+        table.add_row("Interface Width", str(params.interface_width))
 
-    if config.force_enabled:
-        active_forces = [
-            f.name
-            for f in config.__dataclass_fields__.values()
-            if f.name.endswith("_force") and getattr(config, f.name) is not None
-        ]
-        table.add_row("Forces", ", ".join(active_forces) if active_forces else "enabled")
+    if config.forces:
+        table.add_row("Forces", ", ".join(config.forces))
 
     console.print(table)
     console.print()
@@ -218,49 +216,12 @@ def _display_full_overview(config: SimulationConfig | None) -> None:
     console.print()
 
 
-def _display_sweep_summary(metadata: ArrayParameterSet) -> None:
-    """Display detected parameter-sweep axes and total combinations."""
-    console.print()
-    table = Table(
-        title="Parameter Sweep",
-        show_header=True,
-        header_style="bold magenta",
-    )
-    table.add_column("Field", style="cyan", no_wrap=True)
-    table.add_column("Values", style="green")
-
-    for field_name in sorted(metadata.field_names):
-        values = metadata.array_values.get(field_name, ())
-        values_str = ", ".join(str(v) for v in values)
-        table.add_row(field_name, values_str)
-
-    console.print(table)
-    console.print(f"[bold blue]Total combinations:[/bold blue] {metadata.total_combinations}")
-    console.print()
+def _display_summary(config: SimulationConfig | None, *, overview: bool) -> None:
+    """Display the config summary, and the full overview when asked."""
+    _display_config_summary(config)
+    if overview:
+        _display_full_overview(config)
 
 
-def _display_summary(
-    config: SimulationConfig | None,
-    sweep_metadata: ArrayParameterSet | None,
-    configs: list[SimulationConfig],
-    *,
-    overview: bool,
-) -> None:
-    """Display either a single-run config summary or a sweep summary."""
-    if sweep_metadata is None:
-        _display_config_summary(config)
-        if overview:
-            _display_full_overview(config)
-    else:
-        _display_sweep_summary(sweep_metadata)
-        console.print("[dim]Preview of the first expanded configuration:[/dim]")
-        _display_config_summary(configs[0])
-        if overview:
-            _display_full_overview(configs[0])
-
-
-def _print_dry_run_message(sweep_metadata: ArrayParameterSet | None) -> None:
-    if sweep_metadata is None:
-        console.print("[yellow]Dry run mode - simulation not started[/yellow]")
-    else:
-        console.print("[yellow]Dry run mode - parameter sweep not started[/yellow]")
+def _print_dry_run_message() -> None:
+    console.print("[yellow]Dry run mode - simulation not started[/yellow]")

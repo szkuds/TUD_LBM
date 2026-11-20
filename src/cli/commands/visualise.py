@@ -407,7 +407,7 @@ def setup_figure(
     draw_angle: float,
     output: str | None,
 ) -> None:
-    """Draw the setup schematic of RUN_DIR: interface, stepped wall, boundaries and incline."""
+    """Draw the setup schematic of RUN_DIR: interface, stepped edge, boundaries and incline."""
     config = _load_run_config(run_dir)
     from src.simulation_io.plotting.setup_figure import select_setup_timesteps
     from src.simulation_io.plotting.setup_figure import snapshot_files

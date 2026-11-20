@@ -10,10 +10,11 @@ Tests validate that:
 import textwrap
 from pathlib import Path
 import pytest
-from src.config.adapter_base import ConfigAdapter
 from src.config.adapter_base import get_adapter
 from src.config.adapter_toml import TomlAdapter
+from src.config.sections import merge_sections
 from src.config.simulation_config import SimulationConfig
+from src.protocols import ConfigAdapter
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -21,7 +22,6 @@ from src.config.simulation_config import SimulationConfig
 SIMPLE_TOML = textwrap.dedent("""\
     [simulation_type]
     simulation_name = "Test simple simulation_type"
-    type = "single_phase"
     grid_shape = [100, 100]
     lattice_type = "D2Q9"
     tau = 0.6
@@ -37,13 +37,12 @@ SIMPLE_TOML = textwrap.dedent("""\
 MULTIPHASE_TOML = textwrap.dedent("""\
     [simulation_type]
     simulation_name = "Test complex simulation_type"
-    type = "multiphase"
     grid_shape = [401, 101]
     lattice_type = "D2Q9"
     tau = 0.99
     nt = 20000
     save_interval = 2000
-    init_type = "wetting"
+    init_type = "multiphase_bubbles"
 
     [multiphase]
     kappa = 0.017
@@ -64,12 +63,11 @@ MULTIPHASE_TOML = textwrap.dedent("""\
 
 MULTIPHASE_WITH_FORCE_TOML = textwrap.dedent("""\
     [simulation_type]
-    type = "multiphase"
     grid_shape = [201, 101]
     tau = 0.99
     nt = 2000
     save_interval = 200
-    init_type = "wetting"
+    init_type = "multiphase_bubbles"
 
     [multiphase]
     kappa = 0.017
@@ -144,12 +142,12 @@ class TestTomlAdapterSimple:
 
     def test_load_is_single_phase(self, simple_toml_file):
         bundle = TomlAdapter().load(simple_toml_file)
-        assert bundle.is_single_phase
-        assert not bundle.is_multiphase
+        assert bundle.multiphase is None
+        assert bundle.multiphase is None
 
     def test_simulation_config_type(self, simple_toml_file):
         bundle = TomlAdapter().load(simple_toml_file)
-        assert bundle.is_single_phase
+        assert bundle.multiphase is None
 
     def test_grid_shape_is_tuple(self, simple_toml_file):
         bundle = TomlAdapter().load(simple_toml_file)
@@ -184,12 +182,12 @@ class TestTomlAdapterSimple:
 
     def test_force_disabled_by_default(self, simple_toml_file):
         bundle = TomlAdapter().load(simple_toml_file)
-        assert bundle.force_enabled is False
+        assert not bundle.forces
 
     def test_to_dict_roundtrip(self, simple_toml_file):
         bundle = TomlAdapter().load(simple_toml_file)
         d = bundle.to_dict()
-        assert d["simulation_type"] == "single_phase"
+        assert d["multiphase"] is None
         assert d["grid_shape"] == (100, 100, 1)
         assert d["tau"] == 0.6
         assert d["save_interval"] == 1000
@@ -203,20 +201,21 @@ class TestTomlAdapterMultiphase:
 
     def test_is_multiphase(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
-        assert bundle.is_multiphase
-        assert not bundle.is_single_phase
+        assert bundle.multiphase is not None
+        assert bundle.multiphase is not None
 
     def test_simulation_config_type(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
-        assert bundle.is_multiphase
+        assert bundle.multiphase is not None
 
     def test_multiphase_parameters(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
-        assert bundle.kappa == 0.017
-        assert bundle.rho_l == 1.0
-        assert bundle.rho_v == 0.33
-        assert bundle.interface_width == 4
-        assert bundle.eos == "double-well"
+        assert bundle.multiphase is not None
+        assert bundle.multiphase["kappa"] == 0.017
+        assert bundle.multiphase["rho_l"] == 1.0
+        assert bundle.multiphase["rho_v"] == 0.33
+        assert bundle.multiphase["interface_width"] == 4
+        assert bundle.multiphase["eos"] == "double-well"
 
     def test_grid_shape(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
@@ -225,12 +224,12 @@ class TestTomlAdapterMultiphase:
     def test_runner_config(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
         assert bundle.save_interval == 2000
-        assert bundle.init_type == "wetting"
+        assert bundle.init_type == "multiphase_bubbles"
         assert bundle.simulation_name == "Test complex simulation_type"
 
     def test_boundary_conditions_parsed(self, multiphase_toml_file):
         bundle = TomlAdapter().load(multiphase_toml_file)
-        bc = bundle.bc_config
+        bc = bundle.boundary_conditions
         assert bc is not None
         assert bc["left"] == "periodic"
         assert bc["bottom"] == "wetting"
@@ -241,7 +240,6 @@ class TestTomlAdapterMultiphase:
         p.write_text(
             textwrap.dedent("""\
                 [simulation_type]
-                type = "single_phase"
                 grid_shape = [20, 10]
 
                 [boundary_conditions]
@@ -254,8 +252,8 @@ class TestTomlAdapterMultiphase:
             encoding="utf-8",
         )
         bundle = TomlAdapter().load(str(p))
-        assert bundle.bc_config is not None
-        assert bundle.bc_config["left_velocity_inlet"] == {"u0": 0.02}
+        assert bundle.boundary_conditions is not None
+        assert bundle.boundary_conditions["left_velocity_inlet"] == {"u0": 0.02}
 
 
 # ── TomlAdapter: multiphase with forces ──────────────────────────────
@@ -264,26 +262,26 @@ class TestTomlAdapterMultiphase:
 class TestTomlAdapterForces:
     """Tests for canonical top-level ``[gravity_force]`` TOML tables."""
 
-    def test_force_enabled_when_forces_present(self, multiphase_force_toml_file):
+    def test_forces_present_when_a_force_section_is(self, multiphase_force_toml_file):
         bundle = TomlAdapter().load(multiphase_force_toml_file)
-        assert bundle.force_enabled is True
+        assert bool(bundle.forces)
 
     def test_gravity_force_is_dict(self, multiphase_force_toml_file):
         bundle = TomlAdapter().load(multiphase_force_toml_file)
-        assert isinstance(bundle.gravity_force, dict)
+        assert isinstance(bundle.forces["gravity_force"], dict)
 
     def test_gravity_force_section_loaded(self, multiphase_force_toml_file):
         bundle = TomlAdapter().load(multiphase_force_toml_file)
-        assert bundle.gravity_force == {
+        assert bundle.forces["gravity_force"] == {
             "force_g": 2e-6,
             "inclination_angle_deg": 60,
         }
 
     def test_gravity_force_contains_correct_params(self, multiphase_force_toml_file):
         bundle = TomlAdapter().load(multiphase_force_toml_file)
-        assert bundle.gravity_force is not None
-        assert bundle.gravity_force["force_g"] == 2e-6
-        assert bundle.gravity_force["inclination_angle_deg"] == 60
+        assert bundle.forces["gravity_force"] is not None
+        assert bundle.forces["gravity_force"]["force_g"] == 2e-6
+        assert bundle.forces["gravity_force"]["inclination_angle_deg"] == 60
 
 
 class TestTomlAdapterInitialisation:
@@ -292,7 +290,6 @@ class TestTomlAdapterInitialisation:
     def test_initialisation_table_loaded_into_extra(self, tmp_path):
         content = textwrap.dedent("""\
             [simulation_type]
-            type = "multiphase"
             grid_shape = [32, 32]
             tau = 0.8
             nt = 100
@@ -359,7 +356,6 @@ class TestTomlAdapterErrors:
     def test_unknown_force_type_raises_key_error(self, tmp_path):
         content = textwrap.dedent("""\
             [simulation_type]
-            type = "multiphase"
             grid_shape = [10, 10]
             tau = 0.6
 
@@ -383,7 +379,6 @@ class TestTomlAdapterErrors:
     def test_invalid_tau_raises_validation_error(self, tmp_path):
         content = textwrap.dedent("""\
             [simulation_type]
-            type = "single_phase"
             grid_shape = [10, 10]
             tau = 0.3
         """)
@@ -428,7 +423,7 @@ class TestExampleFiles:
         if not path.exists():
             pytest.skip("example_for_test/config_simple.toml not found")
         bundle = TomlAdapter().load(str(path))
-        assert bundle.is_single_phase
+        assert bundle.multiphase is None
         assert bundle.grid_shape == (100, 100, 1)
 
     def test_config_complex_loads(self, example_dir):
@@ -439,12 +434,12 @@ class TestExampleFiles:
 
         bundle = TomlAdapter().load(str(path))
 
-        assert bundle.is_multiphase
+        assert bundle.multiphase is not None
         assert bundle.grid_shape == (201, 201, 1)
-        assert bundle.kappa == 0.017
+        assert bundle.multiphase["kappa"] == 0.017
         assert bundle.save_interval == 10
-        assert bundle.force_enabled is True
-        assert bundle.gravity_force == {
+        assert bool(bundle.forces)
+        assert bundle.forces["gravity_force"] == {
             "force_g": 2e-6,
             "inclination_angle_deg": 0,
         }
@@ -462,7 +457,7 @@ class TestTomlAdapterSave:
         out = tmp_path / "saved.toml"
         TomlAdapter().save(original, str(out))
         reloaded = TomlAdapter().load(str(out))
-        assert reloaded.sim_type == original.sim_type
+        assert reloaded.multiphase == original.multiphase
         assert reloaded.tau == original.tau
         assert reloaded.grid_shape == original.grid_shape
 
@@ -483,12 +478,13 @@ class TestTomlAdapterSave:
             adapter.save(config, "/tmp/ignored.toml")
 
 
-# ── _validate_and_process_forces: TypeError branch ───────────────────
+# ── force sections: TypeError branch ─────────────────────────────────
 
 
-class TestValidateAndProcessForces:
-    """Tests for _validate_and_process_forces static helper."""
+class TestForceSections:
+    """A ``[*_force]`` entry must be a table."""
 
     def test_non_dict_force_value_raises_type_error(self):
+        raw = {"simulation_type": {"grid_shape": [8, 8]}, "gravity_force": "not_a_dict"}
         with pytest.raises(TypeError, match="must be a table"):
-            TomlAdapter._process_forces({"gravity_force": "not_a_dict"}, {})
+            merge_sections(raw)

@@ -18,7 +18,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
-from typing import Literal
+from src.config.analysis_options import AxisScale
+from src.config.analysis_options import Smoothing
 from src.config.config_overview import BASE_RESULTS_DIR
 from src.config.run_config import ACCELERATION_PLOT_FILENAME
 from src.config.run_config import ANALYSIS_DIRNAME
@@ -26,7 +27,6 @@ from src.config.run_config import CONFIG_FILENAME
 from src.config.run_config import PLOTS_DIRNAME
 from src.config.run_config import REGIME_MAP_DIRNAME
 from src.config.run_config import regime_map_filename
-from src.simulation_io.analysis.accelerations import Smoothing
 from src.simulation_io.analysis.accelerations import classify_regime
 from src.simulation_io.analysis.accelerations import compute_acceleration
 from src.simulation_io.analysis.accelerations import save_diagnostic_plot
@@ -219,7 +219,7 @@ def _regime_annotation(result: RegimeResult) -> str:
     return " | ".join(parts)
 
 
-def process_run_dir(run_dir: Path, *, smoothing: Smoothing = "raw") -> RunRegimeEntry | None:
+def process_run_dir(run_dir: Path, *, smoothing: Smoothing = Smoothing.RAW) -> RunRegimeEntry | None:
     """Classify one run directory, or return ``None`` (with a warning) when unusable."""
     config = _safe_load_config(run_dir / CONFIG_FILENAME)
     if config is None:
@@ -252,9 +252,6 @@ def process_run_dir(run_dir: Path, *, smoothing: Smoothing = "raw") -> RunRegime
     )
 
 
-AxisScale = Literal["linear", "log"]
-
-
 def _axis_values(entries: Sequence[RunRegimeEntry], x_key: str, y_key: str) -> list[RunRegimeEntry]:
     """Entries resolving both axes, naming those dropped.
 
@@ -278,8 +275,8 @@ def plot_regime_map(
     *,
     x_key: str = DEFAULT_X_KEY,
     y_key: str = DEFAULT_Y_KEY,
-    xscale: AxisScale = "linear",
-    yscale: AxisScale = "linear",
+    xscale: AxisScale = AxisScale.LINEAR,
+    yscale: AxisScale = AxisScale.LINEAR,
 ) -> Path | None:
     """Scatter *x_key* against *y_key*, grouped by regime.
 
@@ -325,11 +322,11 @@ def build_regime_map(
     allowed_roots: Sequence[str | Path] = (),
     out_dir: str | Path | None = None,
     *,
-    smoothing: Smoothing = "raw",
+    smoothing: Smoothing = Smoothing.RAW,
     x_key: str = DEFAULT_X_KEY,
     y_key: str = DEFAULT_Y_KEY,
-    xscale: AxisScale = "linear",
-    yscale: AxisScale = "linear",
+    xscale: AxisScale = AxisScale.LINEAR,
+    yscale: AxisScale = AxisScale.LINEAR,
 ) -> Path | None:
     """Classify every run listed in ``txt_path`` and save the regime map.
 

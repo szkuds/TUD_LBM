@@ -129,7 +129,5 @@ Measured by the harness, not fixed. Each is likely to hurt GPU more than CPU:
 - `jax.lax.scan(..., jnp.arange(nt))` in `pipeline/runner.py` materialises an
   `nt`-length device array used only as a discarded loop counter; `length=nt`
   would do.
-- `ProcessPoolExecutor` sweeps in `pipeline/parallel_runner.py` would put N
-  processes on one GPU.
 - Sharding a single run across devices (`pmap`/`shard_map`) — gated on this
   profiling, per `.claude/roadmap.md`.

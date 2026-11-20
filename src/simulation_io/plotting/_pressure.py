@@ -24,17 +24,22 @@ Both are opt-in: they only render when named in ``plot_fields`` /
 """
 
 from __future__ import annotations
+from functools import partial
 from typing import TYPE_CHECKING
 import numpy as np
+from src.config.boundary import pad_modes
+from src.config.multiphase import is_multiphase
+from src.config.multiphase import multiphase_params
+from src.config.wetting import wetting_scalars
+from src.protocols import PlotOperator
 from src.registry import plotting_operator
-from src.simulation_io.plotting.base import PlotOperator
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
     import matplotlib.axes
-    from src.config.multiphase_params import MultiphaseParams
-    from src.operators.protocols import DifferentialOperator
-    from src.operators.protocols import EosOperator
+    from src.config.multiphase import MultiphaseParams
+    from src.protocols import DifferentialOperator
+    from src.protocols import EosOperator
 
 
 class _BasePressureOperator(PlotOperator):
@@ -61,7 +66,7 @@ class _BasePressureOperator(PlotOperator):
             return np.asarray(data["pressure"])
 
         rho = np.asarray(data["rho"])
-        mp = self.config.multiphase_params
+        mp = multiphase_params(self.config)
         if mp is None:
             from src.operators.macroscopic._single_phase import CS2
 
@@ -117,7 +122,7 @@ class TotalPressurePlotOperator(_BasePressureOperator):
 
     def is_available(self, data: dict[str, np.ndarray]) -> bool:
         """Multiphase only: the interfacial terms need ``kappa``."""
-        return "rho" in data and self.config.is_multiphase
+        return "rho" in data and is_multiphase(self.config)
 
     def _operators(self) -> tuple[MultiphaseParams, DifferentialOperator, DifferentialOperator]:
         """Return the cached ``(mp, gradient_density, laplacian_density)``.
@@ -128,15 +133,23 @@ class TotalPressurePlotOperator(_BasePressureOperator):
         this panel never renders.
         """
         if self._mp is None or self._diff_ops is None:
+            from src.addons import build_addons
+            from src.addons.hooks import compose_ghost_fill
             from src.lattice.lattice import build_lattice
-            from src.operators.differential import build_diff_ops
+            from src.operators.differential import build_differential
+            from src.operators.wetting._params import WettingParams
 
-            mp = self.config.multiphase_params
+            mp = multiphase_params(self.config)
             assert mp is not None  # noqa: S101 - is_available admits multiphase configs only
             lattice = build_lattice(self.config.lattice_type)
-            _, gradient_density, laplacian_density = build_diff_ops(self.config, mp, lattice)
+            fill = compose_ghost_fill(build_addons(self.config))
+            gradient_density, laplacian_density = build_differential(lattice, pad_modes(self.config), fill)
+            # A snapshot carries no live wall state here; the configured wall
+            # parameters stand in, as they do throughout a fixed-wetting run.
+            defaults = wetting_scalars(self.config)
+            ext = {} if defaults is None else {"wetting": WettingParams.from_defaults(defaults)}
             self._mp = mp
-            self._diff_ops = (gradient_density, laplacian_density)
+            self._diff_ops = (partial(gradient_density, ext=ext), partial(laplacian_density, ext=ext))
         return self._mp, *self._diff_ops
 
     def _pressure_2d(self, data: dict[str, np.ndarray]) -> np.ndarray:
