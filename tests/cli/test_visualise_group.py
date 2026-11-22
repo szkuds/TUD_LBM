@@ -121,13 +121,23 @@ def test_snapshot_in_data_dir_writes_to_run_plots(runner, tmp_path):
 
 
 def test_fields_rejects_a_file_that_is_not_a_snapshot(runner, tmp_path):
-    other = tmp_path / "notes.txt"
+    other = tmp_path / "notes.md"
     other.write_text("", encoding="utf-8")
 
     result = runner.invoke(cli, ["visualise", "fields", str(other)])
 
     assert result.exit_code == _EXIT_USAGE
-    assert "run directory or a .npz snapshot" in result.output
+    assert ".npz snapshot" in result.output
+
+
+def test_an_empty_run_list_is_a_usage_error(runner, tmp_path):
+    run_list = tmp_path / "runs.txt"
+    run_list.write_text("# nothing yet\n", encoding="utf-8")
+
+    result = runner.invoke(cli, ["visualise", "analysis", str(run_list)])
+
+    assert result.exit_code == _EXIT_USAGE
+    assert "No run directories" in result.output
 
 
 def test_snapshot_without_a_grid_field_is_a_usage_error(runner, tmp_path):
@@ -146,7 +156,70 @@ def test_analysis_rejects_a_file(runner, tmp_path):
     result = runner.invoke(cli, ["visualise", "analysis", str(snapshot)])
 
     assert result.exit_code == _EXIT_USAGE
-    assert "Directory" in result.output
+    assert "directory of runs or a .txt run list" in result.output
+
+
+def test_visualise_needs_a_target(runner):
+    result = runner.invoke(cli, ["visualise", "fields"])
+
+    assert result.exit_code == _EXIT_USAGE
+
+
+def test_fields_builds_every_run_given(runner, tmp_path):
+    first = build_run_dir(tmp_path / "a")
+    second = build_run_dir(tmp_path / "b")
+
+    result = runner.invoke(cli, ["visualise", "fields", str(first), str(second), "--no-prompt"])
+
+    assert result.exit_code == 0, result.output
+    assert "Runs          : 2" in result.output
+    assert _plot_names(first)
+    assert _plot_names(second)
+
+
+def test_fields_finds_the_runs_under_a_parent_directory(runner, tmp_path):
+    first = build_run_dir(tmp_path / "parent" / "a")
+    second = build_run_dir(tmp_path / "parent" / "b")
+
+    result = runner.invoke(cli, ["visualise", "fields", str(tmp_path / "parent"), "--fields", "density"])
+
+    assert result.exit_code == 0, result.output
+    assert _plot_names(first)
+    assert _plot_names(second)
+
+
+def test_analysis_reads_a_run_list(runner, tmp_path):
+    first = build_run_dir(tmp_path / "a", config=wetting())
+    second = build_run_dir(tmp_path / "b", config=wetting())
+    run_list = tmp_path / "runs.txt"
+    run_list.write_text(f"{first}\n{second}\n", encoding="utf-8")
+
+    result = runner.invoke(
+        cli, ["visualise", "analysis", str(run_list), "--no-prompt", "--allowed-root", str(tmp_path)]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (first / "simulation_data.csv").exists()
+    assert (second / "simulation_data.csv").exists()
+
+
+def test_a_run_named_twice_is_built_once(runner, run_dir):
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir), str(run_dir), "--fields", "density"])
+
+    assert result.exit_code == 0, result.output
+    assert "Runs          :" not in result.output
+
+
+def test_animate_output_needs_one_run(runner, tmp_path):
+    first = build_run_dir(tmp_path / "a")
+    second = build_run_dir(tmp_path / "b")
+
+    result = runner.invoke(
+        cli, ["visualise", "fields", str(first), str(second), "--animate", "--output", "a.mp4", "--no-prompt"]
+    )
+
+    assert result.exit_code == _EXIT_USAGE
+    assert "exactly one run" in result.output
 
 
 @pytest.mark.parametrize(
@@ -264,3 +337,47 @@ def test_animate_defaults_to_ten_fps(runner, run_dir, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert _FakeAnimator.captured["fps"] == 10
+
+
+def _break_config(run_dir: Path) -> None:
+    (run_dir / "config.toml").write_text("tau = [", encoding="utf-8")
+
+
+@pytest.mark.parametrize("product", ["fields", "analysis", "setup"])
+def test_a_failed_run_is_skipped_and_the_others_continue(runner, tmp_path, product):
+    broken = build_run_dir(tmp_path / "a")
+    good = build_run_dir(tmp_path / "b")
+    _break_config(broken)
+    extra = {"fields": ["--fields", "density"], "analysis": ["--no-prompt"], "setup": []}[product]
+
+    result = runner.invoke(cli, ["visualise", product, str(broken), str(good), *extra])
+
+    assert result.exit_code == 1, result.output
+    assert "Skipped" in result.output
+    assert "1 of 2 runs failed" in result.output
+    assert list((good / "plots").rglob("*.p*"))
+
+
+def test_every_run_failing_exits_1(runner, tmp_path):
+    first = build_run_dir(tmp_path / "a")
+    second = build_run_dir(tmp_path / "b")
+    _break_config(first)
+    _break_config(second)
+
+    result = runner.invoke(cli, ["visualise", "analysis", str(first), str(second), "--no-prompt"])
+
+    assert result.exit_code == 1
+    assert "2 of 2 runs failed" in result.output
+
+
+def test_debug_mode_does_not_skip(runner, tmp_path, monkeypatch):
+    monkeypatch.setenv("TUD_LBM_DEBUG", "1")
+    broken = build_run_dir(tmp_path / "a")
+    good = build_run_dir(tmp_path / "b")
+    _break_config(broken)
+
+    result = runner.invoke(cli, ["visualise", "analysis", str(broken), str(good), "--no-prompt"])
+
+    assert result.exception is not None
+    assert "Skipped" not in result.output
+    assert not (good / "simulation_data.csv").exists()

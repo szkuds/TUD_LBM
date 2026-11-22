@@ -1,10 +1,15 @@
-"""The ``tud-lbm visualise`` group: the figures of one run.
+"""The ``tud-lbm visualise`` group: the per-run figures, of one run or of several.
 
 ``visualise fields``   per-timestep field panels of a run, of one ``.npz`` snapshot, or an animation;
 ``visualise analysis`` snapshot-history figures and ``simulation_data.csv`` of a run;
 ``visualise setup``    the paper setup schematic of a run.
 
-Figures over several runs are ``tud-lbm compare``.
+Each command takes one or more TARGETs. A TARGET is a run directory, a directory
+that holds run directories at any depth, or a ``.txt`` list of run directories
+(:func:`_expand_targets`). Every run gets its own figures in its own ``plots/``
+tree, with one field selection for all of them. A run that fails is skipped and
+the others continue; the command then exits 1 and names it (:class:`_RunBatch`). Figures that overlay several
+runs are ``tud-lbm compare``.
 """
 
 from __future__ import annotations
@@ -15,14 +20,17 @@ import click
 import numpy as np
 from src.cli._console import cli_command
 from src.cli._console import console
+from src.cli._console import debug_mode
 from src.cli.app import cli
 from src.cli.config_loading import _validate_run_dir_has_config
 from src.cli.field_select import _configure_snapshot_fig
 from src.cli.field_select import prompt_fields_marked
 from src.cli.field_select import prompt_overlays
+from src.config.run_config import CONFIG_FILENAME
 from src.config.run_config import DATA_DIRNAME
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from src.config import SimulationConfig
     from src.simulation_io.plotting import FigureBuilder
 
@@ -38,10 +46,12 @@ _MIN_GRID_DIMENSIONS = 2
 _DEFAULT_FPS = 10
 _SNAPSHOT_SUFFIX = ".npz"
 _SNAPSHOT_FIELD_USAGE = "A snapshot must contain a two-dimensional 'rho' or 'u' field."
-_TARGET_USAGE = "TARGET must be a run directory or a .npz snapshot file."
+_TARGET_USAGE = "TARGET must be a run directory, a directory of runs, a .txt run list or a .npz snapshot file."
+_RUN_TARGET_USAGE = "TARGET must be a run directory, a directory of runs or a .txt run list."
 _ANIMATE_SNAPSHOT_USAGE = "--animate needs a run directory, not a single snapshot."
 _ANIMATE_ONLY_USAGE = "--output and --fps apply only with --animate."
 _ANIMATE_SKIP_USAGE = "--skip does not apply with --animate."
+_SINGLE_OUTPUT_USAGE = "--output names one file, so it needs exactly one run."
 
 
 def _load_run_config(run_dir: str | Path) -> SimulationConfig:
@@ -95,6 +105,108 @@ def _run_dir_for_snapshot(snapshot_path: Path) -> Path:
     if parent.name == DATA_DIRNAME:
         return parent.parent
     return parent
+
+
+def _expand_targets(
+    targets: tuple[str, ...],
+    allowed_roots: tuple[str, ...] = (),
+    *,
+    snapshots: bool = False,
+) -> list[Path]:
+    """Expand the TARGET arguments into run directories (and snapshots), in order.
+
+    - a directory with a ``config.toml`` is one run;
+    - a directory without one gives every run directory beneath it, or itself
+      when there is none, so the missing ``config.toml`` is reported for it;
+    - a ``.txt`` file gives the run directories it lists;
+    - a ``.npz`` file is one snapshot, only when *snapshots* is true.
+
+    A path named twice is kept once.
+
+    Raises:
+        click.UsageError: A target is none of the above, or the targets hold no run.
+    """
+    from src.cli.analysis_routing import RUN_LIST_SUFFIX
+    from src.cli.analysis_routing import find_run_dirs
+    from src.cli.analysis_routing import parse_run_dir_list
+
+    expanded: list[Path] = []
+    for target in targets:
+        path = Path(target)
+        if path.is_dir():
+            has_config = (path / CONFIG_FILENAME).is_file()
+            expanded.extend([path] if has_config else (find_run_dirs(path) or [path]))
+        elif path.is_file() and path.suffix.lower() == RUN_LIST_SUFFIX:
+            expanded.extend(parse_run_dir_list(path, allowed_roots))
+        elif snapshots and _is_snapshot(path):
+            expanded.append(path)
+        else:
+            msg = f"{path}: {_TARGET_USAGE if snapshots else _RUN_TARGET_USAGE}"
+            raise click.UsageError(msg)
+    if not expanded:
+        msg = f"No run directories in {', '.join(targets)}."
+        raise click.UsageError(msg)
+    return list(dict.fromkeys(expanded))
+
+
+class _RunBatch:
+    """Runs several targets one after another, and skips a run that fails.
+
+    With one run, or with ``TUD_LBM_DEBUG`` set, an error propagates as it
+    always did, so a single run keeps its exit code and a debug run its
+    traceback. With several, a failed run is reported and the next one starts;
+    the command then exits 1 and names every failed run.
+    """
+
+    def __init__(self, run_dirs: list[Path]) -> None:
+        self.run_dirs = run_dirs
+        self.failed: dict[Path, str] = {}
+        self._skip = len(run_dirs) > 1 and not debug_mode()
+
+    def attempt(self, run_dir: Path, work: Callable[[Path], None]) -> bool:
+        """Do *work* for *run_dir*; whether it succeeded."""
+        if run_dir in self.failed:
+            return False
+        if not self._skip:
+            work(run_dir)
+            return True
+        try:
+            work(run_dir)
+        except Exception as exc:  # noqa: BLE001
+            # One broken run must not stop the plots of the others.
+            self.failed[run_dir] = str(exc)
+            console.print(f"[bold red]Skipped[/bold red] {run_dir}: {exc}")
+            return False
+        return True
+
+    def first_config(self, load: Callable[[Path], SimulationConfig]) -> SimulationConfig:
+        """The config of the first run that loads, which marks the selection prompt."""
+        loaded: list[SimulationConfig] = []
+        for run_dir in self.run_dirs:
+            if self.attempt(run_dir, lambda path: loaded.append(load(path))):
+                return loaded[0]
+        self.finish()
+        raise AssertionError  # finish() raises: every run failed.
+
+    def each(self, work: Callable[[Path], None]) -> None:
+        """Do *work* for every run not failed yet, then report the failures."""
+        for run_dir in self.run_dirs:
+            self.attempt(run_dir, work)
+        self.finish()
+
+    def finish(self) -> None:
+        """Raise one error that names every failed run, when there is one."""
+        if not self.failed:
+            return
+        names = "\n".join(f"  {run_dir}: {reason}" for run_dir, reason in self.failed.items())
+        msg = f"{len(self.failed)} of {len(self.run_dirs)} runs failed and were skipped:\n{names}"
+        raise RuntimeError(msg)
+
+
+def _print_run_count(paths: list[Path]) -> None:
+    """Print how many runs one invocation works on, when there is more than one."""
+    if len(paths) > 1:
+        console.print(f"[dim]Runs          : {len(paths)}[/dim]")
 
 
 def _comma_list(value: str | None) -> list[str] | None:
@@ -235,19 +347,31 @@ _dpi_option = click.option(
     show_default=True,
     help="Resolution in dots per inch for saved figures.",
 )
-_run_dir_argument = click.argument("run_dir", type=click.Path(exists=True, file_okay=False, dir_okay=True))
+_targets_argument = click.argument(
+    "targets", metavar="TARGET...", nargs=-1, required=True, type=click.Path(exists=True)
+)
+_allowed_root_option = click.option(
+    "--allowed-root",
+    "allowed_roots",
+    multiple=True,
+    type=click.Path(exists=True, file_okay=False),
+    help="With a .txt list: an additional directory that a listed run directory may resolve within, beyond "
+    "the default results root (repeatable).",
+)
 
 
 @cli.group()
 def visualise() -> None:
-    """Build the figures of one run: field panels, analysis history or the setup schematic.
+    """Build the figures of each run: field panels, analysis history or the setup schematic.
 
-    Figures over several runs are ``tud-lbm compare``.
+    Every command takes one or more TARGETs: a run directory, a directory of
+    runs or a .txt run list. Figures that overlay several runs are ``tud-lbm compare``.
     """
 
 
 @visualise.command("fields")
-@click.argument("target", metavar="TARGET", type=click.Path(exists=True))
+@_targets_argument
+@_allowed_root_option
 @_fields_option
 @_no_prompt_option
 @_dpi_option
@@ -280,7 +404,7 @@ def visualise() -> None:
 @click.option(
     "--output",
     default=None,
-    help="With --animate: output file (.mp4 or .gif). Defaults to plots/animation.mp4 inside TARGET.",
+    help="With --animate and one run: output file (.mp4 or .gif). Defaults to plots/animation.mp4 inside the run.",
 )
 @click.option(
     "--fps",
@@ -290,7 +414,8 @@ def visualise() -> None:
 )
 @cli_command(title="Visualisation - fields", interrupt_message=_USER_INTERRUPT)
 def visualise_fields(
-    target: str,
+    targets: tuple[str, ...],
+    allowed_roots: tuple[str, ...],
     fields: str | None,
     no_prompt: bool,
     dpi: int,
@@ -301,49 +426,60 @@ def visualise_fields(
     output: str | None,
     fps: int | None,
 ) -> None:
-    """Build per-timestep field panels for TARGET, a run directory or one .npz snapshot.
+    """Build per-timestep field panels for each TARGET.
 
-    A snapshot is drawn without a config.toml, into the plots/ tree of the run
-    that holds it. --animate encodes every snapshot of a run into one video; its
-    frames may also hold analysis panels.
+    A TARGET is a run directory, a directory of runs, a .txt run list or one
+    .npz snapshot. A snapshot is drawn without a config.toml, into the plots/
+    tree of the run that holds it. --animate encodes every snapshot of a run
+    into one video; its frames may also hold analysis panels. The fields are
+    selected once and used for every run.
     """
-    path = Path(target)
-    snapshot = _is_snapshot(path)
-    if not snapshot and not path.is_dir():
-        raise click.UsageError(_TARGET_USAGE)
+    paths = _expand_targets(targets, allowed_roots, snapshots=True)
+    snapshot_paths = [path for path in paths if _is_snapshot(path)]
+    run_dirs = [path for path in paths if not _is_snapshot(path)]
     if animate:
-        _check_animate_options(snapshot=snapshot, skip=skip)
+        _check_animate_options(snapshot=bool(snapshot_paths), skip=skip)
+        if output is not None and len(run_dirs) > 1:
+            raise click.UsageError(_SINGLE_OUTPUT_USAGE)
     elif output is not None or fps is not None:
         raise click.UsageError(_ANIMATE_ONLY_USAGE)
 
     levels = _comma_list(interface_levels)
-    if snapshot:
-        _build_snapshot_figure(path, dpi=dpi, fields=fields, overlay=overlay, interface_levels=levels)
+    for snapshot_path in snapshot_paths:
+        _build_snapshot_figure(snapshot_path, dpi=dpi, fields=fields, overlay=overlay, interface_levels=levels)
+    if not run_dirs:
         return
 
-    config = _with_interface_levels(_load_run_config(path), levels)
+    # The first run's config marks the prompt; the selection then holds for every run.
+    _print_run_count(run_dirs)
+    batch = _RunBatch(run_dirs)
+    first = _with_interface_levels(batch.first_config(_load_run_config), levels)
     interactive = not fields and not no_prompt
     if animate:
         # An animation falls back to plot_fields when animate_fields is unset.
-        configured = list(config.animate_fields or config.plot_fields or [])
+        configured = list(first.animate_fields or first.plot_fields or [])
         available = _operators_for(_ANIMATION_KINDS)
         label = "animation fields"
     else:
-        configured = list(config.plot_fields or [])
+        configured = list(first.plot_fields or [])
         available = _operators_for(_FIELD_KINDS)
         label = "field panels"
     field_list = _select_fields(
         explicit=fields, interactive=interactive, available=available, configured=configured, label=label
     )
     overlays = _select_overlays(
-        explicit=_comma_list(overlay), interactive=interactive, field_list=field_list, config=config
+        explicit=_comma_list(overlay), interactive=interactive, field_list=field_list, config=first
     )
-    _print_selection(path, field_list, overlays, levels)
 
-    if animate:
-        _write_animation(config, path, dpi=dpi, fps=fps, output=output, field_list=field_list, overlays=overlays)
-    else:
-        _write_field_figures(config, path, dpi=dpi, skip=skip, field_list=field_list, overlays=overlays)
+    def _work(run_dir: Path) -> None:
+        config = _with_interface_levels(_load_run_config(run_dir), levels)
+        _print_selection(run_dir, field_list, overlays, levels)
+        if animate:
+            _write_animation(config, run_dir, dpi=dpi, fps=fps, output=output, field_list=field_list, overlays=overlays)
+        else:
+            _write_field_figures(config, run_dir, dpi=dpi, skip=skip, field_list=field_list, overlays=overlays)
+
+    batch.each(_work)
 
 
 def _write_field_figures(
@@ -454,31 +590,55 @@ def _write_animation(
 
 
 @visualise.command("analysis")
-@_run_dir_argument
+@_targets_argument
+@_allowed_root_option
 @_fields_option
 @_no_prompt_option
 @_dpi_option
 @cli_command(title="Visualisation - analysis", interrupt_message=_USER_INTERRUPT)
-def visualise_analysis(run_dir: str, fields: str | None, no_prompt: bool, dpi: int) -> None:
-    """Build the snapshot-history figures and simulation_data.csv of RUN_DIR."""
-    path = Path(run_dir)
-    config = _load_run_config(path)
+def visualise_analysis(
+    targets: tuple[str, ...], allowed_roots: tuple[str, ...], fields: str | None, no_prompt: bool, dpi: int
+) -> None:
+    """Build the snapshot-history figures and simulation_data.csv of each TARGET.
+
+    A TARGET is a run directory, a directory of runs or a .txt run list. The
+    figures are selected once and used for every run.
+    """
+    run_dirs = _expand_targets(targets, allowed_roots)
+    _print_run_count(run_dirs)
+    batch = _RunBatch(run_dirs)
+    first = batch.first_config(_load_run_config)
     available = _operators_for(_ANALYSIS_KINDS)
     field_list = _select_fields(
         explicit=fields,
         interactive=not fields and not no_prompt,
         available=available,
-        configured=list(config.plot_fields or []),
+        configured=list(first.plot_fields or []),
         label="analysis figures",
     )
-    _print_selection(path, field_list)
-    console.print()
+    batch.each(
+        lambda run_dir: _write_analysis(
+            _load_run_config(run_dir), run_dir, dpi=dpi, field_list=field_list, available=available
+        )
+    )
 
+
+def _write_analysis(
+    config: SimulationConfig,
+    run_dir: Path,
+    *,
+    dpi: int,
+    field_list: list[str] | None,
+    available: dict,
+) -> None:
+    """Write the ``simulation_data.csv`` and the analysis figures of one run."""
     from src.cli.analysis_routing import analyse_run
 
+    _print_selection(run_dir, field_list)
+    console.print()
     # The CSV comes first: the figures then read the droplet series it cached.
-    csv_path = analyse_run(path, config)
-    builder = _figure_builder(config, path, dpi=dpi, field_list=field_list, available=available)
+    csv_path = analyse_run(run_dir, config)
+    builder = _figure_builder(config, run_dir, dpi=dpi, field_list=field_list, available=available)
     _configure_snapshot_fig(builder, field_list)
     _report_saved(builder.build_all(), builder.plot_dir)
     if csv_path is not None:
@@ -486,7 +646,8 @@ def visualise_analysis(run_dir: str, fields: str | None, no_prompt: bool, dpi: i
 
 
 @visualise.command("setup")
-@_run_dir_argument
+@_targets_argument
+@_allowed_root_option
 @click.option(
     "--timestep",
     "timesteps",
@@ -509,33 +670,57 @@ def visualise_analysis(run_dir: str, fields: str | None, no_prompt: bool, dpi: i
 @click.option(
     "--output",
     default=None,
-    help="Output file; the suffix sets the format. Defaults to plots/analysis/setup.pdf inside RUN_DIR.",
+    help="With one run: output file; the suffix sets the format. Defaults to plots/analysis/setup.pdf inside the run.",
 )
 @cli_command(title="Visualisation - setup", interrupt_message=_USER_INTERRUPT)
 def visualise_setup(
-    run_dir: str,
+    targets: tuple[str, ...],
+    allowed_roots: tuple[str, ...],
     timesteps: tuple[int, ...],
     angle_tolerance: float,
     draw_angle: float,
     output: str | None,
 ) -> None:
-    """Draw the setup schematic of RUN_DIR: interface, stepped edge, boundaries and incline."""
+    """Draw the setup schematic of each TARGET: interface, stepped edge, boundaries and incline.
+
+    A TARGET is a run directory, a directory of runs or a .txt run list.
+    """
+    run_dirs = _expand_targets(targets, allowed_roots)
+    if output is not None and len(run_dirs) > 1:
+        raise click.UsageError(_SINGLE_OUTPUT_USAGE)
+    _print_run_count(run_dirs)
+    _RunBatch(run_dirs).each(
+        lambda run_dir: _write_setup(
+            run_dir, timesteps=timesteps, angle_tolerance=angle_tolerance, draw_angle=draw_angle, output=output
+        )
+    )
+
+
+def _write_setup(
+    run_dir: Path,
+    *,
+    timesteps: tuple[int, ...],
+    angle_tolerance: float,
+    draw_angle: float,
+    output: str | None,
+) -> None:
+    """Draw the setup schematic of one run."""
     config = _load_run_config(run_dir)
     from src.simulation_io.plotting.setup_figure import select_setup_timesteps
     from src.simulation_io.plotting.setup_figure import snapshot_files
     from src.simulation_io.plotting.setup_figure import write_setup_figure
 
-    available = list(snapshot_files(Path(run_dir)))
+    available = list(snapshot_files(run_dir))
     if unknown := [step for step in timesteps if step not in available]:
         span = f"{available[0]}..{available[-1]}" if available else "none"
-        msg = f"No snapshot for --timestep {unknown}; available: {span}."
+        msg = f"{run_dir}: no snapshot for --timestep {unknown}; available: {span}."
         raise click.UsageError(msg)
 
     console.print(f"[dim]Run directory : {run_dir}[/dim]")
     if timesteps:
         chosen = timesteps
     else:
-        choice = select_setup_timesteps(config, Path(run_dir), angle_tolerance)
+        choice = select_setup_timesteps(config, run_dir, angle_tolerance)
         chosen = choice.timesteps
         console.print(f"[dim]First droplet : {choice.reason}[/dim]")
     console.print(f"[dim]Timesteps     : {', '.join(str(step) for step in chosen) or 'none'}[/dim]")

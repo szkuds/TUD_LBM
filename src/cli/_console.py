@@ -24,6 +24,14 @@ _R = TypeVar("_R")
 #: Exit code for user interruption, matching the shell's 128 + SIGINT.
 _EXIT_INTERRUPTED = 130
 
+#: Set to re-raise errors with their traceback instead of only printing them.
+DEBUG_ENV = "TUD_LBM_DEBUG"
+
+
+def debug_mode() -> bool:
+    """Whether ``TUD_LBM_DEBUG`` asks for errors to keep their traceback."""
+    return bool(os.environ.get(DEBUG_ENV))
+
 
 def banner(title: str) -> None:
     """Print the TUD-LBM banner panel with a command-specific *title*."""
@@ -68,7 +76,7 @@ def cli_command(*, title: str, interrupt_message: str) -> Callable[[Callable[_P,
                 raise
             except Exception as exc:
                 console.print(f"[bold red]Error:[/bold red] {exc}")
-                if os.environ.get("TUD_LBM_DEBUG"):
+                if debug_mode():
                     raise
                 sys.exit(1)
 
