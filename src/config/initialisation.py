@@ -36,3 +36,17 @@ def dispersed_phase(config: SimulationConfig) -> DispersedPhase | None:
     if config.init_type == "multiphase_bubbles":
         return DispersedPhase(DISPERSED_PHASE)
     return None
+
+
+def validate_dispersed_phase(config: SimulationConfig, needed_by: str) -> None:
+    """Reject an unknown ``[initialisation] dispersed``, or a missing one that *needed_by* requires."""
+    value = config.initialisation.get("dispersed")
+    if value is not None and value not in set(DispersedPhase):
+        msg = f"[initialisation] dispersed must be one of {[p.value for p in DispersedPhase]}, got {value!r}"
+        raise ValueError(msg)
+    if dispersed_phase(config) is None:
+        msg = (
+            f"[initialisation] dispersed ('vapour' or 'liquid') is required for {needed_by} "
+            f"with init_type '{config.init_type}'"
+        )
+        raise ValueError(msg)
