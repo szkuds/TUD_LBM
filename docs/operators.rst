@@ -210,7 +210,7 @@ A multiphase run with a solver writes ``coexistence/data/data.json`` (the
 pair, ``p_sat`` and the configured densities) and
 ``coexistence/plots/maxwell.png`` into its run directory at start, and
 ``physical_parameters.txt`` gets a *Maxwell coexistence* row.
-``tud-lbm analyse config.toml --coexistence`` writes the same without a run.
+``tud-lbm analyse coexistence config.toml`` writes the same without a run.
 
 The solver takes an optional ``pressure_jump`` (``p_l − p_v``), zero for the
 Maxwell pair.  :func:`~src.operators.macroscopic.eos.kelvin_densities` passes

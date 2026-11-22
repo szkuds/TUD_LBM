@@ -1,10 +1,12 @@
 """The exit-code contract shared by every CLI command.
 
-These are parametrized over ``cli.commands``, so a command added later is
-covered without editing this file.
+These are parametrized over every leaf command of ``cli.commands``, subcommands
+of a group included, so a command added later is covered without editing this
+file.
 """
 
 from __future__ import annotations
+import click
 import pytest
 from src.cli.app import cli
 from src.cli.commands import cli as loaded_cli
@@ -13,44 +15,61 @@ from src.cli.commands import cli as loaded_cli
 _SEAM = {
     "run": "src.cli.commands.run._run_impl",
     "benchmark": "src.cli.commands.benchmark.run_benchmark",
-    "animate": "src.cli.commands.visualise._validate_run_dir_has_config",
-    "visualise": "src.cli.commands.visualise._validate_run_dir_has_config",
-    "setup-figure": "src.cli.commands.visualise._validate_run_dir_has_config",
-    "compare": "src.cli.analysis_routing.analyse_tree",
-    "regime-map": "src.simulation_io.plotting.regime_map_plot.build_regime_map",
-    "analyse": "src.cli.commands.analysis._load_single_config",
-    "calibration": "src.cli.commands.calibration._load_raw_config",
-    "sweep": "src.cli.commands.sweep._load_raw_config",
+    "visualise fields": "src.cli.commands.visualise._validate_run_dir_has_config",
+    "visualise analysis": "src.cli.commands.visualise._validate_run_dir_has_config",
+    "visualise setup": "src.cli.commands.visualise._validate_run_dir_has_config",
+    "compare runs": "src.cli.analysis_routing.resolve_run_set",
+    "compare regime-map": "src.cli.analysis_routing.resolve_run_set",
+    "analyse surface-tension": "src.cli.commands.analysis._load_single_config",
+    "analyse coexistence": "src.cli.commands.analysis._load_single_config",
+    "analyse length-scale": "src.cli.commands.analysis._validate_run_dir_has_config",
+    "calibration stage": "src.cli.commands.calibration._load_raw_config",
+    "calibration collect": "src.simulation_io.analysis.surface_tension.find_sweep_runs",
+    "calibration refresh": "src.config.adapter_toml.TomlAdapter",
+    "sweep stage": "src.cli.commands.sweep._load_raw_config",
 }
 
 _EXIT_INTERRUPTED = 130
 _EXIT_USAGE = 2
 
 
-#: Commands whose first argument is a file: (file name, arguments before it, arguments after it).
-_FILE_ARGS: dict[str, tuple[str, list[str], list[str]]] = {
-    "run": ("config.toml", [], []),
-    "regime-map": ("dirs.txt", [], []),
-    "benchmark": ("config.toml", [], []),
-    "calibration": ("config.toml", ["stage"], []),
-    "analyse": ("config.toml", [], ["--surface-tension"]),
-    "sweep": ("config.toml", ["stage"], ["--set", "tau=[0.8]"]),
+#: Commands whose first argument is a file: (file name, arguments after it).
+_FILE_ARGS: dict[str, tuple[str, list[str]]] = {
+    "run": ("config.toml", []),
+    "benchmark": ("config.toml", []),
+    "calibration stage": ("config.toml", []),
+    "analyse surface-tension": ("config.toml", []),
+    "analyse coexistence": ("config.toml", []),
+    "sweep stage": ("config.toml", ["--set", "tau=[0.8]"]),
 }
+
+
+def _leaf_commands(group: click.Group, prefix: tuple[str, ...] = ()) -> set[str]:
+    """Every command of *group* that does work, as space-joined paths."""
+    leaves: set[str] = set()
+    for name, command in group.commands.items():
+        path = (*prefix, name)
+        if isinstance(command, click.Group):
+            leaves |= _leaf_commands(command, path)
+        else:
+            leaves.add(" ".join(path))
+    return leaves
 
 
 def _args(name: str, tmp_path) -> list[str]:
     """Minimal valid arguments for *name*, enough to reach the seam."""
+    words = name.split()
     if name not in _FILE_ARGS:
-        return [name, str(tmp_path)]
-    filename, before, after = _FILE_ARGS[name]
+        return [*words, str(tmp_path)]
+    filename, after = _FILE_ARGS[name]
     path = tmp_path / filename
     path.write_text("", encoding="utf-8")
-    return [name, *before, str(path), *after]
+    return [*words, str(path), *after]
 
 
 def test_every_command_has_a_seam():
     """A new command must be added to _SEAM rather than silently untested."""
-    assert set(loaded_cli.commands) == set(_SEAM)
+    assert _leaf_commands(loaded_cli) == set(_SEAM)
 
 
 @pytest.mark.parametrize("name", sorted(_SEAM))
@@ -95,14 +114,13 @@ def test_usage_error_exits_2_not_1(runner):
     assert result.exit_code == _EXIT_USAGE
 
 
-def test_analyse_without_an_analysis_is_a_usage_error(runner, tmp_path):
-    cfg = tmp_path / "config.toml"
-    cfg.write_text("", encoding="utf-8")
+def test_removed_commands_are_unknown(runner):
+    """The overlapping commands are gone, not aliased."""
+    for name in ("animate", "setup-figure", "regime-map"):
+        result = runner.invoke(cli, [name])
 
-    result = runner.invoke(cli, ["analyse", str(cfg)])
-
-    assert result.exit_code == _EXIT_USAGE
-    assert "at least one analysis" in result.output
+        assert result.exit_code == _EXIT_USAGE
+        assert "No such command" in result.output
 
 
 def _raise(exc: type[BaseException] | BaseException):

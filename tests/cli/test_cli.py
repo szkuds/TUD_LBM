@@ -12,7 +12,6 @@ from click.testing import CliRunner
 from src.cli.app import cli
 from src.cli.commands.analysis import compare
 from src.cli.commands.run import run
-from src.cli.commands.visualise import animate
 from src.cli.commands.visualise import visualise
 from src.cli.config_loading import _find_latest_snapshot
 from src.cli.config_loading import _validate_cli_args
@@ -55,6 +54,15 @@ from src.cli.field_select import _resolve_token
 from src.cli.field_select import prompt_fields_marked
 from src.cli.overrides import confirm_or_override
 from src.cli.wetting_init import _run_two_phase_wetting_init
+
+
+def _run_tree(root: Path, n: int = 2) -> Path:
+    """Make *n* run directories (each with a config.toml) under *root* and return *root*."""
+    for i in range(n):
+        run = root / f"run_{i}"
+        run.mkdir(parents=True, exist_ok=True)
+        (run / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+    return root
 
 
 def _prompt_fields_unmarked(ops, current):
@@ -599,7 +607,7 @@ class TestClickCommandPaths:
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
         runner = CliRunner()
         with patch("src.cli.commands.visualise._validate_run_dir_has_config", side_effect=KeyboardInterrupt):
-            result = runner.invoke(cli, ["animate", str(run_dir)])
+            result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--animate"])
         assert result.exit_code == 130
 
     def test_animate_general_exception_exits_1(self, tmp_path):
@@ -608,7 +616,7 @@ class TestClickCommandPaths:
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
         runner = CliRunner()
         with patch("src.cli.commands.visualise._validate_run_dir_has_config", side_effect=RuntimeError("x")):
-            result = runner.invoke(cli, ["animate", str(run_dir)])
+            result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--animate"])
         assert result.exit_code == 1
 
     def test_visualise_keyboard_interrupt_exits_130(self, tmp_path):
@@ -617,7 +625,7 @@ class TestClickCommandPaths:
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
         runner = CliRunner()
         with patch("src.cli.commands.visualise._validate_run_dir_has_config", side_effect=KeyboardInterrupt):
-            result = runner.invoke(cli, ["visualise", str(run_dir)])
+            result = runner.invoke(cli, ["visualise", "fields", str(run_dir)])
         assert result.exit_code == 130
 
     def test_visualise_general_exception_exits_1(self, tmp_path):
@@ -626,58 +634,58 @@ class TestClickCommandPaths:
         (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
         runner = CliRunner()
         with patch("src.cli.commands.visualise._validate_run_dir_has_config", side_effect=RuntimeError("x")):
-            result = runner.invoke(cli, ["visualise", str(run_dir)])
+            result = runner.invoke(cli, ["visualise", "fields", str(run_dir)])
         assert result.exit_code == 1
 
     def test_compare_no_runs_prints_message(self, tmp_path):
         runner = CliRunner()
-        with patch("src.cli.analysis_routing.analyse_tree", return_value=(0, 0)):
-            result = runner.invoke(cli, ["compare", str(tmp_path)])
+        with patch("src.cli.analysis_routing.analyse_runs", return_value=0):
+            result = runner.invoke(cli, ["compare", "runs", str(tmp_path)])
         assert result.exit_code == 0
         assert "No simulation" in result.output
 
     def test_compare_runs_with_zero_ok(self, tmp_path):
         runner = CliRunner()
-        with patch("src.cli.analysis_routing.analyse_tree", return_value=(1, 0)):
-            result = runner.invoke(cli, ["compare", str(tmp_path)])
+        with patch("src.cli.analysis_routing.analyse_runs", return_value=0):
+            result = runner.invoke(cli, ["compare", "runs", str(_run_tree(tmp_path))])
         assert result.exit_code == 0
         assert "no runs produced" in result.output.lower()
 
     def test_compare_runs_with_success(self, tmp_path):
         runner = CliRunner()
-        with patch("src.cli.analysis_routing.analyse_tree", return_value=(2, 2)):
-            result = runner.invoke(cli, ["compare", str(tmp_path)])
+        with patch("src.cli.analysis_routing.analyse_runs", return_value=2):
+            result = runner.invoke(cli, ["compare", "runs", str(_run_tree(tmp_path))])
         assert result.exit_code == 0
 
     def test_compare_accepts_label_param(self, tmp_path):
         runner = CliRunner()
-        with patch("src.cli.analysis_routing.analyse_tree", return_value=(2, 2)) as mock_tree:
-            result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt", "--label-param", "oh"])
+        with patch("src.cli.analysis_routing.analyse_runs", return_value=2) as mock_runs:
+            result = runner.invoke(cli, ["compare", "runs", str(_run_tree(tmp_path)), "--label-param", "oh"])
         assert result.exit_code == 0
-        assert mock_tree.call_args.kwargs["label_keys"] == ["oh"]
+        assert mock_runs.call_args.kwargs["label_keys"] == ["oh"]
 
     def test_compare_without_label_param_selects_automatically(self, tmp_path):
         runner = CliRunner()
-        with patch("src.cli.analysis_routing.analyse_tree", return_value=(2, 2)) as mock_tree:
-            result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt"])
+        with patch("src.cli.analysis_routing.analyse_runs", return_value=2) as mock_runs:
+            result = runner.invoke(cli, ["compare", "runs", str(_run_tree(tmp_path))])
         assert result.exit_code == 0
-        assert mock_tree.call_args.kwargs["label_keys"] is None
+        assert mock_runs.call_args.kwargs["label_keys"] is None
 
     def test_compare_rejects_unknown_label_param(self, tmp_path):
         runner = CliRunner()
-        result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt", "--label-param", "nonsense"])
+        result = runner.invoke(cli, ["compare", "runs", str(_run_tree(tmp_path)), "--label-param", "nonsense"])
         assert result.exit_code == 2
 
     def test_compare_keyboard_interrupt_exits_130(self, tmp_path):
         runner = CliRunner()
-        with patch("src.cli.analysis_routing.analyse_tree", side_effect=KeyboardInterrupt):
-            result = runner.invoke(cli, ["compare", str(tmp_path)])
+        with patch("src.cli.analysis_routing.analyse_runs", side_effect=KeyboardInterrupt):
+            result = runner.invoke(cli, ["compare", "runs", str(_run_tree(tmp_path))])
         assert result.exit_code == 130
 
     def test_compare_general_exception_exits_1(self, tmp_path):
         runner = CliRunner()
-        with patch("src.cli.analysis_routing.analyse_tree", side_effect=RuntimeError("fail")):
-            result = runner.invoke(cli, ["compare", str(tmp_path)])
+        with patch("src.cli.analysis_routing.analyse_runs", side_effect=RuntimeError("fail")):
+            result = runner.invoke(cli, ["compare", "runs", str(_run_tree(tmp_path))])
         assert result.exit_code == 1
 
     def test_regime_map_success(self, tmp_path):
@@ -686,7 +694,11 @@ class TestClickCommandPaths:
         runner = CliRunner()
         out_path = tmp_path / "regime_map_analysis" / "regime_map.png"
         with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", return_value=out_path):
-            result = runner.invoke(cli, ["regime-map", str(dirs_txt)], env={"COLUMNS": "200", "LINES": "50"})
+            result = runner.invoke(
+                cli,
+                ["compare", "regime-map", str(dirs_txt), "--allowed-root", str(tmp_path)],
+                env={"COLUMNS": "200", "LINES": "50"},
+            )
         assert result.exit_code == 0
         assert "regime_map.png" in result.output
 
@@ -696,7 +708,11 @@ class TestClickCommandPaths:
         runner = CliRunner()
         out_path = tmp_path / "regime_map_analysis" / "regime_map_bo_parallel_vs_oh.png"
         with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", return_value=out_path) as mock_build:
-            result = runner.invoke(cli, ["regime-map", str(dirs_txt)], env={"COLUMNS": "200", "LINES": "50"})
+            result = runner.invoke(
+                cli,
+                ["compare", "regime-map", str(dirs_txt), "--allowed-root", str(tmp_path)],
+                env={"COLUMNS": "200", "LINES": "50"},
+            )
         assert result.exit_code == 0
         kwargs = mock_build.call_args.kwargs
         assert (kwargs["x_key"], kwargs["y_key"]) == ("bo_parallel", "oh")
@@ -710,7 +726,19 @@ class TestClickCommandPaths:
         with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", return_value=out_path) as mock_build:
             result = runner.invoke(
                 cli,
-                ["regime-map", str(dirs_txt), "--x", "la", "--y", "bo", "--xscale", "log"],
+                [
+                    "compare",
+                    "regime-map",
+                    str(dirs_txt),
+                    "--allowed-root",
+                    str(tmp_path),
+                    "--x",
+                    "la",
+                    "--y",
+                    "bo",
+                    "--xscale",
+                    "log",
+                ],
                 env={"COLUMNS": "200", "LINES": "50"},
             )
         assert result.exit_code == 0
@@ -722,7 +750,9 @@ class TestClickCommandPaths:
     def test_regime_map_rejects_an_unregistered_axis(self, tmp_path):
         dirs_txt = tmp_path / "dirs.txt"
         dirs_txt.write_text("run_a\n", encoding="utf-8")
-        result = CliRunner().invoke(cli, ["regime-map", str(dirs_txt), "--x", "not_a_number"])
+        result = CliRunner().invoke(
+            cli, ["compare", "regime-map", str(dirs_txt), "--allowed-root", str(tmp_path), "--x", "not_a_number"]
+        )
         assert result.exit_code == 2
 
     def test_regime_map_no_usable_runs_exits_1(self, tmp_path):
@@ -730,7 +760,7 @@ class TestClickCommandPaths:
         dirs_txt.write_text("run_a\n", encoding="utf-8")
         runner = CliRunner()
         with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", return_value=None):
-            result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
+            result = runner.invoke(cli, ["compare", "regime-map", str(dirs_txt), "--allowed-root", str(tmp_path)])
         assert result.exit_code == 1
 
     def test_regime_map_keyboard_interrupt_exits_130(self, tmp_path):
@@ -738,7 +768,7 @@ class TestClickCommandPaths:
         dirs_txt.write_text("run_a\n", encoding="utf-8")
         runner = CliRunner()
         with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", side_effect=KeyboardInterrupt):
-            result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
+            result = runner.invoke(cli, ["compare", "regime-map", str(dirs_txt), "--allowed-root", str(tmp_path)])
         assert result.exit_code == 130
 
     def test_regime_map_general_exception_exits_1(self, tmp_path):
@@ -746,7 +776,7 @@ class TestClickCommandPaths:
         dirs_txt.write_text("run_a\n", encoding="utf-8")
         runner = CliRunner()
         with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", side_effect=RuntimeError("fail")):
-            result = runner.invoke(cli, ["regime-map", str(dirs_txt)])
+            result = runner.invoke(cli, ["compare", "regime-map", str(dirs_txt), "--allowed-root", str(tmp_path)])
         assert result.exit_code == 1
 
     def test_animate_with_mocked_internals(self, tmp_path):
@@ -759,7 +789,7 @@ class TestClickCommandPaths:
             patch("src.simulation_io.plotting.Animator") as mock_anim,
         ):
             mock_anim.return_value.create.return_value = run_dir / "plots" / "animation.mp4"
-            result = runner.invoke(cli, ["animate", str(run_dir)])
+            result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--animate"])
         assert result.exit_code in (0, 1)
 
     def test_visualise_with_mocked_internals_produces_figures(self, tmp_path):
@@ -773,7 +803,7 @@ class TestClickCommandPaths:
         ):
             mock_fb.return_value.build_all.return_value = [run_dir / "plots" / "t1.png"]
             mock_fb.return_value.plot_dir = run_dir / "plots"
-            result = runner.invoke(cli, ["visualise", str(run_dir)])
+            result = runner.invoke(cli, ["visualise", "fields", str(run_dir)])
         assert result.exit_code in (0, 1)
 
     def test_visualise_with_no_figures_produced(self, tmp_path):
@@ -787,7 +817,7 @@ class TestClickCommandPaths:
         ):
             mock_fb.return_value.build_all.return_value = []
             mock_fb.return_value.plot_dir = run_dir / "plots"
-            result = runner.invoke(cli, ["visualise", str(run_dir)])
+            result = runner.invoke(cli, ["visualise", "fields", str(run_dir)])
         assert result.exit_code in (0, 1)
         assert "No figures" in result.output or result.exit_code == 0
 
@@ -1028,36 +1058,36 @@ class TestClickCommands:
 
     def test_animate_missing_run_dir_exits_nonzero(self):
         runner = CliRunner()
-        result = runner.invoke(animate, ["/nonexistent/run_dir"])
+        result = runner.invoke(visualise, ["fields", "/nonexistent/run_dir", "--animate"])
         assert result.exit_code != 0
 
     def test_visualise_missing_run_dir_exits_nonzero(self):
         runner = CliRunner()
-        result = runner.invoke(visualise, ["/nonexistent/run_dir"])
+        result = runner.invoke(visualise, ["fields", "/nonexistent/run_dir"])
         assert result.exit_code != 0
 
     def test_compare_missing_parent_dir_exits_nonzero(self):
         runner = CliRunner()
-        result = runner.invoke(compare, ["/nonexistent/parent_dir"])
+        result = runner.invoke(compare, ["runs", "/nonexistent/parent_dir"])
         assert result.exit_code != 0
 
     def test_animate_valid_run_dir_no_config_toml_exits_nonzero(self, tmp_path):
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         runner = CliRunner()
-        result = runner.invoke(animate, [str(run_dir)])
+        result = runner.invoke(visualise, ["fields", str(run_dir), "--animate"])
         assert result.exit_code != 0
 
     def test_visualise_valid_run_dir_no_config_toml_exits_nonzero(self, tmp_path):
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         runner = CliRunner()
-        result = runner.invoke(visualise, [str(run_dir)])
+        result = runner.invoke(visualise, ["fields", str(run_dir)])
         assert result.exit_code != 0
 
     def test_compare_valid_dir_no_runs_prints_warning(self, tmp_path):
         runner = CliRunner()
-        result = runner.invoke(cli, ["compare", str(tmp_path)])
+        result = runner.invoke(cli, ["compare", "runs", str(tmp_path)])
         assert result.exit_code == 0
         assert "No simulation" in result.output
 
@@ -1770,7 +1800,7 @@ class TestRunCompareSingle:
             _patch("src.simulation_io.plotting.run_comparison.compare_runs") as mock_cmp,
         ):
             _run_compare_single(tmp_path, cfg)
-        mock_cmp.assert_called_once_with(tmp_path)
+        mock_cmp.assert_called_once_with([tmp_path], tmp_path / "comparison_analysis")
 
 
 def _phase_of(raw):
@@ -2114,7 +2144,7 @@ class TestAnimateCommandPaths:
             _patch("src.simulation_io.plotting.Animator") as mock_anim,
         ):
             mock_anim.return_value.create.return_value = run_dir / "animation.mp4"
-            result = runner.invoke(cli, ["animate", str(run_dir), "--no-prompt"])
+            result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--animate", "--no-prompt"])
         assert result.exit_code in (0, 1)
 
     def test_animate_debug_env_reraises(self, tmp_path, monkeypatch):
@@ -2124,7 +2154,7 @@ class TestAnimateCommandPaths:
         monkeypatch.setenv("TUD_LBM_DEBUG", "1")
         runner = CliRunner()
         with patch("src.cli.commands.visualise._validate_run_dir_has_config", side_effect=RuntimeError("boom")):
-            result = runner.invoke(cli, ["animate", str(run_dir)])
+            result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--animate"])
         assert result.exit_code == 1
 
 
@@ -2143,7 +2173,7 @@ class TestVisualiseCommandPaths:
         ):
             mock_fb.return_value.build_all.return_value = [tmp_path / "fig.png"]
             mock_fb.return_value.plot_dir = tmp_path
-            result = runner.invoke(cli, ["visualise", str(run_dir), "--fields", "density,velocity"])
+            result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--fields", "density,velocity"])
         assert result.exit_code in (0, 1)
 
     def test_visualise_no_prompt_path(self, tmp_path):
@@ -2158,7 +2188,7 @@ class TestVisualiseCommandPaths:
         ):
             mock_fb.return_value.build_all.return_value = []
             mock_fb.return_value.plot_dir = tmp_path
-            result = runner.invoke(cli, ["visualise", str(run_dir), "--no-prompt"])
+            result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--no-prompt"])
         assert result.exit_code in (0, 1)
         assert "No figures" in result.output or result.exit_code == 0
 
@@ -2169,7 +2199,7 @@ class TestVisualiseCommandPaths:
         monkeypatch.setenv("TUD_LBM_DEBUG", "1")
         runner = CliRunner()
         with patch("src.cli.commands.visualise._validate_run_dir_has_config", side_effect=RuntimeError("dbg")):
-            result = runner.invoke(cli, ["visualise", str(run_dir)])
+            result = runner.invoke(cli, ["visualise", "fields", str(run_dir)])
         assert result.exit_code == 1
 
     def test_visualise_snapshot_fig_prompts_for_timesteps(self, tmp_path):
@@ -2191,7 +2221,7 @@ class TestVisualiseCommandPaths:
             mock_fb.return_value.analysis_operators = [fake_op]
             mock_fb.return_value.build_all.return_value = [tmp_path / "fig.png"]
             mock_fb.return_value.plot_dir = tmp_path
-            result = runner.invoke(cli, ["visualise", str(run_dir), "--fields", "snapshot_fig"])
+            result = runner.invoke(cli, ["visualise", "analysis", str(run_dir), "--fields", "snapshot_fig"])
 
         assert result.exit_code in (0, 1)
         assert fake_op.timesteps == [5, 10]
@@ -2202,16 +2232,88 @@ class TestCompareCommandPaths:
 
     def test_compare_no_prompt_skips_fields(self, tmp_path):
         runner = CliRunner()
-        with _patch("src.cli.analysis_routing.analyse_tree", return_value=(3, 3)):
-            result = runner.invoke(cli, ["compare", str(tmp_path), "--no-prompt"])
+        with _patch("src.cli.analysis_routing.analyse_runs", return_value=3):
+            result = runner.invoke(cli, ["compare", "runs", str(_run_tree(tmp_path))])
         assert result.exit_code == 0
 
     def test_compare_debug_env_reraises(self, tmp_path, monkeypatch):
         monkeypatch.setenv("TUD_LBM_DEBUG", "1")
         runner = CliRunner()
-        with _patch("src.cli.analysis_routing.analyse_tree", side_effect=RuntimeError("err")):
-            result = runner.invoke(cli, ["compare", str(tmp_path)])
+        with _patch("src.cli.analysis_routing.analyse_runs", side_effect=RuntimeError("err")):
+            result = runner.invoke(cli, ["compare", "runs", str(_run_tree(tmp_path))])
         assert result.exit_code == 1
+
+
+class TestCompareTargets:
+    """Both ``compare`` subcommands take a directory or a ``.txt`` list of run directories."""
+
+    @staticmethod
+    def _list_file(tmp_path: Path) -> Path:
+        _run_tree(tmp_path / "runs")
+        lists = tmp_path / "lists"
+        lists.mkdir()
+        txt_path = lists / "set.txt"
+        txt_path.write_text(f"{(tmp_path / 'runs' / 'run_1').as_posix()}\n", encoding="utf-8")
+        return txt_path
+
+    def test_runs_from_a_directory_output_inside_it(self, tmp_path):
+        with patch("src.cli.analysis_routing.analyse_runs", return_value=2) as mock_runs:
+            result = CliRunner().invoke(cli, ["compare", "runs", str(_run_tree(tmp_path))])
+        assert result.exit_code == 0, result.output
+        run_set, out_dir = mock_runs.call_args.args
+        assert [p.name for p in run_set.run_dirs] == ["run_0", "run_1"]
+        assert out_dir == tmp_path / "comparison_analysis"
+
+    def test_runs_from_a_txt_list_output_beside_it(self, tmp_path):
+        txt_path = self._list_file(tmp_path)
+        with patch("src.cli.analysis_routing.analyse_runs", return_value=1) as mock_runs:
+            result = CliRunner().invoke(cli, ["compare", "runs", str(txt_path), "--allowed-root", str(tmp_path)])
+        assert result.exit_code == 0, result.output
+        run_set, out_dir = mock_runs.call_args.args
+        assert [p.name for p in run_set.run_dirs] == ["run_1"]
+        assert out_dir == txt_path.parent.resolve() / "comparison_analysis"
+
+    def test_runs_out_dir_overrides_the_default(self, tmp_path):
+        out_dir = tmp_path / "elsewhere"
+        with patch("src.cli.analysis_routing.analyse_runs", return_value=2) as mock_runs:
+            result = CliRunner().invoke(
+                cli, ["compare", "runs", str(_run_tree(tmp_path / "set")), "--out-dir", str(out_dir)]
+            )
+        assert result.exit_code == 0, result.output
+        assert mock_runs.call_args.args[1] == out_dir
+
+    def test_regime_map_from_a_directory(self, tmp_path):
+        out_path = tmp_path / "regime_map_analysis" / "regime_map_bo_parallel_vs_oh.png"
+        with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", return_value=out_path) as mock_build:
+            result = CliRunner().invoke(cli, ["compare", "regime-map", str(_run_tree(tmp_path))])
+        assert result.exit_code == 0, result.output
+        run_dirs, out_dir = mock_build.call_args.args
+        assert [p.name for p in run_dirs] == ["run_0", "run_1"]
+        assert out_dir == tmp_path / "regime_map_analysis"
+
+    def test_regime_map_from_a_txt_list(self, tmp_path):
+        txt_path = self._list_file(tmp_path)
+        out_path = tmp_path / "lists" / "regime_map_analysis" / "regime_map_bo_parallel_vs_oh.png"
+        with patch("src.simulation_io.plotting.regime_map_plot.build_regime_map", return_value=out_path) as mock_build:
+            result = CliRunner().invoke(cli, ["compare", "regime-map", str(txt_path), "--allowed-root", str(tmp_path)])
+        assert result.exit_code == 0, result.output
+        run_dirs, out_dir = mock_build.call_args.args
+        assert [p.name for p in run_dirs] == ["run_1"]
+        assert out_dir == txt_path.parent.resolve() / "regime_map_analysis"
+
+    @pytest.mark.parametrize("subcommand", ["runs", "regime-map"])
+    def test_a_file_that_is_not_a_list_is_a_usage_error(self, tmp_path, subcommand):
+        other = tmp_path / "config.toml"
+        other.write_text("", encoding="utf-8")
+        result = CliRunner().invoke(cli, ["compare", subcommand, str(other)])
+        assert result.exit_code == 2
+        assert ".txt list" in result.output
+
+    def test_list_entry_outside_the_allowed_roots_fails(self, tmp_path):
+        txt_path = self._list_file(tmp_path)
+        result = CliRunner().invoke(cli, ["compare", "runs", str(txt_path)])
+        assert result.exit_code == 1
+        assert "--allowed-root" in result.output
 
 
 class TestRunCommandDebugEnv:
@@ -2321,7 +2423,7 @@ results_dir = "{results_dir}"
 
 
 class TestAnalyseCommand:
-    """`tud-lbm analyse CONFIG_TOML --surface-tension` paths via CliRunner."""
+    """`tud-lbm analyse surface-tension|coexistence|length-scale` paths via CliRunner."""
 
     @staticmethod
     def _write_multiphase_toml(tmp_path, extra: str = "") -> str:
@@ -2330,28 +2432,28 @@ class TestAnalyseCommand:
         cfg_toml.write_text(content, encoding="utf-8")
         return str(cfg_toml)
 
-    def test_no_analysis_flag_is_usage_error(self, tmp_path):
+    def test_no_analysis_named_is_usage_error(self, tmp_path):
         cfg_toml = self._write_multiphase_toml(tmp_path)
         result = CliRunner().invoke(cli, ["analyse", cfg_toml])
         assert result.exit_code == 2
-        assert "select at least one analysis" in result.output
+        assert "No such command" in result.output
 
     def test_missing_config_is_usage_error(self):
-        result = CliRunner().invoke(cli, ["analyse", "/nonexistent/config.toml", "--surface-tension"])
+        result = CliRunner().invoke(cli, ["analyse", "surface-tension", "/nonexistent/config.toml"])
         assert result.exit_code == 2
 
     def test_list_value_points_at_sweep_stage(self, tmp_path):
         cfg_toml = self._write_multiphase_toml(tmp_path)
         content = (tmp_path / "config.toml").read_text(encoding="utf-8")
         (tmp_path / "config.toml").write_text(content.replace("tau = 0.99", "tau = [0.6, 0.99]"), encoding="utf-8")
-        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+        result = CliRunner().invoke(cli, ["analyse", "surface-tension", cfg_toml])
         assert result.exit_code == 1
         assert "a list is not a value" in result.output
 
     def test_single_phase_config_errors(self, tmp_path):
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\ngrid_shape=[8, 8]\n", encoding="utf-8")
-        result = CliRunner().invoke(cli, ["analyse", str(cfg_toml), "--surface-tension"])
+        result = CliRunner().invoke(cli, ["analyse", "surface-tension", str(cfg_toml)])
         assert result.exit_code == 1
         assert "multiphase" in result.output
 
@@ -2361,7 +2463,7 @@ class TestAnalyseCommand:
             "src.simulation_io.analysis.surface_tension.calibrate_surface_tension",
             return_value=0.0123,
         ) as mock_calibrate:
-            result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+            result = CliRunner().invoke(cli, ["analyse", "surface-tension", cfg_toml])
         assert result.exit_code == 0
         assert "0.0123" in result.output
         config_arg, out_dir_arg = mock_calibrate.call_args.args
@@ -2375,7 +2477,7 @@ class TestAnalyseCommand:
             "src.simulation_io.analysis.surface_tension.calibrate_surface_tension",
             return_value=None,
         ):
-            result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+            result = CliRunner().invoke(cli, ["analyse", "surface-tension", cfg_toml])
         assert result.exit_code == 0
         assert "Surface tension:" not in result.output
 
@@ -2388,7 +2490,7 @@ class TestAnalyseCommand:
         ) as mock_calibrate:
             result = CliRunner().invoke(
                 cli,
-                ["analyse", cfg_toml, "--surface-tension", "--out-dir", str(out_dir)],
+                ["analyse", "surface-tension", cfg_toml, "--out-dir", str(out_dir)],
             )
         assert result.exit_code == 0
         assert mock_calibrate.call_args.args[1] == out_dir
@@ -2399,7 +2501,7 @@ class TestAnalyseCommand:
             "src.simulation_io.analysis.surface_tension.calibrate_surface_tension",
             side_effect=KeyboardInterrupt,
         ):
-            result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+            result = CliRunner().invoke(cli, ["analyse", "surface-tension", cfg_toml])
         assert result.exit_code == 130
 
     def test_analyse_reports_calibrated_surface_tension(self, tmp_path):
@@ -2408,7 +2510,7 @@ class TestAnalyseCommand:
             "src.simulation_io.analysis.surface_tension.calibrate_surface_tension",
             return_value=0.0123,
         ):
-            result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--surface-tension"])
+            result = CliRunner().invoke(cli, ["analyse", "surface-tension", cfg_toml])
         assert result.exit_code == 0
         assert "0.0123" in result.output
 
@@ -2425,7 +2527,7 @@ class TestAnalyseCommand:
         content = content.replace("rho_l = 1.0\nrho_v = 0.001\n", "").replace('eos = "double-well"\n', cs_section)
         (tmp_path / "config.toml").write_text(content, encoding="utf-8")
 
-        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--coexistence"])
+        result = CliRunner().invoke(cli, ["analyse", "coexistence", cfg_toml])
 
         assert result.exit_code == 0
         assert "rho_v = 0.0168045, rho_l = 12.1833" in result.output
@@ -2434,7 +2536,7 @@ class TestAnalyseCommand:
     def test_coexistence_of_a_double_well_names_its_parameters(self, tmp_path):
         cfg_toml = self._write_multiphase_toml(tmp_path)
 
-        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--coexistence"])
+        result = CliRunner().invoke(cli, ["analyse", "coexistence", cfg_toml])
 
         assert result.exit_code == 0
         assert "own" in result.output
@@ -2444,38 +2546,38 @@ class TestAnalyseCommand:
     def test_coexistence_of_a_single_phase_config_errors(self, tmp_path):
         cfg_toml = tmp_path / "config.toml"
         cfg_toml.write_text("[simulation_type]\ntau=0.8\nnt=10\ngrid_shape=[8, 8]\n", encoding="utf-8")
-        result = CliRunner().invoke(cli, ["analyse", str(cfg_toml), "--coexistence"])
+        result = CliRunner().invoke(cli, ["analyse", "coexistence", str(cfg_toml)])
         assert result.exit_code == 1
         assert "multiphase" in result.output
 
     def test_length_scale_writes_figure_and_refreshes_overview(self, tmp_path):
-        cfg_toml = self._write_multiphase_toml(tmp_path)
+        self._write_multiphase_toml(tmp_path)
 
-        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--length-scale"])
+        result = CliRunner().invoke(cli, ["analyse", "length-scale", str(tmp_path)])
 
         assert result.exit_code == 0
         assert (tmp_path / "plots" / "analysis" / "length_scale.png").exists()
         assert (tmp_path / "physical_parameters.txt").exists()
 
     def test_length_scale_honours_out_dir(self, tmp_path):
-        cfg_toml = self._write_multiphase_toml(tmp_path)
+        self._write_multiphase_toml(tmp_path)
         out_dir = tmp_path / "analysis_out"
 
-        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--length-scale", "--out-dir", str(out_dir)])
+        result = CliRunner().invoke(cli, ["analyse", "length-scale", str(tmp_path), "--out-dir", str(out_dir)])
 
         assert result.exit_code == 0
         assert (out_dir / "plots" / "analysis" / "length_scale.png").exists()
         assert not (tmp_path / "physical_parameters.txt").exists()
 
     def test_length_scale_reports_when_no_region_resolves(self, tmp_path):
-        cfg_toml = self._write_multiphase_toml(tmp_path)
+        self._write_multiphase_toml(tmp_path)
         content = (tmp_path / "config.toml").read_text(encoding="utf-8")
         (tmp_path / "config.toml").write_text(
             content.replace("radii = [0.2]", "radii = []").replace("centres = [[0.5, 0.5]]", "centres = []"),
             encoding="utf-8",
         )
 
-        result = CliRunner().invoke(cli, ["analyse", cfg_toml, "--length-scale"])
+        result = CliRunner().invoke(cli, ["analyse", "length-scale", str(tmp_path)])
 
         assert result.exit_code == 0
         assert "no figure written" in result.output.lower()

@@ -17,6 +17,7 @@ Exercises:
 """
 
 from __future__ import annotations
+from pathlib import Path
 from unittest.mock import patch
 import matplotlib as mpl
 from src.config.boundary import Edge
@@ -25,7 +26,8 @@ mpl.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-from src.cli.analysis_routing import analyse_tree
+from src.cli.analysis_routing import analyse_runs
+from src.cli.analysis_routing import resolve_run_set
 from src.config import SimulationConfig
 from src.simulation_io.analysis.droplet_metrics import RZero
 from src.simulation_io.analysis.droplet_metrics import analytical_sigma_lg
@@ -47,6 +49,13 @@ from src.simulation_io.plotting.run_comparison import _clean_dir_label
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _analyse_tree(parent):
+    """``(runs found, runs with a CSV)`` for every run under *parent*, as ``compare runs`` does it."""
+    run_set = resolve_run_set(parent)
+    return len(run_set.run_dirs), analyse_runs(run_set, Path(parent) / "comparison_analysis")
+
 
 _RHO_L = 1.0
 _RHO_V = 0.2
@@ -482,7 +491,7 @@ def test_build_simulation_csv_writes_file(tmp_path):
 
 
 def test_analyse_tree_returns_zero_zero_when_no_runs(tmp_path):
-    n_runs, n_ok = analyse_tree(tmp_path)
+    n_runs, n_ok = _analyse_tree(tmp_path)
     assert (n_runs, n_ok) == (0, 0)
 
 
@@ -490,7 +499,7 @@ def test_analyse_tree_skips_init_dirs(tmp_path):
     init_dir = tmp_path / "init" / "run1"
     init_dir.mkdir(parents=True)
     (init_dir / "config.toml").write_text("[simulation_type]\nsim_type='single'\n", encoding="utf-8")
-    n_runs, _ = analyse_tree(tmp_path)
+    n_runs, _ = _analyse_tree(tmp_path)
     assert n_runs == 0
 
 
@@ -522,6 +531,6 @@ def test_analyse_tree_counts_valid_run(tmp_path):
         patch("src.cli.analysis_routing._safe_load_config", return_value=cfg),
         patch("src.cli.analysis_routing.compare_runs"),
     ):
-        n_runs, _ = analyse_tree(tmp_path)
+        n_runs, _ = _analyse_tree(tmp_path)
 
     assert n_runs == 1

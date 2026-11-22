@@ -18,8 +18,8 @@ CLI layers::
             `-- setup.pdf                   SETUP_FIGURE_FILENAME
 
 Aggregate analyses spanning several runs write into their own directory rather
-than into any one run: ``COMPARISON_DIRNAME`` for ``tud-lbm compare`` and
-``REGIME_MAP_DIRNAME`` for ``tud-lbm regime-map``.
+than into any one run: ``COMPARISON_DIRNAME`` for ``tud-lbm compare runs`` and
+``REGIME_MAP_DIRNAME`` for ``tud-lbm compare regime-map``.
 
 These are names, not paths — join them onto a run directory at the call site.
 The results *root* under which run directories are created is
@@ -67,7 +67,7 @@ ACCELERATION_PLOT_FILENAME = "acceleration_analysis.png"
 #: Length-scale diagnostic figure, written under ``plots/analysis/``.
 LENGTH_SCALE_PLOT_FILENAME = "length_scale.png"
 
-#: Setup schematic for a paper (``tud-lbm setup-figure``), written under
+#: Setup schematic for a paper (``tud-lbm visualise setup``), written under
 #: ``plots/analysis/``. A PDF: it is a vector figure.
 SETUP_FIGURE_FILENAME = "setup.pdf"
 
@@ -76,10 +76,10 @@ PHYSICAL_PARAMETERS_FILENAME = "physical_parameters.txt"
 
 # --- Multi-run analysis output -----------------------------------------------
 
-#: Output directory for ``tud-lbm compare``.
+#: Output directory for ``tud-lbm compare runs``.
 COMPARISON_DIRNAME = "comparison_analysis"
 
-#: Output directory and figure name for ``tud-lbm regime-map``.
+#: Output directory and figure name for ``tud-lbm compare regime-map``.
 REGIME_MAP_DIRNAME = "regime_map_analysis"
 REGIME_MAP_FILENAME_TEMPLATE = "regime_map_{x}_vs_{y}.png"
 

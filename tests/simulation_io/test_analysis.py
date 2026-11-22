@@ -6,7 +6,7 @@ and without data.
 """
 
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import patch
 import matplotlib as mpl
 from tests.support.config import merge_overrides
@@ -16,20 +16,26 @@ mpl.use("Agg")
 import numpy as np
 import pandas as pd
 import pytest
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
-from src.cli.analysis_routing import analyse_tree
+from src.cli.analysis_routing import analyse_runs
+from src.cli.analysis_routing import find_run_dirs
+from src.cli.analysis_routing import resolve_run_set
 from src.config import SimulationConfig
 from src.simulation_io.plotting._analysis_common import _set_empty_state
 from src.simulation_io.plotting._simulation_csv import build_simulation_csv
 from src.simulation_io.plotting.run_comparison import _load_comparison_entries
 from src.simulation_io.plotting.run_comparison import compare_runs
 
+
+def _analyse_tree(parent):
+    """``(runs found, runs with a CSV)`` for every run under *parent*, as ``compare runs`` does it."""
+    run_set = resolve_run_set(parent)
+    return len(run_set.run_dirs), analyse_runs(run_set, Path(parent) / "comparison_analysis")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 _RHO_L = 1.0
 _RHO_V = 0.2
@@ -107,7 +113,7 @@ class TestCompareRunsActual:
 
     def test_compare_runs_no_entries_prints_message(self, tmp_path, capsys):
         """compare_runs with no valid CSV files should print a message and return."""
-        compare_runs(tmp_path)
+        compare_runs([], tmp_path / "comparison_analysis")
         captured = capsys.readouterr()
         assert "No processed simulation data found" in captured.out
 
@@ -117,7 +123,7 @@ class TestCompareRunsActual:
 
         entries = [{"label": "test_run", "sort_key": 100, "data": _minimal_csv_df()}]
         with patch("src.simulation_io.plotting.run_comparison._load_comparison_entries", return_value=entries):
-            compare_runs(tmp_path)
+            compare_runs([], tmp_path / "comparison_analysis")
 
         out_dir = tmp_path / "comparison_analysis"
         assert out_dir.exists()
@@ -133,7 +139,7 @@ class TestCompareRunsActual:
             {"label": "run_b", "sort_key": 100, "data": _minimal_csv_df()},
         ]
         with patch("src.simulation_io.plotting.run_comparison._load_comparison_entries", return_value=entries):
-            compare_runs(tmp_path)
+            compare_runs([], tmp_path / "comparison_analysis")
 
         pngs = list((tmp_path / "comparison_analysis").glob("*.png"))
         assert len(pngs) == 14
@@ -145,7 +151,7 @@ class TestCompareRunsActual:
         df_no_x = _minimal_csv_df().drop(columns=["normalised_iteration"])
         entries = [{"label": "broken_run", "sort_key": 90, "data": df_no_x}]
         with patch("src.simulation_io.plotting.run_comparison._load_comparison_entries", return_value=entries):
-            compare_runs(tmp_path)  # must not raise
+            compare_runs([], tmp_path / "comparison_analysis")  # must not raise
 
     def test_compare_runs_skips_missing_y_column(self, tmp_path):
         """If y column is absent in a single-y plot, that run is skipped gracefully."""
@@ -154,7 +160,7 @@ class TestCompareRunsActual:
         df_no_y = _minimal_csv_df().drop(columns=["Ca"])
         entries = [{"label": "no_Ca", "sort_key": 90, "data": df_no_y}]
         with patch("src.simulation_io.plotting.run_comparison._load_comparison_entries", return_value=entries):
-            compare_runs(tmp_path)  # must not raise
+            compare_runs([], tmp_path / "comparison_analysis")  # must not raise
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +173,7 @@ class TestLoadComparisonEntries:
 
     def test_returns_empty_when_no_csvs(self, tmp_path):
         pytest.importorskip("pandas")
-        result = _load_comparison_entries(tmp_path)
+        result = _load_comparison_entries(find_run_dirs(tmp_path))
         assert result == []
 
     def test_skips_comparison_analysis_dir(self, tmp_path):
@@ -178,7 +184,7 @@ class TestLoadComparisonEntries:
         cmp_dir.mkdir(parents=True)
         (cmp_dir / "simulation_data.csv").write_text("iteration,Ca\n1,0.001\n", encoding="utf-8")
 
-        result = _load_comparison_entries(tmp_path)
+        result = _load_comparison_entries(find_run_dirs(tmp_path))
         assert result == []
 
     def test_skips_run_without_config_toml(self, tmp_path):
@@ -189,7 +195,7 @@ class TestLoadComparisonEntries:
         (run_dir / "simulation_data.csv").write_text("iteration,Ca\n1,0.001\n", encoding="utf-8")
         # No config.toml → should be skipped
 
-        result = _load_comparison_entries(tmp_path)
+        result = _load_comparison_entries(find_run_dirs(tmp_path))
         assert result == []
 
     def test_loads_entry_when_config_toml_present(self, tmp_path):
@@ -202,7 +208,7 @@ class TestLoadComparisonEntries:
 
         cfg = _wetting_cfg(simulation_name="my_run", wetting={"phi_left": 1.0})
         with patch("src.simulation_io.plotting.run_comparison._safe_load_config", return_value=cfg):
-            result = _load_comparison_entries(tmp_path)
+            result = _load_comparison_entries(find_run_dirs(tmp_path))
 
         assert len(result) == 1
         assert result[0]["label"] == "my_run"
@@ -218,7 +224,7 @@ class TestLoadComparisonEntries:
 
         cfg = _wetting_cfg()  # no simulation_name
         with patch("src.simulation_io.plotting.run_comparison._safe_load_config", return_value=cfg):
-            result = _load_comparison_entries(tmp_path)
+            result = _load_comparison_entries(find_run_dirs(tmp_path))
 
         assert len(result) == 1
         # Label derived from dir name (digit prefix stripped)
@@ -250,7 +256,7 @@ class TestLoadComparisonEntries:
             "src.simulation_io.plotting.run_comparison._safe_load_config",
             side_effect=lambda toml: configs[toml.parent.name],
         ):
-            result = _load_comparison_entries(tmp_path)
+            result = _load_comparison_entries(find_run_dirs(tmp_path))
 
         labels = [entry["label"] for entry in result]
         assert all("Bo" in label for label in labels)
@@ -265,7 +271,7 @@ class TestLoadComparisonEntries:
             forces={"gravity_force": {"force_g": 1e-6}}, initialisation={"radii": [0.2], "centres": [[0.5, 0.5]]}
         )
         with patch("src.simulation_io.plotting.run_comparison._safe_load_config", return_value=cfg):
-            result = _load_comparison_entries(tmp_path, ["oh"])
+            result = _load_comparison_entries(find_run_dirs(tmp_path), ["oh"])
 
         assert all("Oh" in entry["label"] for entry in result)
 
@@ -278,7 +284,7 @@ class TestLoadComparisonEntries:
         (run_dir / "config.toml").write_text("bad=[", encoding="utf-8")
 
         with patch("src.simulation_io.plotting.run_comparison._safe_load_config", return_value=None):
-            result = _load_comparison_entries(tmp_path)
+            result = _load_comparison_entries(find_run_dirs(tmp_path))
 
         assert result == []
 
@@ -301,14 +307,14 @@ def test_analyse_tree_calls_compare_runs_when_csv_produced(tmp_path):
     cfg = _wetting_cfg()
     compare_called = {"n": 0}
 
-    def _fake_compare(_parent_dir, _label_keys=None):
+    def _fake_compare(_run_dirs, _out_dir, _label_keys=None):
         compare_called["n"] += 1
 
     with (
         patch("src.cli.analysis_routing._safe_load_config", return_value=cfg),
         patch("src.cli.analysis_routing.compare_runs", side_effect=_fake_compare),
     ):
-        n_runs, n_ok = analyse_tree(tmp_path)
+        n_runs, n_ok = _analyse_tree(tmp_path)
 
     assert n_runs == 1
     assert n_ok == 1
@@ -326,7 +332,7 @@ def test_analyse_tree_does_not_call_compare_when_all_fail(tmp_path):
     compare_called = {"n": 0}
 
     with patch("src.cli.analysis_routing._safe_load_config", return_value=cfg):
-        n_runs, n_ok = analyse_tree(tmp_path)
+        n_runs, n_ok = _analyse_tree(tmp_path)
 
     assert n_runs == 1
     assert n_ok == 0

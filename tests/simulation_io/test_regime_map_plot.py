@@ -1,10 +1,9 @@
 """End-to-end tests for src.simulation_io.plotting.regime_map_plot."""
 
 from __future__ import annotations
-import sys
 from typing import TYPE_CHECKING
 import numpy as np
-import pytest
+from src.cli.analysis_routing import parse_run_dir_list
 from src.config import SimulationConfig
 from src.config.analysis_options import AxisScale
 from src.simulation_io.analysis.accelerations import Regime
@@ -13,7 +12,6 @@ from src.simulation_io.plotting.figure_config import REGIME_COLORS
 from src.simulation_io.plotting.figure_config import REGIME_MARKERS
 from src.simulation_io.plotting.regime_map_plot import RunRegimeEntry
 from src.simulation_io.plotting.regime_map_plot import build_regime_map
-from src.simulation_io.plotting.regime_map_plot import parse_run_dir_list
 from src.simulation_io.plotting.regime_map_plot import plot_regime_map
 from src.simulation_io.plotting.regime_map_plot import process_run_dir
 from src.simulation_io.readers import TomlAdapter
@@ -23,12 +21,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _NX, _NY = 60, 12
-
-_no_literal_backslash_dirs = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="directory names containing a literal backslash are not representable "
-    "as a single path component on Windows (backslash is always the path separator there)",
-)
 
 
 def _run_config(**kwargs) -> SimulationConfig:
@@ -69,115 +61,6 @@ def _build_run_dir(run_dir: Path, x_starts: list[int], config: SimulationConfig)
     for step, x_start in zip(range(0, len(x_starts) * 10, 10), x_starts, strict=True):
         _write_snapshot(data_dir, step, x_start, ux=0.01 * (step + 1))
     TomlAdapter().save(config, str(run_dir / "config.toml"))
-
-
-def test_parse_run_dir_list_skips_blank_and_comment_lines(tmp_path: Path):
-    (tmp_path / "run_a").mkdir()
-    (tmp_path / "run_b").mkdir()
-    txt_path = tmp_path / "dirs.txt"
-    txt_path.write_text("# header comment\n\nrun_a\nrun_b\n", encoding="utf-8")
-
-    dirs = parse_run_dir_list(txt_path, allowed_roots=[tmp_path])
-
-    assert dirs == [tmp_path / "run_a", tmp_path / "run_b"]
-
-
-@_no_literal_backslash_dirs
-def test_parse_run_dir_list_unescapes_single_quoted_special_chars(tmp_path: Path):
-    run_name = r"22-12-23_$Bo_\parallel = 0.60; Oh = 0.47$"
-    (tmp_path / run_name).mkdir()
-    txt_path = tmp_path / "dirs.txt"
-    quoted_line = r"'" + tmp_path.as_posix() + r"/22-12-23_\$Bo_\\parallel\ \=\ 0.60\;\ Oh\ \=\ 0.47\$'"
-    txt_path.write_text(quoted_line + "\n", encoding="utf-8")
-
-    dirs = parse_run_dir_list(txt_path, allowed_roots=[tmp_path])
-
-    assert dirs == [tmp_path / run_name]
-
-
-@_no_literal_backslash_dirs
-def test_parse_run_dir_list_unescapes_unquoted_special_chars(tmp_path: Path):
-    run_name = r"08-13-44_$Bo_\parallel = 0.80; Oh = 0.45$"
-    (tmp_path / run_name).mkdir()
-    txt_path = tmp_path / "dirs.txt"
-    escaped_line = tmp_path.as_posix() + r"/08-13-44_\$Bo_\\parallel\ \=\ 0.80\;\ Oh\ \=\ 0.45\$"
-    txt_path.write_text(escaped_line + "\n", encoding="utf-8")
-
-    dirs = parse_run_dir_list(txt_path, allowed_roots=[tmp_path])
-
-    assert dirs == [tmp_path / run_name]
-
-
-@_no_literal_backslash_dirs
-def test_parse_run_dir_list_keeps_unquoted_spaces_in_one_line(tmp_path: Path):
-    run_name = r"08-13-44_$Bo_\parallel = 0.60; Oh = 0.30$"
-    (tmp_path / run_name).mkdir()
-    other_name = r"08-13-44_$Bo_\parallel = 0.80; Oh = 0.30$"
-    (tmp_path / other_name).mkdir()
-    txt_path = tmp_path / "dirs.txt"
-    txt_path.write_text(f"{tmp_path.as_posix()}/{run_name}\n{tmp_path.as_posix()}/{other_name}\n", encoding="utf-8")
-
-    dirs = parse_run_dir_list(txt_path, allowed_roots=[tmp_path])
-
-    assert dirs == [tmp_path / run_name, tmp_path / other_name]
-
-
-def test_parse_run_dir_list_strips_double_quotes(tmp_path: Path):
-    (tmp_path / "run_a").mkdir()
-    txt_path = tmp_path / "dirs.txt"
-    txt_path.write_text(f'"{tmp_path.as_posix()}/run_a"\n', encoding="utf-8")
-
-    dirs = parse_run_dir_list(txt_path, allowed_roots=[tmp_path])
-
-    assert dirs == [tmp_path / "run_a"]
-
-
-def test_parse_run_dir_list_rejects_relative_traversal_outside_parent(tmp_path: Path):
-    outside = tmp_path.parent / "outside_secret"
-    outside.mkdir(exist_ok=True)
-    list_dir = tmp_path / "lists"
-    list_dir.mkdir()
-    txt_path = list_dir / "dirs.txt"
-    txt_path.write_text("../../outside_secret\n", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="outside every allowed root"):
-        parse_run_dir_list(txt_path, allowed_roots=[list_dir])
-
-
-def test_parse_run_dir_list_allows_absolute_path_within_allowed_root(tmp_path: Path):
-    outside = tmp_path.parent / "outside_run"
-    outside.mkdir(exist_ok=True)
-    list_dir = tmp_path / "lists"
-    list_dir.mkdir()
-    txt_path = list_dir / "dirs.txt"
-    txt_path.write_text(f"{outside.as_posix()}\n", encoding="utf-8")
-
-    dirs = parse_run_dir_list(txt_path, allowed_roots=[outside.parent])
-
-    assert dirs == [outside]
-
-
-def test_parse_run_dir_list_rejects_absolute_path_outside_allowed_roots(tmp_path: Path):
-    outside = tmp_path.parent / "outside_run"
-    outside.mkdir(exist_ok=True)
-    list_dir = tmp_path / "lists"
-    list_dir.mkdir()
-    txt_path = list_dir / "dirs.txt"
-    txt_path.write_text(f"{outside.as_posix()}\n", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="outside every allowed root"):
-        parse_run_dir_list(txt_path, allowed_roots=[list_dir])
-
-
-def test_parse_run_dir_list_accepts_default_results_root_with_no_allowed_roots(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("src.simulation_io.plotting.regime_map_plot.BASE_RESULTS_DIR", str(tmp_path))
-    (tmp_path / "run_a").mkdir()
-    txt_path = tmp_path / "dirs.txt"
-    txt_path.write_text("run_a\n", encoding="utf-8")
-
-    dirs = parse_run_dir_list(txt_path)
-
-    assert dirs == [tmp_path / "run_a"]
 
 
 def test_process_run_dir_classifies_pinned_run(tmp_path: Path):
@@ -284,21 +167,20 @@ def test_build_regime_map_end_to_end(tmp_path: Path):
         encoding="utf-8",
     )
 
-    out_path = build_regime_map(txt_path, allowed_roots=[tmp_path])
+    out_path = build_regime_map(parse_run_dir_list(txt_path, allowed_roots=[tmp_path]), tmp_path / "regime_map")
 
     assert out_path is not None
     assert out_path.exists()
-    assert out_path.parent == tmp_path / "regime_map_analysis"
+    assert out_path.parent == tmp_path / "regime_map"
     assert out_path.name == "regime_map_bo_parallel_vs_oh.png"
 
 
 def test_build_regime_map_names_the_figure_after_the_axis_pair(tmp_path: Path):
     """Each pair gets its own file, so plotting a second pair does not clobber the first."""
     _build_run_dir(tmp_path / "mobile_run", [4, 10, 30, 48], _run_config())
-    txt_path = tmp_path / "dirs.txt"
-    txt_path.write_text("mobile_run\n", encoding="utf-8")
-
-    out_path = build_regime_map(txt_path, allowed_roots=[tmp_path], x_key="la", y_key="bo", xscale=AxisScale.LOG)
+    out_path = build_regime_map(
+        [tmp_path / "mobile_run"], tmp_path / "regime_map", x_key="la", y_key="bo", xscale=AxisScale.LOG
+    )
 
     assert out_path is not None
     assert out_path.name == "regime_map_la_vs_bo.png"
@@ -306,7 +188,4 @@ def test_build_regime_map_names_the_figure_after_the_axis_pair(tmp_path: Path):
 
 
 def test_build_regime_map_none_when_no_runs_usable(tmp_path: Path):
-    txt_path = tmp_path / "dirs.txt"
-    txt_path.write_text("missing_run\n", encoding="utf-8")
-
-    assert build_regime_map(txt_path, allowed_roots=[tmp_path]) is None
+    assert build_regime_map([tmp_path / "missing_run"], tmp_path / "regime_map") is None

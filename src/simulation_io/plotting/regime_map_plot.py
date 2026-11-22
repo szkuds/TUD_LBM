@@ -1,7 +1,7 @@
 """Aggregate Ca(t) regime classification across many run directories.
 
 Reads `simulation_data.csv` (building it on demand if missing) for every run
-directory listed in a plain-text file, classifies each run into
+directory it is given, classifies each run into
 pinning/dissipative/capillary/steady/unknown (see
 :mod:`src.simulation_io.analysis.accelerations.regime_classification`), and plots the
 result against any pair of registered dimensionless numbers — the regime map.
@@ -13,19 +13,15 @@ for.
 """
 
 from __future__ import annotations
-import re
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 from src.config.analysis_options import AxisScale
 from src.config.analysis_options import Smoothing
-from src.config.config_overview import BASE_RESULTS_DIR
 from src.config.run_config import ACCELERATION_PLOT_FILENAME
 from src.config.run_config import ANALYSIS_DIRNAME
 from src.config.run_config import CONFIG_FILENAME
 from src.config.run_config import PLOTS_DIRNAME
-from src.config.run_config import REGIME_MAP_DIRNAME
 from src.config.run_config import regime_map_filename
 from src.simulation_io.analysis.accelerations import classify_regime
 from src.simulation_io.analysis.accelerations import compute_acceleration
@@ -48,11 +44,9 @@ if TYPE_CHECKING:
     from src.simulation_io.analysis.physical_parameters import DimensionlessNumbers
 
 # Output names come from src.config.run_config and regime styling from
-# plotting.figure_config; the two below are local parsing invariants, not
-# configuration: a run needs two rows before a difference can be taken, and a
-# quoted line needs its two quote characters.
+# plotting.figure_config; this one is a local invariant, not configuration: a
+# run needs two rows before a difference can be taken.
 _MIN_CSV_ROWS = 2
-_MIN_QUOTED_LINE_LEN = 2
 
 
 #: Axis pair used when the caller names none -- what this map plotted before
@@ -74,112 +68,6 @@ class RunRegimeEntry:
     label: str
     numbers: DimensionlessNumbers
     regime: str
-
-
-_SHELL_ESCAPE_RE = re.compile(r"\\[ $;='\"\\]")
-
-
-def parse_run_dir_list(txt_path: str | Path, allowed_roots: Sequence[str | Path] = ()) -> list[Path]:
-    r"""Parse one run-dir path per non-blank, non-``#`` line.
-
-    Lines may be shell-quoted/escaped (e.g. copied from a terminal listing of
-    directory names containing spaces or special characters); such quoting is
-    stripped and backslash escapes are resolved before building the path.
-    This applies whether or not the line is wrapped in quotes — shell
-    tab-completion commonly emits backslash-escaped, *unquoted* lines (e.g.
-    ``\$Bo_\\parallel\ \=\ 0.60\;\ Oh\ \=\ 0.30\$``). A line is only treated
-    as escaped if it contains a backslash before a shell metacharacter
-    (space, ``$``, ``;``, ``=``, a quote, or another backslash) — a lone
-    literal backslash that is simply part of the directory name (e.g.
-    ``\parallel``) is left untouched.
-
-    Each line is treated as exactly one path, even if it contains
-    (escaped or unescaped) whitespace — word-splitting would silently
-    truncate paths like ``$Bo_\\parallel = 0.60; Oh = 0.30$`` at the first
-    space.
-
-    Every entry (relative or absolute) must resolve inside at least one
-    trusted root: ``BASE_RESULTS_DIR`` (this project's default results
-    location) plus any extra directories passed via ``allowed_roots``. An
-    entry outside all of them (e.g. a relative ``..`` escape, or an absolute
-    path pointing somewhere untrusted) is rejected with :class:`ValueError`.
-    Unlike the list file's own directory, ``allowed_roots`` are supplied
-    directly by the caller rather than parsed from the list file's content,
-    so they form a real trust boundary rather than one derived from the
-    same untrusted text being validated (see SonarQube rule
-    ``pythonsecurity:S6549`` — a canonicalized path is only "sanitized" if
-    checked against a fixed, independently-supplied root).
-
-    A directory name containing a literal backslash (as in the ``\parallel``
-    example above) can only be created on a POSIX filesystem — Windows always
-    treats ``\`` as a path separator, so such a name can never exist as a
-    single path component there. On a Windows host such an entry is instead
-    silently split into nested path components like any other Windows path;
-    this function does not probe the filesystem to disambiguate that case,
-    since doing so on unvalidated, user-controlled path text would make file
-    existence itself an oracle. Callers that hit an unexpectedly missing run
-    directory on Windows should check the list file for a backslash that was
-    meant as a literal character rather than a path separator.
-
-    ``txt_path`` itself (which may originate from an untrusted CLI argument,
-    e.g. when this tool is driven by an external or automated caller) is
-    resolved to a canonical, absolute path and confirmed to be an existing
-    regular file *before* anything is read from it, so a directory, device
-    file, or nonexistent path is rejected with :class:`ValueError` up front
-    rather than reaching the filesystem read in an unvalidated state.
-    """
-    txt_path = Path(txt_path).resolve()
-    if not txt_path.is_file():
-        msg = f"{txt_path}: run-dir list must be an existing regular file"
-        raise ValueError(msg)
-    parent = txt_path.parent
-    resolved_roots = [Path(BASE_RESULTS_DIR).resolve(), *(Path(root).resolve() for root in allowed_roots)]
-    dirs: list[Path] = []
-    for raw_line in txt_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        line = _unquote_and_unescape(line)
-        if not line:
-            continue
-        dirs.append(_resolve_run_dir_entry(line, txt_path, parent, resolved_roots))
-    return dirs
-
-
-def _unquote_and_unescape(line: str) -> str:
-    """Strip a single layer of shell quoting and resolve backslash escapes."""
-    quoted = len(line) >= _MIN_QUOTED_LINE_LEN and line[0] == line[-1] and line[0] in ("'", '"')
-    if quoted:
-        line = line[1:-1]
-    if quoted or _SHELL_ESCAPE_RE.search(line):
-        line = re.sub(r"\\(.)", r"\1", line)
-    return line
-
-
-def _resolve_run_dir_entry(line: str, txt_path: Path, parent: Path, resolved_roots: list[Path]) -> Path:
-    """Resolve one parsed line to a run directory, rejecting entries outside every allowed root.
-
-    Validation follows the canonical-path pattern for SonarQube ``pythonsecurity:S6549``
-    (transform -> normalise/resolve -> sanitise -> use): the untrusted ``line`` is first
-    resolved to a canonical path, then checked with ``Path.relative_to`` against each
-    trusted root inside a ``try/except ValueError`` — the exact idiom the rule's own
-    compliant example uses — before the path is returned for any later filesystem use.
-    """
-    path = Path(line)
-    resolved = (path if path.is_absolute() else parent / path).resolve()
-    for root in resolved_roots:
-        try:
-            resolved.relative_to(root)
-        except ValueError:
-            continue
-        return resolved
-    roots_desc = ", ".join(str(root) for root in resolved_roots)
-    msg = (
-        f"{txt_path}: run directory {line!r} resolves to {resolved}, which "
-        f"is outside every allowed root ({roots_desc}). Pass additional "
-        "trusted locations via --allowed-root."
-    )
-    raise ValueError(msg)
 
 
 def _load_or_build_csv(run_dir: Path, config: SimulationConfig) -> tuple[pd.DataFrame, float] | None:
@@ -318,9 +206,8 @@ def plot_regime_map(
 
 
 def build_regime_map(
-    txt_path: str | Path,
-    allowed_roots: Sequence[str | Path] = (),
-    out_dir: str | Path | None = None,
+    run_dirs: Sequence[Path],
+    out_dir: str | Path,
     *,
     smoothing: Smoothing = Smoothing.RAW,
     x_key: str = DEFAULT_X_KEY,
@@ -328,11 +215,7 @@ def build_regime_map(
     xscale: AxisScale = AxisScale.LINEAR,
     yscale: AxisScale = AxisScale.LINEAR,
 ) -> Path | None:
-    """Classify every run listed in ``txt_path`` and save the regime map.
-
-    ``allowed_roots`` are additional trusted directories (beyond the default
-    results root) that every run-dir entry must resolve within; see
-    :func:`parse_run_dir_list`.
+    """Classify every run in *run_dirs* and save the regime map into *out_dir*.
 
     ``smoothing`` controls the acceleration curve used for peak detection in
     each run's diagnostic plot (see
@@ -346,8 +229,6 @@ def build_regime_map(
     Returns the path to the saved figure, or ``None`` when no run classified or
     none resolved both axes.
     """
-    txt_path = Path(txt_path)
-    run_dirs = parse_run_dir_list(txt_path, allowed_roots)
     print(f"Found {len(run_dirs)} run director(y/ies) to classify.")
 
     entries: list[RunRegimeEntry] = []
@@ -360,8 +241,7 @@ def build_regime_map(
     if not entries:
         return None
 
-    out_dir = Path(out_dir) if out_dir is not None else txt_path.parent / REGIME_MAP_DIRNAME
-    out_path = out_dir / regime_map_filename(x_key, y_key)
+    out_path = Path(out_dir) / regime_map_filename(x_key, y_key)
     saved = plot_regime_map(entries, out_path, x_key=x_key, y_key=y_key, xscale=xscale, yscale=yscale)
     if saved is None:
         return None
@@ -376,7 +256,3 @@ def _axis_summary(entry: RunRegimeEntry, x_key: str, y_key: str) -> str:
         value = entry.numbers.get(key)
         parts.append(f"{key}={'unresolved' if value is None else f'{value:.4g}'}")
     return ", ".join(parts)
-
-
-if __name__ == "__main__":  # pragma: no cover
-    build_regime_map(sys.argv[1])

@@ -138,7 +138,7 @@ _CACHE_FILENAME = "surface_tension_cache.json"
 _OUTPUT_DIRNAME = "surface_tension"
 # The tree mirrors a run directory — data/ for saved arrays and the fitted
 # numbers, plots/ for figures — so the same tooling (notably
-# ``visualise <snapshot>.npz --single``) resolves it the same way.
+# ``visualise fields <snapshot>.npz``) resolves it the same way.
 _PLOT_FILENAME = "calibration.png"
 _DATA_FILENAME = "data.json"
 

@@ -85,12 +85,14 @@ A run is one config. A parameter sweep is staged as one completed TOML per combi
 tud-lbm sweep stage examples/config_simple.toml --set 'tau=[0.6, 0.7, 0.8]' --out configs/var_tau/
 ```
 
-Saved runs can be plotted or animated, and a directory of runs can be analysed:
+`visualise` makes the figures of one run. `compare` makes figures over several runs, given as a directory or a `.txt` list of run directories:
 
 ```console
-tud-lbm visualise /path/to/run-directory --no-prompt
-tud-lbm animate /path/to/run-directory
-tud-lbm compare /path/to/sweep-results --no-prompt
+tud-lbm visualise fields /path/to/run-directory --no-prompt
+tud-lbm visualise fields /path/to/run-directory --animate
+tud-lbm visualise analysis /path/to/run-directory --no-prompt
+tud-lbm compare runs /path/to/sweep-results
+tud-lbm compare regime-map runs.txt
 ```
 
 See the [examples](examples/) for single-phase, multiphase, and von Karman configurations.

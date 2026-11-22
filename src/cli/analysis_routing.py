@@ -1,15 +1,24 @@
 """Routing between the CLI's analysis entry points and the metric layer.
 
-Every command that analyses saved snapshots — ``compare``, ``run --compare``,
-and ``regime-map`` — goes through :func:`analyse_run` or :func:`analyse_tree`.
-Both share one :class:`~src.simulation_io.analysis.droplet_metrics.DropletSeries` per
-run, so a run's ``.npz`` files are read once regardless of how many analysis
-figures are requested.
+Every command that analyses saved snapshots — ``visualise analysis``,
+``compare runs``, ``compare regime-map`` and ``run --compare`` — goes through
+:func:`analyse_run` or :func:`analyse_runs`. Both share one
+:class:`~src.simulation_io.analysis.droplet_metrics.DropletSeries` per run, so a
+run's ``.npz`` files are read once regardless of how many analysis figures are
+requested.
+
+A multi-run command names its runs with one argument, a directory or a ``.txt``
+list of run directories; :func:`resolve_run_set` turns either into a
+:class:`RunSet`.
 """
 
 from __future__ import annotations
+import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+import click
+from src.config.config_overview import BASE_RESULTS_DIR
 from src.config.run_config import COMPARISON_DIRNAME
 from src.config.run_config import CONFIG_FILENAME
 from src.simulation_io.plotting._simulation_csv import build_simulation_csv
@@ -22,6 +31,45 @@ if TYPE_CHECKING:
 
 #: Path fragments marking directories that are not simulation runs.
 _SKIP_DIRS = ("init", COMPARISON_DIRNAME)
+
+#: Suffix of a run-directory list file.
+RUN_LIST_SUFFIX = ".txt"
+
+# A quoted line needs its two quote characters.
+_MIN_QUOTED_LINE_LEN = 2
+
+
+@dataclass(frozen=True)
+class RunSet:
+    """The runs one multi-run command works on, and where its output goes by default.
+
+    Attributes:
+        run_dirs: The run directories, in a stable order.
+        out_root: The directory a default output folder is made in: the
+            directory itself, or the directory holding the list file.
+    """
+
+    run_dirs: tuple[Path, ...]
+    out_root: Path
+
+
+def resolve_run_set(target: str | Path, allowed_roots: Sequence[str | Path] = ()) -> RunSet:
+    """Resolve a directory or a ``.txt`` run list into a :class:`RunSet`.
+
+    A directory gives every run directory beneath it (:func:`find_run_dirs`). A
+    ``.txt`` file gives the run directories it lists (:func:`parse_run_dir_list`,
+    which checks each entry against *allowed_roots*).
+
+    Raises:
+        click.UsageError: *target* is neither a directory nor a ``.txt`` file.
+    """
+    path = Path(target)
+    if path.is_dir():
+        return RunSet(run_dirs=tuple(find_run_dirs(path)), out_root=path)
+    if path.is_file() and path.suffix.lower() == RUN_LIST_SUFFIX:
+        return RunSet(run_dirs=tuple(parse_run_dir_list(path, allowed_roots)), out_root=path.resolve().parent)
+    msg = f"{path}: expected a directory of runs or a {RUN_LIST_SUFFIX} list of run directories"
+    raise click.UsageError(msg)
 
 
 def analyse_run(
@@ -69,44 +117,139 @@ def find_run_dirs(parent_dir: str | Path) -> list[Path]:
     return run_dirs
 
 
-def analyse_tree(
-    parent_dir: str | Path,
-    *,
-    fields: list[str] | None = None,
-    label_keys: Sequence[str] | None = None,
-) -> tuple[int, int]:
-    """Analyse every run under *parent_dir*, then build cross-run plots.
+def analyse_runs(run_set: RunSet, out_dir: Path, *, label_keys: Sequence[str] | None = None) -> int:
+    """Export every run's ``simulation_data.csv``, then overlay them in *out_dir*.
 
-    Cross-run comparison plots are only generated when at least one run
-    produced CSV data.
+    The comparison plots are made only when at least one run produced a CSV.
 
     Args:
-        parent_dir: Directory containing run directories, at any nesting depth.
-        fields: Analysis operator names to render per run.
+        run_set: The runs to compare.
+        out_dir: Directory for the comparison plots.
         label_keys: Legend-label keys for the comparison plots; ``None`` labels
-            each run with whichever dimensionless numbers differ across the tree.
+            each run with whichever dimensionless numbers differ across the set.
 
     Returns:
-        ``(n_runs_found, n_runs_with_csv)``.
+        The number of runs that produced a CSV.
     """
-    parent = Path(parent_dir)
-    run_dirs = find_run_dirs(parent)
-    if not run_dirs:
-        return 0, 0
-
-    print(f"Found {len(run_dirs)} simulation(s) to process.")
+    print(f"Found {len(run_set.run_dirs)} simulation(s) to process.")
 
     n_ok = 0
-    for run_dir in run_dirs:
+    for run_dir in run_set.run_dirs:
         config = _safe_load_config(run_dir / CONFIG_FILENAME)
         if config is None:
             continue
-        if analyse_run(run_dir, config, fields=fields) is not None:
+        if analyse_run(run_dir, config) is not None:
             n_ok += 1
 
     if n_ok > 0:
         print("\nGenerating comparison plots...")
-        compare_runs(parent, label_keys)
-        print(f"Done. Comparison plots in {parent / COMPARISON_DIRNAME}")
+        compare_runs(run_set.run_dirs, out_dir, label_keys)
+        print(f"Done. Comparison plots in {out_dir}")
 
-    return len(run_dirs), n_ok
+    return n_ok
+
+
+_SHELL_ESCAPE_RE = re.compile(r"\\[ $;='\"\\]")
+
+
+def parse_run_dir_list(txt_path: str | Path, allowed_roots: Sequence[str | Path] = ()) -> list[Path]:
+    r"""Parse one run-dir path per non-blank, non-``#`` line.
+
+    Lines may be shell-quoted/escaped (e.g. copied from a terminal listing of
+    directory names containing spaces or special characters); such quoting is
+    stripped and backslash escapes are resolved before building the path.
+    This applies whether or not the line is wrapped in quotes — shell
+    tab-completion commonly emits backslash-escaped, *unquoted* lines (e.g.
+    ``\$Bo_\\parallel\ \=\ 0.60\;\ Oh\ \=\ 0.30\$``). A line is only treated
+    as escaped if it contains a backslash before a shell metacharacter
+    (space, ``$``, ``;``, ``=``, a quote, or another backslash) — a lone
+    literal backslash that is simply part of the directory name (e.g.
+    ``\parallel``) is left untouched.
+
+    Each line is treated as exactly one path, even if it contains
+    (escaped or unescaped) whitespace — word-splitting would silently
+    truncate paths like ``$Bo_\\parallel = 0.60; Oh = 0.30$`` at the first
+    space.
+
+    Every entry (relative or absolute) must resolve inside at least one
+    trusted root: ``BASE_RESULTS_DIR`` (this project's default results
+    location) plus any extra directories passed via ``allowed_roots``. An
+    entry outside all of them (e.g. a relative ``..`` escape, or an absolute
+    path pointing somewhere untrusted) is rejected with :class:`ValueError`.
+    Unlike the list file's own directory, ``allowed_roots`` are supplied
+    directly by the caller rather than parsed from the list file's content,
+    so they form a real trust boundary rather than one derived from the
+    same untrusted text being validated (see SonarQube rule
+    ``pythonsecurity:S6549`` — a canonicalized path is only "sanitized" if
+    checked against a fixed, independently-supplied root).
+
+    A directory name containing a literal backslash (as in the ``\parallel``
+    example above) can only be created on a POSIX filesystem — Windows always
+    treats ``\`` as a path separator, so such a name can never exist as a
+    single path component there. On a Windows host such an entry is instead
+    silently split into nested path components like any other Windows path;
+    this function does not probe the filesystem to disambiguate that case,
+    since doing so on unvalidated, user-controlled path text would make file
+    existence itself an oracle. Callers that hit an unexpectedly missing run
+    directory on Windows should check the list file for a backslash that was
+    meant as a literal character rather than a path separator.
+
+    ``txt_path`` itself (which may originate from an untrusted CLI argument,
+    e.g. when this tool is driven by an external or automated caller) is
+    resolved to a canonical, absolute path and confirmed to be an existing
+    regular file *before* anything is read from it, so a directory, device
+    file, or nonexistent path is rejected with :class:`ValueError` up front
+    rather than reaching the filesystem read in an unvalidated state.
+    """
+    txt_path = Path(txt_path).resolve()
+    if not txt_path.is_file():
+        msg = f"{txt_path}: run-dir list must be an existing regular file"
+        raise ValueError(msg)
+    parent = txt_path.parent
+    resolved_roots = [Path(BASE_RESULTS_DIR).resolve(), *(Path(root).resolve() for root in allowed_roots)]
+    dirs: list[Path] = []
+    for raw_line in txt_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        line = _unquote_and_unescape(line)
+        if not line:
+            continue
+        dirs.append(_resolve_run_dir_entry(line, txt_path, parent, resolved_roots))
+    return dirs
+
+
+def _unquote_and_unescape(line: str) -> str:
+    """Strip a single layer of shell quoting and resolve backslash escapes."""
+    quoted = len(line) >= _MIN_QUOTED_LINE_LEN and line[0] == line[-1] and line[0] in ("'", '"')
+    if quoted:
+        line = line[1:-1]
+    if quoted or _SHELL_ESCAPE_RE.search(line):
+        line = re.sub(r"\\(.)", r"\1", line)
+    return line
+
+
+def _resolve_run_dir_entry(line: str, txt_path: Path, parent: Path, resolved_roots: list[Path]) -> Path:
+    """Resolve one parsed line to a run directory, rejecting entries outside every allowed root.
+
+    Validation follows the canonical-path pattern for SonarQube ``pythonsecurity:S6549``
+    (transform -> normalise/resolve -> sanitise -> use): the untrusted ``line`` is first
+    resolved to a canonical path, then checked with ``Path.relative_to`` against each
+    trusted root inside a ``try/except ValueError`` — the exact idiom the rule's own
+    compliant example uses — before the path is returned for any later filesystem use.
+    """
+    path = Path(line)
+    resolved = (path if path.is_absolute() else parent / path).resolve()
+    for root in resolved_roots:
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            continue
+        return resolved
+    roots_desc = ", ".join(str(root) for root in resolved_roots)
+    msg = (
+        f"{txt_path}: run directory {line!r} resolves to {resolved}, which "
+        f"is outside every allowed root ({roots_desc}). Pass additional "
+        "trusted locations via --allowed-root."
+    )
+    raise ValueError(msg)

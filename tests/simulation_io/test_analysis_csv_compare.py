@@ -4,7 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from src.cli.analysis_routing import analyse_tree
+from src.cli.analysis_routing import analyse_runs
+from src.cli.analysis_routing import resolve_run_set
 from src.config import SimulationConfig
 from src.config.boundary import Edge
 from src.simulation_io.analysis.droplet_metrics import DropletSeries
@@ -12,6 +13,12 @@ from src.simulation_io.analysis.droplet_metrics import MetricScales
 from src.simulation_io.plotting._simulation_csv import build_simulation_csv
 from src.simulation_io.plotting.run_comparison import _clean_dir_label
 from src.simulation_io.plotting.run_comparison import _safe_load_config
+
+
+def _analyse_tree(parent):
+    """``(runs found, runs with a CSV)`` for every run under *parent*, as ``compare runs`` does it."""
+    run_set = resolve_run_set(parent)
+    return len(run_set.run_dirs), analyse_runs(run_set, Path(parent) / "comparison_analysis")
 
 
 def _wetting_config() -> SimulationConfig:
@@ -172,12 +179,12 @@ def test_analyse_tree_skips_special_folders(monkeypatch, tmp_path: Path):
 
     called = {"n": 0}
 
-    def _fake_compare(_parent, _label_keys=None):
+    def _fake_compare(_run_dirs, _out_dir, _label_keys=None):
         called["n"] += 1
 
     monkeypatch.setattr("src.cli.analysis_routing.compare_runs", _fake_compare)
 
-    n_runs, n_ok = analyse_tree(parent)
+    n_runs, n_ok = _analyse_tree(parent)
 
     assert n_runs == 1
     assert n_ok == 1

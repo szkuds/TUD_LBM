@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import TypedDict
 from matplotlib.colors import TABLEAU_COLORS
-from src.config.run_config import COMPARISON_DIRNAME
 from src.config.run_config import CONFIG_FILENAME
 from src.config.run_config import SIMULATION_CSV_FILENAME
 from src.simulation_io.analysis.run_labels import NAME_KEY
@@ -161,10 +160,11 @@ def _safe_load_config(toml_path: Path) -> SimulationConfig | None:
         return None
 
 
-def _load_comparison_entries(parent_dir: Path, label_keys: Sequence[str] | None = None) -> list[dict]:
-    """Collect all processed run CSVs under *parent_dir*, labelled and ordered.
+def _load_comparison_entries(run_dirs: Sequence[Path], label_keys: Sequence[str] | None = None) -> list[dict]:
+    """Collect the processed CSVs of *run_dirs*, labelled and ordered.
 
-    Legend labels come from the dimensionless numbers that differ across the
+    A run without ``simulation_data.csv`` or a readable ``config.toml`` is left
+    out. Legend labels come from the dimensionless numbers that differ across the
     collected runs (see :mod:`src.simulation_io.analysis.run_labels`), which is a
     property of the whole set — so they are assigned once, after every run has
     been read, rather than per run inside the loop. *label_keys* overrides that
@@ -179,12 +179,10 @@ def _load_comparison_entries(parent_dir: Path, label_keys: Sequence[str] | None 
     from src.simulation_io.analysis.physical_parameters import compute_dimensionless_numbers
 
     entries = []
-    for csv_path in sorted(parent_dir.rglob(SIMULATION_CSV_FILENAME)):
-        run_dir = csv_path.parent
-        if COMPARISON_DIRNAME in run_dir.parts:
-            continue
+    for run_dir in run_dirs:
+        csv_path = run_dir / SIMULATION_CSV_FILENAME
         toml_path = run_dir / CONFIG_FILENAME
-        if not toml_path.exists():
+        if not (csv_path.is_file() and toml_path.is_file()):
             continue
         config = _safe_load_config(toml_path)
         if config is None:
@@ -266,31 +264,31 @@ def _plot_comparison_entry(
     _scatter_series(ax, df, x_col, y2, color=color, marker=marker, alpha=0.5, label=f"{label} ({l2})")
 
 
-def compare_runs(parent_dir: str | Path, label_keys: Sequence[str] | None = None) -> None:
-    """Generate comparison scatter plots across all processed runs.
+def compare_runs(
+    run_dirs: Sequence[str | Path],
+    out_dir: str | Path,
+    label_keys: Sequence[str] | None = None,
+) -> None:
+    """Overlay the ``simulation_data.csv`` series of *run_dirs* in one set of plots.
 
-    Reads ``simulation_data.csv`` files produced by :func:`build_simulation_csv`
-    from every run directory under *parent_dir* and writes plots to
-    ``<parent_dir>/comparison_analysis/``.
+    Each run's CSV is the one :func:`build_simulation_csv` wrote; a run without
+    one is left out. The plots go to *out_dir*.
 
     Args:
-        parent_dir: Parent directory that contains the individual run directories.
+        run_dirs: The run directories to overlay.
+        out_dir: Directory for the comparison plots, created when missing.
         label_keys: Legend-label keys from :data:`LABEL_PARAM_CHOICES`. ``None``
             labels the runs with whichever dimensionless numbers differ between
             them, falling back to the run names when none do.
     """
     import matplotlib.pyplot as plt
 
-    parent_dir = Path(parent_dir).resolve()
-    entries = _load_comparison_entries(parent_dir, label_keys)
+    entries = _load_comparison_entries([Path(run_dir).resolve() for run_dir in run_dirs], label_keys)
     if not entries:
         print("No processed simulation data found for comparison.")
         return
 
-    out_dir = (parent_dir / COMPARISON_DIRNAME).resolve()
-    if out_dir.parent != parent_dir:
-        msg = f"Comparison output directory escapes {parent_dir}: {out_dir}"
-        raise ValueError(msg)
+    out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     colors = list(TABLEAU_COLORS.values())

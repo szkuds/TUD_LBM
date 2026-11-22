@@ -108,9 +108,7 @@ def _run_compare_single(run_dir: Path, config: SimulationConfig) -> None:
     if analyse_run(run_dir, config) is None:
         console.print("[yellow]--compare: CSV export skipped (no wetting boundary condition).[/yellow]")
         return
-    # compare_runs expects a parent directory that contains run dirs; passing
-    # the single run directory makes it plot that one run via rglob.
-    compare_runs(run_dir)
+    compare_runs([run_dir], run_dir / COMPARISON_DIRNAME)
     console.print(f"[bold green]Comparison plots saved to:[/bold green] {run_dir / COMPARISON_DIRNAME}")
 
 

@@ -12,7 +12,7 @@ family appears: ``Bo_parallel`` when the runs are inclined, plain ``Bo`` when
 they are not. Only ``Re`` appears of the buoyancy pair, because ``Re = sqrt(Ar)``
 carries the same information; and only ``Oh`` of the viscous-capillary pair,
 because ``La = 1/Oh**2`` and ``Oh**2`` do likewise. ``Bo_perp``, ``Ar``, ``La`` and ``Oh**2`` all remain
-reachable by naming them explicitly (``tud-lbm compare --label-param``), which
+reachable by naming them explicitly (``tud-lbm compare runs --label-param``), which
 also bypasses the differing-only test.
 
 Deliberately outside :mod:`src.simulation_io.plotting` even though only plots

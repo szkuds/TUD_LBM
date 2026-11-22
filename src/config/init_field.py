@@ -95,8 +95,8 @@ def load_init_field(config: SimulationConfig) -> InitField | None:
     return _load_field_cached(npz_path, (stat.st_mtime_ns, stat.st_size))
 
 
-#: Init fields held at once. Sized for a *set* of runs, not one: ``compare``
-#: and ``regime-map`` walk N run directories, and each run's numbers are
+#: Init fields held at once. Sized for a *set* of runs, not one: ``compare runs``
+#: and ``compare regime-map`` walk N run directories, and each run's numbers are
 #: resolved after every run's CSV has already read the same field, so a cache
 #: that only spans one run re-reads a multi-megabyte NPZ per run. Matches
 #: ``droplet_metrics._MAX_CACHED_RUNS``, which bounds the parallel snapshot

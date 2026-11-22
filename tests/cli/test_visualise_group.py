@@ -1,12 +1,4 @@
-"""The ``visualise`` group and its ``fields`` / ``analysis`` subcommands.
-
-Two click behaviours are load-bearing here and pinned first:
-
-1. ``invoke_without_command=True`` with a required positional on the *group* —
-   click binds the argument before dispatching, so ``visualise ./out fields``
-   means ``RUN_DIR=./out`` plus subcommand ``fields``.
-2. ``cli_command`` cannot wrap the group callback, because click invokes
-   subcommands only after that callback returns. The work functions carry it.
+"""The ``visualise`` group: ``fields``, ``analysis`` and ``setup`` for one run.
 
 Import ``src.cli.commands`` rather than ``src.cli.app``: importing the commands
 package is what registers the commands onto the group.
@@ -24,6 +16,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _EXIT_INTERRUPTED = 130
+_EXIT_USAGE = 2
 
 
 def _plot_names(run_dir: Path) -> set[str]:
@@ -31,105 +24,95 @@ def _plot_names(run_dir: Path) -> set[str]:
     return {p.name for p in (run_dir / "plots").rglob("*.png")}
 
 
-def test_group_help_lists_both_subcommands(runner):
+def _write_snapshot(path: Path) -> Path:
+    np.savez(path, rho=np.ones((8, 8, 1, 1, 1)), u=np.zeros((8, 8, 1, 1, 2)))
+    return path
+
+
+def test_group_help_lists_every_product(runner):
     result = runner.invoke(cli, ["visualise", "--help"])
 
     assert result.exit_code == 0
-    assert "fields" in result.output
-    assert "analysis" in result.output
+    for name in ("fields", "analysis", "setup"):
+        assert name in result.output
 
 
-def test_bare_visualise_builds_both_kinds(runner, run_dir):
-    result = runner.invoke(cli, ["visualise", str(run_dir), "--no-prompt"])
+def test_bare_visualise_with_a_run_dir_is_a_usage_error(runner, run_dir):
+    """There is no default product: a run directory is not a subcommand."""
+    result = runner.invoke(cli, ["visualise", str(run_dir)])
+
+    assert result.exit_code == _EXIT_USAGE
+
+
+def test_fields_builds_only_field_snapshots(runner, run_dir):
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--no-prompt"])
 
     assert result.exit_code == 0, result.output
     assert _plot_names(run_dir)
-
-
-def test_fields_subcommand_builds_only_field_snapshots(runner, run_dir):
-    result = runner.invoke(cli, ["visualise", str(run_dir), "--no-prompt", "fields"])
-
-    assert result.exit_code == 0, result.output
     assert "analysis" not in {p.parent.name for p in (run_dir / "plots").rglob("*.png")}
 
 
-def test_analysis_subcommand_ignores_field_operators(runner, tmp_path):
+def test_analysis_ignores_field_operators_and_writes_the_csv(runner, tmp_path):
     """A config naming both kinds must not render density panels here.
 
     ``plot_fields`` is ``["density", "ca_theta_vs_x"]``; restricted to the
     analysis kind only the second survives.
     """
-    config = wetting()
-    run_dir = build_run_dir(tmp_path, config=config)
+    run_dir = build_run_dir(tmp_path, config=wetting())
 
-    result = runner.invoke(cli, ["visualise", str(run_dir), "--no-prompt", "analysis"])
-
-    assert result.exit_code == 0, result.output
-    assert "density" not in result.output.split("Fields")[-1].split("\n")[0]
-
-
-def test_run_dir_named_fields_binds_as_argument(runner, tmp_path):
-    """A directory literally named ``fields`` is the RUN_DIR, not the subcommand."""
-    run_dir = build_run_dir(tmp_path / "outer", config=wetting())
-    renamed = run_dir.parent / "fields"
-    run_dir.rename(renamed)
-
-    result = runner.invoke(cli, ["visualise", str(renamed), "--no-prompt"])
+    result = runner.invoke(cli, ["visualise", "analysis", str(run_dir), "--no-prompt"])
 
     assert result.exit_code == 0, result.output
-    # Bound as RUN_DIR, so figures land inside it rather than in a sibling.
-    assert (renamed / "plots").exists()
+    assert "Fields        : ca_theta_vs_x" in result.output
+    assert "snapshots" not in {p.parent.name for p in (run_dir / "plots").rglob("*.png")}
+    assert (run_dir / "simulation_data.csv").exists()
 
 
-@pytest.mark.parametrize("argv_tail", [[], ["fields"], ["analysis"]])
-def test_subcommand_errors_still_map_to_exit_codes(runner, monkeypatch, run_dir, argv_tail):
-    """The error contract must survive click's deferred subcommand dispatch."""
+def test_fields_option_restricts_to_the_kind(runner, run_dir):
+    """An analysis operator named to ``fields`` is dropped, not rendered."""
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--fields", "density,ca_theta_vs_x"])
 
+    assert result.exit_code == 0, result.output
+    assert "Fields        : density\n" in result.output
+
+
+@pytest.mark.parametrize("product", ["fields", "analysis", "setup"])
+def test_errors_map_to_exit_codes(runner, monkeypatch, run_dir, product):
     def _interrupt(*_args: object, **_kwargs: object):
         raise KeyboardInterrupt
 
     monkeypatch.setattr("src.cli.commands.visualise._load_run_config", _interrupt)
 
-    result = runner.invoke(cli, ["visualise", str(run_dir), "--no-prompt", *argv_tail])
+    result = runner.invoke(cli, ["visualise", product, str(run_dir)])
 
     assert result.exit_code == _EXIT_INTERRUPTED
 
 
 def test_fields_flag_bypasses_the_prompt(runner, run_dir):
     """With --fields there is no prompt, so no stdin is consumed."""
-    result = runner.invoke(cli, ["visualise", str(run_dir), "--fields", "density"], input="")
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--fields", "density"], input="")
 
     assert result.exit_code == 0, result.output
     assert "Select fields" not in result.output
 
 
-def test_single_snapshot_builds_visual_in_plots_tree(runner, tmp_path):
-    snapshot = tmp_path / "radius_100.25_init.npz"
-    np.savez(
-        snapshot,
-        rho=np.ones((8, 8, 1, 1, 1)),
-        u=np.zeros((8, 8, 1, 1, 2)),
-    )
+def test_snapshot_target_builds_visual_in_plots_tree(runner, tmp_path):
+    snapshot = _write_snapshot(tmp_path / "radius_100.25_init.npz")
 
-    result = runner.invoke(cli, ["visualise", str(snapshot), "--single", "--no-prompt"])
+    result = runner.invoke(cli, ["visualise", "fields", str(snapshot)])
 
     assert result.exit_code == 0, result.output
     assert (tmp_path / "plots" / "snapshots" / "radius_100.25_init.png").exists()
     assert list(tmp_path.glob("*.png")) == []
 
 
-def test_single_snapshot_in_data_dir_writes_to_run_plots(runner, tmp_path):
+def test_snapshot_in_data_dir_writes_to_run_plots(runner, tmp_path):
     """A snapshot under ``<run>/data/`` belongs to that run's plots tree."""
     data_dir = tmp_path / "run" / "data"
     data_dir.mkdir(parents=True)
-    snapshot = data_dir / "timestep_10.npz"
-    np.savez(
-        snapshot,
-        rho=np.ones((8, 8, 1, 1, 1)),
-        u=np.zeros((8, 8, 1, 1, 2)),
-    )
+    snapshot = _write_snapshot(data_dir / "timestep_10.npz")
 
-    result = runner.invoke(cli, ["visualise", str(snapshot), "--single", "--no-prompt"])
+    result = runner.invoke(cli, ["visualise", "fields", str(snapshot)])
 
     assert result.exit_code == 0, result.output
     assert (tmp_path / "run" / "plots" / "snapshots" / "timestep_10.png").exists()
@@ -137,38 +120,65 @@ def test_single_snapshot_in_data_dir_writes_to_run_plots(runner, tmp_path):
     assert not (data_dir / "plots").exists()
 
 
-def test_single_snapshot_rejects_non_npz_path(runner, run_dir):
-    result = runner.invoke(cli, ["visualise", str(run_dir), "--single", "--no-prompt"])
+def test_fields_rejects_a_file_that_is_not_a_snapshot(runner, tmp_path):
+    other = tmp_path / "notes.txt"
+    other.write_text("", encoding="utf-8")
 
-    assert result.exit_code == 2
-    assert "existing .npz snapshot file" in result.output
+    result = runner.invoke(cli, ["visualise", "fields", str(other)])
+
+    assert result.exit_code == _EXIT_USAGE
+    assert "run directory or a .npz snapshot" in result.output
 
 
-def test_visualise_rejects_file_without_single(runner, tmp_path):
+def test_snapshot_without_a_grid_field_is_a_usage_error(runner, tmp_path):
     snapshot = tmp_path / "snapshot.npz"
-    np.savez(snapshot, rho=np.ones((8, 8)))
+    np.savez(snapshot, t=np.array(3))
 
-    result = runner.invoke(cli, ["visualise", str(snapshot), "--no-prompt"])
+    result = runner.invoke(cli, ["visualise", "fields", str(snapshot)])
 
-    assert result.exit_code == 2
-    assert "PATH must point to an existing run directory unless --single is provided." in result.output
+    assert result.exit_code == _EXIT_USAGE
+    assert "'rho' or 'u'" in result.output
 
 
-def test_animate_rejects_file_run_dir(runner, tmp_path):
-    path_arg = tmp_path / "not-a-run-directory"
-    path_arg.touch()
+def test_analysis_rejects_a_file(runner, tmp_path):
+    snapshot = _write_snapshot(tmp_path / "snapshot.npz")
 
-    result = runner.invoke(cli, ["animate", str(path_arg), "--no-prompt"])
+    result = runner.invoke(cli, ["visualise", "analysis", str(snapshot)])
 
-    assert result.exit_code == 2
+    assert result.exit_code == _EXIT_USAGE
     assert "Directory" in result.output
 
 
-def test_fields_subcommand_applies_interface_overlay(runner, run_dir):
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (["--output", "a.mp4"], "only with --animate"),
+        (["--fps", "5"], "only with --animate"),
+        (["--animate", "--skip", "2"], "--skip does not apply"),
+    ],
+)
+def test_animation_options_are_checked(runner, run_dir, extra, message):
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--no-prompt", *extra])
+
+    assert result.exit_code == _EXIT_USAGE
+    assert message in result.output
+
+
+def test_animate_rejects_a_snapshot(runner, tmp_path):
+    snapshot = _write_snapshot(tmp_path / "snapshot.npz")
+
+    result = runner.invoke(cli, ["visualise", "fields", str(snapshot), "--animate"])
+
+    assert result.exit_code == _EXIT_USAGE
+    assert "not a single snapshot" in result.output
+
+
+def test_fields_applies_interface_overlay(runner, run_dir):
     result = runner.invoke(
         cli,
         [
             "visualise",
+            "fields",
             str(run_dir),
             "--fields",
             "density",
@@ -176,8 +186,6 @@ def test_fields_subcommand_applies_interface_overlay(runner, run_dir):
             "interface",
             "--interface-levels",
             "measured",
-            "--no-prompt",
-            "fields",
         ],
     )
 
@@ -189,7 +197,7 @@ def test_fields_subcommand_applies_interface_overlay(runner, run_dir):
 def test_unknown_interface_level_exits_with_error(runner, run_dir):
     result = runner.invoke(
         cli,
-        ["visualise", str(run_dir), "--fields", "interface", "--interface-levels", "median", "--no-prompt", "fields"],
+        ["visualise", "fields", str(run_dir), "--fields", "interface", "--interface-levels", "median"],
     )
 
     assert result.exit_code == 1
@@ -197,31 +205,62 @@ def test_unknown_interface_level_exits_with_error(runner, run_dir):
     assert "median" in result.output
 
 
-def test_animate_accepts_overlay_options(runner, run_dir, monkeypatch):
-    captured: dict[str, object] = {}
+class _FakeAnimator:
+    """Records what ``visualise fields --animate`` hands the animator."""
 
-    class _FakeAnimator:
-        def __init__(self, *, config, run_dir, fps, fields, overlays):
-            captured.update(levels=config.interface_levels, fields=fields, overlays=overlays)
+    captured: dict[str, object] = {}  # noqa: RUF012
 
-        def create(self, output):
-            return run_dir / "plots" / "animation.mp4"
+    def __init__(self, *, config, run_dir, fps, dpi, fields, overlays):
+        type(self).captured = {
+            "levels": config.interface_levels,
+            "fps": fps,
+            "dpi": dpi,
+            "fields": fields,
+            "overlays": overlays,
+        }
+        self._run_dir = run_dir
 
+    def create(self, output):
+        return self._run_dir / "plots" / (output or "animation.mp4")
+
+
+def test_animate_passes_selection_to_the_animator(runner, run_dir, monkeypatch):
     monkeypatch.setattr("src.simulation_io.plotting.Animator", _FakeAnimator)
+
     result = runner.invoke(
         cli,
         [
-            "animate",
+            "visualise",
+            "fields",
             str(run_dir),
+            "--animate",
             "--fields",
-            "density",
+            "density,ca_theta_vs_x",
             "--overlay",
             "interface",
             "--interface-levels",
             "config",
-            "--no-prompt",
+            "--fps",
+            "4",
         ],
     )
 
     assert result.exit_code == 0, result.output
-    assert captured == {"levels": ["config"], "fields": ["density"], "overlays": ["interface"]}
+    # An animation frame may hold analysis panels too.
+    assert _FakeAnimator.captured == {
+        "levels": ["config"],
+        "fps": 4,
+        "dpi": 150,
+        "fields": ["density", "ca_theta_vs_x"],
+        "overlays": ["interface"],
+    }
+    assert "Animation saved to" in result.output
+
+
+def test_animate_defaults_to_ten_fps(runner, run_dir, monkeypatch):
+    monkeypatch.setattr("src.simulation_io.plotting.Animator", _FakeAnimator)
+
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--animate", "--no-prompt"])
+
+    assert result.exit_code == 0, result.output
+    assert _FakeAnimator.captured["fps"] == 10

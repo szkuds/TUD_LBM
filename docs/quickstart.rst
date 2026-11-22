@@ -24,7 +24,7 @@ Extra            Contents
 ===============  ============================================================
 ``dev``          pytest, pytest-cov, coverage, ruff, ty
 ``docs``         sphinx, sphinx-rtd-theme, myst-parser, sphinx-autoapi
-``animation``    moviepy — required by ``tud-lbm animate``
+``animation``    moviepy — required by ``tud-lbm visualise fields --animate``
 ``publishing``   build, twine
 ===============  ============================================================
 
@@ -306,18 +306,24 @@ Each file is ``<simulation_name>.toml``, validated and with every default filled
 in.  Name the runs with ``--name 'var_{tau}_{force_g}'`` (fields are the last
 key of each axis).  Run the files one by one with ``tud-lbm run``, or pass the
 directory to ``scripts/db_pipeline.sh``, then compare them with
-``tud-lbm compare``.  A list value in a config is an error, not a sweep.
+``tud-lbm compare runs``.  A list value in a config is an error, not a sweep.
 
 Looking at the results
 ----------------------
 
-Post-processing commands operate on a finished run directory::
+``visualise`` makes the figures of one finished run::
 
-    uv run tud-lbm visualise <run_dir>            # field snapshots + analysis figures
-    uv run tud-lbm visualise <run_dir> fields     # only per-timestep field maps
-    uv run tud-lbm visualise <run_dir> analysis   # only snapshot-history plots
-    uv run tud-lbm animate <run_dir> --fields density
-    uv run tud-lbm compare <parent_dir>           # cross-run comparison for a sweep
+    uv run tud-lbm visualise fields <run_dir>              # per-timestep field maps
+    uv run tud-lbm visualise fields <run_dir>/data/timestep_N.npz   # one snapshot
+    uv run tud-lbm visualise fields <run_dir> --animate --fields density
+    uv run tud-lbm visualise analysis <run_dir>            # snapshot-history plots + simulation_data.csv
+    uv run tud-lbm visualise setup <run_dir>               # paper setup schematic
+
+``compare`` makes figures over several runs.  Give it a directory (every run
+directory beneath it) or a ``.txt`` file with one run directory per line::
+
+    uv run tud-lbm compare runs <parent_dir>               # overlay the runs of a sweep
+    uv run tud-lbm compare regime-map runs.txt --x la --y bo --xscale log
 
 Add ``--no-prompt`` to take the configured fields instead of being asked
 interactively.  To see what is available before choosing::

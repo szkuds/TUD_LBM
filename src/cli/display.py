@@ -19,8 +19,8 @@ _VISUAL_KINDS = {
 }
 
 _ANALYSIS_USAGE = {
-    "plotting": "tud-lbm animate, tud-lbm visualise",
-    "analysis": "tud-lbm animate, tud-lbm visualise, tud-lbm compare",
+    "plotting": "tud-lbm visualise fields",
+    "analysis": "tud-lbm visualise analysis, tud-lbm visualise fields --animate",
 }
 
 _ANALYSIS_KINDS = frozenset({"plotting", "analysis"})

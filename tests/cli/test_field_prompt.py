@@ -46,7 +46,7 @@ def test_choices_carry_kind_and_description():
 
 def test_visualise_prompt_shows_config_status(runner, run_dir):
     """The prompt marks in-config vs not, and footers the count."""
-    result = runner.invoke(cli, ["visualise", str(run_dir)], input="\n")
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir)], input="\n")
 
     assert result.exit_code == 0, result.output
     assert "in config" in result.output
@@ -68,7 +68,7 @@ def test_animate_marks_against_animate_fields(runner, tmp_path, monkeypatch):
     config = wetting(animate_fields=["velocity"], plot_fields=["density"])
     run_dir = build_run_dir(tmp_path, config=config)
 
-    result = runner.invoke(cli, ["animate", str(run_dir)])
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--animate"])
 
     assert result.exit_code == 0, result.output
     assert captured["configured"] == ["velocity"]
@@ -138,7 +138,7 @@ def test_prompt_overlays_keeps_default_on_end_of_input(monkeypatch):
 
 
 def test_interactive_visualise_overlays_by_default_for_a_wetting_run(runner, run_dir):
-    result = runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\n\n\n")
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir)], input="\n\n\n")
 
     assert result.exit_code == 0, result.output
     assert _CONTACT_ANGLE_QUESTION in result.output
@@ -147,14 +147,14 @@ def test_interactive_visualise_overlays_by_default_for_a_wetting_run(runner, run
 
 
 def test_interactive_visualise_contact_angle_can_be_declined_alone(runner, run_dir):
-    result = runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\nn\n\n")
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir)], input="\nn\n\n")
 
     assert result.exit_code == 0, result.output
     assert "Overlays      : interface" in result.output
 
 
 def test_interactive_visualise_overlay_can_be_declined(runner, run_dir):
-    result = runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\nn\nn\n")
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir)], input="\nn\nn\n")
 
     assert result.exit_code == 0, result.output
     assert _OVERLAY_QUESTION in result.output
@@ -164,7 +164,7 @@ def test_interactive_visualise_overlay_can_be_declined(runner, run_dir):
 def test_non_wetting_run_is_not_asked_about_contact_angles(runner, tmp_path):
     run_dir = build_run_dir(tmp_path, config=_no_wetting_config())
 
-    result = runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="density\n\n")
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir)], input="density\n\n")
 
     assert result.exit_code == 0, result.output
     assert _CONTACT_ANGLE_QUESTION not in result.output
@@ -174,7 +174,7 @@ def test_non_wetting_run_is_not_asked_about_contact_angles(runner, tmp_path):
 def test_explicit_overlay_accepts_both_overlays(runner, run_dir):
     result = runner.invoke(
         cli,
-        ["visualise", str(run_dir), "--overlay", "interface,contact_angle", "--fields", "density", "fields"],
+        ["visualise", "fields", str(run_dir), "--overlay", "interface,contact_angle", "--fields", "density"],
     )
 
     assert result.exit_code == 0, result.output
@@ -200,29 +200,32 @@ def test_declining_overrides_overlay_fields_from_config(runner, tmp_path, monkey
     monkeypatch.setattr("src.simulation_io.plotting.FigureBuilder.__init__", _capture)
     run_dir = build_run_dir(tmp_path, config=wetting(overlay_fields=["interface"]))
 
-    runner.invoke(cli, ["visualise", str(run_dir), "fields"], input="\nn\nn\n")
+    runner.invoke(cli, ["visualise", "fields", str(run_dir)], input="\nn\nn\n")
 
     assert captured["overlays"] == []
 
 
 @pytest.mark.parametrize(
-    "args",
+    ("product", "options"),
     [
-        pytest.param(["analysis"], id="analysis-subcommand"),
-        pytest.param(["--overlay", "interface", "fields"], id="explicit-overlay"),
-        pytest.param(["--no-prompt", "fields"], id="no-prompt"),
-        pytest.param(["--fields", "density", "fields"], id="explicit-fields"),
+        pytest.param("analysis", [], id="analysis-subcommand"),
+        pytest.param("fields", ["--overlay", "interface"], id="explicit-overlay"),
+        pytest.param("fields", ["--no-prompt"], id="no-prompt"),
+        pytest.param("fields", ["--fields", "density"], id="explicit-fields"),
     ],
 )
-def test_overlay_question_is_skipped(runner, run_dir, args):
-    result = runner.invoke(cli, ["visualise", str(run_dir), *args], input="\n\n")
+def test_overlay_question_is_skipped(runner, run_dir, product, options):
+    result = runner.invoke(cli, ["visualise", product, str(run_dir), *options], input="\n\n")
 
     assert result.exit_code == 0, result.output
     assert _OVERLAY_QUESTION not in result.output
 
 
-def test_analysis_only_selection_skips_overlay_question(runner, run_dir):
-    result = runner.invoke(cli, ["visualise", str(run_dir)], input="ca_theta_vs_x\n\n")
+def test_analysis_only_selection_skips_overlay_question(runner, run_dir, tmp_path, monkeypatch):
+    """An animation may hold analysis panels only; then no panel could carry an overlay."""
+    monkeypatch.setattr("src.simulation_io.plotting.Animator.create", lambda self, output: tmp_path / "a.mp4")
+
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--animate"], input="ca_theta_vs_x\n\n")
 
     assert result.exit_code == 0, result.output
     assert _OVERLAY_QUESTION not in result.output
@@ -233,7 +236,7 @@ def test_interactive_animate_asks_overlay_question(runner, tmp_path, monkeypatch
     captured: dict[str, object] = {}
 
     class _FakeAnimator:
-        def __init__(self, *, config, run_dir, fps, fields, overlays):
+        def __init__(self, *, config, run_dir, fps, dpi, fields, overlays):
             captured["overlays"] = overlays
 
         def create(self, output):
@@ -242,7 +245,7 @@ def test_interactive_animate_asks_overlay_question(runner, tmp_path, monkeypatch
     monkeypatch.setattr("src.simulation_io.plotting.Animator", _FakeAnimator)
     run_dir = build_run_dir(tmp_path)
 
-    result = runner.invoke(cli, ["animate", str(run_dir)], input="\n" + answer)
+    result = runner.invoke(cli, ["visualise", "fields", str(run_dir), "--animate"], input="\n" + answer)
 
     assert result.exit_code == 0, result.output
     assert _OVERLAY_QUESTION in result.output

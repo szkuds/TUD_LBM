@@ -139,7 +139,7 @@ class SnapshotOverviewPlot(AnalysisPlot):
             ax,
             title="Snapshot overview",
             ylabel=_CONTACT_ANGLE_Y_LABEL,
-            required_keys=("only supported via `tud-lbm visualise --fields snapshot_fig`",),
+            required_keys=("only supported via `tud-lbm visualise analysis --fields snapshot_fig`",),
         )
 
     def render_figure(self, files: list[Path]) -> matplotlib.figure.Figure:
