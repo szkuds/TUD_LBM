@@ -36,7 +36,7 @@ def test_carnahan_starling_writes_the_pair_and_the_figure(tmp_path):
     out = coexistence_dir(tmp_path)
     data = json.loads((out / DATA_DIRNAME / "data.json").read_text(encoding="utf-8"))
     assert data["eos"] == "carnahan-starling"
-    assert (data["rho_v"], data["rho_l"]) == pair
+    assert pair == (data["rho_v"], data["rho_l"])
     assert data["p_sat"] == pytest.approx(6.61753622e-6, rel=1e-6)
     assert (data["rho_v_configured"], data["rho_l_configured"]) == (0.015, 12.18)
     assert (out / PLOTS_DIRNAME / "maxwell.png").stat().st_size > 0

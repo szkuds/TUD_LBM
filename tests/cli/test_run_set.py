@@ -169,6 +169,22 @@ def test_parse_run_dir_list_rejects_absolute_path_outside_allowed_roots(tmp_path
         parse_run_dir_list(txt_path, allowed_roots=[list_dir])
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_parse_run_dir_list_rejects_a_symlink_leading_out_of_the_root(tmp_path: Path):
+    outside = tmp_path.parent / "outside_target"
+    outside.mkdir(exist_ok=True)
+    list_dir = tmp_path / "lists"
+    list_dir.mkdir()
+    (list_dir / "link").symlink_to(outside, target_is_directory=True)
+    txt_path = list_dir / "dirs.txt"
+    txt_path.write_text("link\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="outside every allowed root") as excinfo:
+        parse_run_dir_list(txt_path, allowed_roots=[list_dir])
+
+    assert str(outside) not in str(excinfo.value)
+
+
 def test_parse_run_dir_list_accepts_default_results_root_with_no_allowed_roots(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("src.cli.analysis_routing.BASE_RESULTS_DIR", str(tmp_path))
     (tmp_path / "run_a").mkdir()

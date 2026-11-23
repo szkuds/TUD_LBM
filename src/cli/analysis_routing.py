@@ -13,6 +13,7 @@ list of run directories; :func:`resolve_run_set` turns either into a
 """
 
 from __future__ import annotations
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -206,7 +207,11 @@ def parse_run_dir_list(txt_path: str | Path, allowed_roots: Sequence[str | Path]
         msg = f"{txt_path}: run-dir list must be an existing regular file"
         raise ValueError(msg)
     parent = txt_path.parent
-    resolved_roots = [Path(BASE_RESULTS_DIR).resolve(), *(Path(root).resolve() for root in allowed_roots)]
+    roots = [Path(BASE_RESULTS_DIR), *(Path(root) for root in allowed_roots)]
+    resolved_roots = [root.resolve() for root in roots]
+    # The lexical check also takes each root as written, so an entry through a
+    # symlinked prefix of a root (macOS /var -> /private/var) still matches it.
+    lexical_roots = [*resolved_roots, *(Path(os.path.normpath(root.absolute())) for root in roots)]
     dirs: list[Path] = []
     for raw_line in txt_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -215,7 +220,7 @@ def parse_run_dir_list(txt_path: str | Path, allowed_roots: Sequence[str | Path]
         line = _unquote_and_unescape(line)
         if not line:
             continue
-        dirs.append(_resolve_run_dir_entry(line, txt_path, parent, resolved_roots))
+        dirs.append(_resolve_run_dir_entry(line, txt_path, parent, lexical_roots, resolved_roots))
     return dirs
 
 
@@ -229,27 +234,31 @@ def _unquote_and_unescape(line: str) -> str:
     return line
 
 
-def _resolve_run_dir_entry(line: str, txt_path: Path, parent: Path, resolved_roots: list[Path]) -> Path:
+def _resolve_run_dir_entry(
+    line: str, txt_path: Path, parent: Path, lexical_roots: list[Path], resolved_roots: list[Path]
+) -> Path:
     """Resolve one parsed line to a run directory, rejecting entries outside every allowed root.
 
-    Validation follows the canonical-path pattern for SonarQube ``pythonsecurity:S6549``
-    (transform -> normalise/resolve -> sanitise -> use): the untrusted ``line`` is first
-    resolved to a canonical path, then checked with ``Path.relative_to`` against each
-    trusted root inside a ``try/except ValueError`` — the exact idiom the rule's own
-    compliant example uses — before the path is returned for any later filesystem use.
+    The untrusted ``line`` touches the filesystem only after it is known to lie inside
+    an allowed root (SonarQube ``pythonsecurity:S6549``). It is first normalised
+    lexically (``os.path.normpath``, no filesystem access), checked against the roots,
+    and only then resolved; the resolved path is checked again, so a symlink inside a
+    root cannot lead out of it. The error names the entry, never its resolved target,
+    so a rejected line reveals nothing about where a path points.
     """
-    path = Path(line)
-    resolved = (path if path.is_absolute() else parent / path).resolve()
-    for root in resolved_roots:
-        try:
-            resolved.relative_to(root)
-        except ValueError:
-            continue
-        return resolved
+    candidate = Path(os.path.normpath(Path(line) if Path(line).is_absolute() else parent / line))
+    if _inside_any(candidate, lexical_roots):
+        resolved = candidate.resolve()
+        if _inside_any(resolved, resolved_roots):
+            return resolved
     roots_desc = ", ".join(str(root) for root in resolved_roots)
     msg = (
-        f"{txt_path}: run directory {line!r} resolves to {resolved}, which "
-        f"is outside every allowed root ({roots_desc}). Pass additional "
-        "trusted locations via --allowed-root."
+        f"{txt_path}: run directory {line!r} is outside every allowed root "
+        f"({roots_desc}). Pass additional trusted locations via --allowed-root."
     )
     raise ValueError(msg)
+
+
+def _inside_any(path: Path, roots: list[Path]) -> bool:
+    """Whether *path* lies inside one of *roots* (a lexical test)."""
+    return any(path.is_relative_to(root) for root in roots)

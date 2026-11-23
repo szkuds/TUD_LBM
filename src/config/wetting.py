@@ -376,7 +376,8 @@ def chemical_step_regions(config: SimulationConfig) -> ChemicalStepRegions | Non
     post_wets_dispersed_more = float(step["ca_advancing_post_step"]) < float(step["ca_advancing_pre_step"])
     post_wets_more = post_wets_dispersed_more == (phase == DispersedPhase.LIQUID)
     scale = _d_rho_scale(config)
-    assert scale is not None  # noqa: S101 - wetting_knob_limits returned limits, so two phases
+    # wetting_knob_limits returned limits, so the run has two phases.
+    assert scale is not None  # noqa: S101
     return ChemicalStepRegions(
         edge=Edge(step["chemical_step_edge"]),
         step_x=float(step["chemical_step_location"]) * config.grid_shape[0],

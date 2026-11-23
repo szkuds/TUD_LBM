@@ -39,6 +39,7 @@ _DATA_FILENAME = "data.json"
 _PLOT_FILENAME = "maxwell.png"
 #: Samples of the isotherm drawn in the figure.
 _N_CURVE = 2000
+_MAXWELL_COLOUR = "tab:red"
 
 
 def coexistence_dir(run_dir: str | Path) -> Path:
@@ -121,14 +122,14 @@ def _save_plot(
 
     fig, ax = plt.subplots(figsize=(7, 5))
     ax.plot(volume, p, color="black", lw=1.5, label="$p_0(1/\\rho)$")
-    ax.hlines(p_sat, v_liquid, v_vapour, colors="tab:red", lw=1.5, label=f"$p_{{sat}}$ = {p_sat:.6g}")
+    ax.hlines(p_sat, v_liquid, v_vapour, colors=_MAXWELL_COLOUR, lw=1.5, label=f"$p_{{sat}}$ = {p_sat:.6g}")
     # The isotherm crosses p_sat only at v_l, once between, and at v_v, so each area is one contiguous slice.
     below, above = inside & (p < p_sat), inside & (p > p_sat)
     ax.fill_between(volume[below], p[below], p_sat, color="tab:blue", alpha=0.3, label="liquid-side area")
     ax.fill_between(volume[above], p[above], p_sat, color="tab:orange", alpha=0.3, label="vapour-side area")
     for rho, label, colour in (
-        (rho_v, f"Maxwell $\\rho_v$ = {rho_v:.6g}", "tab:red"),
-        (rho_l, f"Maxwell $\\rho_l$ = {rho_l:.6g}", "tab:red"),
+        (rho_v, f"Maxwell $\\rho_v$ = {rho_v:.6g}", _MAXWELL_COLOUR),
+        (rho_l, f"Maxwell $\\rho_l$ = {rho_l:.6g}", _MAXWELL_COLOUR),
         (configured[0], f"configured $\\rho_v$ = {configured[0]:.6g}", "tab:green"),
         (configured[1], f"configured $\\rho_l$ = {configured[1]:.6g}", "tab:green"),
     ):

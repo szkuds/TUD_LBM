@@ -126,27 +126,29 @@ def _expand_targets(
     Raises:
         click.UsageError: A target is none of the above, or the targets hold no run.
     """
-    from src.cli.analysis_routing import RUN_LIST_SUFFIX
-    from src.cli.analysis_routing import find_run_dirs
-    from src.cli.analysis_routing import parse_run_dir_list
-
-    expanded: list[Path] = []
-    for target in targets:
-        path = Path(target)
-        if path.is_dir():
-            has_config = (path / CONFIG_FILENAME).is_file()
-            expanded.extend([path] if has_config else (find_run_dirs(path) or [path]))
-        elif path.is_file() and path.suffix.lower() == RUN_LIST_SUFFIX:
-            expanded.extend(parse_run_dir_list(path, allowed_roots))
-        elif snapshots and _is_snapshot(path):
-            expanded.append(path)
-        else:
-            msg = f"{path}: {_TARGET_USAGE if snapshots else _RUN_TARGET_USAGE}"
-            raise click.UsageError(msg)
+    expanded = [path for target in targets for path in _expand_target(Path(target), allowed_roots, snapshots=snapshots)]
     if not expanded:
         msg = f"No run directories in {', '.join(targets)}."
         raise click.UsageError(msg)
     return list(dict.fromkeys(expanded))
+
+
+def _expand_target(path: Path, allowed_roots: tuple[str, ...], *, snapshots: bool) -> list[Path]:
+    """Expand one TARGET; see :func:`_expand_targets` for the rules."""
+    from src.cli.analysis_routing import RUN_LIST_SUFFIX
+    from src.cli.analysis_routing import find_run_dirs
+    from src.cli.analysis_routing import parse_run_dir_list
+
+    if path.is_dir():
+        if (path / CONFIG_FILENAME).is_file():
+            return [path]
+        return find_run_dirs(path) or [path]
+    if path.is_file() and path.suffix.lower() == RUN_LIST_SUFFIX:
+        return parse_run_dir_list(path, allowed_roots)
+    if snapshots and _is_snapshot(path):
+        return [path]
+    msg = f"{path}: {_TARGET_USAGE if snapshots else _RUN_TARGET_USAGE}"
+    raise click.UsageError(msg)
 
 
 class _RunBatch:
@@ -437,12 +439,9 @@ def visualise_fields(
     paths = _expand_targets(targets, allowed_roots, snapshots=True)
     snapshot_paths = [path for path in paths if _is_snapshot(path)]
     run_dirs = [path for path in paths if not _is_snapshot(path)]
-    if animate:
-        _check_animate_options(snapshot=bool(snapshot_paths), skip=skip)
-        if output is not None and len(run_dirs) > 1:
-            raise click.UsageError(_SINGLE_OUTPUT_USAGE)
-    elif output is not None or fps is not None:
-        raise click.UsageError(_ANIMATE_ONLY_USAGE)
+    _check_fields_options(
+        animate=animate, snapshot=bool(snapshot_paths), skip=skip, output=output, fps=fps, n_runs=len(run_dirs)
+    )
 
     levels = _comma_list(interface_levels)
     for snapshot_path in snapshot_paths:
@@ -455,15 +454,7 @@ def visualise_fields(
     batch = _RunBatch(run_dirs)
     first = _with_interface_levels(batch.first_config(_load_run_config), levels)
     interactive = not fields and not no_prompt
-    if animate:
-        # An animation falls back to plot_fields when animate_fields is unset.
-        configured = list(first.animate_fields or first.plot_fields or [])
-        available = _operators_for(_ANIMATION_KINDS)
-        label = "animation fields"
-    else:
-        configured = list(first.plot_fields or [])
-        available = _operators_for(_FIELD_KINDS)
-        label = "field panels"
+    configured, available, label = _field_choices(first, animate=animate)
     field_list = _select_fields(
         explicit=fields, interactive=interactive, available=available, configured=configured, label=label
     )
@@ -499,6 +490,27 @@ def _write_field_figures(
         config, run_dir, dpi=dpi, field_list=field_list, available=_operators_for(_FIELD_KINDS), overlays=overlays
     )
     _report_saved(builder.build_all(skip=skip), builder.plot_dir)
+
+
+def _check_fields_options(
+    *, animate: bool, snapshot: bool, skip: int, output: str | None, fps: int | None, n_runs: int
+) -> None:
+    """Reject ``visualise fields`` options that do not fit together."""
+    if animate:
+        _check_animate_options(snapshot=snapshot, skip=skip)
+        if output is not None and n_runs > 1:
+            raise click.UsageError(_SINGLE_OUTPUT_USAGE)
+    elif output is not None or fps is not None:
+        raise click.UsageError(_ANIMATE_ONLY_USAGE)
+
+
+def _field_choices(config: SimulationConfig, *, animate: bool) -> tuple[list[str], dict, str]:
+    """The configured fields, the selectable operators and the prompt label."""
+    if animate:
+        # An animation falls back to plot_fields when animate_fields is unset.
+        configured = list(config.animate_fields or config.plot_fields or [])
+        return configured, _operators_for(_ANIMATION_KINDS), "animation fields"
+    return list(config.plot_fields or []), _operators_for(_FIELD_KINDS), "field panels"
 
 
 def _check_animate_options(*, snapshot: bool, skip: int) -> None:
