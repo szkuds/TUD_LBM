@@ -7,7 +7,7 @@ unrolled at JAX trace time (``q`` is a compile-time constant).
 On non-periodic axes the wrap-around layer produced by ``jnp.roll`` is
 zeroed after each roll, so populations that leave one wall do not re-enter
 at the opposite wall before the boundary-condition operator runs. Without
-this, wrap-around populations at bounce-back / wetting walls leak mass.
+this, wrap-around populations at bounce-back / wetting edges leak mass.
 """
 
 from __future__ import annotations
@@ -25,16 +25,15 @@ def stream(
     f: jnp.ndarray,
     lattice: Lattice,
     *,
-    periodic_axes: tuple[bool, bool] = (True, True),
+    periodic_axes: tuple[bool, ...] = (True, True, True),
 ) -> jnp.ndarray:
     """Propagate populations; zero-fill the wrap-around on non-periodic axes.
 
     Args:
         f: Population distributions, shape ``(nx, ny, nz, q, 1)``.
         lattice: :class:`~lattice.lattice.Lattice` with velocity vectors ``c``.
-        periodic_axes: Per-axis periodicity ``(x, y)`` —
-            :attr:`SimulationConfig.periodic_axes
-            <src.config.simulation_config.SimulationConfig.periodic_axes>`.
+        periodic_axes: Per-axis periodicity ``(x, y, z)`` —
+            ``periodic_axes(config)``.
             The default, fully periodic, zero-fills nothing.
 
     Returns:

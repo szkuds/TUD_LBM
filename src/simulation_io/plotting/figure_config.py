@@ -53,7 +53,6 @@ class FigureStyle:
     colormap_density: str = "viridis"
     colormap_velocity: str = "plasma"
     colormap_force: str = "cividis"
-    # Diverging: the bulk pressure straddles zero across a diffuse interface.
     colormap_pressure: str = "coolwarm"
 
     quiver_color: str = "white"
@@ -147,6 +146,8 @@ DEFAULT_STYLE = FigureStyle()
 #: that happens to share the symbol.
 LABEL_CA = r"$\mathrm{Ca}$"
 LABEL_RE = r"$\mathrm{Re}$"
+LABEL_WE = r"$\mathrm{We}$"
+LABEL_L_OMEGA = r"$L/\Omega_D$"
 LABEL_IT_NORM = r"$\Delta\mathrm{t}/\mathrm{t}_{\mathrm{max}}$"
 LABEL_X_AVG_NORM = r"$X_{\mathrm{CM}}/R_0$"
 
@@ -157,7 +158,7 @@ LABEL_X_AVG_NORM = r"$X_{\mathrm{CM}}/R_0$"
 #: strings rather than imported: ``regime_classification`` reaches this module
 #: through ``acceleration_analysis``, so importing the enum here would close an
 #: import cycle. ``Regime`` is a :class:`~enum.StrEnum`, so its members index
-#: these dicts directly. ``tests/io/test_regime_map_plot.py`` pins the keys to
+#: these dicts directly. ``tests/simulation_io/test_regime_map_plot.py`` pins the keys to
 #: the enum.
 REGIME_MARKERS: dict[str, str] = {
     "Pinning": "o",

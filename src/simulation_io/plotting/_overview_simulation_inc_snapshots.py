@@ -5,6 +5,7 @@ import string
 from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 import numpy as np
+from src.protocols import AnalysisPlot
 from src.registry import analysis_operator
 from src.simulation_io.analysis.droplet_metrics import parse_timestep
 from src.simulation_io.plotting._analysis_common import _CONTACT_ANGLE_Y_LABEL
@@ -16,7 +17,6 @@ from src.simulation_io.plotting._ca_theta_plot import _compute_ca_theta_arrays
 from src.simulation_io.plotting._ca_theta_plot import _draw_dual_axis_on_ax
 from src.simulation_io.plotting._density import DensityPlotOperator
 from src.simulation_io.plotting._velocity import VelocityPlotOperator
-from src.simulation_io.plotting.base import AnalysisPlot
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 from src.simulation_io.plotting.figure_config import LABEL_X_AVG_NORM
 
@@ -139,7 +139,7 @@ class SnapshotOverviewPlot(AnalysisPlot):
             ax,
             title="Snapshot overview",
             ylabel=_CONTACT_ANGLE_Y_LABEL,
-            required_keys=("only supported via `tud-lbm visualise --fields snapshot_fig`",),
+            required_keys=("only supported via `tud-lbm visualise analysis --fields snapshot_fig`",),
         )
 
     def render_figure(self, files: list[Path]) -> matplotlib.figure.Figure:

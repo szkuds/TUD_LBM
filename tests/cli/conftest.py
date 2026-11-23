@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 from click.testing import CliRunner
 from tests.support.run_dirs import build_run_dir
-from tests.support.run_dirs import wetting_config
+from tests.support.run_dirs import wetting
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -21,7 +21,7 @@ def runner() -> CliRunner:
 @pytest.fixture
 def run_config() -> SimulationConfig:
     """The config serialised into the :func:`run_dir` fixture."""
-    return wetting_config()
+    return wetting()
 
 
 @pytest.fixture

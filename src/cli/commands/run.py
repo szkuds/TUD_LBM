@@ -1,16 +1,13 @@
 """The ``tud-lbm run`` command."""
 
 from __future__ import annotations
-from typing import cast
 import click
 from src.cli._console import cli_command
 from src.cli._console import success
 from src.cli.app import cli
 from src.cli.execution import RunFlags
 from src.cli.execution import _run_impl
-from src.cli.options import optional_int
 from src.cli.options import optional_int_option
-from src.cli.options import str_tuple
 from src.cli.wetting_init import _WETTING_INIT_NT
 
 # From-imports on purpose: these are the defaults as they stand before
@@ -42,17 +39,6 @@ from src.config.config_overview import DEBUG_WETTING_INTERVAL
     "list_analysis",
     is_flag=True,
     help="List analysis operators (plotting, comparison) with CLI usage context and exit.",
-)
-@click.option(
-    "--max-workers",
-    type=click.IntRange(min=1),
-    default=None,
-    help="Number of worker processes for parameter sweeps (default: auto)",
-)
-@click.option(
-    "--fail-fast",
-    is_flag=True,
-    help="Stop a parameter sweep on first failed simulation",
 )
 @click.option(
     "--override",
@@ -97,8 +83,7 @@ from src.config.config_overview import DEBUG_WETTING_INTERVAL
     help_text=(
         "Enable stability diagnostics: max|u|/max|grad mu|/rho-range/checkerboard logging to "
         "stability_log.csv every INTERVAL timesteps plus a NaN guard that aborts the run. Sets "
-        "DEBUG_FLAG_STABILITY and DEBUG_STABILITY_INTERVAL in config_overview; not propagated "
-        "to sweep workers."
+        "DEBUG_FLAG_STABILITY and DEBUG_STABILITY_INTERVAL in config_overview."
     ),
 )
 @optional_int_option(
@@ -131,26 +116,39 @@ from src.config.config_overview import DEBUG_WETTING_INTERVAL
     "--compare",
     "run_compare",
     is_flag=True,
-    help="Generate comparison plots after a parameter sweep completes.",
+    help="Build the CSV and comparison plots after the run completes.",
 )
 @cli_command(title="Lattice Boltzmann Method Solver", interrupt_message="Simulation interrupted by user.")
-def run(**cli_kwargs: object) -> None:
+def run(
+    *,
+    config_path: str | None,
+    no_prompt: bool,
+    dry_run: bool,
+    list_operators: bool,
+    list_analysis: bool,
+    overrides: tuple[str, ...],
+    override_phase1: tuple[str, ...],
+    override_phase2: tuple[str, ...],
+    overview: bool,
+    debug_wetting: int | None,
+    debug_stability: int | None,
+    init_wetting: int | None,
+    init_dir: str | None,
+    continue_run: bool,
+    run_compare: bool,
+) -> None:
     """Run a TUD-LBM simulation from CONFIG_PATH.
 
     CONFIG_PATH is an optional path to a configuration file (.toml).
     If omitted, an interactive prompt collects parameters.
 
-    Configuration files can include array parameters (list values) to
-    automatically expand into parallel parameter sweeps. The --override
-    flag allows replacing or creating config values from the command line
-    before expansion.
+    The --override flag replaces or creates config values from the command
+    line. A run is one config: stage a parameter sweep with
+    `tud-lbm sweep stage`, which writes one TOML per combination.
 
     Examples:
         # Single simulation
         tud-lbm run example_for_test/config_simple.toml
-
-        # Parameter sweep (if config has array fields)
-        tud-lbm run example_for_test/config_parallel.toml
 
         # Override scalar field
         tud-lbm run config.toml --override tau=0.7
@@ -164,14 +162,8 @@ def run(**cli_kwargs: object) -> None:
         # Multiple overrides (applied in order)
         tud-lbm run config.toml --override tau=0.7 --override nt=500
 
-        # Override array field to trigger sweep
-        tud-lbm run config.toml --override 'tau=[0.6, 0.7, 0.8]' --max-workers 4
-
         # Dry run with preview (no execution)
         tud-lbm run config.toml --dry-run
-
-        # Stop sweep on first failure
-        tud-lbm run config.toml --fail-fast
 
         # Interactive mode
         tud-lbm run
@@ -214,26 +206,20 @@ def run(**cli_kwargs: object) -> None:
         # Resume from the latest snapshot saved by this run
         tud-lbm run /path/to/run/config.toml --continue
     """
-    config_path = cast("str | None", cli_kwargs["config_path"])
-    max_workers = cast("int | None", cli_kwargs["max_workers"])
-    overrides = str_tuple(cli_kwargs["overrides"])
-    init_dir = cast("str | None", cli_kwargs["init_dir"])
-    continue_run = cast("bool", cli_kwargs["continue_run"])
     flags = RunFlags(
-        no_prompt=cast("bool", cli_kwargs["no_prompt"]),
-        dry_run=cast("bool", cli_kwargs["dry_run"]),
-        list_operators=cast("bool", cli_kwargs["list_operators"]),
-        list_analysis=cast("bool", cli_kwargs["list_analysis"]),
-        fail_fast=cast("bool", cli_kwargs["fail_fast"]),
-        overview=cast("bool", cli_kwargs["overview"]),
-        debug_wetting=optional_int(cli_kwargs["debug_wetting"]),
-        debug_stability=optional_int(cli_kwargs["debug_stability"]),
-        init_wetting=optional_int(cli_kwargs["init_wetting"]),
-        override_phase1=str_tuple(cli_kwargs["override_phase1"]),
-        override_phase2=str_tuple(cli_kwargs["override_phase2"]),
-        run_compare=cast("bool", cli_kwargs["run_compare"]),
+        no_prompt=no_prompt,
+        dry_run=dry_run,
+        list_operators=list_operators,
+        list_analysis=list_analysis,
+        overview=overview,
+        debug_wetting=debug_wetting,
+        debug_stability=debug_stability,
+        init_wetting=init_wetting,
+        override_phase1=override_phase1,
+        override_phase2=override_phase2,
+        run_compare=run_compare,
         continue_run=continue_run,
     )
 
-    if _run_impl(config_path, overrides, max_workers, init_dir, flags):
+    if _run_impl(config_path, overrides, init_dir, flags):
         success("Simulation, saving and plotting complete!")

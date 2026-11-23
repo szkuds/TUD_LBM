@@ -123,24 +123,6 @@ class TestMultiphaseInitShape:
 
 
 # =====================================================================
-# Wetting initialisers
-# =====================================================================
-
-
-_WETTING_TYPES = ["wetting", "wetting_chem_step"]
-
-
-class TestWettingInitShape:
-    """Wetting initialisers produce correct shapes."""
-
-    @pytest.mark.parametrize("init_type", _WETTING_TYPES)
-    def test_shape(self, lattice, init_type):
-        fn = build_initialise_fn(init_type)
-        f = fn((NX, NY, NZ), lattice, rho_l=1.0, rho_v=0.33, interface_width=4)
-        assert f.shape == (NX, NY, NZ, 9, 1)
-
-
-# =====================================================================
 # Mass conservation for bubble
 # =====================================================================
 

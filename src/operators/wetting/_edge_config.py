@@ -1,48 +1,42 @@
 """Build-time edge configuration for wetting boundaries.
 
-Determines which edges need wetting and their perpendicular BC
-relationships.
+Determines which edges need wetting and whether the edges bounding them are periodic.
 """
 
 from __future__ import annotations
-
-# Maps each wetting edge to its two perpendicular edges (start, end along wall).
-_PERPENDICULAR = {
-    "bottom": ("left", "right"),
-    "top": ("left", "right"),
-    "left": ("bottom", "top"),
-    "right": ("bottom", "top"),
-}
+from src.config.boundary import Edge
+from src.config.boundary import edges_of
 
 
 def _resolve_wetting_edges(
-    bc_config: dict[str, str],
-) -> list[tuple[str, bool, bool]]:
+    boundary_conditions: dict[str, str],
+) -> list[tuple[Edge, bool, bool]]:
     """Determine wetting edges and whether their perpendicular BCs are periodic.
 
     Returns:
         List of ``(edge, perp_start_periodic, perp_end_periodic)``.
     """
     edges = []
-    for edge in ("bottom", "top", "left", "right"):
-        if bc_config.get(edge) != "wetting":
+    # The in-plane edges, in application order; the first wetting one is measured.
+    for edge in edges_of(2):
+        if boundary_conditions.get(edge) != "wetting":
             continue
-        perp_start, perp_end = _PERPENDICULAR[edge]
+        perp_start, perp_end = edge.tangential_ends
         edges.append(
             (
                 edge,
-                bc_config.get(perp_start, "periodic") == "periodic",
-                bc_config.get(perp_end, "periodic") == "periodic",
+                boundary_conditions.get(perp_start, "periodic") == "periodic",
+                boundary_conditions.get(perp_end, "periodic") == "periodic",
             ),
         )
     return edges
 
 
-def first_wetting_edge(bc_config: dict[str, str] | None) -> str | None:
+def first_wetting_edge(boundary_conditions: dict[str, str] | None) -> Edge | None:
     """The wall contact angles are measured at: the first ``"wetting"`` edge, or ``None``.
 
     Wetting BCs are applied to every ``"wetting"`` edge, but contact angles are
     read only at this one.
     """
-    edges = _resolve_wetting_edges(bc_config) if bc_config else []
+    edges = _resolve_wetting_edges(boundary_conditions) if boundary_conditions else []
     return edges[0][0] if edges else None

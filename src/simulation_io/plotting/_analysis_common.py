@@ -9,16 +9,18 @@ modules (``scalar_history_plot.py``, ``contact_angle_plot.py``,
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
+from src.config.wetting import ContactLine
+from src.protocols import AnalysisPlot
 from src.simulation_io.analysis.droplet_metrics import extract_velocity_components_2d
 from src.simulation_io.analysis.droplet_metrics import parse_timestep
 from src.simulation_io.analysis.droplet_metrics import series_for_files
-from src.simulation_io.plotting.base import AnalysisPlot
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
     import matplotlib.axes
+    import matplotlib.cm
     from src.config import SimulationConfig
     from src.simulation_io.analysis.droplet_metrics import DropletSeries
 
@@ -28,6 +30,20 @@ _REQUIRES_PREFIX = "(Requires: "
 _CONTACT_ANGLE_Y_LABEL = "Contact angle (deg)"
 _CONTACT_LINE_SPEED_Y_LABEL = "d(cll)/dt"
 _COLOR_TAB_BLUE = DEFAULT_STYLE.colors["max_velocity"]
+
+
+#: Colourbar inset beside a panel, in axes fractions: ``(x0, y0, width, height)``.
+_COLORBAR_INSET = (1.03, 0.0, 0.04, 1.0)
+
+
+def add_panel_colorbar(ax: matplotlib.axes.Axes, mappable: matplotlib.cm.ScalarMappable, label: str) -> None:
+    """Draw *mappable*'s colourbar beside *ax*, exactly as tall as the axes box.
+
+    The bar is an inset of *ax*, so it follows the box an equal-aspect image
+    shrinks the axes to and never reaches the next row of panels. The figure's
+    constrained layout includes the inset when it spaces the panels.
+    """
+    ax.figure.colorbar(mappable, cax=ax.inset_axes(_COLORBAR_INSET), label=label)
 
 
 def _empty_data_message(required_keys: tuple[str, ...] | None = None) -> str:
@@ -192,11 +208,11 @@ class _PairSeriesPlot(AnalysisPlot):
         """Both sides' values per snapshot, from the shared series."""
         series = _droplet_series(self.config, files)
         if series is None:
-            return _empty_series_arrays("iters", "left", "right")
+            return _empty_series_arrays("iters", *ContactLine)
         return {
             "iters": series.iteration,
-            "left": getattr(series, self.left_attr),
-            "right": getattr(series, self.right_attr),
+            ContactLine.LEFT: getattr(series, self.left_attr),
+            ContactLine.RIGHT: getattr(series, self.right_attr),
         }
 
     def render(self, ax: matplotlib.axes.Axes, precomputed: dict[str, np.ndarray]) -> None:
@@ -207,8 +223,8 @@ class _PairSeriesPlot(AnalysisPlot):
             _set_empty_state(ax, title=self.title, ylabel=self.ylabel, required_keys=self.required_keys)
             return
         for key, color, label in (
-            ("left", self.left_color, "Left"),
-            ("right", self.right_color, "Right"),
+            (ContactLine.LEFT, self.left_color, "Left"),
+            (ContactLine.RIGHT, self.right_color, "Right"),
         ):
             ax.scatter(
                 iters,

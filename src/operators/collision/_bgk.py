@@ -5,7 +5,7 @@ Do NOT import this module directly.
 
 RECOMMENDED USAGE:
     from operators.collision import build_collision_fn
-    from operators.protocols import CollisionOperator
+    from src.protocols import CollisionOperator
 
     bgk: CollisionOperator = build_collision_fn("bgk")
 
@@ -49,7 +49,7 @@ def collide_bgk(
 
     Or via protocol type hint::
 
-        from operators.protocols import CollisionOperator
+        from src.protocols import CollisionOperator
         op: CollisionOperator = build_collision_fn("bgk")
 
     Physics formula::

@@ -20,10 +20,10 @@ import sys
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from src.config.boundary_edges import pad_modes
+from src.config import SimulationConfig
+from src.config.boundary import pad_modes
 from src.lattice.lattice import build_lattice
-from src.operators.differential._gradient import compute_gradient
-from src.operators.differential._laplacian import compute_laplacian
+from src.operators.differential import build_differential
 from src.operators.differential._pad_utils import _apply_stencil_padding
 
 _NX, _NY = 13, 11
@@ -92,10 +92,10 @@ def test_gradient_commutes_with_a_roll_along_a_periodic_axis(field, lattice, pad
     """
     shift = 5
     grid = _as_5d(field)
-    direct = compute_gradient(_as_5d(jnp.roll(field, shift, axis=0)), lattice.w, lattice.c, pad_mode)
+    direct = build_differential(lattice, pad_mode)[0](_as_5d(jnp.roll(field, shift, axis=0)), {})
 
     np.testing.assert_array_equal(
-        np.asarray(jnp.roll(compute_gradient(grid, lattice.w, lattice.c, pad_mode), shift, axis=0)),
+        np.asarray(jnp.roll(build_differential(lattice, pad_mode)[0](grid, {}), shift, axis=0)),
         np.asarray(direct),
     )
 
@@ -104,10 +104,10 @@ def test_gradient_commutes_with_a_roll_along_a_periodic_axis(field, lattice, pad
 def test_laplacian_commutes_with_a_roll_along_a_periodic_axis(field, lattice, pad_mode):
     shift = 5
     grid = _as_5d(field)
-    direct = compute_laplacian(_as_5d(jnp.roll(field, shift, axis=0)), lattice.w, pad_mode)
+    direct = build_differential(lattice, pad_mode)[1](_as_5d(jnp.roll(field, shift, axis=0)), {})
 
     np.testing.assert_array_equal(
-        np.asarray(jnp.roll(compute_laplacian(grid, lattice.w, pad_mode), shift, axis=0)),
+        np.asarray(jnp.roll(build_differential(lattice, pad_mode)[1](grid, {}), shift, axis=0)),
         np.asarray(direct),
     )
 
@@ -122,9 +122,11 @@ def test_pad_modes_resolve_without_the_caller_importing_the_boundary_package():
     the registry.
     """
     source = (
-        "from src.config.boundary_edges import pad_modes;"
-        "print(pad_modes({'left': 'periodic', 'right': 'periodic',"
-        " 'top': 'wetting', 'bottom': 'bounce-back'}))"
+        "from src.config.boundary import pad_modes;"
+        "from types import SimpleNamespace;"
+        "print(pad_modes(SimpleNamespace(lattice_type='D2Q9',"
+        " boundary_conditions={'left': 'periodic', 'right': 'periodic',"
+        " 'top': 'wetting', 'bottom': 'bounce-back'})))"
     )
     result = subprocess.run(  # noqa: S603 - the argv is this module's own literal, not input
         [sys.executable, "-c", source], capture_output=True, text=True, encoding="utf-8", check=True
@@ -135,7 +137,11 @@ def test_pad_modes_resolve_without_the_caller_importing_the_boundary_package():
 
 def test_pad_modes_are_returned_in_the_order_the_padding_expects(field):
     """``(top, bottom, right, left)`` — wrapping x must pad axis 0, not axis 1."""
-    modes = pad_modes({"left": "periodic", "right": "periodic", "top": "symmetry", "bottom": "bounce-back"})
+    modes = pad_modes(
+        SimulationConfig(
+            boundary_conditions={"left": "periodic", "right": "periodic", "top": "symmetry", "bottom": "bounce-back"}
+        )
+    )
     padded = _apply_stencil_padding(field, modes)
 
     np.testing.assert_array_equal(np.asarray(padded[0, 1:-1]), np.asarray(field[-1]))

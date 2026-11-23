@@ -3,8 +3,9 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import numpy as np
+from src.protocols import PlotOperator
 from src.registry import plotting_operator
-from src.simulation_io.plotting.base import PlotOperator
+from src.simulation_io.plotting._analysis_common import add_panel_colorbar
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 
 if TYPE_CHECKING:
@@ -47,7 +48,7 @@ class VelocityPlotOperator(PlotOperator):
         mag = np.sqrt(ux**2 + uy**2)
 
         im = ax.imshow(mag, origin="lower", aspect="equal", cmap=DEFAULT_STYLE.colormap_velocity)
-        ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="|u|")
+        add_panel_colorbar(ax, im, "|u|")
 
         ny, nx = mag.shape
         if np.any(mag > 0):

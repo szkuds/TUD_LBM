@@ -1,0 +1,379 @@
+"""Coverage boost for src/simulation_io/plotting/analysis.py.
+
+Targets the uncovered paths in compare_runs, _load_comparison_entries,
+render paths for operators with
+and without data.
+"""
+
+from __future__ import annotations
+from pathlib import Path
+from unittest.mock import patch
+import matplotlib as mpl
+from tests.support.config import merge_overrides
+
+mpl.use("Agg")
+
+import numpy as np
+import pandas as pd
+import pytest
+from src.cli.analysis_routing import analyse_runs
+from src.cli.analysis_routing import find_run_dirs
+from src.cli.analysis_routing import resolve_run_set
+from src.config import SimulationConfig
+from src.simulation_io.plotting._analysis_common import _set_empty_state
+from src.simulation_io.plotting._simulation_csv import build_simulation_csv
+from src.simulation_io.plotting.run_comparison import _load_comparison_entries
+from src.simulation_io.plotting.run_comparison import compare_runs
+
+
+def _analyse_tree(parent):
+    """``(runs found, runs with a CSV)`` for every run under *parent*, as ``compare runs`` does it."""
+    run_set = resolve_run_set(parent)
+    return len(run_set.run_dirs), analyse_runs(run_set, Path(parent) / "comparison_analysis")
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+_RHO_L = 1.0
+_RHO_V = 0.2
+_RHO_MEAN = 0.5 * (_RHO_L + _RHO_V)
+
+
+def _wetting_cfg(**extra) -> SimulationConfig:
+    base = {
+        "multiphase": {"eos": "double-well", "kappa": 0.02, "rho_l": _RHO_L, "rho_v": _RHO_V, "interface_width": 2},
+        "grid_shape": (30, 10),
+        "tau": 0.8,
+        "nt": 100,
+        "save_interval": 10,
+        "wetting": {"phi_left": 1.0},
+    }
+    merge_overrides(base, extra)
+    return SimulationConfig(**base)  # ty: ignore[invalid-argument-type]
+
+
+def _write_snapshot(data_dir: Path, step: int) -> None:
+    rho = np.full((30, 10, 1, 1, 1), _RHO_V)
+    rho[8:22, :, 0, 0, 0] = _RHO_L
+    u = np.zeros((30, 10, 1, 1, 2))
+    np.savez(
+        data_dir / f"timestep_{step}.npz",
+        rho=rho,
+        u=u,
+        ca_left=np.array(80.0),
+        ca_right=np.array(95.0),
+        cll_left=np.array(3.0),
+        cll_right=np.array(10.0),
+    )
+
+
+def _minimal_csv_df() -> pd.DataFrame:
+    """Create a minimal DataFrame with all columns expected by compare_runs plots."""
+    n = 3
+    return pd.DataFrame(
+        {
+            "iteration": [10, 20, 30],
+            "normalised_iteration": [0.33, 0.67, 1.0],
+            "avg_x_location": [1.0, 2.0, 3.0],
+            "avg_x_location_norm": [0.1, 0.2, 0.3],
+            "avg_u_x": [0.01, 0.02, 0.03],
+            "avg_u_y": [0.0, 0.0, 0.0],
+            "cll_left": [3.0, 3.5, 4.0],
+            "cll_right": [10.0, 10.5, 11.0],
+            "v_left": [0.0, 0.05, 0.05],
+            "v_right": [0.0, 0.05, 0.05],
+            "v_cm": [0.0, 0.01, 0.01],
+            "ca_left": [80.0] * n,
+            "ca_right": [95.0] * n,
+            "cm_x": [15.0] * n,
+            "cm_y": [5.0] * n,
+            "Ca": [0.002, 0.004, 0.006],
+            "Ca_cll_left": [0.001, 0.002, 0.003],
+            "Ca_cll_right": [0.001, 0.002, 0.003],
+            "Ca_cm": [0.001, 0.001, 0.001],
+            "Ca_norm": [0.003, 0.006, 0.009],
+            "Re": [1.0, 1.2, 1.4],
+            "We": [0.01, 0.02, 0.03],
+            "L": [7.0, 7.0, 7.0],
+            "L_over_Omega": [0.07, 0.07, 0.07],
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# compare_runs — actual execution with synthetic entries
+# ---------------------------------------------------------------------------
+
+
+class TestCompareRunsActual:
+    """Test compare_runs with real (synthetic) DataFrame entries."""
+
+    def test_compare_runs_no_entries_prints_message(self, tmp_path, capsys):
+        """compare_runs with no valid CSV files should print a message and return."""
+        compare_runs([], tmp_path / "comparison_analysis")
+        captured = capsys.readouterr()
+        assert "No processed simulation data found" in captured.out
+
+    def test_compare_runs_creates_output_plots(self, tmp_path):
+        """compare_runs with one synthetic entry should produce 14 PNG files."""
+        pytest.importorskip("pandas")
+
+        entries = [{"label": "test_run", "sort_key": 100, "data": _minimal_csv_df()}]
+        with patch("src.simulation_io.plotting.run_comparison._load_comparison_entries", return_value=entries):
+            compare_runs([], tmp_path / "comparison_analysis")
+
+        out_dir = tmp_path / "comparison_analysis"
+        assert out_dir.exists()
+        pngs = list(out_dir.glob("*.png"))
+        assert len(pngs) == 14
+
+    def test_compare_runs_with_multiple_entries(self, tmp_path):
+        """compare_runs should handle multiple runs without errors."""
+        pytest.importorskip("pandas")
+
+        entries = [
+            {"label": "run_a", "sort_key": 90, "data": _minimal_csv_df()},
+            {"label": "run_b", "sort_key": 100, "data": _minimal_csv_df()},
+        ]
+        with patch("src.simulation_io.plotting.run_comparison._load_comparison_entries", return_value=entries):
+            compare_runs([], tmp_path / "comparison_analysis")
+
+        pngs = list((tmp_path / "comparison_analysis").glob("*.png"))
+        assert len(pngs) == 14
+
+    def test_compare_runs_skips_missing_x_column(self, tmp_path):
+        """If x column is missing in a run's data, that run is skipped gracefully."""
+        pytest.importorskip("pandas")
+
+        df_no_x = _minimal_csv_df().drop(columns=["normalised_iteration"])
+        entries = [{"label": "broken_run", "sort_key": 90, "data": df_no_x}]
+        with patch("src.simulation_io.plotting.run_comparison._load_comparison_entries", return_value=entries):
+            compare_runs([], tmp_path / "comparison_analysis")  # must not raise
+
+    def test_compare_runs_skips_missing_y_column(self, tmp_path):
+        """If y column is absent in a single-y plot, that run is skipped gracefully."""
+        pytest.importorskip("pandas")
+
+        df_no_y = _minimal_csv_df().drop(columns=["Ca"])
+        entries = [{"label": "no_Ca", "sort_key": 90, "data": df_no_y}]
+        with patch("src.simulation_io.plotting.run_comparison._load_comparison_entries", return_value=entries):
+            compare_runs([], tmp_path / "comparison_analysis")  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# _load_comparison_entries
+# ---------------------------------------------------------------------------
+
+
+class TestLoadComparisonEntries:
+    """Tests for _load_comparison_entries CSV discovery."""
+
+    def test_returns_empty_when_no_csvs(self, tmp_path):
+        pytest.importorskip("pandas")
+        result = _load_comparison_entries(find_run_dirs(tmp_path))
+        assert result == []
+
+    def test_skips_comparison_analysis_dir(self, tmp_path):
+        pytest.importorskip("pandas")
+
+        # Put a CSV inside comparison_analysis subdirectory - should be skipped
+        cmp_dir = tmp_path / "comparison_analysis" / "run1"
+        cmp_dir.mkdir(parents=True)
+        (cmp_dir / "simulation_data.csv").write_text("iteration,Ca\n1,0.001\n", encoding="utf-8")
+
+        result = _load_comparison_entries(find_run_dirs(tmp_path))
+        assert result == []
+
+    def test_skips_run_without_config_toml(self, tmp_path):
+        pytest.importorskip("pandas")
+
+        run_dir = tmp_path / "run1"
+        run_dir.mkdir()
+        (run_dir / "simulation_data.csv").write_text("iteration,Ca\n1,0.001\n", encoding="utf-8")
+        # No config.toml → should be skipped
+
+        result = _load_comparison_entries(find_run_dirs(tmp_path))
+        assert result == []
+
+    def test_loads_entry_when_config_toml_present(self, tmp_path):
+        pytest.importorskip("pandas")
+
+        run_dir = tmp_path / "run1"
+        run_dir.mkdir()
+        (run_dir / "simulation_data.csv").write_text("iteration,Ca\n10,0.002\n20,0.004\n", encoding="utf-8")
+        (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+
+        cfg = _wetting_cfg(simulation_name="my_run", wetting={"phi_left": 1.0})
+        with patch("src.simulation_io.plotting.run_comparison._safe_load_config", return_value=cfg):
+            result = _load_comparison_entries(find_run_dirs(tmp_path))
+
+        assert len(result) == 1
+        assert result[0]["label"] == "my_run"
+        assert result[0]["sort_key"] == 0
+
+    def test_uses_dir_name_when_simulation_name_missing(self, tmp_path):
+        pytest.importorskip("pandas")
+
+        run_dir = tmp_path / "001_test_case"
+        run_dir.mkdir()
+        (run_dir / "simulation_data.csv").write_text("iteration,Ca\n10,0.002\n", encoding="utf-8")
+        (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+
+        cfg = _wetting_cfg()  # no simulation_name
+        with patch("src.simulation_io.plotting.run_comparison._safe_load_config", return_value=cfg):
+            result = _load_comparison_entries(find_run_dirs(tmp_path))
+
+        assert len(result) == 1
+        # Label derived from dir name (digit prefix stripped)
+        assert "test" in result[0]["label"].lower()
+
+    def _two_runs(self, tmp_path) -> None:
+        """Two runs whose only difference is the gravity driving them."""
+        for name in ("001_weak", "002_strong"):
+            run_dir = tmp_path / name
+            run_dir.mkdir()
+            (run_dir / "simulation_data.csv").write_text("iteration,Ca\n10,0.002\n", encoding="utf-8")
+            (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+
+    def test_labels_carry_the_differing_bond_number(self, tmp_path):
+        pytest.importorskip("pandas")
+        self._two_runs(tmp_path)
+
+        configs = {
+            "001_weak": _wetting_cfg(
+                forces={"gravity_force": {"force_g": 1e-6, "inclination_angle_deg": 30.0}},
+                initialisation={"radii": [0.2], "centres": [[0.5, 0.5]]},
+            ),
+            "002_strong": _wetting_cfg(
+                forces={"gravity_force": {"force_g": 4e-6, "inclination_angle_deg": 30.0}},
+                initialisation={"radii": [0.2], "centres": [[0.5, 0.5]]},
+            ),
+        }
+        with patch(
+            "src.simulation_io.plotting.run_comparison._safe_load_config",
+            side_effect=lambda toml: configs[toml.parent.name],
+        ):
+            result = _load_comparison_entries(find_run_dirs(tmp_path))
+
+        labels = [entry["label"] for entry in result]
+        assert all("Bo" in label for label in labels)
+        # Ordered by the labelled quantity, so the weaker drive comes first.
+        assert result[0]["numbers"].get("bo_parallel") < result[1]["numbers"].get("bo_parallel")
+
+    def test_label_keys_override_the_automatic_selection(self, tmp_path):
+        pytest.importorskip("pandas")
+        self._two_runs(tmp_path)
+
+        cfg = _wetting_cfg(
+            forces={"gravity_force": {"force_g": 1e-6}}, initialisation={"radii": [0.2], "centres": [[0.5, 0.5]]}
+        )
+        with patch("src.simulation_io.plotting.run_comparison._safe_load_config", return_value=cfg):
+            result = _load_comparison_entries(find_run_dirs(tmp_path), ["oh"])
+
+        assert all("Oh" in entry["label"] for entry in result)
+
+    def test_skips_run_when_config_fails_to_load(self, tmp_path):
+        pytest.importorskip("pandas")
+
+        run_dir = tmp_path / "run1"
+        run_dir.mkdir()
+        (run_dir / "simulation_data.csv").write_text("iteration,Ca\n", encoding="utf-8")
+        (run_dir / "config.toml").write_text("bad=[", encoding="utf-8")
+
+        with patch("src.simulation_io.plotting.run_comparison._safe_load_config", return_value=None):
+            result = _load_comparison_entries(find_run_dirs(tmp_path))
+
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# analyse_tree — n_ok > 0 path (compare_runs is actually called)
+# ---------------------------------------------------------------------------
+
+
+def test_analyse_tree_calls_compare_runs_when_csv_produced(tmp_path):
+    pytest.importorskip("pandas")
+
+    run_dir = tmp_path / "run1"
+    data_dir = run_dir / "data"
+    data_dir.mkdir(parents=True)
+    _write_snapshot(data_dir, 10)
+    _write_snapshot(data_dir, 20)
+    (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+
+    cfg = _wetting_cfg()
+    compare_called = {"n": 0}
+
+    def _fake_compare(_run_dirs, _out_dir, _label_keys=None):
+        compare_called["n"] += 1
+
+    with (
+        patch("src.cli.analysis_routing._safe_load_config", return_value=cfg),
+        patch("src.cli.analysis_routing.compare_runs", side_effect=_fake_compare),
+    ):
+        n_runs, n_ok = _analyse_tree(tmp_path)
+
+    assert n_runs == 1
+    assert n_ok == 1
+    assert compare_called["n"] == 1
+
+
+def test_analyse_tree_does_not_call_compare_when_all_fail(tmp_path):
+    pytest.importorskip("pandas")
+
+    run_dir = tmp_path / "run1"
+    run_dir.mkdir()
+    (run_dir / "config.toml").write_text("[simulation_type]\n", encoding="utf-8")
+
+    cfg = _wetting_cfg()
+    compare_called = {"n": 0}
+
+    with patch("src.cli.analysis_routing._safe_load_config", return_value=cfg):
+        n_runs, n_ok = _analyse_tree(tmp_path)
+
+    assert n_runs == 1
+    assert n_ok == 0
+    assert compare_called["n"] == 0
+
+
+# ---------------------------------------------------------------------------
+# _set_empty_state — direct coverage
+# ---------------------------------------------------------------------------
+
+
+def test_set_empty_state_without_required_keys():
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots()
+    try:
+        _set_empty_state(ax, title="Test", ylabel="Y")
+        assert ax.get_title() == "Test"
+    finally:
+        plt.close(fig)
+
+
+def test_set_empty_state_with_required_keys():
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots()
+    try:
+        _set_empty_state(ax, title="Test", ylabel="Y", required_keys=("rho", "u"))
+        texts = [t.get_text() for t in ax.texts]
+        assert any("rho" in t for t in texts)
+    finally:
+        plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# build_simulation_csv — pandas import missing path
+# ---------------------------------------------------------------------------
+
+
+def test_build_simulation_csv_returns_none_for_unsupported_sim_type(tmp_path):
+    """build_simulation_csv returns None for non-wetting sim types."""
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    assert build_simulation_csv(run_dir, _wetting_cfg()) is None

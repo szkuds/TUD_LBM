@@ -3,6 +3,7 @@
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from src.config.boundary import Edge
 from src.lattice.lattice import build_lattice
 from src.operators.boundary._velocity_inlet import apply_velocity_inlet
 from src.operators.macroscopic._single_phase import compute_macroscopic
@@ -19,7 +20,7 @@ def test_inlet_sets_parabolic_profile(lattice) -> None:
     f_streamed = jnp.full((NX, NY, NZ, lattice.q, 1), 0.5)
     f_collision = f_streamed
 
-    result = apply_velocity_inlet(f_streamed, f_collision, lattice, "left", u0=0.05)
+    result = apply_velocity_inlet(f_streamed, f_collision, lattice, Edge.LEFT, u0=0.05)
 
     moments = compute_macroscopic(result[0:1], lattice)
     rho, u = moments[0], moments[1]
@@ -33,11 +34,11 @@ def test_inlet_sets_parabolic_profile(lattice) -> None:
 
 def test_inlet_noop_on_other_edges(lattice) -> None:
     f_streamed = jnp.full((NX, NY, NZ, lattice.q, 1), 0.5)
-    result = apply_velocity_inlet(f_streamed, f_streamed, lattice, "right", u0=0.05)
+    result = apply_velocity_inlet(f_streamed, f_streamed, lattice, Edge.RIGHT, u0=0.05)
     np.testing.assert_array_equal(np.asarray(result), np.asarray(f_streamed))
 
 
 def test_inlet_does_not_touch_other_columns(lattice) -> None:
     f_streamed = jnp.full((NX, NY, NZ, lattice.q, 1), 0.5)
-    result = apply_velocity_inlet(f_streamed, f_streamed, lattice, "left", u0=0.05)
+    result = apply_velocity_inlet(f_streamed, f_streamed, lattice, Edge.LEFT, u0=0.05)
     np.testing.assert_array_equal(np.asarray(result[1:]), np.asarray(f_streamed[1:]))

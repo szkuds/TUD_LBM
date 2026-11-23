@@ -14,35 +14,39 @@ from src.operators.wetting._edge_config import _resolve_wetting_edges
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from src.config.chemical_step import ChemicalStepWall
+    from src.config.wetting import ChemicalStepRegions
 
 
 def build_wetting_applicator(
     rho_l: float,
     rho_v: float,
-    bc_config: dict[str, Any] | None = None,
-    step: ChemicalStepWall | None = None,
+    boundary_conditions: dict[str, Any] | None = None,
+    step: ChemicalStepRegions | None = None,
+    interface_width: float | None = None,
 ) -> Callable[..., jnp.ndarray]:
     """Build a wetting ghost-cell applicator with baked-in static parameters.
 
     Args:
         rho_l: Liquid density.
         rho_v: Vapour density.
-        bc_config: Boundary-condition config dict, e.g.
+        boundary_conditions: Boundary-condition config dict, e.g.
             ``{"bottom": "wetting", "top": "bounce-back", ...}``.
             ``None`` defaults to bottom-only wetting.
-        step: The chemical-step wall (``SimulationConfig.chemical_step_wall``),
-            or ``None``. Splits the modification on its edge by surface.
+        step: The chemical-step wall (``src.config.wetting.chemical_step_regions``),
+            or ``None``. Splits the modification on its edge by region.
+        interface_width: The run's measured interface width in cells
+            (``src.config.wetting.wetting_interface_width``), or ``None``. Bounds
+            the modified region around each contact line.
 
     Returns:
         ``(grid_padded, phi_l, phi_r, d_rho_l, d_rho_r) → grid_padded``
     """
     _rho_l = jnp.array(float(rho_l))
     _rho_v = jnp.array(float(rho_v))
-    _bc_config = bc_config if bc_config is not None else {}
+    _edges = boundary_conditions if boundary_conditions is not None else {}
 
     # Pre-compute which edges need wetting and their perpendicular BC types.
-    _edges = _resolve_wetting_edges(_bc_config)
+    _edges = _resolve_wetting_edges(_edges)
 
     def apply(
         grid_padded: jnp.ndarray,
@@ -76,6 +80,7 @@ def build_wetting_applicator(
                 d_rho_l,
                 d_rho_r,
                 step,
+                interface_width,
             )
         return grid_padded
 

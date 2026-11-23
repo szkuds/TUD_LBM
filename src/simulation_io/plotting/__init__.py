@@ -19,10 +19,10 @@ Example:
 
 from __future__ import annotations
 from src.operators._loader import auto_load_operators
+from src.protocols import AnalysisPlot
+from src.protocols import PlotOperator
 from src.registry import get_operators
 from src.simulation_io.plotting.animator import Animator
-from src.simulation_io.plotting.base import AnalysisPlot
-from src.simulation_io.plotting.base import PlotOperator
 from src.simulation_io.plotting.figure_builder import FigureBuilder
 from src.simulation_io.plotting.figure_config import DEFAULT_STYLE
 from src.simulation_io.plotting.figure_config import FigureStyle

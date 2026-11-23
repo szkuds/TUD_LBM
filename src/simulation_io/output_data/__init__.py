@@ -3,7 +3,7 @@
 import importlib
 import pathlib
 import pkgutil
-from .base import OutputWriter
+from src.protocols import OutputWriter
 
 # --- Automatic module discovery ---
 _package_dir = pathlib.Path(__file__).parent

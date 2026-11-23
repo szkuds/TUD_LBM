@@ -17,18 +17,17 @@ from src.operators._loader import auto_load_operators
 from src.registry import get_operators
 
 if TYPE_CHECKING:
-    from src.operators.protocols import EquilibriumOperator
+    from src.protocols import EquilibriumOperator
 
 # Auto-discover and import private operator modules for registry registration
 auto_load_operators("src.operators.equilibrium")
 
 
-def build_equilibrium_fn(scheme: str = "wb") -> EquilibriumOperator:
+def build_equilibrium_fn(scheme: str) -> EquilibriumOperator:
     """Return an equilibrium operator satisfying EquilibriumOperator protocol.
 
     Args:
-        scheme: Equilibrium model name ("wb" or others).
-                Defaults to "wb" (Chai et al. D2Q9 model).
+        scheme: Equilibrium model name, ``SimulationConfig.equilibrium``.
 
     Returns:
         A callable satisfying the EquilibriumOperator protocol.

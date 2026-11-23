@@ -1,4 +1,4 @@
-"""Von Karman vortex street example_for_test using the functional API.
+"""Von Karman vortex street with the functional API.
 
 Single-phase channel flow past a circular cylinder obstacle, with a
 velocity-inlet on the left and an outlet on the right. Streaming I/O mode —
@@ -46,6 +46,7 @@ def run_von_karman():
         nt=config.nt,
         save_interval=config.save_interval,
         io_handler=io,
+        skip_interval=config.skip_interval,
         save_fields=tuple(config.save_fields) if config.save_fields else None,
     )
 

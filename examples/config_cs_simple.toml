@@ -1,19 +1,19 @@
-# ── Carnahan-Starling EOS — integration test config ─────────────────────────
+# ── Carnahan-Starling EOS — example config ──────────────────────────────────
 #
-# Purpose: minimal end-to-end config for smoke-testing the CS EOS path through
-# the full pipeline (config load → build_setup → init_state → run).
+# Purpose: an end-to-end example of the CS EOS path through the full
+# pipeline (config load → build_setup → init_state → run).
 #
-# Grid: deliberately small (64×64) so the test runs fast.
-# Physics: parameters chosen to keep the interface stable for 500 steps —
-# not a calibrated physical case, just enough to verify no crash and that
-# rho stays finite and positive throughout.
+# Grid: 201×201 with one vapour bubble of radius 0.3·201 (vapour is the
+# default dispersed phase).
+# Physics: not a calibrated physical case. CS has no closed-form surface
+# tension; `tud-lbm calibration stage` measures it for this fluid.
 #
-# interface_width is present because it is a required config field for all
-# multiphase runs; for CS it governs the tanh initialisation profile only
-# and has no effect on the macroscopic operator.
+# interface_width is a required field for every multiphase run; for CS it
+# sets the tanh initialisation profile only and has no effect on the
+# macroscopic operator. rho_l/rho_v may be omitted: they are then the
+# Maxwell coexistence pair of a_eos, b_eos, r_eos and t_eos.
 
 [simulation_type]
-type              = "multiphase"
 simulation_name   = "cs_eos_test"
 lattice_type      = "D2Q9"
 grid_shape        = [201, 201]
@@ -36,7 +36,7 @@ r_eos = 1.0
 t_eos = 0.00039808421247983624
 
 [initialisation]
-# Single bubble centred in the domain, radius = 0.2 * min(nx, ny)
+# Single bubble centred in the domain, radius = 0.3 * min(nx, ny)
 centres = [[0.5, 0.5]]
 radii   = [0.3]
 

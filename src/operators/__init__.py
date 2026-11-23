@@ -18,16 +18,16 @@ Use registry.get_operators(category) to retrieve implementations.
 from __future__ import annotations
 import pkgutil
 from src.operators._loader import auto_load_operators
-from src.operators.protocols import BoundaryOperator
-from src.operators.protocols import CollisionOperator
-from src.operators.protocols import DifferentialOperator
-from src.operators.protocols import EosOperator
-from src.operators.protocols import EquilibriumOperator
-from src.operators.protocols import ForceOperator
-from src.operators.protocols import InitialiserOperator
-from src.operators.protocols import MacroscopicOperator
-from src.operators.protocols import SourceTermOperator
-from src.operators.protocols import StreamingOperator
+from src.protocols import BoundaryOperator
+from src.protocols import CollisionOperator
+from src.protocols import DifferentialOperator
+from src.protocols import EosOperator
+from src.protocols import EquilibriumOperator
+from src.protocols import ForceOperator
+from src.protocols import InitialiserOperator
+from src.protocols import MacroscopicOperator
+from src.protocols import SourceTermOperator
+from src.protocols import StreamingOperator
 
 
 def load_all() -> None:
