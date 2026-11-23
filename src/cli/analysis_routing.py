@@ -211,7 +211,7 @@ def parse_run_dir_list(txt_path: str | Path, allowed_roots: Sequence[str | Path]
     resolved_roots = [root.resolve() for root in roots]
     # The lexical check also takes each root as written, so an entry through a
     # symlinked prefix of a root (macOS /var -> /private/var) still matches it.
-    lexical_roots = [*resolved_roots, *(Path(os.path.normpath(root.absolute())) for root in roots)]
+    lexical_roots = list(dict.fromkeys([*map(str, resolved_roots), *(_lexical(str(root)) for root in roots)]))
     dirs: list[Path] = []
     for raw_line in txt_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -235,22 +235,26 @@ def _unquote_and_unescape(line: str) -> str:
 
 
 def _resolve_run_dir_entry(
-    line: str, txt_path: Path, parent: Path, lexical_roots: list[Path], resolved_roots: list[Path]
+    line: str, txt_path: Path, parent: Path, lexical_roots: list[str], resolved_roots: list[Path]
 ) -> Path:
     """Resolve one parsed line to a run directory, rejecting entries outside every allowed root.
 
-    The untrusted ``line`` touches the filesystem only after it is known to lie inside
-    an allowed root (SonarQube ``pythonsecurity:S6549``). It is first normalised
-    lexically (``os.path.normpath``, no filesystem access), checked against the roots,
-    and only then resolved; the resolved path is checked again, so a symlink inside a
-    root cannot lead out of it. The error names the entry, never its resolved target,
-    so a rejected line reveals nothing about where a path points.
+    This follows SonarQube ``pythonsecurity:S6549`` step by step. The untrusted
+    ``line`` is normalised without filesystem access (``os.path.abspath``), then
+    checked with ``str.startswith`` against each root *with a trailing separator*
+    (so ``/data/runs`` does not admit ``/data/runs_other``). Only inside the
+    branch that passed is the path resolved, the first filesystem access; the
+    resolved path is checked again, so a symlink inside a root cannot lead out
+    of it. The error names the entry, never its resolved target, so a rejected
+    line reveals nothing about where a path points.
     """
-    candidate = Path(os.path.normpath(Path(line) if Path(line).is_absolute() else parent / line))
-    if _inside_any(candidate, lexical_roots):
-        resolved = candidate.resolve()
-        if _inside_any(resolved, resolved_roots):
-            return resolved
+    candidate = _lexical(os.path.join(parent, line))  # noqa: PTH118
+    for root in lexical_roots:
+        if candidate == root or candidate.startswith(root.rstrip(os.sep) + os.sep):
+            resolved = Path(candidate).resolve()
+            if any(resolved.is_relative_to(resolved_root) for resolved_root in resolved_roots):
+                return resolved
+            break
     roots_desc = ", ".join(str(root) for root in resolved_roots)
     msg = (
         f"{txt_path}: run directory {line!r} is outside every allowed root "
@@ -259,6 +263,7 @@ def _resolve_run_dir_entry(
     raise ValueError(msg)
 
 
-def _inside_any(path: Path, roots: list[Path]) -> bool:
-    """Whether *path* lies inside one of *roots* (a lexical test)."""
-    return any(path.is_relative_to(root) for root in roots)
+def _lexical(path: str) -> str:
+    """The absolute, normalised form of *path*, without touching the filesystem."""
+    # os.path.abspath, not Path.resolve: resolve follows symlinks, a filesystem access.
+    return os.path.abspath(path)  # noqa: PTH100
